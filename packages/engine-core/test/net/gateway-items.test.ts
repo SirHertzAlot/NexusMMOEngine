@@ -51,7 +51,7 @@ function makeItems(): ItemService {
     models: ["pack/SM_Wep_Sword_01"],
   };
   rules.items.bases.helm = { ...rules.items.fallback, slot: "head", models: ["pack/SM_Prop_Helm_01"] };
-  return new ItemService({ defs: new ItemDefs(POOL, rules), loot: rules.loot, tickHz: 30 });
+  return new ItemService({ defs: new ItemDefs(POOL, rules), loot: rules.loot, tickHz: 30, starterBase: "sword" });
 }
 
 async function startGateway(opts: GatewayOptions = {}): Promise<string> {
