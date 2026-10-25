@@ -171,6 +171,23 @@ live-entity selections (whose ids are wire ids) and is refused
 ("no such target", surfaced as the outcome) for scene-document
 selections; see gaps.
 
+**Live smoke (2026-10-24, server-homes slice):** same pattern, for
+the verbs that gained admin homes. giveItem {base:"sword"} →
+*"gave Vampiric Silver Sword (item 1)"*; defOf {item:1} → read:
+*"item 1: Vampiric Silver Sword [uncommon sword] ad9dd3d5a1457722"*;
+countBase {base:"sword"} → *"you carry 1 × sword"*; takeItem
+{item:1} (the items widget's new action, by instance id) →
+*"took Vampiric Silver Sword (item 1) from your bag"*, and countBase
+again → *"you carry 0 × sword"* — the bag read-back proves the
+removal. placeItemFixture {base:"sword", x:5, z:5} → *"placed
+Yrithra, Keen Mithril Sword of the Titan (item 2) as 52 at 5, 5 — a
+fixture, it stays"*. addcomponent: a vendor-spawned entity (53) took
+the shelf's FlowRef plan through `executePlan` → *"FlowRef added to
+53 (graph=0 enabled=1)"*, the inspect read-back showing *"FlowRef:
+graph 0 enabled 1"*; the same plan again → refused, *"entity 53
+already has FlowRef"*. moveItem is covered at gateway level with two
+real characters (the smoke server has one login).
+
 ## End-to-end authoring — is the loop completable?
 
 Walked step by step against the built code (2026-10-24; re-walked after
