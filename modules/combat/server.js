@@ -69,6 +69,7 @@ export function createSystems(ctx) {
   // scale the landed blow.
   combatDamage.canHit = (a, b) =>
     (hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true) && (config.canBreak?.(a, b) ?? true);
+  combatDamage.kindScale = (t, kind) => config.kindScale?.(t, kind) ?? 1;
   combatDamage.damageScale = (a, b) => status.modifier(a, "power").mul * status.modifier(b, "armour").mul;
 
   const combat = new CombatSystem(30, stamina, combatDamage);

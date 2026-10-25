@@ -42,6 +42,8 @@ export interface PlacesStore {
   load(kind: PlaceKind, key: string): PlaceRecord | undefined;
   save(rec: PlaceRecord): void;
   clear(kind: PlaceKind, key: string): void;
+  /** Every record (the world's scatter props that broke are found again after a restart). */
+  all?(): PlaceRecord[];
 }
 
 /** The records in a world snapshot's `places.place_records`; rows that aren't one are dropped. */

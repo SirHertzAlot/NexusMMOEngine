@@ -51,6 +51,8 @@ export const BreakableSchema = z.object({
   respawnS: z.number().positive().nullable().default(null),
   /** Strength (the `strength` stat) a player needs for a blow to hurt it; bodies with no stats (creatures) are not held to it. */
   minStrength: z.number().min(0).optional(),
+  /** Multipliers by the kind of damage a blow does (a barrel is weak to "blunt", a tree to "slash"); a kind not named counts 1. */
+  damageMultipliers: z.record(z.string(), z.number().min(0)).optional(),
   /** What mending it takes once it stands broken (`into: "variant"`): `count` of a pouch `material`, over `castSeconds`. Without it a broken prop stays broken. */
   repair: z.object({ material: z.string().min(1), count: z.number().int().min(1), castSeconds: z.number().min(0).default(4) }).optional(),
 }).refine((b) => b.into !== "debris" || b.debris !== undefined, { message: "into debris needs a debris archetype", path: ["debris"] });
