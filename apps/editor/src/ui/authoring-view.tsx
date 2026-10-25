@@ -8,14 +8,19 @@
  * the selection summons its widget stack + add shelf from the relevance
  * rules — no module panels, no component tables.
  *
- * Layout discipline (Joey, 2026-10-24, refined twice the same
- * evening): first the centered view pane (quarter / half / quarter),
- * then — the current model — EMBEDDED panels: the workspace is one
- * view pane and the panels dock INSIDE it at its edges (hierarchy
- * left, widgets + shelf right, identity across the top, history as a
- * bottom strip), the pattern of VSCode / Blender / Unity /
- * PlayCanvas. Both docks and the strip collapse, returning their
- * space to the center viewport-focus zone. See docs/EDITOR-AUTHORING.md.
+ * Layout discipline (Joey, 2026-10-24, refined through the evening):
+ * first the centered view pane (quarter / half / quarter), then
+ * EMBEDDED panels (the pattern of VSCode / Blender / Unity /
+ * PlayCanvas), then — the current model — FLOATING widgets: the
+ * workspace is one view pane; the hierarchy dock (left edge), the
+ * add-shelf strip (right edge), the identity bar (top) and the
+ * history strip (bottom) dock INSIDE it and collapse, returning
+ * their space to the center viewport-focus zone; and the selection
+ * widgets FLOAT inside the pane, summoned by the selection —
+ * restoring Joey's original 2026-10-17 design ("clicking a game
+ * object summons contextual widgets within the viewport"). The
+ * floating stack is dismissible (view state only) and re-summons on
+ * the next pick. See docs/EDITOR-AUTHORING.md.
  *
  * Honest scope of this slice:
  * - The stage is a panel, not the 3D viewport: it shows the selected
@@ -503,6 +508,16 @@ function AuthoringPresentation(): React.JSX.Element {
   const serverLive = link.phase === "live";
   /** Embedded-panel collapse state for the view pane (left dock / right dock / history strip), persisted like the pins. */
   const [panels, setPanels] = useLocalStorage("authoring-embedded-panels", { left: true, right: true, history: true });
+  /**
+   * The selection id whose floating widgets are dismissed (the stack's ×).
+   * View state only — the selection itself is untouched. Any new selection
+   * object (a fresh pick in this view or in Scenes, including re-clicking
+   * the same object) clears it, so the widgets re-summon.
+   */
+  const [dismissedWidgetsFor, setDismissedWidgetsFor] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setDismissedWidgetsFor(null);
+  }, [selection]);
   // ---- picker lists for action inputs: real data only, resolved here (the model layer names the sources, never the lists)
   const [itemBases, setItemBases] = React.useState<readonly string[]>([]);
   const [creatureKinds, setCreatureKinds] = React.useState<readonly string[]>([]);
@@ -678,21 +693,24 @@ function AuthoringPresentation(): React.JSX.Element {
     : sortNodes(role === "all" ? model.flat : model.flat.filter((n) => roleFilterById(role as RoleFilterId).test(n)), sort);
 
   return (
-    // Embedded-panels workspace (Joey, 2026-10-24 evening — the pattern of
-    // the editors he named as the reference set: VSCode, Blender, Unity,
-    // PlayCanvas). The three workspace columns are gone: the workspace is
-    // ONE view pane — a single framed canvas — and the panels live INSIDE
-    // it, docked at its edges. Hierarchy docks at the left edge (VSCode's
-    // sidebar / Unity's Hierarchy against the scene view), selection
-    // widgets + add shelf at the right edge (Unity's Inspector / Blender's
-    // properties region), the identity bar runs across the top INSIDE the
+    // Embedded-panels workspace with FLOATING selection widgets (Joey,
+    // 2026-10-24 evening — the pattern of the editors he named as the
+    // reference set: VSCode, Blender, Unity, PlayCanvas). The three
+    // workspace columns are gone: the workspace is ONE view pane — a
+    // single framed canvas. The hierarchy docks at its left edge
+    // (VSCode's sidebar / Unity's Hierarchy against the scene view), the
+    // add shelf — the "available to add" catalog — docks as a strip at
+    // its right edge, the identity bar runs across the top INSIDE the
     // pane, and the provenance history is a collapsible strip along the
-    // bottom INSIDE the pane (VSCode's panel/console). The center
-    // viewport-focus zone is the pane's own middle — unobstructed and
-    // dominant; the docks are at its edges, not columns beside it, and
-    // collapsing a dock (edge toggles in the identity bar) returns its
-    // width to the viewport zone. Collapse state persists in local prefs.
-    // The rule of thirds governs composition inside the pane: identity /
+    // bottom INSIDE the pane (VSCode's panel/console). The selection's
+    // widgets are NOT docked at all: they FLOAT over the center
+    // viewport-focus zone, summoned by the selection (Joey's original
+    // 2026-10-17 design), anchored toward the zone's right-center, and
+    // the layout never reflows for them. The docks are at the pane's
+    // edges, not columns beside it, and collapsing a dock (edge toggles
+    // in the identity bar) returns its width to the viewport zone.
+    // Collapse state persists in local prefs. The rule of thirds
+    // governs composition inside the pane: identity /
     // relationships-viewport-focus / provenance down its height.
     //
     // Honest scope: the panels are embedded within the Design workspace's
@@ -723,22 +741,22 @@ function AuthoringPresentation(): React.JSX.Element {
               <span className="truncate text-[12px] text-muted-foreground">{where}</span>
             </div>
           ) : (
-            <span className="truncate text-[13px] text-muted-foreground">The view pane — pick an object and its widgets dock at the right edge.</span>
+            <span className="truncate text-[13px] text-muted-foreground">The view pane — pick an object and its widgets float here, summoned by the pick.</span>
           )}
           <Button
             className="ml-auto flex-none"
             size="sm"
             variant="ghost"
             onClick={() => setPanels((p) => ({ ...p, right: !p.right }))}
-            aria-label={panels.right ? "Collapse the widgets panel" : "Show the widgets panel"}
-            title="Widgets panel (docked at the pane's right edge)"
+            aria-label={panels.right ? "Collapse the add-shelf strip" : "Show the add-shelf strip"}
+            title="Add-shelf strip (docked at the pane's right edge)"
           >
-            Widgets
+            Add shelf
             <MIcon name={panels.right ? "chevron_right" : "chevron_left"} size={16} />
           </Button>
         </div>
 
-        {/* ---------------- middle: left dock | center viewport zone | right dock */}
+        {/* ---------------- middle: left dock | center viewport zone (widgets float over it) | right shelf strip */}
         <div className="flex min-h-0 flex-1">
           {/* hierarchy — docked at the left edge inside the pane: Find */}
           {panels.left && (
@@ -828,27 +846,30 @@ function AuthoringPresentation(): React.JSX.Element {
             </div>
           )}
 
-          {/* the center viewport-focus zone — the pane's own middle, unobstructed */}
-          <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
-            {!facts && (
-              <EmptyState
-                icon="nearby"
-                title="Select an object"
-                body="Pick a node in the hierarchy dock (or any object in the Scenes viewport — selection is shared). Its widgets dock at the right edge of this pane: what's applied, and the verbs to change it. Scene-level modules for this scene: "
-              />
-            )}
-            {!facts && (
-              <div className="flex flex-wrap gap-1.5">
-                {sceneLevelWidgets().map((w) => (
-                  <Chip key={w.widgetId}>{w.title}</Chip>
-                ))}
-              </div>
-            )}
-            {facts && (
-              <>
-                <p className="text-[13px] text-muted-foreground">
-                  {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules, docked at the right edge. Applied state there is read from the selection's own component fields — joined by the live inspect read-back (marked "live ·") after a dispatched action whose target is this object.
-                </p>
+          {/* the center viewport-focus zone — the pane's own middle. The
+              selection widgets FLOAT over it (rendered at its end): the
+              zone itself never reflows or resizes for them. */}
+          <div className="relative min-w-0 flex-1">
+            <div className="flex h-full flex-col gap-2 overflow-y-auto p-3">
+              {!facts && (
+                <EmptyState
+                  icon="nearby"
+                  title="Select an object"
+                  body="Pick a node in the hierarchy dock (or any object in the Scenes viewport — selection is shared). Its widgets float in this pane: what's applied, and the verbs to change it. Scene-level modules for this scene: "
+                />
+              )}
+              {!facts && (
+                <div className="flex flex-wrap gap-1.5">
+                  {sceneLevelWidgets().map((w) => (
+                    <Chip key={w.widgetId}>{w.title}</Chip>
+                  ))}
+                </div>
+              )}
+              {facts && (
+                <>
+                  <p className="text-[13px] text-muted-foreground">
+                    {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules, floating in this pane. Applied state there is read from the selection's own component fields — joined by the live inspect read-back (marked "live ·") after a dispatched action whose target is this object.
+                  </p>
                 {/* The object's relationships / viewport focus — this zone is the viewpoint and grows. */}
                 <div className="flex flex-1 flex-col rounded-lg border border-dashed p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
                   <SectionTitle>Relationships — follow the thread</SectionTitle>
@@ -864,25 +885,84 @@ function AuthoringPresentation(): React.JSX.Element {
                     <p className="text-[13px] text-muted-foreground">No reference edges in the scene data for this object yet (quest → giver, vendor → template, creature → patrol land here when the data carries them). The live 3D viewport stays in the Scenes workspace — selection is shared, so this object is the selected object there too.</p>
                   )}
                 </div>
-                {readBack !== null && (
-                  <div className="rounded-lg border p-3" style={{ borderColor: "var(--m3-primary)" }}>
-                    <SectionTitle>Live read-back — inspect {readBack.target}</SectionTitle>
-                    <ul className="mt-1 font-mono text-[12px]">
-                      {readBack.lines.map((l) => (
-                        <li key={l}>{l}</li>
+                  {readBack !== null && (
+                    <div className="rounded-lg border p-3" style={{ borderColor: "var(--m3-primary)" }}>
+                      <SectionTitle>Live read-back — inspect {readBack.target}</SectionTitle>
+                      <ul className="mt-1 font-mono text-[12px]">
+                        {readBack.lines.map((l) => (
+                          <li key={l}>{l}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-1 text-[12px] text-muted-foreground">Read from the running server after the last dispatched action on this target — this is the result, reflected back.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ---------- floating selection widgets — summoned by the
+                selection into the pane (Joey's 2026-10-17 design: a
+                clicked game object summons its contextual widgets
+                WITHIN the viewport). Absolutely positioned over the
+                viewport-focus zone, anchored toward its right-center;
+                nothing reflows for them. The stack scrolls itself when
+                tall. The × dismisses it until the selection changes or
+                the object is clicked again (view state only — the
+                selection is untouched). No selection, no widgets. */}
+            {facts && dismissedWidgetsFor !== facts.id && (
+              <div className="absolute bottom-3 right-3 top-3 z-10 flex w-80 flex-col gap-2 overflow-y-auto" role="group" aria-label={`Widgets for ${facts.label}`}>
+                <div className="flex flex-none items-center gap-2 rounded-lg border px-3 py-2 shadow-lg" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">Widgets — {facts.label}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDismissedWidgetsFor(facts.id)}
+                    aria-label="Dismiss the floating widgets"
+                    title="Dismiss — the widgets return when the selection changes or the object is clicked again"
+                  >
+                    <MIcon name="close" size={16} />
+                  </Button>
+                </div>
+                {widgets.map((w) => (
+                  <div key={w.widgetId} className="flex-none rounded-lg border p-3 shadow-lg" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+                    <div className="text-sm font-medium">{w.title}</div>
+                    <p className="mt-0.5 text-[13px]">{w.identity}</p>
+                    {w.tabs && (
+                      <ModalTabs
+                        tabs={w.tabs.map((t) => ({ id: t.toLowerCase(), label: t }))}
+                        active={tabByWidget[w.widgetId] ?? w.tabs[0].toLowerCase()}
+                        onTab={(id) => setTabByWidget((prev) => ({ ...prev, [w.widgetId]: id }))}
+                      />
+                    )}
+                    {w.applied.length > 0 ? (
+                      <ul className="mt-1 list-inside list-disc text-[13px]">
+                        {w.applied.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-[13px] text-muted-foreground">No live state read for this widget yet.</p>
+                    )}
+                    <div className="mt-2 flex flex-col gap-2">
+                      {w.actions.map((a) => (
+                        <WidgetActionRow key={`${facts.id}:${a.id}`} action={a} pickerFor={pickerFor} onDispatch={dispatch} />
                       ))}
-                    </ul>
-                    <p className="mt-1 text-[12px] text-muted-foreground">Read from the running server after the last dispatched action on this target — this is the result, reflected back.</p>
+                    </div>
                   </div>
+                ))}
+                {widgets.length === 0 && (
+                  <p className="flex-none rounded-lg border p-3 text-[13px] text-muted-foreground shadow-lg" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+                    No widgets apply to this selection.
+                  </p>
                 )}
-              </>
+              </div>
             )}
           </div>
 
-          {/* widgets + add shelf — docked at the right edge inside the pane: Act */}
+          {/* add shelf — the "available to add" catalog, docked as a strip at the right edge inside the pane: Act */}
           {panels.right && (
             <div className="flex w-80 flex-none flex-col gap-2 overflow-y-auto border-l p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
-              <SectionTitle>Selection widgets</SectionTitle>
+              <SectionTitle>Available to add</SectionTitle>
               <p className="text-[12px]" style={{ color: serverLive ? "var(--m3-primary)" : "var(--m3-error)" }}>
                 {serverLive ? "Server live — actions dispatch to the running server for real." : "Server not running — actions record intent only; their outcome reads offline and nothing is dispatched."}
               </p>
@@ -890,35 +970,7 @@ function AuthoringPresentation(): React.JSX.Element {
                 Why (intent — required on every action)
                 <Input value={why} onChange={(e) => setWhy(e.target.value)} aria-label="Intent for verb calls" />
               </label>
-              {widgets.map((w) => (
-                <div key={w.widgetId} className="rounded-lg border p-3" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
-                  <div className="text-sm font-medium">{w.title}</div>
-                  <p className="mt-0.5 text-[13px]">{w.identity}</p>
-                  {w.tabs && (
-                    <ModalTabs
-                      tabs={w.tabs.map((t) => ({ id: t.toLowerCase(), label: t }))}
-                      active={tabByWidget[w.widgetId] ?? w.tabs[0].toLowerCase()}
-                      onTab={(id) => setTabByWidget((prev) => ({ ...prev, [w.widgetId]: id }))}
-                    />
-                  )}
-                  {w.applied.length > 0 ? (
-                    <ul className="mt-1 list-inside list-disc text-[13px]">
-                      {w.applied.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-1 text-[13px] text-muted-foreground">No live state read for this widget yet.</p>
-                  )}
-                  <div className="mt-2 flex flex-col gap-2">
-                    {w.actions.map((a) => (
-                      <WidgetActionRow key={`${facts?.id ?? ""}:${a.id}`} action={a} pickerFor={pickerFor} onDispatch={dispatch} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {facts && widgets.length === 0 && <p className="text-[13px] text-muted-foreground">No widgets apply to this selection.</p>}
-              <SectionTitle>Available to add</SectionTitle>
+              {!facts && <p className="text-[13px] text-muted-foreground">Select an object — what can be established on it appears here. Its own widgets float in the view pane when it is picked.</p>}
               {shelf.map((e) =>
                 e.action && (e.action.inputs?.length ?? 0) > 0 ? (
                   <ShelfActionRow key={e.moduleId} entry={e} pickerFor={pickerFor} onFire={fireShelf} />
