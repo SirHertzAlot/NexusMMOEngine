@@ -279,6 +279,7 @@ describe("SidecarManager", () => {
     assert.equal(again.status, "healthy");
     assert.equal(mgr.dumpOf("worker")!.what.trigger, "replace");
     assert.equal((await mgr.park("nope")).reason, "unknown sidecar");
+    assert.deepEqual(mgr.list(), [{ name: "worker", status: "healthy", dump: true }]);
   });
 });
 

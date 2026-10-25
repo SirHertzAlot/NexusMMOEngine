@@ -1022,6 +1022,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, 200, { ok: true, report, dump: owned.sidecars.dumpOf(body.name) ?? null });
             return;
           }
+          if (url === "/api/editor/sidecars" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, sidecars: owned?.sidecars.list() ?? [] });
+            return;
+          }
           if (url.startsWith("/api/editor/sidecars/dump") && req.method === "GET") {
             const name = new URL(url, "http://localhost").searchParams.get("name") ?? "";
             const dump = owned?.sidecars.dumpOf(name);

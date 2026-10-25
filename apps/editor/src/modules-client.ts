@@ -17,6 +17,8 @@ export interface ModuleInfo {
   locked: boolean;
   editor: boolean;
   systems: string[];
+  /** EA11: the module declares a sidecar process. */
+  sidecar?: boolean;
   /** EA10: present when the module has a native addon. */
   native?: { entry: string; systems: string[] };
 }
@@ -137,3 +139,21 @@ export const buildNative = (name: string, base = ""): Promise<{ ok: boolean; bui
 /** EA10: check whether a module's native addon is built. */
 export const checkNative = (name: string, base = ""): Promise<{ ok: boolean; built: boolean; path: string | null }> =>
   call(`${base}/api/editor/modules/${encodeURIComponent(name)}/check`, "native check failed");
+
+export type SidecarState = "starting" | "healthy" | "unhealthy" | "parked" | "stopped";
+
+/** EA11: the running play server's sidecars (empty when none is running). */
+export const fetchSidecars = (base = ""): Promise<{ ok: boolean; sidecars: Array<{ name: string; status: SidecarState; dump: boolean }> }> =>
+  call(`${base}/api/editor/sidecars`, "sidecar list failed");
+
+/** EA11: stop a sidecar for good and leave a debugging dump. */
+export const parkSidecar = (name: string, reason?: string, base = ""): Promise<{ ok: boolean; report: { status: SidecarState; dumpFile?: string } }> =>
+  call(`${base}/api/editor/sidecars/park`, "park failed", "POST", { name, reason });
+
+/** EA11: park what runs and start a fresh instance. */
+export const replaceSidecar = (name: string, base = ""): Promise<{ ok: boolean; report: { status: SidecarState; reason?: string } }> =>
+  call(`${base}/api/editor/sidecars/replace`, "replace failed", "POST", { name });
+
+/** EA11: the last debugging dump of a sidecar. */
+export const fetchSidecarDump = (name: string, base = ""): Promise<{ ok: boolean; dump: unknown }> =>
+  call(`${base}/api/editor/sidecars/dump?name=${encodeURIComponent(name)}`, "no dump");
