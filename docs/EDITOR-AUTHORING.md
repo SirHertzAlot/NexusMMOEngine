@@ -137,13 +137,21 @@ invalid field still records and still reads the mapper's refusal.
 | Spawn pack / Spawn creature (spawnPack / spawnCreature) | Creature kind picker, prefilled with the selected creature's kind | Gameplay snapshot refs — `content/rules/creatures.json` kind names (the registry the server's spawn command checks) | List loads without a play server; the spawn records offline |
 | Teleport (teleport) | X / Z numbers, prefilled from the selected object's Transform position when the selection carries one, editable before dispatch | The selection itself (scene-node transform / Transform fields) | — |
 | Dungeon "Give item reward" (giveItem) | Item base picker | Same item-bases source | Same |
+| Take item (takeItem) | Item base picker (takes one of that base) *or* an item instance id (number) — the id wins when both are filled | Item-bases picker (same source) + typed id (ids come from give/drop messages and the inventory) | Fields render; the take records offline |
+| Move item (moveItem) | Item id + destination character id (numbers) | Typed by the designer (a character's holder id is in its inspect dump's CharacterRef line) | Same |
+| Count base (countBase) | Item base picker | Same item-bases source | The read records offline |
+| Def of item (defOf) | Item id (number) | Typed by the designer | Same |
+| Shelf "Place as item" (placeItemFixture) | Item base picker + X / Z numbers prefilled from the selected object's position | Item-bases picker + the selection itself | Same |
 
 Two targeting truths the inputs surfaced, stated on the actions
 themselves in the UI: admin give/gold (and quest rewards, which
 resolve to them) act on the **console holder only**, so those actions
 build calls for the editor's avatar and say so in a note — a call
 naming another character still refuses in the mapper, never silently
-redirected. And admin spawn with no x/z plants at the caller's
+redirected. The bag verbs (takeItem, countBase) carry the same truth
+and the same style of note; moveItem is the exception its service
+signature dictates — the destination is a character (holder) id the
+designer types. And admin spawn with no x/z plants at the caller's
 avatar, so the spawn actions no longer carry the fake 0,0 — the
 placeholder that would have spawned at the world origin is gone.
 
@@ -182,8 +190,8 @@ stay unsupported, by design, until the server grows one.
 | 4 | Select an object | Live — shared `editorSelection`; picking here is picking in Scenes |
 | 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs; the widgets float in the view pane, summoned by the selection (dismissible, re-summoned on the next pick) |
 | 6 | Read what's applied | **Partial** — selection-local component fields, PLUS the live `inspect` read-back (its lines join the widgets when the read-back's target is this selection); still not live system reads (vendor stock, dialogue graphs, abilities) |
-| 7 | Add what's missing (add shelf) | **Partial** — establishability is live; verb-shaped shelf actions dispatch with real input fields (vendor-template and creature-kind pickers — step 8); component-shaped additions are **unsupported** — admin `set` cannot add a component (see gaps) |
-| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Actions render real input fields (item-base / creature-kind / vendor-template pickers fed by real lists, amount and coordinate numbers with Transform prefills), so the dispatching verbs dispatch from clicks with designer-chosen values — live-smoked end to end (give, vendor attach, spawn). Dispatching: giveItem & giveGold (console holder only), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, grantQuestReward (composite give+gold, console holder), resolveBase (a read, via `items`). **Unsupported, with reasons:** takeItem, moveItem, defOf, countBase, startDialogue, placeItemFixture — no admin command honestly implements them |
+| 7 | Add what's missing (add shelf) | **Live for ECS-shaped additions** — establishability is live; verb-shaped shelf actions dispatch with real input fields (step 8); component-shaped additions dispatch as `addcomponent` steps (the server adds the component at its defaults) for every shelf name that is an ECS component — Health+Stamina, CharacterRef, PlayerIntent, FlowRef, VfxEmitter, AudioEmitter, and Collider (whose ECS form is BodyConfig). **Unsupported, with reasons:** QuestGiver and DungeonEntrance — scene-document names with no ECS component to add (see gaps) |
+| 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Actions render real input fields (item-base / creature-kind / vendor-template pickers fed by real lists, amount and coordinate numbers with Transform prefills), so the dispatching verbs dispatch from clicks with designer-chosen values — live-smoked end to end (give, vendor attach, spawn, and — after the server-homes slice — take, countbase/defof reads, addcomponent). Dispatching: giveItem & giveGold (console holder only), takeItem & moveItem (the `items` bag sub-actions — console holder's bag; moveItem's destination is a character id), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, placeItemFixture (`drop` at an exact position, as a fixture), grantQuestReward (composite give+gold, console holder); reads: resolveBase, defOf, countBase (via `items`). **Unsupported, with the reason:** startDialogue alone — dialogue is player-initiated and no honest admin trigger exists |
 | 9 | Provenance history | **Partial** — in-memory session log, per-object, now carrying each call's dispatch outcome + server message; not persisted / not VCS metadata |
 | 10 | See the result | **Partial** — a dispatched mutation re-inspects its target and the stage shows the read-back dump (and the widgets absorb it when the target is the selection). Seeing it in the 3D viewport is still a **gap** — viewport is in the Scenes workspace; no in-place 3D feedback, no viewport overlays |
 | 11 | Quick-start procgen parity | **Gap** — converges by construction via scene docs; no rule-editor widget |
@@ -191,9 +199,10 @@ stay unsupported, by design, until the server grows one.
 **Verdict:** the loop is completable end to end for the verbs the
 admin surface honestly implements — find, select, intend, dispatch,
 and see the read-back — and it stops, explicitly and with reasons, at
-the verbs and the component additions that have no admin home. What
-remains (3D-viewport feedback, persistent history, procgen rule
-editing, live system reads) is depth, not viability.
+startDialogue (no admin home exists) and at the two shelf names that
+are not ECS components (QuestGiver, DungeonEntrance). What remains
+(3D-viewport feedback, persistent history, procgen rule editing, live
+system reads) is depth, not viability.
 
 ## Live dispatch — how a VerbCall reaches the world
 
@@ -201,12 +210,17 @@ editing, live system reads) is depth, not viability.
 in `authoring-dispatch.test.ts`). A VerbCall maps to a **DispatchPlan**:
 
 - `{ kind: "admin", command, args }` — one real admin command
-  (`give`, `gold`, `spawn`, `teleport`, `vendor attach/detach`).
+  (`give`, `gold`, `spawn`, `teleport`, `vendor attach/detach`,
+  `items` bag sub-actions for takeItem/moveItem, `drop` with an exact
+  position + the fixture flag for placeItemFixture, `addcomponent`
+  for shelf component additions).
 - `{ kind: "composite", steps }` — an honest sequence
   (grantQuestReward → repeated `give` steps + `gold` steps, in order;
-  a refusal stops the sequence and names the step).
+  a refusal stops the sequence and names the step; a multi-component
+  shelf addition → one `addcomponent` step per component).
 - `{ kind: "read", command, args }` — a query, not a mutation
-  (resolveBase → `items`).
+  (resolveBase → `items` browse; defOf / countBase → the `items`
+  command's read sub-actions).
 - `{ kind: "unsupported", reason }` — no admin command honestly
   implements the verb (the full set + reasons are in Honest gaps).
 
@@ -285,19 +299,32 @@ envelope rules as verb calls.
    is live AND dispatching (per the slate below). These are criteria for a
    human decision — no automation performs the deletion.
 
-## Phase C — panel removal slate (nothing deleted in Phase B)
+## Phase C — panel removal slate (nothing deleted yet — see the status column for why)
 
 A standalone panel is removed only when the widget that replaces it is live
 **and dispatching** (see gaps). Slated, in order:
 
-| Standalone panel today | Replaced by | Remove when |
-|---|---|---|
-| ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits |
-| Characters workspace Records panel | Merged Character widget (Sheet + Records tabs) | The widget's Records tab renders the panel (Phase A modal already proves the merge) |
-| Story workspace quest & dialog panels | Merged Quests & dialogue widget (Quests + Dialogue tabs) | Same — widget renders both tabs against live quest content |
-| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget |
-| Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget |
-| Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live |
+| Standalone panel today | Replaced by | Remove when | Status after the server-homes slice (2026-10-24) |
+|---|---|---|---|
+| ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits | **Blocked** — deletion criteria (a)/(b) unmet (below), and (c) unmet: widget CRUD dispatches, and component *adds* dispatch, but the widgets offer no per-field component editing, which is what the inspector's tables do |
+| Characters workspace Records panel | Merged Character widget (Sheet + Records tabs) | The widget's Records tab renders the panel (Phase A modal already proves the merge) | **Blocked** — (a)/(b) unmet; (c) unmet: the merged widget carries the Sheet + Records tabs, but renders applied-state lines, not the Records panel's record data (no live character-record read feeds it) |
+| Story workspace quest & dialog panels | Merged Quests & dialogue widget (Quests + Dialogue tabs) | Same — widget renders both tabs against live quest content | **Blocked** — (a)/(b) unmet; (c) unmet: the tabs render as structure, not against live quest content, and dialogue has no dispatch at all (startDialogue has no admin home) |
+| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Blocked** — (a)/(b) unmet; (c) half met: binding now dispatches (shelf `addcomponent` FlowRef), unbinding cannot — no admin remove-component command exists, and the flow widget itself carries no actions yet |
+| Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget | **Blocked** — (a)/(b) unmet; (c) half met: emitter *attach* dispatches (shelf `addcomponent`), and the server now accepts field edits for the emitters via `set` — but the widgets carry no edit actions to dispatch them |
+| Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live | **Blocked** — (a)/(b) unmet; (c) half met: attach/detach dispatch live (proven), stock CRUD does not — the vendor widget has no stock actions |
+
+**Why nothing was deleted in this slice (the playbook applied
+literally):** playbook step 5 allows deletion only when (a) the
+project pin has been on the new template for the whole grace window
+the team sets, (b) the pin history shows no rollback to legacy inside
+that window, and (c) each replacing widget is live AND dispatching.
+No grace window has been set, and pins live in per-user local prefs —
+so (a) and (b) cannot be shown to hold for any project today, and
+deleting on that evidence would violate the playbook. Every entry
+above is therefore advanced to its correct pre-removal state: its
+(c) gap is named exactly, and the two half-met entries (flow,
+art/audio, vendor) moved closer in this slice. Deletion waits on a
+human setting the grace window and the (c) gaps closing.
 
 Scene-level panels (Scenes document, HUD layout, region chat) are **not**
 slated for removal — the design makes them scene-selection widgets, which is
@@ -310,33 +337,39 @@ a re-homing, not a deletion.
   admin commands (gateway `onAdmin` + `packages/engine-core/src/admin/`)
   and executes them over the shared `serverLink`; outcomes are
   dispatched / refused (server message carried) / unsupported / offline,
-  never faked. The unsupported set, with reasons: **takeItem** and
-  **moveItem** (no admin command moves items in/out of or between bags),
-  **defOf** and **countBase** (no admin read answers them — `inspect`
-  prints no bag/item lines, `items` counts definitions), **startDialogue**
-  (dialogue is player-initiated; no admin command), **placeItemFixture**
-  (`drop` lands at the caller's feet and takes no x/z; `spawn` plants
-  archetypes, not item defs). **giveItem / giveGold / grantQuestReward**
-  dispatch only for the console holder — admin give/gold take no
-  character target — so a call naming another character is unsupported,
-  never silently redirected. **Component-shaped shelf additions are
-  unsupported**: admin `set` only writes numeric fields of a component
-  an entity already has (whitelist: Transform, Velocity, PlayerIntent,
-  Health, BodyConfig, PathRequest, PathState, NavAgent, AssetRef,
-  Locomotion, Action) — it cannot add Health+Stamina, CharacterRef,
-  QuestGiver, DungeonEntrance, Collider, FlowRef, VfxEmitter or
-  AudioEmitter. The placeholder-params gap is **closed** for widget
-  and shelf actions: they render real input fields (see Widget
+  never faked. After the server-homes slice, the unsupported verb set
+  is one: **startDialogue** (dialogue is player-initiated through the
+  quest channel; no honest admin trigger exists, and none was faked).
+  The bag verbs and reads ride the `items` command's sub-actions
+  (take / move / defof / countbase, through ItemService — bags are
+  never edited around the service), and placeItemFixture rides `drop`
+  with an exact position and the fixture flag (ItemService.placeFixture).
+  **giveItem / giveGold / grantQuestReward / takeItem / countBase**
+  act on the console holder only — the admin commands take no
+  character target — so a call naming another character is
+  unsupported, never silently redirected; moveItem is the exception
+  by its service signature: its destination is a character (holder)
+  id, and its source defaults to the console holder. **Component-shaped
+  shelf additions dispatch** through the server's `addcomponent`
+  command for every shelf name that is an ECS component (Health,
+  Stamina, CharacterRef, PlayerIntent, FlowRef, VfxEmitter,
+  AudioEmitter — and Collider, whose ECS form is the BodyConfig the
+  scene spawner writes). Two shelf names are not ECS components and
+  stay unsupported with the reason: **QuestGiver** (a scene-document
+  role resolved at scene spawn by placing a quest post) and
+  **DungeonEntrance** (a scene-document kind marker; no such component
+  exists in the engine). The placeholder-params gap is **closed** for
+  widget and shelf actions: they render real input fields (see Widget
   inputs) and dispatch with designer-chosen values, live-smoked.
   What remains narrow, honestly: the vendor-template picker lists
   only templates DEFINED on the running server (the server defines
-  content/vendors.json templates lazily); vendor attach/detach
-  resolve their target by bare wire id (`resolveEntityTarget` has no
-  "me" alias), so they dispatch for live-entity selections and are
-  refused — with the server's "no such target" as the recorded
-  outcome — for scene-document selections, whose ids are node ids;
-  and the no-admin-home verbs above still carry placeholder params,
-  which no input field can fix.
+  content/vendors.json templates lazily); vendor attach/detach and
+  `addcomponent` resolve their target by bare wire id, so they
+  dispatch for live-entity selections and are refused — with the
+  server's refusal as the recorded outcome — for scene-document
+  selections, whose ids are node ids; and takeItem's widget offers a
+  base picker or an instance id (the service's take-by-instance is
+  the precise form; take-by-base destroys one of that base).
 - **Stage is not the viewport.** The panels are embedded in the
   Design workspace's view pane (docks at its edges, collapsible) and
   the selection widgets float inside that pane, summoned by the
