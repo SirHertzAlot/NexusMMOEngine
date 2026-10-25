@@ -2857,7 +2857,19 @@ export class Gateway {
       const t = this.telemetry.snapshot();
       res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(t) };
     } else if (cmd.command === "residents") {
-      res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(this.residents?.summary() ?? { towns: [], live: 0, walking: 0 }) };
+      // {npc}: where that resident stands now (they exist only while a player is near their town).
+      const want = (cmd.args as { npc?: unknown } | undefined)?.npc;
+      if (typeof want === "string") {
+        const e = this.residents?.entityOf(want);
+        res = { kind: "admin", command: cmd.command, ok: e !== undefined, message: e === undefined ? "not in the world now" : JSON.stringify({ wire: String(this.world.wireId(e)), x: C.Transform.px[e], z: C.Transform.pz[e] }) };
+        if (e === undefined) {
+          this.logAdmin(s.username, cmd.command, false);
+          this.sendError(s, 4003, res.message);
+          return;
+        }
+      } else {
+        res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(this.residents?.summary() ?? { towns: [], live: 0, walking: 0 }) };
+      }
     } else if (cmd.command === "whoami") {
       res = {
         kind: "admin",

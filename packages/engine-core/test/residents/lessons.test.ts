@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { lessonCost, lessonPoints, type Lessons } from "../../src/residents/lessons.js";
 
-const L: Lessons = { version: 1, peak: 6, floor: 0.05, grandFactor: 1.5, cost: 10, costSlope: 4, professions: { smithing: "mining" } };
+const L: Lessons = { version: 1, peak: 6, floor: 0.05, startFloor: 0.35, grandFactor: 1.5, cost: 10, costSlope: 4, professions: { smithing: "mining" } };
 
 describe("lessons", () => {
   it("rise to a peak a third of the way up, then fall away toward the top", () => {
@@ -14,6 +14,7 @@ describe("lessons", () => {
     assert.ok(at(60) < at(33) && at(90) < at(60), "harder as the skill climbs");
     assert.ok(at(99) > 0 && at(99) < at(90), "a little left to the end");
     assert.equal(at(100), 0, "nothing at the top");
+    assert.ok(at(0) >= 6 * 0.35 - 1e-9, "a beginner's first lesson is worth taking");
   });
 
   it("a grand master teaches more, and a lesson costs more as the pupil climbs", () => {

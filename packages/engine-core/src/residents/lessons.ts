@@ -3,7 +3,7 @@
  * A lesson adds bonus skill points on top of use-based gain, by an S curve of the pupil's level: small
  * at the start, fastest a third of the way up, then harder toward the top (a lesson at 90 is worth a
  * fraction of one at 30). The curve is `peak * (27/4) * m * (1 - m)^2` for m = level / max, never below
- * `floor` of the peak while the pupil has room to grow; a grand master's lessons are worth `grandFactor` times as much.
+ * `floor` of the peak while the pupil has room to grow (a beginner, up to a third of the way, gets at least `startFloor` of it); a grand master's lessons are worth `grandFactor` times as much.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -14,7 +14,9 @@ const LessonsSchema = z.object({
   /** Skill points a lesson gives at the curve's peak. */
   peak: z.number().positive(),
   /** Least share of the peak a pupil below the top still gets. */
-  floor: z.number().min(0).max(1).default(0.15),
+  floor: z.number().min(0).max(1).default(0.05),
+  /** Least share of the peak a beginner (below a third of the max) gets, so a first lesson is worth taking. */
+  startFloor: z.number().min(0).max(1).default(0.35),
   grandFactor: z.number().min(1).default(1.5),
   /** Gold a lesson costs, by the pupil's level share: `cost` at 0, `cost * (1 + level/max * costSlope)` at the top. */
   cost: z.number().int().min(0),
@@ -36,7 +38,8 @@ export function lessonPoints(l: Lessons, level: number, max: number, grand: bool
   const m = Math.min(1, Math.max(0, level / max));
   if (m >= 1) return 0;
   const curve = (27 / 4) * m * (1 - m) * (1 - m);
-  return l.peak * Math.max(l.floor, curve) * (grand ? l.grandFactor : 1);
+  const least = m < 1 / 3 ? Math.max(l.floor, l.startFloor) : l.floor;
+  return l.peak * Math.max(least, curve) * (grand ? l.grandFactor : 1);
 }
 
 /** What a lesson costs a pupil at `level`. */
