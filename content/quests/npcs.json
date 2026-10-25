@@ -1,6 +1,16 @@
 {
   "version": 1,
   "npcs": {
+    "elder-0001": {
+      "name": "Elder",
+      "x": -1672, "z": -504,
+      "resident": "npc_0001_0000_0000",
+      "dialog": "townsfolk",
+      "board": ["bounty"],
+      "places": [
+        { "name": "the east road", "x": -1640, "z": -472, "radius": 12 }
+      ]
+    },
     "warden": {
       "name": "Warden Hale",
       "x": 510, "z": 622,

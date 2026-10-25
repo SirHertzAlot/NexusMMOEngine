@@ -5556,6 +5556,13 @@ export class Gateway {
       if (dx * dx + dz * dz > 16) return this.sendError(s, 4005, "too far away");
       const talk = this.residents!.talk(eid, this.tick);
       if (!talk) return this.sendError(s, 4005, "they have nothing to say");
+      // A townsperson who gives quests opens that dialog instead of their usual line (RS5 quest).
+      const questExt = this.extensions.get("quest") as unknown as { npcOfResident?(r: string): string | undefined; talkAt?(p: ExtensionPlayer, npc: string): void } | undefined;
+      const giver = questExt?.npcOfResident?.(talk.npc);
+      if (giver !== undefined && questExt?.talkAt) {
+        questExt.talkAt(this.extensionPlayer(s), giver);
+        return;
+      }
       this.sendEnvelope(s, MessageType.Chat, encodeControl({ kind: "dialog", npc: talk.npc, name: talk.name, text: talk.text, replies: [] }));
       // A shopkeeper (RS5 trade) also opens their shop.
       if (this.vendors?.vendorOf(eid)) this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));

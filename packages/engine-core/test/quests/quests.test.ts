@@ -246,6 +246,20 @@ describe("quest service", () => {
     assert.ok(t.last<Extract<DialogMessage, { text: string }>>("dialog").replies.some((r) => r.text === "What draws them to the stones?"));
   });
 
+  it("a townsperson who is a giver opens the giver's dialog, wherever the marker stands", () => {
+    const t = setup();
+    t.svc.onEnter(t.player);
+    assert.equal(t.svc.npcOfResident("npc_0001_0000_0000"), "elder-0001");
+    assert.equal(t.svc.npcOfResident("npc_nobody"), undefined);
+    t.at(0, 0); // nowhere near the giver's marker
+    t.say({ op: "talk", npc: "elder-0001" });
+    assert.equal(t.of("dialog").length, 0, "a client cannot talk from afar");
+    t.svc.talkAt(t.player, "elder-0001");
+    const d = t.last<Extract<DialogMessage, { text: string }>>("dialog");
+    assert.match(d.text, /hand/);
+    assert.ok(d.replies.some((r) => r.text === "Any work?"));
+  });
+
   it("takes the board's quest of the day, refuses talks out of range and bad ops", () => {
     const t = setup();
     const w = content.npcs.warden;
