@@ -63,6 +63,8 @@ export interface ResidentTown {
   /** The town's centre and its radius (tiers go by the nearest player's distance to its edge); absent: always fully simulated. */
   centre?: { x: number; z: number };
   radius?: number;
+  /** The shops its people keep: npc id to the shop's archetype (they sell to whoever talks to them). */
+  keeps?: ReadonlyMap<string, string>;
 }
 
 export interface ResidentOptions {
@@ -92,6 +94,9 @@ export interface ResidentOptions {
   raided?: () => ReadonlyArray<{ x: number; z: number; radius: number }>;
   /** Who stays at their post in a raid (default: guards, the watch, soldiers). */
   holds?: (npc: ResidentNpc) => boolean;
+  /** A shopkeeper's entity appeared / is gone: bind / unbind a shop (the economy's vendors) to it. */
+  attachShop?: (eid: number, archetype: string) => void;
+  detachShop?: (eid: number) => void;
   /** A navigation crowd runs after this system: residents walk between anchors by NavAgent targets. */
   steer?: boolean;
   /** A player within this of a town's edge: its residents walk (full tier). Default 150 m. */
@@ -424,6 +429,7 @@ export class ResidentSystem implements SimSystem {
   private fall(sim: SimWorld, npc: string, live: Live, tick: number, fate: { generation: number; backAt: number | null }): void {
     if (live.fellAt === 0) {
       live.fellAt = tick;
+      this.opts.detachShop?.(live.eid); // a fallen shopkeeper's shop is shut
       fate.backAt = this.now() + (this.opts.replaceMs ?? 3 * 3_600_000);
       this.opts.store?.save({ kind: "resident", key: npc, state: `dead:${fate.generation}`, at: this.now(), respawnAt: fate.backAt });
     }
@@ -462,6 +468,7 @@ export class ResidentSystem implements SimSystem {
   private remove(sim: SimWorld, npc: string, have: Live): void {
     if (have.agent) this.agents--;
     if (entityExists(sim.ecs, have.eid)) sim.despawn(have.eid);
+    this.opts.detachShop?.(have.eid);
     this.infoOf.delete(have.eid);
     this.live.delete(npc);
   }
@@ -501,6 +508,8 @@ export class ResidentSystem implements SimSystem {
     C.Action.move[eid] = 0;
     sim.setLook(eid, this.lookOf(npc.id));
     this.infoOf.set(eid, { npc: npc.id, town: town.id, role: npc.role, class: npc.class, cohort: npc.cohort });
+    const keeps = town.keeps?.get(npc.id);
+    if (keeps !== undefined) this.opts.attachShop?.(eid, keeps);
     return eid;
   }
 

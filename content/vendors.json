@@ -1,6 +1,23 @@
 {
   "version": 1,
+  "byArchetype": { "bakery": "bakery", "smithy": "smithy", "*": "general-store" },
   "vendors": {
+    "bakery": {
+      "name": "Bakery",
+      "buybackRate": 0.2,
+      "stock": [
+        { "base": "bread", "price": 4 },
+        { "base": "waterskin", "price": 4 }
+      ]
+    },
+    "smithy": {
+      "name": "Smithy",
+      "buybackRate": 0.4,
+      "stock": [
+        { "base": "dagger", "price": 55 },
+        { "base": "mace", "price": 80 }
+      ]
+    },
     "general-store": {
       "name": "General store",
       "buybackRate": 0.3,

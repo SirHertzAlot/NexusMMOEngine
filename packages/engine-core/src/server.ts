@@ -232,7 +232,7 @@ import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
-import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendorTemplates, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
@@ -1002,7 +1002,26 @@ async function main(): Promise<void> {
   });
   // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
   // Shops placed in scenes (IX8): content/vendors.json templates, defined on the economy's vendor system the first time a node names one.
-  const vendorTemplates = loadVendorTemplates(process.env.MMO_VENDORS || path.join(REPO_ROOT, "content", "vendors.json"));
+  const { templates: vendorTemplates, byArchetype: shopByArchetype } = loadVendors(process.env.MMO_VENDORS || path.join(REPO_ROOT, "content", "vendors.json"));
+  /** Bind a content template to an entity, defining it on the economy's vendor system the first time. Null on success, else why not. */
+  const attachVendor = (eid: number, template: string): string | null => {
+    const vs = assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined;
+    if (!vs) return "this server has no economy";
+    const t = vendorTemplates.get(template);
+    if (!t) return `no vendor template "${template}"`;
+    if (!vs.templateIds().includes(template)) {
+      vs.define({
+        id: template,
+        name: t.name,
+        buybackRate: t.buybackRate,
+        stock: t.stock.flatMap((l) => {
+          const def = lineDef(itemsOf().defs, { base: l.base, rank: l.rank }, rankOrder);
+          return def < 0 ? [] : [{ def, price: l.price, quantity: l.quantity }];
+        }),
+      });
+    }
+    return vs.attach(eid, template) ? null : "could not attach";
+  };
   const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
     store: placesStore,
@@ -1071,26 +1090,7 @@ async function main(): Promise<void> {
           : undefined,
         breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
         structureBreakable: (kind) => structureKinds.get(kind),
-        vendors: {
-          attach: (eid, template) => {
-            const vs = assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined;
-            if (!vs) return "this server has no economy";
-            const t = vendorTemplates.get(template);
-            if (!t) return `no vendor template "${template}"`;
-            if (!vs.templateIds().includes(template)) {
-              vs.define({
-                id: template,
-                name: t.name,
-                buybackRate: t.buybackRate,
-                stock: t.stock.flatMap((l) => {
-                  const def = lineDef(itemsOf().defs, { base: l.base, rank: l.rank }, rankOrder);
-                  return def < 0 ? [] : [{ def, price: l.price, quantity: l.quantity }];
-                }),
-              });
-            }
-            return vs.attach(eid, template) ? null : "could not attach";
-          },
-        },
+        vendors: { attach: attachVendor },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -1212,6 +1212,12 @@ async function main(): Promise<void> {
     // Deaths are kept (places.db); someone new moves in three game days after.
     raided: () => creaturesOf().raids(),
     store: placesStore,
+    // A resident who keeps a shop sells from the template for that kind of shop (content/vendors.json byArchetype).
+    attachShop: (eid: number, archetype: string) => {
+      const template = shopByArchetype[archetype] ?? shopByArchetype["*"];
+      if (template) attachVendor(eid, template);
+    },
+    detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,
   };
