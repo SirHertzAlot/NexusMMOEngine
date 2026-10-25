@@ -8,13 +8,14 @@
  * the selection summons its widget stack + add shelf from the relevance
  * rules — no module panels, no component tables.
  *
- * Layout discipline (Joey, 2026-10-24, refined same evening): the
- * workspace grid is quarter / half / quarter — the view pane (stage)
- * is large and centered as the main viewpoint, Find and Act are its
- * supporting sides. The rule of thirds now governs the INSIDE of the
- * stage: identity / relationships-viewport-focus / provenance down its
- * vertical thirds, and the focal intersections inside the view pane.
- * See docs/EDITOR-AUTHORING.md.
+ * Layout discipline (Joey, 2026-10-24, refined twice the same
+ * evening): first the centered view pane (quarter / half / quarter),
+ * then — the current model — EMBEDDED panels: the workspace is one
+ * view pane and the panels dock INSIDE it at its edges (hierarchy
+ * left, widgets + shelf right, identity across the top, history as a
+ * bottom strip), the pattern of VSCode / Blender / Unity /
+ * PlayCanvas. Both docks and the strip collapse, returning their
+ * space to the center viewport-focus zone. See docs/EDITOR-AUTHORING.md.
  *
  * Honest scope of this slice:
  * - The stage is a panel, not the 3D viewport: it shows the selected
@@ -353,6 +354,8 @@ function AuthoringPresentation(): React.JSX.Element {
   const [shelfLog, setShelfLog] = React.useState<readonly { id: number; title: string; detail: string }[]>([]);
   const link = useServerLink();
   const serverLive = link.phase === "live";
+  /** Embedded-panel collapse state for the view pane (left dock / right dock / history strip), persisted like the pins. */
+  const [panels, setPanels] = useLocalStorage("authoring-embedded-panels", { left: true, right: true, history: true });
 
   React.useEffect(() => {
     let live = true;
@@ -467,256 +470,318 @@ function AuthoringPresentation(): React.JSX.Element {
     : sortNodes(role === "all" ? model.flat : model.flat.filter((n) => roleFilterById(role as RoleFilterId).test(n)), sort);
 
   return (
-    // Centered-dominant workspace (Joey, 2026-10-24 evening refinement,
-    // superseding the equal-thirds columns of 1ab22f30): quarter / half /
-    // quarter. The view pane (stage) is large and centered as the main
-    // viewpoint — it takes half the workspace width, exactly centered;
-    // Find (hierarchy) and Act (widgets + shelf) are supporting sides.
-    // The rule of thirds now governs the INSIDE of the stage — its
-    // vertical thirds (identity / relationships-viewport-focus /
-    // provenance) and the focal intersections inside the view pane.
-    <div className="grid h-full min-h-0 gap-3 overflow-hidden p-3" style={{ gridTemplateColumns: "1fr 2fr 1fr" }}>
-      {/* --------------------------------------- hierarchy pane — left quarter: Find (supporting) */}
-      <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
-        <SectionTitle>Hierarchy — relationships</SectionTitle>
-        <Select value={sceneName} onChange={(e) => setSceneName(e.target.value)} aria-label="Scene">
-          {sceneNames.length === 0 && <option value="">No scenes reachable</option>}
-          {sceneNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </Select>
-        <div className="flex flex-wrap gap-1.5">
-          <Chip selected={role === "all"} onClick={() => setRole("all")}>
-            All
-          </Chip>
-          {ROLE_FILTERS.map((f) => (
-            <Chip key={f.id} selected={role === f.id} onClick={() => setRole(f.id)}>
-              {f.label}
-            </Chip>
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Chip selected={sort === "name"} onClick={() => setSort("name")}>
-            A–Z
-          </Chip>
-          <Chip selected={sort === "recent"} onClick={() => setSort("recent")}>
-            Recently modified
-          </Chip>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          {visibleNodes.map((n) => {
-            const depth = n.path.split(" / ").length - 1;
-            return (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => pickNode(n)}
-                className="m3-focus flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px]"
-                style={{
-                  marginLeft: depth * 12,
-                  background: selection?.id === n.id ? "var(--m3-secondary-container)" : "transparent",
-                  color: "var(--m3-on-surface)",
-                }}
-              >
-                <MIcon name={n.level === "scene" ? "account_tree" : n.level === "object" ? "circle" : "folder"} size={15} />
-                <span className="truncate">{n.name}</span>
-                <span className="ml-auto text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-                  {n.level}
-                </span>
-              </button>
-            );
-          })}
-          {model && visibleNodes.length === 0 && <p className="text-[13px] text-muted-foreground">Nothing in this scene matches the filter.</p>}
-          {!model && <p className="text-[13px] text-muted-foreground">{loadError ? `Scene load failed: ${loadError}` : "Loading the scene…"}</p>}
-        </div>
-        <SectionTitle>Saved views</SectionTitle>
-        <div className="flex flex-wrap gap-1.5">
-          {savedViews.map((v) => (
-            <Chip
-              key={v.name}
-              onClick={() => {
-                const parsed = deserializeSavedView(serializeSavedView(v));
-                setRole(parsed.role);
-                setSort(parsed.sort);
-              }}
-            >
-              {v.name}
-            </Chip>
-          ))}
-        </div>
-        <div className="flex gap-1.5">
-          <Input value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="Name this view" aria-label="Saved view name" />
+    // Embedded-panels workspace (Joey, 2026-10-24 evening — the pattern of
+    // the editors he named as the reference set: VSCode, Blender, Unity,
+    // PlayCanvas). The three workspace columns are gone: the workspace is
+    // ONE view pane — a single framed canvas — and the panels live INSIDE
+    // it, docked at its edges. Hierarchy docks at the left edge (VSCode's
+    // sidebar / Unity's Hierarchy against the scene view), selection
+    // widgets + add shelf at the right edge (Unity's Inspector / Blender's
+    // properties region), the identity bar runs across the top INSIDE the
+    // pane, and the provenance history is a collapsible strip along the
+    // bottom INSIDE the pane (VSCode's panel/console). The center
+    // viewport-focus zone is the pane's own middle — unobstructed and
+    // dominant; the docks are at its edges, not columns beside it, and
+    // collapsing a dock (edge toggles in the identity bar) returns its
+    // width to the viewport zone. Collapse state persists in local prefs.
+    // The rule of thirds governs composition inside the pane: identity /
+    // relationships-viewport-focus / provenance down its height.
+    //
+    // Honest scope: the panels are embedded within the Design workspace's
+    // view pane. They are NOT overlays on the real-time 3D render — the
+    // stage is still a panel; the live viewport stays in the Scenes
+    // workspace, with selection shared between them.
+    <div className="h-full min-h-0 overflow-hidden p-3">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-1)" }}>
+        {/* ---------------- identity bar — across the top, inside the pane */}
+        <div className="flex flex-none items-center gap-2 border-b px-2 py-1.5" style={{ borderColor: "var(--m3-outline-variant)" }}>
           <Button
             size="sm"
-            onClick={() => {
-              const name = viewName.trim();
-              if (!name) return;
-              setSavedViews((prev) => [...prev, deserializeSavedView(serializeSavedView({ name, role: role as SavedView["role"], sort }))]);
-              setViewName("");
-            }}
+            variant="ghost"
+            onClick={() => setPanels((p) => ({ ...p, left: !p.left }))}
+            aria-label={panels.left ? "Collapse the hierarchy panel" : "Show the hierarchy panel"}
+            title="Hierarchy panel (docked at the pane's left edge)"
           >
-            Save
+            <MIcon name={panels.left ? "chevron_left" : "chevron_right"} size={16} />
+            Hierarchy
+          </Button>
+          {facts ? (
+            <div className="flex min-w-0 items-center gap-2">
+              <MIcon name="nearby" size={20} />
+              <span className="truncate text-base font-medium">{facts.label}</span>
+              <span className="flex-none text-[12px] text-muted-foreground">
+                {facts.kind} · {facts.id}
+              </span>
+              <span className="truncate text-[12px] text-muted-foreground">{where}</span>
+            </div>
+          ) : (
+            <span className="truncate text-[13px] text-muted-foreground">The view pane — pick an object and its widgets dock at the right edge.</span>
+          )}
+          <Button
+            className="ml-auto flex-none"
+            size="sm"
+            variant="ghost"
+            onClick={() => setPanels((p) => ({ ...p, right: !p.right }))}
+            aria-label={panels.right ? "Collapse the widgets panel" : "Show the widgets panel"}
+            title="Widgets panel (docked at the pane's right edge)"
+          >
+            Widgets
+            <MIcon name={panels.right ? "chevron_right" : "chevron_left"} size={16} />
           </Button>
         </div>
-      </div>
 
-      {/* -------------------------------- stage — center half: See, the main viewpoint.
-          Inside the stage the rule of thirds holds: identity compact
-          at the top, the relationships / viewport-focus zone grows
-          through the middle (it is the viewpoint area, flex), and the
-          provenance history stays compact along the bottom. */}
-      <div className="flex min-w-0 flex-col gap-2 overflow-y-auto">
-        <SectionTitle>Stage — Designer surface</SectionTitle>
-        {!facts && (
-          <EmptyState
-            icon="nearby"
-            title="Select an object"
-            body="Pick a node in the hierarchy (or any object in the Scenes viewport — selection is shared). Its widgets appear here: what's applied, and the verbs to change it. Scene-level modules for this scene: "
-          />
-        )}
-        {!facts && (
-          <div className="flex flex-wrap gap-1.5">
-            {sceneLevelWidgets().map((w) => (
-              <Chip key={w.widgetId}>{w.title}</Chip>
-            ))}
-          </div>
-        )}
-        {facts && (
-          <>
-            <div className="rounded-lg border p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
-              <div className="flex items-center gap-2">
-                <MIcon name="nearby" size={20} />
-                <span className="text-base font-medium">{facts.label}</span>
-                <span className="text-[12px] text-muted-foreground">
-                  {facts.kind} · {facts.id}
-                </span>
+        {/* ---------------- middle: left dock | center viewport zone | right dock */}
+        <div className="flex min-h-0 flex-1">
+          {/* hierarchy — docked at the left edge inside the pane: Find */}
+          {panels.left && (
+            <div className="flex w-72 flex-none flex-col gap-2 overflow-y-auto border-r p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
+              <SectionTitle>Hierarchy — relationships</SectionTitle>
+              <Select value={sceneName} onChange={(e) => setSceneName(e.target.value)} aria-label="Scene">
+                {sceneNames.length === 0 && <option value="">No scenes reachable</option>}
+                {sceneNames.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
+              <div className="flex flex-wrap gap-1.5">
+                <Chip selected={role === "all"} onClick={() => setRole("all")}>
+                  All
+                </Chip>
+                {ROLE_FILTERS.map((f) => (
+                  <Chip key={f.id} selected={role === f.id} onClick={() => setRole(f.id)}>
+                    {f.label}
+                  </Chip>
+                ))}
               </div>
-              <p className="mt-1 text-[13px] text-muted-foreground">{where}</p>
-              <p className="mt-2 text-[13px] text-muted-foreground">
-                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state in the right quarter is read from the selection's own component fields — joined by the live inspect read-back (marked "live ·") after a dispatched action whose target is this object.
-              </p>
-            </div>
-            {/* Middle vertical third — the object's relationships / viewport focus. */}
-            <div className="flex flex-1 flex-col rounded-lg border border-dashed p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
-              <SectionTitle>Relationships — follow the thread</SectionTitle>
-              {model && model.edges.filter((e) => e.from === facts.id || e.to === facts.id).length > 0 ? (
-                <ul className="mt-1 text-[13px]">
-                  {model.edges
-                    .filter((e) => e.from === facts.id || e.to === facts.id)
-                    .map((e) => (
-                      <li key={`${e.kind}:${e.from}->${e.to}`}>↔ {e.label}</li>
-                    ))}
-                </ul>
-              ) : (
-                <p className="text-[13px] text-muted-foreground">No reference edges in the scene data for this object yet (quest → giver, vendor → template, creature → patrol land here when the data carries them). The live 3D viewport stays in the Scenes workspace — selection is shared, so this object is the selected object there too.</p>
-              )}
-            </div>
-            {readBack !== null && (
-              <div className="rounded-lg border p-3" style={{ borderColor: "var(--m3-primary)" }}>
-                <SectionTitle>Live read-back — inspect {readBack.target}</SectionTitle>
-                <ul className="mt-1 font-mono text-[12px]">
-                  {readBack.lines.map((l) => (
-                    <li key={l}>{l}</li>
-                  ))}
-                </ul>
-                <p className="mt-1 text-[12px] text-muted-foreground">Read from the running server after the last dispatched action on this target — this is the result, reflected back.</p>
+              <div className="flex items-center gap-1.5">
+                <Chip selected={sort === "name"} onClick={() => setSort("name")}>
+                  A–Z
+                </Chip>
+                <Chip selected={sort === "recent"} onClick={() => setSort("recent")}>
+                  Recently modified
+                </Chip>
               </div>
-            )}
-            {/* Bottom of the stage — provenance, kept compact: the middle zone above is the viewpoint and grows. */}
-            <SectionTitle>Session history for this object</SectionTitle>
-            {history.length === 0 && shelfLog.length === 0 && <p className="text-[13px] text-muted-foreground">No verb calls recorded yet — widget and shelf actions land here with their 5W1H envelope and their dispatch outcome.</p>}
-            <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto text-[13px]">
-              {history.map((c, i) => {
-                const o = outcomes.get(c);
-                return (
-                  <li key={`${historyTick}-${i}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
-                    <strong>{c.verb}</strong> — {c.provenance.why} · by {c.provenance.who.id} ({c.provenance.who.role})
-                    {o !== undefined && (
-                      <span className="mt-0.5 block text-[12px]" style={{ color: o.status === "dispatched" ? "var(--m3-primary)" : o.status === "refused" ? "var(--m3-error)" : "var(--m3-on-surface-variant)" }}>
-                        → {o.status}: {o.message}
-                        {o.plan.kind === "read" && o.readResult !== undefined ? ` — answer: ${o.readResult}` : ""}
+              <div className="flex flex-col gap-0.5">
+                {visibleNodes.map((n) => {
+                  const depth = n.path.split(" / ").length - 1;
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => pickNode(n)}
+                      className="m3-focus flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px]"
+                      style={{
+                        marginLeft: depth * 12,
+                        background: selection?.id === n.id ? "var(--m3-secondary-container)" : "transparent",
+                        color: "var(--m3-on-surface)",
+                      }}
+                    >
+                      <MIcon name={n.level === "scene" ? "account_tree" : n.level === "object" ? "circle" : "folder"} size={15} />
+                      <span className="truncate">{n.name}</span>
+                      <span className="ml-auto text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+                        {n.level}
                       </span>
-                    )}
-                    {o === undefined && <span className="mt-0.5 block text-[12px] text-muted-foreground">→ dispatching…</span>}
-                  </li>
-                );
-              })}
-              {shelfLog.map((s) => (
-                <li key={`shelf-${s.id}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
-                  <strong>{s.title}</strong>
-                  <span className="mt-0.5 block text-[12px] text-muted-foreground">→ unsupported: {s.detail}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
+                    </button>
+                  );
+                })}
+                {model && visibleNodes.length === 0 && <p className="text-[13px] text-muted-foreground">Nothing in this scene matches the filter.</p>}
+                {!model && <p className="text-[13px] text-muted-foreground">{loadError ? `Scene load failed: ${loadError}` : "Loading the scene…"}</p>}
+              </div>
+              <SectionTitle>Saved views</SectionTitle>
+              <div className="flex flex-wrap gap-1.5">
+                {savedViews.map((v) => (
+                  <Chip
+                    key={v.name}
+                    onClick={() => {
+                      const parsed = deserializeSavedView(serializeSavedView(v));
+                      setRole(parsed.role);
+                      setSort(parsed.sort);
+                    }}
+                  >
+                    {v.name}
+                  </Chip>
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <Input value={viewName} onChange={(e) => setViewName(e.target.value)} placeholder="Name this view" aria-label="Saved view name" />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const name = viewName.trim();
+                    if (!name) return;
+                    setSavedViews((prev) => [...prev, deserializeSavedView(serializeSavedView({ name, role: role as SavedView["role"], sort }))]);
+                    setViewName("");
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
 
-      {/* --------------------------------- widgets + add shelf — right quarter: Act (supporting) */}
-      <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
-        <SectionTitle>Selection widgets</SectionTitle>
-        <p className="text-[12px]" style={{ color: serverLive ? "var(--m3-primary)" : "var(--m3-error)" }}>
-          {serverLive ? "Server live — actions dispatch to the running server for real." : "Server not running — actions record intent only; their outcome reads offline and nothing is dispatched."}
-        </p>
-        <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
-          Why (intent — required on every action)
-          <Input value={why} onChange={(e) => setWhy(e.target.value)} aria-label="Intent for verb calls" />
-        </label>
-        {widgets.map((w) => (
-          <div key={w.widgetId} className="rounded-lg border p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
-            <div className="text-sm font-medium">{w.title}</div>
-            <p className="mt-0.5 text-[13px]">{w.identity}</p>
-            {w.tabs && (
-              <ModalTabs
-                tabs={w.tabs.map((t) => ({ id: t.toLowerCase(), label: t }))}
-                active={tabByWidget[w.widgetId] ?? w.tabs[0].toLowerCase()}
-                onTab={(id) => setTabByWidget((prev) => ({ ...prev, [w.widgetId]: id }))}
+          {/* the center viewport-focus zone — the pane's own middle, unobstructed */}
+          <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+            {!facts && (
+              <EmptyState
+                icon="nearby"
+                title="Select an object"
+                body="Pick a node in the hierarchy dock (or any object in the Scenes viewport — selection is shared). Its widgets dock at the right edge of this pane: what's applied, and the verbs to change it. Scene-level modules for this scene: "
               />
             )}
-            {w.applied.length > 0 ? (
-              <ul className="mt-1 list-inside list-disc text-[13px]">
-                {w.applied.map((line) => (
-                  <li key={line}>{line}</li>
+            {!facts && (
+              <div className="flex flex-wrap gap-1.5">
+                {sceneLevelWidgets().map((w) => (
+                  <Chip key={w.widgetId}>{w.title}</Chip>
+                ))}
+              </div>
+            )}
+            {facts && (
+              <>
+                <p className="text-[13px] text-muted-foreground">
+                  {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules, docked at the right edge. Applied state there is read from the selection's own component fields — joined by the live inspect read-back (marked "live ·") after a dispatched action whose target is this object.
+                </p>
+                {/* The object's relationships / viewport focus — this zone is the viewpoint and grows. */}
+                <div className="flex flex-1 flex-col rounded-lg border border-dashed p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
+                  <SectionTitle>Relationships — follow the thread</SectionTitle>
+                  {model && model.edges.filter((e) => e.from === facts.id || e.to === facts.id).length > 0 ? (
+                    <ul className="mt-1 text-[13px]">
+                      {model.edges
+                        .filter((e) => e.from === facts.id || e.to === facts.id)
+                        .map((e) => (
+                          <li key={`${e.kind}:${e.from}->${e.to}`}>↔ {e.label}</li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[13px] text-muted-foreground">No reference edges in the scene data for this object yet (quest → giver, vendor → template, creature → patrol land here when the data carries them). The live 3D viewport stays in the Scenes workspace — selection is shared, so this object is the selected object there too.</p>
+                  )}
+                </div>
+                {readBack !== null && (
+                  <div className="rounded-lg border p-3" style={{ borderColor: "var(--m3-primary)" }}>
+                    <SectionTitle>Live read-back — inspect {readBack.target}</SectionTitle>
+                    <ul className="mt-1 font-mono text-[12px]">
+                      {readBack.lines.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-[12px] text-muted-foreground">Read from the running server after the last dispatched action on this target — this is the result, reflected back.</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* widgets + add shelf — docked at the right edge inside the pane: Act */}
+          {panels.right && (
+            <div className="flex w-80 flex-none flex-col gap-2 overflow-y-auto border-l p-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
+              <SectionTitle>Selection widgets</SectionTitle>
+              <p className="text-[12px]" style={{ color: serverLive ? "var(--m3-primary)" : "var(--m3-error)" }}>
+                {serverLive ? "Server live — actions dispatch to the running server for real." : "Server not running — actions record intent only; their outcome reads offline and nothing is dispatched."}
+              </p>
+              <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
+                Why (intent — required on every action)
+                <Input value={why} onChange={(e) => setWhy(e.target.value)} aria-label="Intent for verb calls" />
+              </label>
+              {widgets.map((w) => (
+                <div key={w.widgetId} className="rounded-lg border p-3" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+                  <div className="text-sm font-medium">{w.title}</div>
+                  <p className="mt-0.5 text-[13px]">{w.identity}</p>
+                  {w.tabs && (
+                    <ModalTabs
+                      tabs={w.tabs.map((t) => ({ id: t.toLowerCase(), label: t }))}
+                      active={tabByWidget[w.widgetId] ?? w.tabs[0].toLowerCase()}
+                      onTab={(id) => setTabByWidget((prev) => ({ ...prev, [w.widgetId]: id }))}
+                    />
+                  )}
+                  {w.applied.length > 0 ? (
+                    <ul className="mt-1 list-inside list-disc text-[13px]">
+                      {w.applied.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-[13px] text-muted-foreground">No live state read for this widget yet.</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {w.actions.map((a) => (
+                      <Button key={a.id} size="sm" variant="outline" onClick={() => dispatch(a.call)}>
+                        {a.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {facts && widgets.length === 0 && <p className="text-[13px] text-muted-foreground">No widgets apply to this selection.</p>}
+              <SectionTitle>Available to add</SectionTitle>
+              {shelf.map((e) => (
+                <div key={e.moduleId} className="flex items-center gap-2 rounded-lg border p-2.5" style={{ borderColor: "var(--m3-outline-variant)", background: "var(--m3-surface-2)" }}>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{e.title}</div>
+                    <p className="text-[12px] text-muted-foreground">{e.reason}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!facts || !e.action) return;
+                      if (e.action.verb) {
+                        dispatch(makeVerbCall(e.action.verb, e.action.params ?? {}, { who: actor, what: facts.label, when: Date.now(), where, why: why.trim() || "hand tweak" }));
+                      } else {
+                        dispatchShelfComponents(e.action.label, e.action.addComponents ?? []);
+                      }
+                    }}
+                  >
+                    {e.action?.label ?? "Add"}
+                  </Button>
+                </div>
+              ))}
+              {facts && shelf.length === 0 && <p className="text-[13px] text-muted-foreground">Everything establishable is already applied.</p>}
+            </div>
+          )}
+        </div>
+
+        {/* ---------------- provenance history — collapsible strip along the bottom, inside the pane */}
+        <div className="flex-none border-t" style={{ borderColor: "var(--m3-outline-variant)" }}>
+          <button
+            type="button"
+            onClick={() => setPanels((p) => ({ ...p, history: !p.history }))}
+            className="m3-focus flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
+            aria-label={panels.history ? "Collapse the session history" : "Show the session history"}
+          >
+            <MIcon name={panels.history ? "expand_more" : "chevron_right"} size={16} />
+            <span className="text-[13px] font-medium">Session history{selection ? ` — ${selection.label}` : ""}</span>
+            <span className="text-[12px] text-muted-foreground">
+              {history.length + shelfLog.length} recorded
+            </span>
+          </button>
+          {panels.history && (
+            <div className="px-3 pb-2">
+              {history.length === 0 && shelfLog.length === 0 && <p className="text-[13px] text-muted-foreground">No verb calls recorded yet — widget and shelf actions land here with their 5W1H envelope and their dispatch outcome.</p>}
+              <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto text-[13px]">
+                {history.map((c, i) => {
+                  const o = outcomes.get(c);
+                  return (
+                    <li key={`${historyTick}-${i}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
+                      <strong>{c.verb}</strong> — {c.provenance.why} · by {c.provenance.who.id} ({c.provenance.who.role})
+                      {o !== undefined && (
+                        <span className="mt-0.5 block text-[12px]" style={{ color: o.status === "dispatched" ? "var(--m3-primary)" : o.status === "refused" ? "var(--m3-error)" : "var(--m3-on-surface-variant)" }}>
+                          → {o.status}: {o.message}
+                          {o.plan.kind === "read" && o.readResult !== undefined ? ` — answer: ${o.readResult}` : ""}
+                        </span>
+                      )}
+                      {o === undefined && <span className="mt-0.5 block text-[12px] text-muted-foreground">→ dispatching…</span>}
+                    </li>
+                  );
+                })}
+                {shelfLog.map((s) => (
+                  <li key={`shelf-${s.id}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
+                    <strong>{s.title}</strong>
+                    <span className="mt-0.5 block text-[12px] text-muted-foreground">→ unsupported: {s.detail}</span>
+                  </li>
                 ))}
               </ul>
-            ) : (
-              <p className="mt-1 text-[13px] text-muted-foreground">No live state read for this widget yet.</p>
-            )}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {w.actions.map((a) => (
-                <Button key={a.id} size="sm" variant="outline" onClick={() => dispatch(a.call)}>
-                  {a.label}
-                </Button>
-              ))}
             </div>
-          </div>
-        ))}
-        {facts && widgets.length === 0 && <p className="text-[13px] text-muted-foreground">No widgets apply to this selection.</p>}
-        <SectionTitle>Available to add</SectionTitle>
-        {shelf.map((e) => (
-          <div key={e.moduleId} className="flex items-center gap-2 rounded-lg border p-2.5" style={{ borderColor: "var(--m3-outline-variant)" }}>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium">{e.title}</div>
-              <p className="text-[12px] text-muted-foreground">{e.reason}</p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (!facts || !e.action) return;
-                if (e.action.verb) {
-                  dispatch(makeVerbCall(e.action.verb, e.action.params ?? {}, { who: actor, what: facts.label, when: Date.now(), where, why: why.trim() || "hand tweak" }));
-                } else {
-                  dispatchShelfComponents(e.action.label, e.action.addComponents ?? []);
-                }
-              }}
-            >
-              {e.action?.label ?? "Add"}
-            </Button>
-          </div>
-        ))}
-        {facts && shelf.length === 0 && <p className="text-[13px] text-muted-foreground">Everything establishable is already applied.</p>}
+          )}
+        </div>
       </div>
     </div>
   );
