@@ -47,27 +47,31 @@ Every other workspace is the **Developer surface** (data/IDE tooling over the
 same pipeline); two left-dock titles say so ("Tables · Developer surface",
 "Schema · Developer surface") as the labeling pattern to extend.
 
-### Layout — rule of thirds (Joey, 2026-10-24)
+### Layout — centered view pane, thirds inside the stage (Joey, 2026-10-24, refined same evening)
 
-The Authoring presentation is composed on a thirds grid, horizontally and
-vertically — the grid is a discipline, not decoration:
+Joey's refinement of the earlier equal-thirds instruction: the view
+pane must be large and centered as the main viewpoint — the workspace
+grid is no longer three equal columns.
 
-- **Across (Find | See | Act):** the workspace is three equal columns
-  (`grid-template-columns: repeat(3, 1fr)`). The left third is the hierarchy
-  (find and navigate), the middle third is the stage (see the selected
-  object), the right third is the widget stack + add shelf (act on it). The
-  work flows left → right, and the grid's focal intersections land on the
-  selected object's identity (top of the middle third) and on the primary
-  widget actions (top of the right third). This replaces the earlier
-  fixed-width rails (288px hierarchy / flexible stage / 320px widgets),
-  which put both gridlines wherever the rails happened to end.
-- **Down the stage (identity / relationships / provenance):** the middle
-  third is itself split in thirds — the object's identity card at the top,
-  its relationships / viewport focus in the middle (reference edges live
-  here now), and the session provenance history along the bottom. The
-  presentation header sits above the first horizontal gridline: context
+- **Across (Find | See | Act):** the workspace is quarter / half /
+  quarter (`grid-template-columns: 1fr 2fr 1fr`). The stage takes half
+  the workspace width and sits exactly centered; the hierarchy (Find)
+  and the widget stack + add shelf (Act) are supporting sides taking a
+  quarter each. The work still flows left → right, but the composition
+  is centered-dominant because the view is the main viewpoint, not one
+  of three equals. (Supersedes the equal-thirds columns of the first
+  thirds pass, which itself replaced the original fixed-width rails:
+  288px hierarchy / flexible stage / 320px widgets.)
+- **Down the stage (identity / relationships / provenance):** the rule
+  of thirds now governs the INSIDE of the stage — its vertical thirds
+  and the focal intersections inside the view pane. The object's
+  identity card stays compact at the top; its relationships /
+  viewport-focus zone takes the largest share of the vertical space
+  (it is the viewpoint area, and grows with flex); the session
+  provenance history stays compact along the bottom (capped, scrolling).
+  The presentation header sits above the workspace grid: context
   first, work below it.
-- **What the rule does NOT do:** it does not make the stage a 3D viewport
+- **What this does NOT do:** it does not make the stage a 3D viewport
   (still a panel — see gaps), and it is not applied to the Legacy
   presentation, whose whole point is to preserve the old layout untouched
   behind its pin.

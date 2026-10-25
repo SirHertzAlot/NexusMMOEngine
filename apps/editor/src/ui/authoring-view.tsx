@@ -8,9 +8,13 @@
  * the selection summons its widget stack + add shelf from the relevance
  * rules — no module panels, no component tables.
  *
- * Layout discipline — rule of thirds (Joey, 2026-10-24): the workspace
- * is a thirds grid, Find | See | Act across, and inside the stage
- * identity / relationships / provenance down. See docs/EDITOR-AUTHORING.md.
+ * Layout discipline (Joey, 2026-10-24, refined same evening): the
+ * workspace grid is quarter / half / quarter — the view pane (stage)
+ * is large and centered as the main viewpoint, Find and Act are its
+ * supporting sides. The rule of thirds now governs the INSIDE of the
+ * stage: identity / relationships-viewport-focus / provenance down its
+ * vertical thirds, and the focal intersections inside the view pane.
+ * See docs/EDITOR-AUTHORING.md.
  *
  * Honest scope of this slice:
  * - The stage is a panel, not the 3D viewport: it shows the selected
@@ -378,15 +382,16 @@ function AuthoringPresentation(): React.JSX.Element {
     : sortNodes(role === "all" ? model.flat : model.flat.filter((n) => roleFilterById(role as RoleFilterId).test(n)), sort);
 
   return (
-    // Rule of thirds (Joey, 2026-10-24): the workspace is a thirds grid.
-    // Horizontally each function owns one third, in the order the work
-    // flows — Find (hierarchy) | See (stage) | Act (widgets + shelf) —
-    // so the eye's focal intersections land on the stage's selected
-    // object (left intersection of the middle third) and on the primary
-    // widget actions (right intersection). No fixed-width side rails:
-    // the old w-72 / w-80 rails put both gridlines in the wrong place.
-    <div className="grid h-full min-h-0 gap-3 overflow-hidden p-3" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-      {/* ------------------------------------------------ hierarchy pane — left third: Find */}
+    // Centered-dominant workspace (Joey, 2026-10-24 evening refinement,
+    // superseding the equal-thirds columns of 1ab22f30): quarter / half /
+    // quarter. The view pane (stage) is large and centered as the main
+    // viewpoint — it takes half the workspace width, exactly centered;
+    // Find (hierarchy) and Act (widgets + shelf) are supporting sides.
+    // The rule of thirds now governs the INSIDE of the stage — its
+    // vertical thirds (identity / relationships-viewport-focus /
+    // provenance) and the focal intersections inside the view pane.
+    <div className="grid h-full min-h-0 gap-3 overflow-hidden p-3" style={{ gridTemplateColumns: "1fr 2fr 1fr" }}>
+      {/* --------------------------------------- hierarchy pane — left quarter: Find (supporting) */}
       <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
         <SectionTitle>Hierarchy — relationships</SectionTitle>
         <Select value={sceneName} onChange={(e) => setSceneName(e.target.value)} aria-label="Scene">
@@ -472,10 +477,11 @@ function AuthoringPresentation(): React.JSX.Element {
         </div>
       </div>
 
-      {/* ------------------------------------------ stage — middle third: See.
-          Vertical thirds inside the stage: identity at the top third,
-          the object's relationships / viewport focus in the middle
-          third, provenance history along the bottom third. */}
+      {/* -------------------------------- stage — center half: See, the main viewpoint.
+          Inside the stage the rule of thirds holds: identity compact
+          at the top, the relationships / viewport-focus zone grows
+          through the middle (it is the viewpoint area, flex), and the
+          provenance history stays compact along the bottom. */}
       <div className="flex min-w-0 flex-col gap-2 overflow-y-auto">
         <SectionTitle>Stage — Designer surface</SectionTitle>
         {!facts && (
@@ -504,7 +510,7 @@ function AuthoringPresentation(): React.JSX.Element {
               </div>
               <p className="mt-1 text-[13px] text-muted-foreground">{where}</p>
               <p className="mt-2 text-[13px] text-muted-foreground">
-                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state in the right third is read from the selection's own component fields.
+                {evaluateRelevance(facts).applied.length} widget(s) summoned by the relevance rules. Applied state in the right quarter is read from the selection's own component fields.
               </p>
             </div>
             {/* Middle vertical third — the object's relationships / viewport focus. */}
@@ -522,10 +528,10 @@ function AuthoringPresentation(): React.JSX.Element {
                 <p className="text-[13px] text-muted-foreground">No reference edges in the scene data for this object yet (quest → giver, vendor → template, creature → patrol land here when the data carries them). The live 3D viewport stays in the Scenes workspace — selection is shared, so this object is the selected object there too.</p>
               )}
             </div>
-            {/* Bottom vertical third — provenance. */}
+            {/* Bottom of the stage — provenance, kept compact: the middle zone above is the viewpoint and grows. */}
             <SectionTitle>Session history for this object</SectionTitle>
             {history.length === 0 && <p className="text-[13px] text-muted-foreground">No verb calls recorded yet — widget and shelf actions land here with their 5W1H envelope.</p>}
-            <ul className="flex flex-col gap-1 text-[13px]">
+            <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto text-[13px]">
               {history.map((c, i) => (
                 <li key={`${historyTick}-${i}`} className="rounded-md border px-2 py-1" style={{ borderColor: "var(--m3-outline-variant)" }}>
                   <strong>{c.verb}</strong> — {c.provenance.why} · by {c.provenance.who.id} ({c.provenance.who.role})
@@ -536,7 +542,7 @@ function AuthoringPresentation(): React.JSX.Element {
         )}
       </div>
 
-      {/* --------------------------------- widgets + add shelf — right third: Act */}
+      {/* --------------------------------- widgets + add shelf — right quarter: Act (supporting) */}
       <div className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1">
         <SectionTitle>Selection widgets</SectionTitle>
         <label className="flex flex-col gap-1 text-[12px] text-muted-foreground">
