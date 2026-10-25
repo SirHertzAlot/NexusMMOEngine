@@ -311,7 +311,7 @@ const PLAN_ACTIONS: Readonly<Record<string, readonly PlanSpec[]>> = {
     {
       id: "stock-item",
       label: "Stock item",
-      note: "Stocks the chosen template — the template must already be defined on the server (vendor define); stocking an undefined one is refused. Items are addressed by exact def name (the name a defOf read or the items browse shows): admin stock looks defs up by name, and a base is a family of defs, not a def.",
+      note: "Stocks the chosen template — the template must already be defined on the server (vendor define); stocking an undefined one is refused. Items are addressed by exact def name (the name a defOf read or the items browse shows): admin stock looks defs up by name, and a base is a family of defs, not a def. There is no stock read-back in the admin surface — the dispatch reply is the confirmation.",
       inputs: (f) => [
         {
           id: "templateId",

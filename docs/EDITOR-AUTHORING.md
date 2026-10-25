@@ -421,9 +421,11 @@ a re-homing, not a deletion.
   authoring-depth slice's plan-shaped affordances carry their own
   exact limits: vendor **stock** addresses defs by exact name (a
   typed field — the editor holds no def-name list, and admin stock
-  has no base arg) and needs the template already defined on the
-  server; **removecomponent** refuses God/Noclip by name (their
-  toggle commands own them) as well as absent components.
+  has no base arg), needs the template already defined on the
+  server, and has no read-back — `vendor list` names defined
+  templates, not their stock, so the stock dispatch reply is the
+  confirmation; **removecomponent** refuses God/Noclip by name
+  (their toggle commands own them) as well as absent components.
 - **Per-field edits ride selection-local lines, on live entities
   only.** A widget's applied-state line edits only when it exposes
   one numeric field (`Component.field: value`, the selection-local
