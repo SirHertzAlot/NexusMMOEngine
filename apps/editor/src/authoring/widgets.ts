@@ -15,7 +15,12 @@
  * CRUD mappings are honest: where a canonical verb covers the action it
  * is used; where none does (binding a flow graph, adding an emitter), the
  * widget carries no fake verb — those preconditions are established from
- * the add shelf instead (see add-shelf.ts).
+ * the add shelf instead (see add-shelf.ts). Two non-verb affordance kinds
+ * ride along as dispatch plans through the same executor: component
+ * REMOVALS (the flow widget's unbind — the shelf add's inverse) and
+ * plan actions for admin surfaces the verbs don't cover (vendor
+ * stocking). Neither invents a verb; both are gated by their plan
+ * builders in dispatch.ts.
  *
  * Actions that need a designer-supplied value declare it as an input
  * (inputs.ts): a picker fed by a real list, or a number. The view renders
@@ -35,6 +40,7 @@
 import { evaluateRelevance, type AppliedWidget } from "./relevance.js";
 import { inputValue, parseInputNumber, type ActionInput, type InputValues } from "./inputs.js";
 import { makeVerbCall, type ActorRef, type VerbCall } from "./verbs.js";
+import { vendorStockPlan, type DispatchPlan } from "./dispatch.js";
 import type { SelectionFacts } from "./facts.js";
 
 export interface AppliedState {
@@ -57,6 +63,37 @@ export interface WidgetAction {
   callWith: (values: InputValues) => VerbCall;
 }
 
+/**
+ * A component removal the widget offers (the inverse of a shelf add):
+ * take one ECS component off the live entity. Not a canonical verb —
+ * removals travel as dispatch plans (removeComponentPlan in
+ * dispatch.ts) through the same executor as the shelf adds.
+ */
+export interface ComponentRemoval {
+  id: string;
+  label: string;
+  /** The ECS component the removal takes off the entity (admin removecomponent). */
+  component: string;
+  /** Plain-language truth rendered with the action. */
+  note?: string;
+}
+
+/**
+ * A widget action that is not a canonical verb but a dispatch plan —
+ * for admin surfaces the 13 verbs don't cover (vendor stocking is the
+ * first). Inputs work exactly like WidgetAction's: descriptors as
+ * data, and `buildPlan` resolves the designer's values through them
+ * before the plan builder (the gate) sees them.
+ */
+export interface WidgetPlanAction {
+  id: string;
+  label: string;
+  inputs: readonly ActionInput[];
+  note?: string;
+  /** Build the plan with designer-supplied input values applied (descriptor prefills fill any gaps). */
+  buildPlan: (values: InputValues) => DispatchPlan;
+}
+
 export interface WidgetViewModel {
   widgetId: string;
   title: string;
@@ -67,6 +104,10 @@ export interface WidgetViewModel {
   applied: readonly string[];
   /** Zone 3 — CRUD affordances as verb calls. */
   actions: readonly WidgetAction[];
+  /** Zone 3 — component removals (unbinds), as dispatch plans. */
+  removals: readonly ComponentRemoval[];
+  /** Zone 3 — non-verb affordances as dispatch plans (vendor stock). */
+  planActions: readonly WidgetPlanAction[];
 }
 
 export interface BuildWidgetsOptions {
@@ -254,6 +295,59 @@ const CRUD: Readonly<Record<string, readonly CrudSpec[]>> = {
   ],
 };
 
+interface PlanSpec {
+  id: string;
+  label: string;
+  note?: string;
+  /** Input descriptors for this action (may depend on the facts — prefills do). */
+  inputs?: (facts: SelectionFacts) => readonly ActionInput[];
+  /** The plan from the facts + the RESOLVED input values (every declared input id present, "" when unfilled). */
+  plan: (facts: SelectionFacts, values: Readonly<Record<string, string>>) => DispatchPlan;
+}
+
+/** Per-widget affordances no canonical verb covers, as dispatch plans. Widgets absent here render no plan actions. */
+const PLAN_ACTIONS: Readonly<Record<string, readonly PlanSpec[]>> = {
+  vendor: [
+    {
+      id: "stock-item",
+      label: "Stock item",
+      note: "Stocks the chosen template — the template must already be defined on the server (vendor define); stocking an undefined one is refused. Items are addressed by exact def name (the name a defOf read or the items browse shows): admin stock looks defs up by name, and a base is a family of defs, not a def.",
+      inputs: (f) => [
+        {
+          id: "templateId",
+          label: "Vendor template",
+          kind: "picker",
+          source: "vendor-templates",
+          ...(f.vendorTemplateId ? { initial: f.vendorTemplateId } : {}),
+          placeholder: "Choose a template",
+        },
+        { id: "itemName", label: "Item name", kind: "text", placeholder: "Exact def name, e.g. Flaming Mithril Sword" },
+        { id: "price", label: "Price (gold)", kind: "number", placeholder: "e.g. 250" },
+        { id: "qty", label: "Qty", kind: "number", placeholder: "blank = infinite" },
+      ],
+      plan: (_f, v) => vendorStockPlan({ templateId: v.templateId, itemName: v.itemName, price: parseInputNumber(v.price), qty: parseInputNumber(v.qty) }),
+    },
+  ],
+};
+
+/** Component removals a widget offers for this selection (unbinds). Only where the component is actually applied. */
+function removalsFor(widgetId: string, facts: SelectionFacts): readonly ComponentRemoval[] {
+  // The flow widget exists only while a FlowRef is bound (relevance
+  // rule 13); its unbind is the removal of that marker component —
+  // the inverse of the shelf's "Bind flow graph" add.
+  if (widgetId === "flow" && facts.flowRef !== undefined) {
+    return [
+      {
+        id: "unbind-flow",
+        label: "Unbind flow graph",
+        component: "FlowRef",
+        note: "Takes the FlowRef component off the live entity (admin removecomponent) — the graph content itself is not deleted, and re-binding is the shelf's add.",
+      },
+    ];
+  }
+  return [];
+}
+
 /** Build the widget stack for one selection. Throws if the actor/why envelope is invalid — anonymous UI is a bug. */
 export function buildWidgets(facts: SelectionFacts, opts: BuildWidgetsOptions): readonly WidgetViewModel[] {
   const when = opts.when ?? Date.now();
@@ -281,6 +375,21 @@ export function buildWidgets(facts: SelectionFacts, opts: BuildWidgetsOptions): 
         callWith,
       };
     });
+    const planActions = (PLAN_ACTIONS[w.widgetId] ?? []).map((spec) => {
+      const inputs = spec.inputs?.(facts) ?? [];
+      const buildPlan = (values: InputValues): DispatchPlan => {
+        const resolved: Record<string, string> = {};
+        for (const input of inputs) resolved[input.id] = inputValue(values, input);
+        return spec.plan(facts, resolved);
+      };
+      return {
+        id: spec.id,
+        label: spec.label,
+        inputs,
+        ...(spec.note ? { note: spec.note } : {}),
+        buildPlan,
+      };
+    });
     return {
       widgetId: w.widgetId,
       title: w.title,
@@ -288,6 +397,8 @@ export function buildWidgets(facts: SelectionFacts, opts: BuildWidgetsOptions): 
       identity: state?.identity ?? `${w.title} · ${facts.label} — ${w.detail}`,
       applied: state?.lines ?? [],
       actions,
+      removals: removalsFor(w.widgetId, facts),
+      planActions,
     };
   });
 }

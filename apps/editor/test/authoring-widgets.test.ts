@@ -64,3 +64,66 @@ describe("widget view-models", () => {
     assert.throws(() => buildWidgets(blacksmith, { ...opts, why: "" }), /why/);
   });
 });
+
+describe("widget removals + plan actions (authoring-depth slice)", () => {
+  const automaton = makeFacts({
+    id: "51",
+    label: "Market Automaton",
+    kind: "npc",
+    components: ["Transform", "FlowRef"],
+    flowRef: "graph-7",
+  });
+
+  it("the flow widget carries the unbind removal for its bound FlowRef — and only there", () => {
+    const widgets = buildWidgets(automaton, opts);
+    const flow = widgets.find((w) => w.widgetId === "flow");
+    assert.ok(flow);
+    assert.deepEqual(
+      flow.removals.map((r) => ({ id: r.id, component: r.component })),
+      [{ id: "unbind-flow", component: "FlowRef" }],
+    );
+    for (const w of widgets) {
+      if (w.widgetId !== "flow") assert.deepEqual(w.removals, [], w.widgetId);
+    }
+  });
+
+  it("no FlowRef bound, no flow widget and no unbind anywhere", () => {
+    const widgets = buildWidgets(blacksmith, opts);
+    assert.equal(widgets.find((w) => w.widgetId === "flow"), undefined);
+    for (const w of widgets) assert.deepEqual(w.removals, [], w.widgetId);
+  });
+
+  it("the vendor widget carries the stock plan action with its four real inputs", () => {
+    const vendor = buildWidgets(blacksmith, opts).find((w) => w.widgetId === "vendor");
+    assert.ok(vendor);
+    assert.equal(vendor.planActions.length, 1);
+    const stock = vendor.planActions[0];
+    assert.equal(stock.id, "stock-item");
+    assert.deepEqual(
+      stock.inputs.map((i) => i.id),
+      ["templateId", "itemName", "price", "qty"],
+    );
+    // The template input prefills with the vendor's current template.
+    assert.equal(stock.inputs[0].initial, "weapons-tier2");
+  });
+
+  it("the stock action's buildPlan routes values through the real plan builder (the gate)", () => {
+    const vendor = buildWidgets(blacksmith, opts).find((w) => w.widgetId === "vendor");
+    const stock = vendor?.planActions[0];
+    assert.ok(stock);
+    assert.deepEqual(stock.buildPlan({ templateId: "weapons-tier2", itemName: "Flaming Mithril Sword", price: "250", qty: "" }), {
+      kind: "admin", verb: "vendorStock", command: "vendor", args: { sub: "stock", id: "weapons-tier2", name: "Flaming Mithril Sword", price: 250 },
+    });
+    assert.deepEqual(stock.buildPlan({ templateId: "weapons-tier2", itemName: "Sword", price: "10", qty: "5" }), {
+      kind: "admin", verb: "vendorStock", command: "vendor", args: { sub: "stock", id: "weapons-tier2", name: "Sword", price: 10, qty: 5 },
+    });
+    const empty = stock.buildPlan({});
+    assert.equal(empty.kind, "unsupported");
+  });
+
+  it("widgets without plan affordances carry none — never invented", () => {
+    for (const w of buildWidgets(blacksmith, opts)) {
+      if (w.widgetId !== "vendor") assert.deepEqual(w.planActions, [], w.widgetId);
+    }
+  });
+});

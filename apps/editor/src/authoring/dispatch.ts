@@ -34,6 +34,12 @@
  *   components at all (QuestGiver, DungeonEntrance) stay unsupported
  *   with the reason; the shelf's "Collider" is the scene name for the
  *   BodyConfig the scene spawner writes, and maps to it.
+ * - Component removals ride `removecomponent` (the add's inverse —
+ *   the flow widget's unbind), per-field edits of applied state ride
+ *   `set` (see fieldEditTarget), and vendor stocking rides the vendor
+ *   command's `stock` sub-action (see vendorStockPlan). None of these
+ *   are canonical verbs — like the shelf adds, they travel as plans
+ *   through the one executor.
  *
  * The executor takes an injectable transport (the ServerLink's admin
  * surface in the UI, a fake in tests) and reports outcomes honestly:
@@ -310,6 +316,149 @@ export function shelfComponentPlan(action: ShelfAction, entity: string | undefin
   }
   if (steps.length === 1) return { kind: "admin", verb: "addComponents", ...steps[0] };
   return { kind: "composite", verb: "addComponents", steps };
+}
+
+// ------------------------------------------------- component removal
+
+/**
+ * The plan for a component removal — the inverse of a shelf component
+ * add, and equally not a canonical verb: one `removecomponent` admin
+ * step against the entity (a wire id — a scene-document selection id
+ * is refused by the server as an unknown entity, honestly). The flow
+ * widget's unbind is the first caller (FlowRef off the live entity).
+ */
+export function removeComponentPlan(entity: string, component: string): DispatchPlan {
+  if (entity.trim() === "") {
+    return unsupported("removeComponent", `removing ${component} needs the selected entity (a wire id) — no target was supplied`);
+  }
+  if (component.trim() === "") {
+    return unsupported("removeComponent", "removeComponent needs the component to remove — none was named");
+  }
+  return { kind: "admin", verb: "removeComponent", command: "removecomponent", args: { entity, component } };
+}
+
+// ------------------------------------------------------------- field edits
+
+/**
+ * Per-field edits of applied state — the ECS-inspector gap ("widgets
+ * offer no per-field editing"). An applied-state line that names one
+ * numeric field — `Health.current: 37`, the selection-local shape
+ * `appliedStateFromSelection` renders — maps to one admin `set` step.
+ *
+ * This layer only decides what a line EXPOSES; the server's whitelist
+ * (admin/set.ts) stays the gate on what may be written, and a write it
+ * refuses returns as the outcome's refusal:
+ * - the component name must case-match a component admin `set` knows,
+ *   canonicalised to the server's spelling ("health" → "Health").
+ *   Names that merely resemble one ("intent" for PlayerIntent) expose
+ *   nothing — no invented mapping;
+ * - the value must be a single finite number. Vectors ("0, 0, 0"),
+ *   fractions ("100/100") and text expose no single field;
+ * - live read-back lines ("live · …") expose nothing: the inspect
+ *   dump packs several fields per line under display labels, not
+ *   set's field names. Editing rides the selection-local lines, and
+ *   the read-back refreshes after the write lands.
+ */
+export interface FieldEditTarget {
+  component: string;
+  field: string;
+  /** The value the line currently shows. */
+  value: number;
+}
+
+/** The components admin `set` can write (admin/set.ts FIELDS keys), canonical spelling. */
+const SET_COMPONENTS: readonly string[] = [
+  "Transform",
+  "Velocity",
+  "PlayerIntent",
+  "Health",
+  "Stamina",
+  "CharacterRef",
+  "FlowRef",
+  "VfxEmitter",
+  "AudioEmitter",
+  "BodyConfig",
+  "PathRequest",
+  "PathState",
+  "NavAgent",
+  "AssetRef",
+  "Locomotion",
+  "Action",
+];
+
+const NUMERIC_VALUE = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
+
+/** What one applied-state line exposes for editing — null when it exposes no single numeric field. */
+export function fieldEditTarget(line: string): FieldEditTarget | null {
+  if (line.startsWith("live ·")) return null;
+  const m = line.match(/^([A-Za-z][A-Za-z0-9]*)\.([A-Za-z][A-Za-z0-9]*):\s*(\S+)\s*$/);
+  if (!m) return null;
+  const canonical = SET_COMPONENTS.find((c) => c.toLowerCase() === m[1].toLowerCase());
+  if (canonical === undefined) return null;
+  if (!NUMERIC_VALUE.test(m[3])) return null;
+  const value = Number(m[3]);
+  if (!Number.isFinite(value)) return null;
+  return { component: canonical, field: m[2], value };
+}
+
+/**
+ * The `set` plan writing `value` into the field `line` exposes on
+ * `entity` (a wire id). Null when the line exposes nothing — the view
+ * renders no editor for such lines, so a null here is unreachable
+ * through the UI and means "not editable" to any other caller.
+ */
+export function fieldEditPlan(entity: string, line: string, value: number): DispatchPlan | null {
+  const target = fieldEditTarget(line);
+  if (target === null) return null;
+  if (entity.trim() === "" || !Number.isFinite(value)) return null;
+  return { kind: "admin", verb: "setField", command: "set", args: { entity, component: target.component, field: target.field, value } };
+}
+
+// ------------------------------------------------------------ vendor stock
+
+export interface VendorStockParams {
+  templateId?: string;
+  /** The item's exact def name — admin stock looks defs up by name. */
+  itemName?: string;
+  price?: number;
+  /** Units stocked; undefined (or -1) = infinite, the gateway's own default. */
+  qty?: number;
+}
+
+/**
+ * The plan for stocking one item on one vendor template: admin
+ * `vendor {sub: "stock", id, name, price, qty?}` — the real schema
+ * (net/gateway.ts VendorArgsSchema). Stock addresses defs by index or
+ * by exact NAME; the editor knows neither indices nor a name list, so
+ * the name is a typed field, never a base pick (a base is a family of
+ * defs — sending one as `name` could only refuse). The template must
+ * already be DEFINED on the server: `define` refuses a template that
+ * exists, so define-then-stock does not honestly compose into one
+ * plan — the precondition is named here and on the action instead,
+ * and stocking an undefined template returns the server's refusal.
+ */
+export function vendorStockPlan(params: VendorStockParams): DispatchPlan {
+  const verb = "vendorStock";
+  const templateId = params.templateId?.trim() ?? "";
+  if (templateId === "") {
+    return unsupported(verb, "stocking needs a vendor template — the picker lists the templates defined on the running server, and none was chosen");
+  }
+  const itemName = params.itemName?.trim() ?? "";
+  if (itemName === "") {
+    return unsupported(verb, "stocking needs the item's exact def name — admin vendor stock looks the def up by name (a base is a family of defs, not a def)");
+  }
+  const price = params.price;
+  if (price === undefined || !Number.isInteger(price) || price <= 0) {
+    return unsupported(verb, `stocking needs a positive integer price in gold (got ${JSON.stringify(params.price ?? null)})`);
+  }
+  const args: Record<string, unknown> = { sub: "stock", id: templateId, name: itemName, price };
+  if (params.qty !== undefined) {
+    if (!Number.isInteger(params.qty) || (params.qty !== -1 && params.qty < 1)) {
+      return unsupported(verb, `quantity must be a positive integer, or -1 for infinite (got ${JSON.stringify(params.qty)})`);
+    }
+    args.qty = params.qty;
+  }
+  return { kind: "admin", verb, command: "vendor", args };
 }
 
 // ---------------------------------------------------------------- executor
