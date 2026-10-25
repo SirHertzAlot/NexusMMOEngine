@@ -56,6 +56,7 @@ export function createSystems(ctx) {
       centre,
       radius,
       npcs: manifest.occupancy.npcs,
+      keeps: new Map((manifest.occupancy.shops ?? []).filter((s) => s.owner).map((s) => [s.owner, archetype.get(s.structure)])),
       view,
       positionOf: (anchor) => (anchor === SQUARE ? square : positions.get(anchor)),
     });
@@ -101,6 +102,8 @@ export function createSystems(ctx) {
     store: config.store,
     raided: config.raided,
     replaceMs: config.replaceMs,
+    attachShop: config.attachShop,
+    detachShop: config.detachShop,
     steer: ctx.shared?.navBackend?.crowd !== undefined, // a crowd runs: residents walk between anchors
   });
   ctx.log(`[residents] ${towns.length} town(s), ${towns.reduce((n, t) => n + t.npcs.length, 0)} people`);

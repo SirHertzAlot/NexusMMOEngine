@@ -277,6 +277,26 @@ describe("ResidentSystem: attackable", () => {
     assert.notEqual(sim.lookJson(Appearance.look[again]!), firstLook, "a new face");
   });
 
+  it("a shopkeeper's shop opens while they stand there and shuts when they fall", () => {
+    const sim = new SimWorld();
+    const bound = new Map<number, string>();
+    const sys = new ResidentSystem({
+      towns: [{ ...town(), keeps: new Map([["npc_3", "bakery"]]) }],
+      place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view),
+      timeOfDay: () => 0.45,
+      catalog: null,
+      attachShop: (eid, archetype) => void bound.set(eid, archetype),
+      detachShop: (eid) => void bound.delete(eid),
+    });
+    run(sys, sim, 30);
+    const eid = sys.entityOf("npc_3")!;
+    assert.equal(bound.get(eid), "bakery");
+    assert.equal(bound.size, 1, "only the keeper");
+    Health.current[eid] = 0;
+    run(sys, sim, 60);
+    assert.equal(bound.size, 0, "closed once they fall");
+  });
+
   it("a death survives a restart", () => {
     const store = new SqlitePlacesStore(new Database(":memory:"));
     const clock = { t: 5_000_000 };

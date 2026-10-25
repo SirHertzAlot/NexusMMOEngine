@@ -24,12 +24,19 @@ export type VendorTemplate = z.infer<typeof VendorTemplateSchema>;
 const VendorsFileSchema = z.object({
   version: z.literal(1, "unsupported vendors version"),
   vendors: z.record(z.string(), VendorTemplateSchema),
+  /** The template a resident shopkeeper sells from, by the archetype of the shop they keep ("*": any other). */
+  byArchetype: z.record(z.string(), z.string()).default({}),
 });
 
 /** The vendor templates in `file` (absent file: none). Throws on a bad file, naming what is wrong. */
 export function loadVendorTemplates(file: string): Map<string, VendorTemplate> {
-  if (!existsSync(file)) return new Map();
+  return loadVendors(file).templates;
+}
+
+/** The templates and the shopkeeper-archetype table. */
+export function loadVendors(file: string): { templates: Map<string, VendorTemplate>; byArchetype: Record<string, string> } {
+  if (!existsSync(file)) return { templates: new Map(), byArchetype: {} };
   const parsed = VendorsFileSchema.safeParse(JSON.parse(readFileSync(file, "utf8")));
   if (!parsed.success) throw new Error(`${file}: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
-  return new Map(Object.entries(parsed.data.vendors));
+  return { templates: new Map(Object.entries(parsed.data.vendors)), byArchetype: parsed.data.byArchetype };
 }

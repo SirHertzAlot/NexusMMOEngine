@@ -4391,7 +4391,7 @@ export class Gateway {
     if (drops) this.deliver(s, drops, this.tick);
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
-    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world) ?? [])];
+    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world, (e) => this.residents?.isResident(e) === true) ?? [])];
     if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
@@ -5557,6 +5557,8 @@ export class Gateway {
       const talk = this.residents!.talk(eid, this.tick);
       if (!talk) return this.sendError(s, 4005, "they have nothing to say");
       this.sendEnvelope(s, MessageType.Chat, encodeControl({ kind: "dialog", npc: talk.npc, name: talk.name, text: talk.text, replies: [] }));
+      // A shopkeeper (RS5 trade) also opens their shop.
+      if (this.vendors?.vendorOf(eid)) this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
     } else if (eid >= 0 && this.vendors?.vendorOf(eid)) {
       // A shop: the same list the vendor action answers with; buying and selling stay on 0x21.
       this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));

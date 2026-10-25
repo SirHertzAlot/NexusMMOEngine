@@ -157,8 +157,8 @@ export class VendorSystem implements SimSystem {
   }
 
   /** Every entity that is a vendor, as interaction targets for the client (E opens the shop). */
-  views(sim: SimWorld): ChestView[] {
-    return [...this.vendors.keys()].map((e) => ({ entity: String(sim.wireId(e)), x: C.Transform.px[e]!, z: C.Transform.pz[e]!, open: false, kind: "vendor" as const }));
+  views(sim: SimWorld, skip?: (entity: number) => boolean): ChestView[] {
+    return [...this.vendors.keys()].filter((e) => !skip?.(e)).map((e) => ({ entity: String(sim.wireId(e)), x: C.Transform.px[e]!, z: C.Transform.pz[e]!, open: false, kind: "vendor" as const }));
   }
 
   /** The vendor's current price list (a copy), with names resolved. Null when unknown or closed. */
