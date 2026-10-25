@@ -111,6 +111,8 @@ const NpcSchema = z.strictObject({
   /** How close a character must stand to talk, metres. */
   talkRange: z.number().positive().max(50).default(6),
   dialog: id,
+  /** A baked townsperson (settlement npc id) who is this giver: talking to them (E, 4 m) opens this dialog instead of their usual line. x and z are then only the quest marker. */
+  resident: z.string().min(1).max(64).optional(),
   /** The templates this npc's board draws generated quests from. */
   board: z.array(id).default([]),
   places: z.array(PlaceSchema).default([]),

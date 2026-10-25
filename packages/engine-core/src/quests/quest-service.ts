@@ -174,6 +174,21 @@ export class QuestService implements SimSystem, GatewayExtension {
     this.pushDialog(o);
   }
 
+  /** The giver a townsperson is (undefined: they are not one). */
+  npcOfResident(resident: string): string | undefined {
+    return Object.entries(this.opts.content.npcs).find(([, n]) => n.resident === resident)?.[0];
+  }
+
+  /** Talk to a giver the gateway has already found in reach (a bound townsperson): no range check here, so never reachable from a client message. */
+  talkAt(player: ExtensionPlayer, npcId: string): void {
+    const o = player.characterId === null ? undefined : this.online.get(player.characterId);
+    const npc = this.opts.content.npcs[npcId];
+    if (!o || !npc) return;
+    if (o.log.apply({ type: "talk", npc: npcId }).length > 0) this.changed(o);
+    o.dialog = { npc: npcId, node: this.opts.content.dialogs[npc.dialog].start };
+    this.pushDialog(o);
+  }
+
   private reply(o: Online, index: number): void {
     if (!o.dialog) {
       this.notice(o, "no dialog open");
