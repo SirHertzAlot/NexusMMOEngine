@@ -46,6 +46,9 @@ export interface ResidentNpc {
   role: string;
   class: string;
   cohort: string;
+  /** The profession they are a master of: players can take lessons (lessons.ts). */
+  mastery?: string;
+  grandMaster?: boolean;
 }
 
 /** Where a resident is now (settlement's Placement). */
@@ -116,6 +119,8 @@ export interface ResidentInfo {
   role: string;
   class: string;
   cohort: string;
+  mastery?: string;
+  grandMaster?: boolean;
 }
 
 /** A small seeded generator (mulberry32). */
@@ -521,7 +526,7 @@ export class ResidentSystem implements SimSystem {
     C.Locomotion.breath[eid] = 1;
     C.Action.move[eid] = 0;
     sim.setLook(eid, this.lookOf(npc.id));
-    this.infoOf.set(eid, { npc: npc.id, town: town.id, role: npc.role, class: npc.class, cohort: npc.cohort });
+    this.infoOf.set(eid, { npc: npc.id, town: town.id, role: npc.role, class: npc.class, cohort: npc.cohort, ...(npc.mastery ? { mastery: npc.mastery, grandMaster: npc.grandMaster === true } : {}) });
     const keeps = town.keeps?.get(npc.id);
     if (keeps !== undefined) this.opts.attachShop?.(eid, keeps);
     return eid;

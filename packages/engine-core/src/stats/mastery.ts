@@ -146,6 +146,11 @@ export class SkillSheet {
     return f;
   }
 
+  /** Points given outright (a lesson), not earned by use: no challenge, repeat or related gain. */
+  grant(i: number, points: number, nowMs: number): void {
+    this.add(i, points, nowMs);
+  }
+
   private add(i: number, points: number, nowMs: number): void {
     const max = this.index.rules.max;
     const v = Math.min(max, this.value[i] + points);
