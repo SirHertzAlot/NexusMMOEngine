@@ -285,6 +285,11 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       content: <InterestPanel client={client} />,
     },
     {
+      id: "residents",
+      title: "residents",
+      content: <ResidentsPanel client={client} />,
+    },
+    {
       id: "controls",
       title: "controls",
       content: (
@@ -324,6 +329,46 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
  * Interest management (IM6): "show everything" (the debugger's default) or "show what the player
  * sees", and a map of the sectors the server sends this client around the avatar.
  */
+interface ResidentsSummary {
+  towns: Array<{ id: string; tier: string; people: number; live: number; raid: boolean }>;
+  live: number;
+  walking: number;
+}
+
+/** Residents (RS3): each baked town's tier (full: they walk; coarse: they stand; none: nobody exists), its people and how many are in the world. */
+function ResidentsPanel({ client }: { client: MirrorClient }): React.JSX.Element {
+  const [s, setS] = React.useState<ResidentsSummary | null>(null);
+  React.useEffect(() => {
+    const poll = (): void => {
+      void client.admin("residents").then((r) => setS(JSON.parse(r.message) as ResidentsSummary)).catch(() => undefined);
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => clearInterval(id);
+  }, [client]);
+  if (!s) return <div className="text-xs text-muted-foreground">asking the server…</div>;
+  if (s.towns.length === 0) return <div className="text-xs text-muted-foreground">no residents on this server</div>;
+  const order = { full: 0, coarse: 1, none: 2 } as Record<string, number>;
+  const towns = [...s.towns].sort((a, b) => (order[a.tier] ?? 3) - (order[b.tier] ?? 3) || a.id.localeCompare(b.id));
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <div className="text-muted-foreground">{s.live} in the world, {s.walking} walking, {s.towns.length} towns</div>
+      <table className="w-full tabular-nums">
+        <thead><tr className="text-left text-muted-foreground"><th>town</th><th>tier</th><th>live / people</th></tr></thead>
+        <tbody>
+          {towns.map((t) => (
+            <tr key={t.id} className={t.raid ? "text-red-400" : undefined}>
+              <td>{t.id}{t.raid ? " (raid)" : ""}</td>
+              <td>{t.tier}</td>
+              <td>{t.live} / {t.people}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function InterestPanel({ client }: { client: MirrorClient }): React.JSX.Element {
   const [all, setAll] = React.useState(true);
   const [, tick] = React.useState(0);

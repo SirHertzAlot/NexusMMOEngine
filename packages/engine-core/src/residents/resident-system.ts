@@ -192,6 +192,20 @@ export class ResidentSystem implements SimSystem {
     return this.infoOf.get(eid);
   }
 
+  /** What the debugger shows: each town's tier, people and how many stand in the world, and the crowd slots in use. */
+  summary(): { towns: Array<{ id: string; tier: ResidentTier; people: number; live: number; raid: boolean }>; live: number; walking: number } {
+    const live = new Map<string, number>();
+    for (const npc of this.live.keys()) {
+      const town = this.index.get(npc)?.town.id;
+      if (town !== undefined) live.set(town, (live.get(town) ?? 0) + 1);
+    }
+    return {
+      towns: this.opts.towns.map((t) => ({ id: t.id, tier: this.tierOf(t.id), people: t.npcs.length, live: live.get(t.id) ?? 0, raid: this.raidClear.has(t.id) })),
+      live: this.live.size,
+      walking: this.agents,
+    };
+  }
+
   /** The entity a resident has now (undefined: indoors, or over the budget). */
   entityOf(npc: string): number | undefined {
     return this.live.get(npc)?.eid;
