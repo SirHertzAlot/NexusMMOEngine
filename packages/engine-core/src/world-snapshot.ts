@@ -12,7 +12,8 @@
  * that did not exist yet is recorded as absent, and restoring it removes
  * whatever the play session created.
  */
-import { copyFileSync, existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 /** SQLite's WAL-mode sidecar suffixes. */
 const SIDECARS = ["-wal", "-shm"] as const;
@@ -51,6 +52,8 @@ export function backupWorld(dbPath: string): string {
       if (existsSync(`${dbPath}${s}`)) copyFileSync(`${dbPath}${s}`, `${snap}${s}`);
     }
   } else {
+    // A fresh checkout has no data dir yet; the marker has to land somewhere.
+    mkdirSync(dirname(dbPath), { recursive: true });
     writeFileSync(absentMarker(dbPath), "");
   }
   return snap;
