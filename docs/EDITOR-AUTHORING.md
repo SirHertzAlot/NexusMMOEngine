@@ -40,18 +40,22 @@ other panel — the shell hardcodes no panel views.
   identity bar across its top names the selected object; its center zone
   shows the object's reference edges and, after a dispatch, the live inspect
   read-back; the session history for the object runs along its bottom strip.
-- **Widget stack + add shelf dock** (inside the view pane, right edge) —
-  rendered straight from the model layer. The facts adapter
-  (`factsFromSelection`) reads the real `EditorSelection`; the applied-state
-  lines are read from the selection's own component fields — the only state
-  this slice claims. Widget tabs reuse the Phase A `merged-modals` tab bar.
-  Actions render their declared input fields inline (see Widget inputs).
+- **Selection widgets — floating in the view pane** — rendered straight
+  from the model layer as an overlay stack inside the pane (see Layout).
+  The facts adapter (`factsFromSelection`) reads the real
+  `EditorSelection`; the applied-state lines are read from the selection's
+  own component fields — the only state this slice claims. Widget tabs
+  reuse the Phase A `merged-modals` tab bar. Actions render their declared
+  input fields inline (see Widget inputs).
+- **Add-shelf strip** (docked at the pane's right edge) — the
+  "available to add" catalog for the selection, plus the server-status
+  line and the shared intent ("why") field the widget actions also use.
 
 Every other workspace is the **Developer surface** (data/IDE tooling over the
 same pipeline); two left-dock titles say so ("Tables · Developer surface",
 "Schema · Developer surface") as the labeling pattern to extend.
 
-### Layout — panels embedded in the view pane (Joey, 2026-10-24 evening)
+### Layout — panels embedded in the view pane, widgets floating in it (Joey, 2026-10-24 evening)
 
 Joey's direction, naming his reference set — *"embed the panels into
 the viewport pane… like other editors like VSCode and Blender and
@@ -62,18 +66,37 @@ is **one view pane** (a single framed canvas), and the panels dock
 - **Left edge, inside the pane — the hierarchy dock** (Find): VSCode's
   sidebar / Unity's Hierarchy docked against the scene view. Scene
   picker, containment tree, role filters, saved views.
-- **Right edge, inside the pane — the widgets + add-shelf dock**
-  (Act): Unity's Inspector / Blender's properties region. Selection
-  widgets, the intent ("why") field, and the available-to-add shelf.
+- **Right edge, inside the pane — the add-shelf strip** (Act): the
+  "available to add" catalog — what could be established on the
+  selection — plus the server-status line and the shared intent
+  ("why") field. It stays docked: it is a catalog, not a selection
+  widget. (The selection widgets themselves are NOT here — see the
+  next bullet.)
 - **Top, inside the pane — the identity bar**: the selected object's
   name, kind, id and hierarchy path, spanning the pane's full width,
   with the two dock toggles at its ends.
 - **Bottom, inside the pane — the provenance strip**: the session
   history (5W1H + dispatch outcomes) as a collapsible strip, like
   VSCode's panel/console.
+- **Floating in the pane — the selection widgets** (Joey's refinement,
+  same evening): the widgets are not docked anywhere. When the shared
+  selection lands on an object — a hierarchy pick here, or an object
+  picked in Scenes — its contextual widgets appear as a **floating
+  card stack inside the pane**, absolutely positioned over the
+  viewport-focus zone and anchored toward its right-center, so they
+  read as summoned by the object; the layout never reflows for them.
+  The stack scrolls itself when tall (inset-bounded, its own
+  overflow). A **× dismisses** it until the selection changes or the
+  object is clicked again — dismissal is view state only; the
+  selection is untouched. With nothing selected, nothing floats: the
+  pane shows its plain stage. This restores Joey's original
+  2026-10-17 design — *"clicking a game object summons contextual
+  widgets/modals within the viewport"* — which the docked slices had
+  temporarily traded for columns. No drag-to-move in this slice.
 - **The center is the pane's own middle** — the relationships /
-  viewport-focus zone — unobstructed and dominant. The docks sit at
-  its edges; they are not columns beside it. Both docks and the
+  viewport-focus zone — unobstructed and dominant (the floating
+  widgets overlay it; they do not displace it). The docks sit at its
+  edges; they are not columns beside it. Both docks and the
   history strip **collapse** (edge toggles in the identity bar; the
   strip's own header), and collapsing returns the width/height to the
   center zone. Collapse state persists in local prefs
@@ -83,14 +106,16 @@ is **one view pane** (a single framed canvas), and the panels dock
   left → right: find, see, act).
 - **History of the layout:** fixed rails (288px / flex / 320px) →
   equal-thirds columns → centered quarter/half/quarter grid →
-  embedded panels. Each step is Joey's refinement of the last. The
-  Legacy presentation is untouched by all of it — it keeps its own
-  original two-panel layout behind its pin, as designed.
-- **What this does NOT do:** the panels are embedded within the Design
-  workspace's view pane — they are **not** overlays on the real-time
-  3D render. The stage is still a panel; the live 3D viewport stays
-  in the Scenes workspace (selection shared). Making the stage itself
-  the 3D viewport is future work (see gaps).
+  embedded panels → floating selection widgets. Each step is Joey's
+  refinement of the last. The Legacy presentation is untouched by
+  all of it — it keeps its own original two-panel layout behind its
+  pin, as designed.
+- **What this does NOT do:** the panels are embedded, and the widgets
+  float, within the Design workspace's view pane — none of it is an
+  overlay on the real-time 3D render. The stage is still a panel; the
+  live 3D viewport stays in the Scenes workspace (selection shared).
+  Making the stage itself the 3D viewport — the widgets floating over
+  the actual render — is future work (see gaps).
 
 ## Widget inputs — real fields for widget and shelf actions
 
@@ -155,7 +180,7 @@ stay unsupported, by design, until the server grows one.
 | 2 | Load a scene | Live (scenes-client; errors surface) |
 | 3 | Navigate / filter / save a view of the hierarchy | Live — saved views are session state, not persisted |
 | 4 | Select an object | Live — shared `editorSelection`; picking here is picking in Scenes |
-| 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs |
+| 5 | Relevance summons the widgets | Live — rules 1–18 incl. merged tabs; the widgets float in the view pane, summoned by the selection (dismissible, re-summoned on the next pick) |
 | 6 | Read what's applied | **Partial** — selection-local component fields, PLUS the live `inspect` read-back (its lines join the widgets when the read-back's target is this selection); still not live system reads (vendor stock, dialogue graphs, abilities) |
 | 7 | Add what's missing (add shelf) | **Partial** — establishability is live; verb-shaped shelf actions dispatch with real input fields (vendor-template and creature-kind pickers — step 8); component-shaped additions are **unsupported** — admin `set` cannot add a component (see gaps) |
 | 8 | Act (widget CRUD) | **Live for verbs with an admin home** — dispatched over the shared server link with the outcome recorded beside the call. Actions render real input fields (item-base / creature-kind / vendor-template pickers fed by real lists, amount and coordinate numbers with Transform prefills), so the dispatching verbs dispatch from clicks with designer-chosen values — live-smoked end to end (give, vendor attach, spawn). Dispatching: giveItem & giveGold (console holder only), spawnCreature/spawnPack, teleport, attachVendor/detachVendor, grantQuestReward (composite give+gold, console holder), resolveBase (a read, via `items`). **Unsupported, with reasons:** takeItem, moveItem, defOf, countBase, startDialogue, placeItemFixture — no admin command honestly implements them |
@@ -312,13 +337,15 @@ a re-homing, not a deletion.
   outcome — for scene-document selections, whose ids are node ids;
   and the no-admin-home verbs above still carry placeholder params,
   which no input field can fix.
-- **Stage is not the viewport.** The panels are now embedded in the
-  Design workspace's view pane (docks at its edges, collapsible), but
-  that pane is still a panel — the real-time 3D render stays in the
-  Scenes workspace; selection is shared, but widgets do not yet render
-  as overlays on the 3D view, and a dispatch's result is reflected as
-  an inspect read-back in the pane — not yet as a change you watch
-  happen in 3D.
+- **Stage is not the viewport.** The panels are embedded in the
+  Design workspace's view pane (docks at its edges, collapsible) and
+  the selection widgets float inside that pane, summoned by the
+  selection — but the pane is still a panel: the real-time 3D render
+  stays in the Scenes workspace; selection is shared, but widgets do
+  not yet render as overlays on the 3D view itself, and a dispatch's
+  result is reflected as an inspect read-back in the pane — not yet
+  as a change you watch happen in 3D. The floating stack has no
+  drag-to-move yet, either.
 - **Applied state is selection-local, plus read-backs.** Lines come from
   the selection's component fields and — after a dispatch — from the
   live `inspect` read-back for that target; they are not live system
