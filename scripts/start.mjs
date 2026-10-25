@@ -108,6 +108,14 @@ function setup() {
     npm(["run", "dungeon:bake", "--", "--n", "10"], { MMO_DATA_DIR: data });
   }
 
+  // Dungeon dressings art overlay from local catalog if available.
+  const catalogPath = join(root, "assets", "catalog.json");
+  const propsLocal = join(root, "content", "dungeons", "props.local.json");
+  if (existsSync(catalogPath) && (!existsSync(propsLocal) || statSync(propsLocal).mtimeMs < statSync(catalogPath).mtimeMs)) {
+    log("updating dungeon dressing Synty prop overlay");
+    npm(["run", "dungeon:art", "--workspace=@mmo-engine/dungeon"]);
+  }
+
   // 6. Native module entries (a module's own addon; built ones are skipped).
   npm(["run", "build:native"]);
 }
