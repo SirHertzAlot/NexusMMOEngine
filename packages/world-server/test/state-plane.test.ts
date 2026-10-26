@@ -458,6 +458,22 @@ async function statePlaneStoreContract(store: WorldStore): Promise<void> {
   assert.deepEqual((await store.getLedgerEvents(longKey, 250)).map((e) => e.seq), longSeqs.slice(250));
   assert.equal(await store.getLedgerHead(longKey), 600);
 
+  // Shipper-scale streams: 5,000 events appended in capped batches of
+  // 512 (LEDGER_BATCH_MAX_EVENTS) — the head must track every batch,
+  // a re-appended batch must store nothing twice, and the full stream
+  // must read back exactly once each, in order. Guards the batched
+  // upsert + head-counter append path at production stream lengths.
+  const shipKey = "7:8:7:8";
+  const shipSeqs = Array.from({ length: 5000 }, (_, i) => i + 1);
+  for (let s = 0; s < shipSeqs.length; s += 512) {
+    const batch = shipSeqs.slice(s, s + 512).map(ev);
+    assert.equal(await store.appendLedgerEvents(shipKey, batch), Math.min(s + 512, shipSeqs.length));
+  }
+  const dupBatch = shipSeqs.slice(0, 512).map(ev);
+  assert.equal(await store.appendLedgerEvents(shipKey, dupBatch), 5000);
+  assert.deepEqual((await store.getLedgerEvents(shipKey, 0)).map((e) => e.seq), shipSeqs);
+  assert.equal(await store.getLedgerHead(shipKey), 5000);
+
   // Characters: versioned record round-trips; lock epochs are never
   // reused, even across a release (the counter is not the lock row).
   assert.equal(await store.getCharacterState(7), null);

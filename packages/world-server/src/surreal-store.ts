@@ -135,6 +135,12 @@ DEFINE INDEX IF NOT EXISTS idx_shard_snapshot_range ON shard_snapshot FIELDS ran
 DEFINE TABLE IF NOT EXISTS ledger_event SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_ledger_event_range_seq ON ledger_event FIELDS rangeKey, seq UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_ledger_event_range ON ledger_event FIELDS rangeKey;
+-- Per-range contiguous head counters: appendLedgerEvents advances the
+-- counter as events land, so getLedgerHead is a point read instead of
+-- a full-stream scan. Backfilled once per range from the scan it
+-- replaces (see readLedgerHeadCounter).
+DEFINE TABLE IF NOT EXISTS ledger_head SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_ledger_head_range ON ledger_head FIELDS rangeKey UNIQUE;
 DEFINE TABLE IF NOT EXISTS character_state SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_state_id ON character_state FIELDS characterId UNIQUE;
 DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
@@ -697,16 +703,29 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async appendLedgerEvents(rangeKey: string, events: LedgerEvent[]): Promise<number> {
+    if (events.length === 0) return this.getLedgerHead(rangeKey);
+    // Idempotent on (rangeKey, seq): the first-written event wins, and
+    // a seq repeated inside one batch counts once. The whole batch is
+    // one insert statement regardless of size, where the original
+    // per-event SELECT+CREATE cost two round trips PER EVENT plus a
+    // full-stream head scan — the shape that capped the soak's Tier-1
+    // ack rate at ~62 events/s and decayed as the stream grew.
+    const batch: LedgerEvent[] = [];
+    const seen = new Set<number>();
     for (const e of events) {
-      // Idempotent on (rangeKey, seq): the first-written event wins.
-      const existing = singleRow(
-        await this.db.query("SELECT * FROM ONLY ledger_event WHERE rangeKey = $rk AND seq = $seq LIMIT 1", { rk: rangeKey, seq: e.seq }),
-      );
-      if (existing === null) {
-        await this.db.query("CREATE ONLY ledger_event CONTENT $data", { data: { ...e, rangeKey } });
-      }
+      if (seen.has(e.seq)) continue;
+      seen.add(e.seq);
+      batch.push(e);
     }
-    return this.getLedgerHead(rangeKey);
+    // One statement for the whole batch: the (rangeKey, seq) unique
+    // index turns a re-appended event into a no-op update of its own
+    // seq, so the first-written payload always wins — the same
+    // semantics the per-event check used to enforce. After the upsert
+    // every batch seq is stored, which is what head advancement needs.
+    await this.db.query("INSERT INTO ledger_event $rows ON DUPLICATE KEY UPDATE seq = seq", {
+      rows: batch.map((e) => ({ ...e, rangeKey })),
+    });
+    return this.advanceLedgerHead(rangeKey, seen);
   }
 
   async getLedgerEvents(rangeKey: string, afterSeq: number): Promise<StoredLedgerEvent[]> {
@@ -722,6 +741,13 @@ export class SurrealWorldStore implements WorldStore {
     // fake store filters and sorts in memory the same way, so the two
     // stores stay semantically identical. Covered by the long-stream
     // case in the state-plane store contract (600 events).
+    //
+    // A paged variant (ORDER BY seq + LIMIT/START) was tried and
+    // REJECTED on measurement (2026-10-26, embedded engine): 20,000
+    // rows took ~22 s paged vs ~1.3 s single-fetch — START re-scans
+    // the sorted stream per page on this engine. The single fetch is
+    // one round trip and its cost is the row transfer itself, which a
+    // recall cannot avoid anyway.
     const rows = rowList<Record<string, unknown>>(
       await this.db.query("SELECT * FROM ledger_event WHERE rangeKey = $rk", { rk: rangeKey }),
     );
@@ -732,6 +758,33 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async getLedgerHead(rangeKey: string): Promise<number> {
+    const counter = await this.readLedgerHeadCounter(rangeKey);
+    if (counter !== null) return counter;
+    // No counter yet (a range written before counters existed, or a
+    // fresh range): compute by the original scan once, store it, and
+    // every later read is the point read above.
+    const head = await this.scanLedgerHead(rangeKey);
+    await this.writeLedgerHeadCounter(rangeKey, head);
+    return head;
+  }
+
+  /** The stored contiguous head for a range, or null if never written. */
+  private async readLedgerHeadCounter(rangeKey: string): Promise<number | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY ledger_head WHERE rangeKey = $rk LIMIT 1", { rk: rangeKey }),
+    );
+    return row === null ? null : Number(row["head"]);
+  }
+
+  private async writeLedgerHeadCounter(rangeKey: string, head: number): Promise<void> {
+    await this.db.query("INSERT INTO ledger_head $rows ON DUPLICATE KEY UPDATE head = $head", {
+      rows: [{ rangeKey, head }],
+      head,
+    });
+  }
+
+  /** Contiguity scan over the whole stream (the pre-counter head computation). */
+  private async scanLedgerHead(rangeKey: string): Promise<number> {
     const rows = rowList<Record<string, unknown>>(
       await this.db.query("SELECT seq FROM ledger_event WHERE rangeKey = $rk ORDER BY seq ASC", { rk: rangeKey }),
     );
@@ -740,6 +793,46 @@ export class SurrealWorldStore implements WorldStore {
       if (Number(r["seq"]) !== head + 1) break;
       head += 1;
     }
+    return head;
+  }
+
+  /**
+   * Advance the stored head after an append. `present` holds the seqs
+   * this append knows are stored (its own batch); seqs stored by
+   * earlier out-of-order appends are probed in bounded equality-set
+   * chunks, so the walk crosses a filled gap without ever scanning
+   * the stream. Persists and returns the new head.
+   */
+  private async advanceLedgerHead(rangeKey: string, present: Set<number>): Promise<number> {
+    let head = (await this.readLedgerHeadCounter(rangeKey)) ?? (await this.scanLedgerHead(rangeKey));
+    for (;;) {
+      while (present.has(head + 1)) {
+        head += 1;
+        present.delete(head);
+      }
+      // Probe the next chunk of seqs beyond the head: if none of them
+      // are stored, the head cannot advance further this append.
+      const probe: number[] = [];
+      for (let s = head + 1; s <= head + 256; s++) probe.push(s);
+      const rows = rowList<Record<string, unknown>>(
+        await this.db.query("SELECT seq FROM ledger_event WHERE rangeKey = $rk AND seq IN $seqs", {
+          rk: rangeKey,
+          seqs: probe,
+        }),
+      );
+      if (rows.length === 0) break;
+      let advanced = false;
+      for (const r of rows) {
+        const seq = Number(r["seq"]);
+        if (!present.has(seq)) {
+          present.add(seq);
+          advanced = true;
+        }
+      }
+      if (!advanced) break;
+      if (!present.has(head + 1)) break;
+    }
+    await this.writeLedgerHeadCounter(rangeKey, head);
     return head;
   }
 
