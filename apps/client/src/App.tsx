@@ -44,6 +44,8 @@ import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { HudLayoutProvider, HudSlot, useHudJson } from "./ui/hud-slot.js";
 import { TargetFrame } from "./ui/target-frame.js";
+import { CombatHud, type CombatReticleTelemetry } from "./ui/combat-hud.js";
+import type { HitMessage } from "@mmo-engine/protocol";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
@@ -52,6 +54,7 @@ import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { CharacterSheet } from "./ui/character-sheet.js";
 import { BagPanel, EMPTY_WORN, type Worn } from "./ui/bag-panel.js";
 import { PouchPanel, tierColor } from "./ui/pouch-panel.js";
+import { nextShop, VendorPanel, type ShopView } from "./ui/vendor-panel.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
@@ -215,6 +218,10 @@ export function App(): React.ReactElement {
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
   // Gathering (0x24): the resource node in reach (its view re-read when the nodes change) and the materials pouch.
   const [nearResource, setNearResource] = useState<bigint | null>(null);
+  const [nearChest, setNearChest] = useState<bigint | null>(null);
+  // The shop E opened (protocol 0x21) and the player's gold.
+  const [shop, setShop] = useState<ShopView | null>(null);
+  const [gold, setGold] = useState<number | null>(null);
   const [, setResourcesSeen] = useState(0);
   const [pouch, setPouch] = useState<PouchMaterial[]>([]);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
@@ -245,6 +252,24 @@ export function App(): React.ReactElement {
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
   const streamingRef = useRef<{ onRegionChange: (endpoint: string) => void } | null>(null);
+  // Cross-region view (IM8): a read-only mirror per neighbouring region the player stands near.
+  const observersRef = useRef(new Map<string, MirrorClient>());
+  const closeObservers = (): void => {
+    for (const o of observersRef.current.values()) o.disconnect();
+    observersRef.current.clear();
+  };
+  useEffect(() => {
+    // Tell each neighbour where the player stands, so it sends what is near.
+    const id = setInterval(() => {
+      const c = clientRef.current;
+      const me = c?.playerEntity != null ? c.state.get(c.playerEntity)?.transform : undefined;
+      if (me) for (const o of observersRef.current.values()) o.sendObserve(me.px, me.pz);
+    }, 250);
+    return () => {
+      clearInterval(id);
+      closeObservers();
+    };
+  }, []);
   // The last skills message (M4): a discipline new since it is announced.
   const skillsRef = useRef<SkillsMessage | null>(null);
   const [mastery, setMastery] = useState<SkillsMessage | null>(null);
@@ -252,6 +277,18 @@ export function App(): React.ReactElement {
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
+  const [cameraView, setCameraView] = useState<"third" | "first">("third");
+  const [stanceState, setStanceState] = useState<{ technique: string | null; aim: string | null }>({ technique: null, aim: null });
+  const [lastPlayerHit, setLastPlayerHit] = useState<{ hit: HitMessage; atMs: number } | null>(null);
+  const [reticleTelemetry, setReticleTelemetry] = useState<CombatReticleTelemetry>({
+    hoveredEntity: null,
+    hoveredPart: null,
+    hoveredDistance: Infinity,
+    pitchAimPart: "torso",
+    activeMove: 0,
+    moveElapsed: 0,
+    pointerLocked: false,
+  });
 
   /** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient => {
@@ -287,7 +324,32 @@ export function App(): React.ReactElement {
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
       // asset requests go to the server that has the player now.
+      onBorder: (b) => {
+        if (clientRef.current !== c) return;
+        const open = observersRef.current.get(b.region);
+        if (b.leave) {
+          open?.disconnect();
+          observersRef.current.delete(b.region);
+          return;
+        }
+        if (open) return; // a renewed ticket: the open observer socket stays
+        const o = new MirrorClient((u) => new BrowserSocket(u), {
+          onWelcome: () => {},
+          onState: () => {},
+          onError: () => {},
+          onClose: () => {
+            if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
+          },
+        });
+        observersRef.current.set(b.region, o);
+        const { region, from, account, exp, ticket } = b;
+        void o.observe(b.endpoint, "mmo-client-observer", { region, from, account, exp, ticket }).catch(() => {
+          if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
+        });
+      },
       onRegionChange: (endpoint: string) => {
+        // The neighbours are different from the new region: they come again as border messages.
+        closeObservers();
         setUrl(endpoint);
         streamingRef.current?.onRegionChange(endpoint);
       },
@@ -319,6 +381,8 @@ export function App(): React.ReactElement {
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
         setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
+      onVendor: (v) => setShop((prev) => nextShop(prev, v)),
+      onWallet: (w) => setGold(w.balance),
       onResources: () => setResourcesSeen((n) => n + 1),
       onPouch: (p) => {
         setPouch(p.materials);
@@ -330,6 +394,9 @@ export function App(): React.ReactElement {
       onHit: (h) => {
         const player = clientRef.current?.playerEntity ?? null;
         combat.hit(h, player);
+        if (player !== null && BigInt(h.source) === player) {
+          setLastPlayerHit({ hit: h, atMs: performance.now() });
+        }
         // Only blows the player gives or takes make a sound, for now, from where the other party stands.
         if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) {
           const other = BigInt(h.source) === player ? BigInt(h.target) : BigInt(h.source);
@@ -353,6 +420,10 @@ export function App(): React.ReactElement {
         if (text) setNotice({ text, at: performance.now() });
       },
       onLife: (l) => combat.life(l),
+      onTelegraph: (tg) => {
+        combat.telegraphs.push(tg);
+        if (combat.telegraphs.length > 64) combat.telegraphs.shift(); // nothing draws them until the canvas mounts
+      },
       onTreatment: (t) => {
         const c = clientRef.current;
         const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
@@ -514,6 +585,7 @@ export function App(): React.ReactElement {
     (mode === "login" || password === confirmPassword);
 
   const disconnect = (): void => {
+    closeObservers();
     clientRef.current?.disconnect();
     clientRef.current = null;
     setAccount(null);
@@ -579,9 +651,15 @@ export function App(): React.ReactElement {
     const aims = AIMS.filter((a) => known.has(a));
     const st = stance.current;
     if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
-    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    else st.aim = st.aim + 1 >= aims.length ? -1 : st.aim + 1;
+    // technique computed above
+    // aim resolved below
     const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
-    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    // aim resolved below
+    const aim = st.aim >= 0 ? (aims[st.aim] ?? null) : null;
+    setStanceState({ technique, aim });
+    // technique computed above
+    // aim computed above
     c.stance(technique, aim);
     const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : t("stance.weapon"));
     setNotice({ text: t("stance.notice", { technique: label(technique), aim: label(aim) }), at: performance.now() });
@@ -592,6 +670,14 @@ export function App(): React.ReactElement {
   const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
+  // E with nothing in reach eats or drinks the selected hotkey item (any bag item of that definition).
+  const [hotkeyDef, setHotkeyDef] = useState<string | null>(null);
+  const bagRef = useRef(bag);
+  bagRef.current = bag;
+  const onUseHotkey = useCallback(() => {
+    const item = hotkeyDef === null ? undefined : bagRef.current?.find((i) => i?.def === hotkeyDef);
+    if (item) clientRef.current?.use(item.id);
+  }, [hotkeyDef]);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
 
@@ -630,6 +716,7 @@ export function App(): React.ReactElement {
       <div className="relative h-full w-full">
         <WorldCanvas
           client={client}
+          observers={() => observersRef.current.values()}
           assets={assets}
           pcg={pcg}
           lastStateAt={() => lastStateAtRef.current}
@@ -645,15 +732,26 @@ export function App(): React.ReactElement {
           onStance={onStance}
           onTreat={onTreat}
           onMend={onMend}
+          onUseHotkey={onUseHotkey}
           onNearDrop={setNearDrop}
           onNearResource={setNearResource}
+          onNearChest={setNearChest}
           onQuests={toggleQuests}
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
           instance={run !== null}
           getLook={() => lookRef.current}
+          // combat feedback and view
+          // combat feedback and view
           combat={combat}
           onCombat={setCombatView}
+          view={cameraView}
+          onViewChange={setCameraView}
+          stance={stanceState}
+          equippedMain={hands.main?.model || hands.main?.base || null}
+          equippedOff={hands.off?.model || hands.off?.base || null}
+          equippedMainColor={hands.main?.color}
+          onReticle={setReticleTelemetry}
           streamingRef={streamingRef}
           audio={audio}
         />
@@ -674,7 +772,32 @@ export function App(): React.ReactElement {
             </span>
           </div>
         )}
-        {!nearDrop && !dialog && !resource && nearNpc && (
+        {!nearDrop && !dialog && !resource && nearChest !== null && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            {(() => {
+              const v = client.chests.get(nearChest);
+              return v?.kind === "vendor" ? (
+                <>
+                  {t("interact.trade")} <span className="text-amber-200">{t("interact.shop")}</span>
+                </>
+              ) : v?.kind === "ruin" ? (
+                <>
+                  {t("interact.repair")} <span className="text-amber-200">{t("interact.building")}</span>
+                </>
+              ) : v?.kind === "door" ? (
+                <>
+                  {t(v.open ? "interact.close" : "interact.open")} <span className="text-amber-200">{t("interact.door")}</span>
+                </>
+              ) : (
+                <>
+                  {t("interact.open")} <span className="text-amber-200">{t("interact.chest")}</span>
+                </>
+              );
+            })()}
+          </div>
+        )}
+        {!nearDrop && !dialog && !resource && nearChest === null && nearNpc && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.talkTo")} <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
@@ -689,7 +812,7 @@ export function App(): React.ReactElement {
         )}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
-            <DungeonHud run={run} onOpen={() => clientRef.current?.dungeon({ kind: "dungeon", op: "open" })} />
+            <DungeonHud run={run} />
           </div>
         )}
         {run?.phase === "ended" && (
@@ -735,6 +858,15 @@ export function App(): React.ReactElement {
           <CastBar cast={cast} />
         </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
+        <CombatHud
+          view={cameraView}
+          technique={stanceState.technique}
+          lockedAim={stanceState.aim}
+          telemetry={reticleTelemetry}
+          mainWeapon={hands.main}
+          offWeapon={hands.off}
+          lastHit={lastPlayerHit}
+        />
         <SettingsMenu
           quality={quality === "auto" ? t("settings.qualityAuto", { tier: activeQuality?.active ?? "…" }) : quality}
           onQuality={cycleQuality}
@@ -781,6 +913,18 @@ export function App(): React.ReactElement {
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
         />
+        {shop && bag && (
+          <HudSlot id="vendor-panel" className="z-10">
+            <VendorPanel
+              shop={shop}
+              gold={gold}
+              bag={bag}
+              onBuy={(def) => client?.vendorBuy(shop.vendor, def)}
+              onSell={(item) => client?.vendorSell(shop.vendor, item)}
+              onClose={() => setShop(null)}
+            />
+          </HudSlot>
+        )}
         {bagOpen && bag && (
           <HudSlot id="bag-panel" className="z-10">
             <div>
@@ -789,9 +933,13 @@ export function App(): React.ReactElement {
               bag={bag}
               hands={hands}
               worn={worn}
+              gold={gold}
               onDrop={(id) => client?.dropItem(id)}
               onEquip={(id) => client?.equip(id)}
               onUnequip={(slot) => client?.unequip(slot)}
+              onUse={(id) => client?.use(id)}
+              hotkeyDef={hotkeyDef}
+              onHotkey={setHotkeyDef}
             />
             </div>
           </HudSlot>
@@ -807,6 +955,14 @@ export function App(): React.ReactElement {
           </HudSlot>
         )}
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setCameraView((v) => (v === "third" ? "first" : "third"))}
+            title={t("hud.view.toggleTitle")}
+          >
+            {cameraView === "first" ? t("hud.view.first") : t("hud.view.third")}
+          </Button>
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={t("hud.questLogTitle", { key: prettyCode(bindings.quests[0] ?? "KeyJ") })}>
             {t("hud.quests")}
           </Button>

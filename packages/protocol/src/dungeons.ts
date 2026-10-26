@@ -14,9 +14,7 @@
 
 export type DungeonOp =
   | { kind: "dungeon"; op: "enter"; entrance: string }
-  | { kind: "dungeon"; op: "state" }
-  /** Open the nearest unopened chest in reach (the server picks it). */
-  | { kind: "dungeon"; op: "open" };
+  | { kind: "dungeon"; op: "state" };
 
 export interface DungeonEntranceView {
   id: string;

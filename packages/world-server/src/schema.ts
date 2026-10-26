@@ -275,6 +275,27 @@ export const GetCharacterStateSchema = z
   .object({ regionId: REGION_ID, characterId: CHARACTER_ID })
   .strict();
 
+/** PL3c: one guild (members, officer log), party, friends list or block list. */
+export const MAX_SOCIAL_DOC_BYTES = 64 * 1024;
+const SOCIAL_KIND = z.enum(["guild", "party", "friends", "blocks"]);
+
+export const PutSocialRecordSchema = z
+  .object({
+    regionId: REGION_ID,
+    kind: SOCIAL_KIND,
+    key: z.string().min(1).max(128),
+    doc: opaque(MAX_SOCIAL_DOC_BYTES, "doc"),
+    expectedVersion: UINT,
+    opId: OP_ID,
+  })
+  .strict();
+
+export const GetSocialRecordsSchema = z.object({ regionId: REGION_ID, kind: SOCIAL_KIND }).strict();
+
+export const AllocateSocialIdsSchema = z
+  .object({ regionId: REGION_ID, kind: z.enum(["guild", "party"]), count: z.number().int().min(1).max(64), opId: OP_ID })
+  .strict();
+
 export const AcquireCharacterLockSchema = z
   .object({
     regionId: REGION_ID,

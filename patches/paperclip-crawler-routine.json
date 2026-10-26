@@ -1,0 +1,36 @@
+{
+  "routine": {
+    "title": "NexusMMOEngine Data & Memory Management Improvement Crawler",
+    "description": "Crawls OpenAlex, Crossref, and arXiv for academic theses and peer-reviewed research on Data-Oriented Design (DoD), SIMD vectorization, lock-free ring buffers, Morton Z-order spatial hashing, and generational slab allocators. Synthesizes direct implementation Markdown specs in patches/ and delegates implementation tasks to the Gemini agent.",
+    "concurrencyPolicy": "coalesce_if_active",
+    "catchUpPolicy": "skip_missed",
+    "variables": [
+      {
+        "name": "focusDomain",
+        "type": "text",
+        "defaultValue": "data-and-memory-management",
+        "required": true,
+        "description": "Primary engine research domain to query and analyze"
+      },
+      {
+        "name": "targetAssignee",
+        "type": "text",
+        "defaultValue": "Gemini",
+        "required": true,
+        "description": "Target agent to assign generated patch implementation issues to"
+      }
+    ],
+    "triggers": [
+      {
+        "kind": "schedule",
+        "cronExpression": "0 4 * * 1",
+        "timezone": "America/New_York"
+      },
+      {
+        "kind": "webhook",
+        "signingMode": "hmac_sha256"
+      }
+    ],
+    "command": "npm run crawler:improvements"
+  }
+}

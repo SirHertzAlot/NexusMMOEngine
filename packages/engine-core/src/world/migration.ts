@@ -95,6 +95,9 @@ export class MigrationCoordinator {
   /** Open outgoing migrations, for stats and tests. */
   get pendingOutgoing(): ReadonlyMap<string, { migrationId: string; toRegion: string }> { return this.outgoing; }
 
+  /** The registry as last read (cross-region view, IM8). */
+  get knownRegions(): readonly RegionInfo[] { return this.regions; }
+
   async refreshRegistry(): Promise<void> {
     this.regions = await this.opts.world.listRegions();
   }

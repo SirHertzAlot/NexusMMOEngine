@@ -164,6 +164,7 @@ export function newEntry(table: "items" | "creatures", bases: string[]): Record<
 export const GATHERING_FIELDS: FieldSpec[] = [
   { key: "reachM", label: "Reach from a node's edge (m)", kind: "number", min: 0, def: 2.5 },
   { key: "cooldownSeconds", label: "One gather every (s)", kind: "number", min: 0, def: 1.2 },
+  { key: "castSeconds", label: "One gather takes (s)", kind: "number", min: 0, def: 2, help: "The cast bar. 0 gathers at once." },
   { key: "pouchMax", label: "Pouch holds of a material", kind: "number", int: true, min: 1, def: 999 },
   { key: "trainDifficultyPerTier", label: "Training difficulty per tier", ...share, def: 0.2 },
   { key: "regrowCheckSeconds", label: "Check for regrowth every (s)", kind: "number", min: 0, def: 1, help: "How soon a node that is due comes back." },

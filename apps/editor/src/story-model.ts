@@ -24,10 +24,12 @@ export interface QuestDoc {
   giver: string;
   summary: string;
   steps: Array<{ id: string; text: string; objective: Record<string, unknown> }>;
-  rewards?: Array<{ base: string; count?: number }>;
+  rewards?: QuestReward[];
   repeatable?: boolean;
   after?: string[];
 }
+/** A quest reward (engine-core quests/content.ts RewardSchema): an item base, how many, and gold. */
+export interface QuestReward { base: string; count?: number; gold?: number }
 export interface QuestsDoc { version: 1; quests: Record<string, QuestDoc> }
 
 export interface GraphNode {
@@ -122,6 +124,14 @@ export function addReply(d: DialogDoc, node: string, reply: DialogReply): Dialog
   const out = copy(d);
   out.nodes[node].replies.push(reply);
   return out;
+}
+
+/**
+ * Rewards with reward `i` patched: its other fields are kept, and a field
+ * patched to undefined (a cleared input) is dropped.
+ */
+export function patchReward(rewards: readonly QuestReward[], i: number, patch: Partial<QuestReward>): QuestReward[] {
+  return rewards.map((r, j) => (j !== i ? r : (Object.fromEntries(Object.entries({ ...r, ...patch }).filter(([, v]) => v !== undefined)) as unknown as QuestReward)));
 }
 
 /** Rename a node; the start and every reply that led to it follow. */

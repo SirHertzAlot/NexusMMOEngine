@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  addDialogNode, addReply, deleteDialogNode, dialogGraph, questGraph, renameDialogNode, startTest, type DialogDoc, type QuestsDoc,
+  addDialogNode, addReply, deleteDialogNode, dialogGraph, patchReward, questGraph, renameDialogNode, startTest, type DialogDoc, type QuestsDoc,
 } from "../src/story-model.js";
 
 const REPO = dirname(fileURLToPath(new URL("../../../../package.json", import.meta.url)));
@@ -109,5 +109,15 @@ describe("dialog tester", () => {
   it("picking a reply that isn't available does nothing", () => {
     const t = fresh();
     assert.equal(t.pick(t.replies.findIndex((r) => !r.available)).node, "greet");
+  });
+});
+
+describe("patchReward", () => {
+  it("keeps every other field of the reward, and drops a cleared one", () => {
+    const rewards = [{ base: "dagger", count: 2, gold: 50 }, { base: "sword" }];
+    assert.deepEqual(patchReward(rewards, 0, { base: "axe" }), [{ base: "axe", count: 2, gold: 50 }, { base: "sword" }]);
+    assert.deepEqual(patchReward(rewards, 1, { gold: 10 })[1], { base: "sword", gold: 10 });
+    assert.deepEqual(patchReward(rewards, 0, { count: undefined })[0], { base: "dagger", gold: 50 });
+    assert.deepEqual(rewards[0], { base: "dagger", count: 2, gold: 50 }, "the input is not changed");
   });
 });

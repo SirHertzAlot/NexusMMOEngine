@@ -54,8 +54,18 @@ import {
   type SetPresenceInput,
   type ShardSnapshotRecord,
   type SnapshotReportInput,
+  type SocialRecord,
   type StoredLedgerEvent,
+  type AllocateSocialIdsInput,
+  type GetSocialRecordsInput,
+  type PutSocialRecordInput,
 } from "./types.js";
+
+/**
+ * World guild and party ids start here (PL3c): a region's own ids from before fleet mode count up from 1,
+ * so they can never be mistaken for a world id at its first fleet boot.
+ */
+export const SOCIAL_ID_BASE = 1_000_000_000;
 
 function rangesOverlap(a: ChunkRange, b: ChunkRange): boolean {
   return a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
@@ -581,6 +591,43 @@ export class WorldCoreImpl implements WorldCore {
   async getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null> {
     await this.knownRegion(caller, input.regionId);
     return this.store.getCharacterState(input.characterId);
+  }
+
+  /** PL3c: a guild, party, friends or blocks record; version-guarded (409 when the writer's view is stale). */
+  async putSocialRecord(caller: string, input: PutSocialRecordInput): Promise<SocialRecord> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as SocialRecord;
+    const existing = await this.store.getSocialRecord(input.kind, input.key);
+    const stored = existing?.version ?? 0;
+    if (stored !== input.expectedVersion) {
+      throw new WorldError(409, `${input.kind} ${input.key} is at version ${stored}, not ${input.expectedVersion}`);
+    }
+    const record: SocialRecord = {
+      kind: input.kind,
+      key: input.key,
+      doc: input.doc,
+      version: stored + 1,
+      regionId: caller,
+      updatedAt: Date.now(),
+    };
+    await this.store.putSocialRecord(record);
+    await this.store.storeOpResult(input.opId, record);
+    return record;
+  }
+
+  async getSocialRecords(caller: string, input: GetSocialRecordsInput): Promise<SocialRecord[]> {
+    await this.knownRegion(caller, input.regionId);
+    return this.store.listSocialRecords(input.kind);
+  }
+
+  async allocateSocialIds(caller: string, input: AllocateSocialIdsInput): Promise<number[]> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as number[];
+    const ids = (await this.store.allocateSocialIds(input.kind, input.count)).map((n) => SOCIAL_ID_BASE + n);
+    await this.store.storeOpResult(input.opId, ids);
+    return ids;
   }
 
   /**

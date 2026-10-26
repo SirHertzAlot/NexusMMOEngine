@@ -197,8 +197,10 @@ function envBlock(c) {
   const notes = [];
   if (towns.length) {
     const t = towns[0];
-    vars.push(["MMO_SCENES", p.scenesDir], ["MMO_SCENE", `settlement-${t.id}`], ["MMO_SPAWN_OVERRIDE", `${Math.round(t.x)},${Math.round(t.z)}`]);
-    for (const o of towns.slice(1)) notes.push(`other town ${o.id}: MMO_SCENE=settlement-${o.id} MMO_SPAWN_OVERRIDE=${Math.round(o.x)},${Math.round(o.z)}`);
+    // "world": every baked town plus the places scene (scene-spawn.ts sceneNames); players enter at the best town.
+    vars.push(["MMO_SCENES", p.scenesDir], ["MMO_SCENE", "world"], ["MMO_SPAWN_OVERRIDE", `${Math.round(t.x)},${Math.round(t.z)}`]);
+    for (const o of towns.slice(1)) notes.push(`town ${o.id} at ${Math.round(o.x)},${Math.round(o.z)} (MMO_SPAWN_OVERRIDE to enter there)`);
+    notes.push(`one town only: MMO_SCENE=settlement-${t.id}; a list works too: MMO_SCENE=settlement-${t.id},places`);
   } else notes.push("no town baked yet: run the settlement step");
   if (existsSync(p.scaleOut)) vars.push(["MMO_SCALE", p.scaleOut]);
   if (existsSync(p.ecologyOut)) vars.push(["MMO_ECOLOGY", p.ecologyOut]);

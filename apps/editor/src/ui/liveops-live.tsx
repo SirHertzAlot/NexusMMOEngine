@@ -142,6 +142,7 @@ function AvatarControls(): React.JSX.Element {
   const [base, setBase] = React.useState("");
   const [rank, setRank] = React.useState("");
   const [count, setCount] = React.useState("5");
+  const [gold, setGold] = React.useState("100");
   const num = (s: string): number | null => (s.trim() !== "" && Number.isFinite(Number(s)) ? Number(s) : null);
   const row = "flex flex-wrap items-center gap-2";
   return (
@@ -181,6 +182,14 @@ function AvatarControls(): React.JSX.Element {
             if (n === null || n < 1) return void notify("count is a number above 0");
             void runAdmin(`loot count=${n}`, "loot", { count: n });
           }}>Drop loot</Button>
+        </div>
+        <div className={row}>
+          <Input style={{ width: 80 }} value={gold} onChange={(e) => setGold(e.target.value)} aria-label="Gold amount" inputMode="numeric" />
+          <Button size="sm" onClick={() => {
+            const n = num(gold);
+            if (n === null || n < 1 || !Number.isInteger(n)) return void notify("gold is a whole number above 0");
+            void runAdmin(`gold amount=${n}`, "gold", { amount: n });
+          }}>Gold</Button>
         </div>
       </div>
     </Card>

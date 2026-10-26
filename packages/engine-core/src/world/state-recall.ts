@@ -85,6 +85,8 @@ export interface ShardStateRecallOptions {
   store: SnapshotStore;
   ledger: ItemLedger;
   log?: (line: string) => void;
+  /** Write the world snapshot's `places` (PL3a: resource node stocks) into the local stores before they open. */
+  seedPlaces?: (places: Record<string, unknown>) => void;
 }
 
 export interface ShardRecallOutcome {
@@ -291,6 +293,12 @@ export async function recallShardState(
       derived.generations,
       derived.entityCount,
     );
+    // The range's places ride the same record (PL3a): the world's copy replaces the local one.
+    const places = (snapshot.payload as Record<string, unknown>)["places"];
+    if (opts.seedPlaces && places !== null && typeof places === "object" && !Array.isArray(places)) {
+      opts.seedPlaces(places as Record<string, unknown>);
+      log(`persistence recall: seeded places (${Object.keys(places).join(", ")}) from the world snapshot for range ${rangeKey}`);
+    }
     if (localTick !== null && localTick !== snapshot.tick) {
       log(
         `persistence recall: DIVERGENCE for range ${rangeKey}: local snapshot tick ${localTick} superseded by the world snapshot (epoch ${snapshot.epoch}, tick ${snapshot.tick}) — the world is the single source of truth in fleet mode; local copy NOT restored`,

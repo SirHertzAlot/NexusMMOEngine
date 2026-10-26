@@ -25,9 +25,79 @@ every placement command does this.
 // Drop one at your feet for anyone to pick up.
 {command: "drop", args: {base: "sword"}}
 
+// …or at an exact spot. With `fixture: true` it is placed as a fixture:
+// it lies there for anyone and never despawns on the timer (the form
+// scene ItemSpawn nodes use at boot).
+{command: "drop", args: {base: "sword", x: 120, z: -40}}
+{command: "drop", args: {base: "sword", x: 120, z: -40, fixture: true}}
+
 // Exact def by its string id (from the `items` output).
 {command: "give", args: {def: "abc123..."}}
 ```
+
+## Bags — take, move, count, identify
+
+The `items` command's sub-actions run the ItemService bag verbs
+against the console holder's bag (the same holder `give` fills):
+
+```js
+// How many swords am I carrying?
+{command: "items", args: {sub: "countbase", base: "sword"}}
+// → "you carry 2 × sword"
+
+// Which definition is this item instance? (ids come from give/drop
+// messages and the inventory.)
+{command: "items", args: {sub: "defof", item: 1234}}
+// → "item 1234: Flaming Steel Sword [rare sword] abc123..."
+
+// Take an item out of your bag and destroy it — by instance id, or
+// one of a base.
+{command: "items", args: {sub: "take", item: 1234}}
+{command: "items", args: {sub: "take", base: "sword"}}
+
+// Move an item to another character's bag. `to` (and `from`, which
+// defaults to you) are character ids — an entity's is in its
+// `inspect` dump ("CharacterRef: character <id>").
+{command: "items", args: {sub: "move", item: 1234, to: 77}}
+```
+
+## Components — add one, tune it, take it off again
+
+`set` writes fields of a component an entity already has. To give an
+entity a component it lacks, add it first — it starts at the
+component's defaults, exactly as if it had spawned with it:
+
+```js
+{command: "addcomponent", args: {entity: "12345", component: "FlowRef"}}
+// → "FlowRef added to 12345 (graph=0 enabled=1)"
+
+// …then tune fields with set, and read the result back with inspect.
+{command: "set", args: {entity: "12345", component: "FlowRef", field: "graph", value: 12345}}
+{command: "inspect", args: {entity: "12345"}}
+```
+
+Addable components (each starts at its defaults): Transform, Velocity,
+PlayerIntent, Health (100/100), Stamina (100/100), Needs (full),
+BodyConfig (a 0.5 static box — the scene Collider's ECS form),
+Locomotion, CharacterRef (unassigned), FlowRef, VfxEmitter,
+AudioEmitter. Adding a component the entity already has refuses, and
+components whose rows are system-owned state (PathState, NavAgent,
+WorldItem, Chunk, Animation, Action, AssetRef, Appearance) have no
+defined defaults and refuse by name.
+
+`removecomponent` is the inverse — the authoring layer's unbind. It
+takes a component off a live entity through the normal ECS path, so
+queries, systems and `inspect` stop seeing it:
+
+```js
+{command: "removecomponent", args: {entity: "12345", component: "FlowRef"}}
+// → "FlowRef removed from 12345"
+```
+
+Removing a component the entity lacks refuses. Every registered
+component is removable except **God** and **Noclip**: those stay with
+their `god` / `noclip` toggle commands, which own the session-facing
+side of the state, and `removecomponent` refuses them by name.
 
 ## Gold — grant and check
 
@@ -97,8 +167,11 @@ within 4 metres of the NPC. The shop list shows real item names.
 | Command   | What it places/manages        | Key args |
 |-----------|-------------------------------|----------|
 | `items`   | Browse item defs              | `base?`, `rank?`, `source?`, `def?` |
+| `items`   | Bag verbs (sub-actions)       | `sub: take\|move\|defof\|countbase`, `item?`, `base?`, `from?`, `to?` |
 | `give`    | Item → your bag               | same as `items` |
-| `drop`    | Item → ground at your feet    | same as `items` |
+| `drop`    | Item → ground (at your feet, or at `x`/`z`; `fixture` stays) | pick + `x?`, `z?`, `fixture?` |
+| `addcomponent` | Component → entity, at its defaults | `entity`, `component` |
+| `removecomponent` | Component off an entity (unbind) | `entity`, `component` |
 | `gold`    | Gold → your wallet            | `amount` |
 | `spawn`   | Creature pack / prop          | `asset`, `x?`, `z?`, `yaw?` |
 | `spawnlist` | List placeable archetypes   | — |

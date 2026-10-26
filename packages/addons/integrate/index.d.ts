@@ -40,3 +40,39 @@ export declare function copyPositions(
 export declare function deleteWorld(handle: WorldHandle): void;
 
 export declare function worldSize(handle: WorldHandle): number;
+
+/**
+ * Zero-copy C++ simulation core step over an 8-word-strided SharedArrayBuffer Float32Array
+ * (ENGINE_IMPLEMENTATION_SPEC.md Section 4).
+ */
+export declare function stepSimulation(
+  floatMatrixView: Float32Array,
+  entityCount: number,
+  dt: number,
+): boolean;
+
+/**
+ * DoD Planar SoA branchless SIMD integration kernel.
+ */
+export declare function stepSimulationSoA(
+  px: Float32Array,
+  py: Float32Array,
+  pz: Float32Array,
+  vx: Float32Array,
+  vy: Float32Array,
+  vz: Float32Array,
+  hp: Int32Array,
+  entityCount: number,
+  dt: number,
+): boolean;
+
+/**
+ * Fused DoD Intent-Decode + Integration kernel over the strided SAB matrix.
+ */
+export declare function applyIntentsAndStep(
+  floatMatrixView: Float32Array,
+  entityCount: number,
+  dt: number,
+  baseSpeed: number,
+): boolean;
+

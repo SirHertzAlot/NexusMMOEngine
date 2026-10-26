@@ -3,7 +3,10 @@
  *
  * `MMO_SCENE=<name>` makes the server read `content/scenes/<name>.scene.json`
  * (or `<MMO_SCENES>/<name>.scene.json`) and spawn the nodes of a world,
- * instance or arena scene as ordinary entities through the paths admin
+ * instance or arena scene; a comma-separated list spawns each, and `world`
+ * names every baked town (`settlement-*`) plus `places` (sceneNames). Under
+ * REGION_CHUNK_RANGE only the nodes inside the shard's range spawn (`inRange`).
+ * The nodes become ordinary entities through the paths admin
  * `spawn` uses: a creature kind through the CreatureSystem (a pack, like
  * `spawn goblin`), a spawn-table archetype through `spawnScatterEntity`.
  * The client never reads a scene; it sees these entities on the wire.
@@ -31,7 +34,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fnv1a32, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
+import { fnv1a32, type Breakable as BreakableDef, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
 import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
 import { BodyConfig, ShapeKind } from "./components.js";
@@ -84,6 +87,16 @@ export interface SceneSpawnDeps {
   quests?: { place(quest: string, x: number, z: number): string | null };
   /** Resource nodes (a Structure with a ResourceNode: tree stands, ore veins, fishing spots): `register` makes the spawned entity gatherable, keyed by scene and node id. */
   resources?: { register(eid: number, key: string, spec: ResourceNodeSpec): void };
+  /** World chests (a Structure with a Chest component: loot `table`, `refillSeconds`): `register` makes the spawned entity openable. */
+  /** Breakable props (a Structure with a Breakable component): `register` makes the spawned entity break at zero health, under the scene and node id. */
+  breakables?: { register(eid: number, key: string, def: BreakableDef): void };
+  /** What a Structure `kind` breaks like when its node has no Breakable component of its own (content/structures.json): buildings, walls, gates. */
+  structureBreakable?: (kind: string) => BreakableDef | undefined;
+  /** A shop (a node with a Vendor component): `attach` makes the spawned entity a vendor of the named template; returns an error text, or null. */
+  vendors?: { attach(eid: number, template: string): string | null };
+  /** A region shard's range (REGION_CHUNK_RANGE): nodes outside it are another shard's and are skipped. */
+  inRange?: (x: number, z: number) => boolean;
+  chests?: { register(eid: number, key: string, spec: { kind?: "chest" | "door"; table?: string; refillSeconds?: number; castSeconds?: number; requires?: { base: string; consume: boolean } }): void };
 }
 
 export interface SceneSpawnResult {
@@ -117,6 +130,24 @@ export function loadPrefabs(dir: string): Record<string, PrefabDoc> {
 export interface SceneMeta {
   getMeta(key: string): string | null;
   setMeta(key: string, value: string): void;
+}
+
+/**
+ * MMO_SCENE as scene names: a comma-separated list, where `world` stands for every baked
+ * town in `dir` (settlement-*.scene.json, sorted) and then `places` when it exists.
+ */
+export function sceneNames(dir: string, spec: string): string[] {
+  const names = spec.split(",").map((s) => s.trim()).filter(Boolean).flatMap((n) =>
+    n !== "world" ? [n] : [
+      ...(existsSync(dir) ? readdirSync(dir) : []).filter((f) => /^settlement-.+\.scene\.json$/.test(f)).sort().map((f) => f.slice(0, -".scene.json".length)),
+      ...(existsSync(join(dir, "places.scene.json")) ? ["places"] : []),
+    ]);
+  return [...new Set(names)];
+}
+
+/** Every scene MMO_SCENE names, read and validated. */
+export function loadScenes(dir: string, spec: string): SceneDoc[] {
+  return sceneNames(dir, spec).map((n) => loadSceneFile(dir, n));
 }
 
 /** Read and validate a scene a server can run (not a frontend scene). */
@@ -168,6 +199,10 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       continue;
     }
     const [x, y, z] = w.position;
+    if (deps.inRange && !deps.inRange(x, z)) {
+      out.skipped.push({ id: node.id, reason: "outside this region's range" });
+      continue;
+    }
     const ground = deps.groundHeightAt?.(x, z) ?? 0;
     // An item on the ground, a quest's post: placed things with no creature behind them.
     const item = node.components?.ItemSpawn;
@@ -266,7 +301,42 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
             halfZ: hd,
           });
         }
-        out.spawned.push({ id: node.id, what: resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
+        const chest = node.components?.Chest ?? node.components?.Door;
+        if (chest && deps.chests) {
+          const requires = str(chest.requires);
+          deps.chests.register(building, `${doc.name}/${node.id}`, {
+            kind: node.components?.Door ? "door" : "chest",
+            table: str(chest.table),
+            refillSeconds: Number(chest.refillSeconds ?? 600),
+            castSeconds: Number(chest.castSeconds ?? 0),
+            ...(requires ? { requires: { base: requires, consume: chest.consume === true } } : {}),
+          });
+        }
+        const shop = node.components?.Vendor;
+        if (shop && deps.vendors) {
+          const problem = deps.vendors.attach(building, str(shop.template));
+          if (problem) out.skipped.push({ id: node.id, reason: `vendor not attached: ${problem}` });
+        }
+        const brk = node.components?.Breakable;
+        const byKind = !brk && deps.breakables ? deps.structureBreakable?.(kind) : undefined;
+        if (byKind && deps.breakables) deps.breakables.register(building, `${doc.name}/${node.id}`, byKind);
+        if (brk && deps.breakables) {
+          const into = str(brk.into);
+          deps.breakables.register(building, `${doc.name}/${node.id}`, {
+            health: Number(brk.health ?? 50),
+            into: into === "variant" || into === "debris" ? into : "remove",
+            ...(str(brk.debris) ? { debris: str(brk.debris) } : {}),
+            ...(str(brk.loot) ? { loot: str(brk.loot) } : {}),
+            respawnS: Number(brk.respawnSeconds ?? 0) > 0 ? Number(brk.respawnSeconds) : null,
+            ...(Number(brk.minStrength ?? 0) > 0 ? { minStrength: Number(brk.minStrength) } : {}),
+            ...(() => {
+              const m = { cut: Number(brk.cutMultiplier ?? 1), blunt: Number(brk.bluntMultiplier ?? 1), thrust: Number(brk.thrustMultiplier ?? 1) };
+              return Object.values(m).some((v) => v !== 1) ? { damageMultipliers: m } : {};
+            })(),
+            ...(str(brk.repairMaterial) ? { repair: { material: str(brk.repairMaterial), count: Math.max(1, Math.round(Number(brk.repairCount ?? 1))), castSeconds: Number(brk.repairSeconds ?? 4) } } : {}),
+          });
+        }
+        out.spawned.push({ id: node.id, what: chest ? (node.components?.Door ? "door" : "chest") : resource ? `resource ${kind} (${str(resource.material)})` : `structure ${kind}`, entities });
       }
       continue;
     }
@@ -315,8 +385,8 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
   return out;
 }
 
-/** Remove what the previous boot spawned, spawn the scene, remember the new entities. */
-export function spawnSceneOnBoot(doc: SceneDoc, deps: SceneSpawnDeps, meta: SceneMeta): SceneSpawnResult {
+/** Remove what the previous boot spawned, spawn the scene(s), remember the new entities (all scenes under one record). */
+export function spawnSceneOnBoot(docs: SceneDoc | SceneDoc[], deps: SceneSpawnDeps, meta: SceneMeta): SceneSpawnResult {
   const previous = meta.getMeta(META_KEY);
   if (previous) {
     for (const wire of JSON.parse(previous) as string[]) {
@@ -327,7 +397,12 @@ export function spawnSceneOnBoot(doc: SceneDoc, deps: SceneSpawnDeps, meta: Scen
   // Items the previous boot placed come back from the ledger: discard what still lies there.
   const prevItems = meta.getMeta(ITEMS_KEY);
   if (prevItems && deps.items) deps.items.discard(JSON.parse(prevItems) as number[]);
-  const result = spawnScene(doc, deps);
+  const result: SceneSpawnResult = { spawned: [], skipped: [] };
+  for (const doc of ([] as SceneDoc[]).concat(docs)) {
+    const r = spawnScene(doc, deps);
+    result.spawned.push(...r.spawned);
+    result.skipped.push(...r.skipped);
+  }
   meta.setMeta(ITEMS_KEY, JSON.stringify(result.spawned.flatMap((s) => s.items ?? [])));
   meta.setMeta(META_KEY, JSON.stringify(result.spawned.flatMap((s) => s.entities).map((e) => deps.sim.wireId(e).toString())));
   return result;

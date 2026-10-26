@@ -1,0 +1,1 @@
+{"dependsOn":[],"description":"Settlement residents (SG3b): the baked towns' people live a day in the world.","name":"residents","server":{"entry":"server.js","systems":[{"name":"residents","optional":true}]},"version":"0.1.0"}

@@ -81,19 +81,37 @@ export class PartyBook {
   /** Size and timeouts (social.json `party`, EG9); setRules swaps them on a rules reload. */
   limits = { max: PARTY_MAX, inviteMs: INVITE_TTL_MS, offlineMs: OFFLINE_TTL_MS };
 
+  /** Fleet mode (PL3c): a new party's id comes from the world (null: none to hand right now). Unset: counted here. */
+  ids: (() => number | null) | null = null;
+
   constructor(
     private readonly clock: () => number = Date.now,
     private readonly store: PartyStore = memoryPartyStore(),
   ) {
-    const now = clock();
-    for (const r of store.loadAll()) {
+    this.load();
+  }
+
+  /**
+   * Read every party again from the store (another region changed some, PL3c). Invites stay; a member
+   * this region hadn't seen is offline here from now (they play elsewhere), the rest keep their state.
+   */
+  reload(): void {
+    const known = new Set(this.byMember.keys());
+    this.parties.clear();
+    this.byMember.clear();
+    this.load(known);
+  }
+
+  private load(known: ReadonlySet<string> = new Set()): void {
+    const now = this.clock();
+    for (const r of this.store.loadAll()) {
       const party: Party = { id: r.id, members: r.members.map((m) => m.key), leader: r.leader };
       this.parties.set(r.id, party);
       for (const m of r.members) {
         this.byMember.set(m.key, r.id);
         this.names.set(m.key, m.name);
         // A restart is a logout for everyone: the offline timer starts now.
-        this.offline.set(m.key, now);
+        if (!known.has(m.key)) this.offline.set(m.key, now);
       }
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
@@ -163,7 +181,9 @@ export class PartyBook {
     if (!party) {
       // A first invite makes the party when it is accepted, if the inviter is still free.
       if (inv.party !== 0 || this.byMember.has(inv.from)) return { ok: false, reason: "invite is no longer valid" };
-      party = { id: this.nextId++, members: [inv.from], leader: inv.from };
+      const id = this.ids ? this.ids() : this.nextId++;
+      if (id === null) return { ok: false, reason: "parties can't be formed this moment; try again shortly" };
+      party = { id, members: [inv.from], leader: inv.from };
       this.parties.set(party.id, party);
       this.byMember.set(inv.from, party.id);
     }

@@ -1,6 +1,30 @@
 {
   "version": 1,
   "dialogs": {
+    "townsfolk": {
+      "start": "greet",
+      "nodes": {
+        "greet": {
+          "text": "Good day, {name}. Folk here could use a hand.",
+          "replies": [
+            { "text": "The job is done.", "if": { "quest": "board", "is": "ready" }, "do": { "complete": "board" }, "next": "thanks" },
+            { "text": "Any work?", "if": { "quest": "board", "is": "available" }, "next": "board" },
+            { "text": "Farewell." }
+          ]
+        },
+        "board": {
+          "text": "Word is: {board}.",
+          "replies": [
+            { "text": "I'll take it.", "do": { "accept": "board" } },
+            { "text": "Not now.", "next": "greet" }
+          ]
+        },
+        "thanks": {
+          "text": "You have the town's thanks.",
+          "replies": [{ "text": "Farewell." }]
+        }
+      }
+    },
     "warden": {
       "start": "greet",
       "nodes": {

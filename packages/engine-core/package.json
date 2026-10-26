@@ -5,9 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/modules && node ../../scripts/dep-build.mjs @mmo-engine/channel && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/world-server && node ../../scripts/dep-build.mjs @mmo-engine/scatter && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/rules && node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/placement && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/crafting && tsc -p tsconfig.json",
-    "test": "npm run build && node --expose-gc --test --test-skip-pattern=\"latency budget\" \"dist/test/**/*.test.js\" && npm run test:perf",
-    "test:perf": "node --expose-gc --test --test-name-pattern=\"latency budget\" dist/test/persist/store.test.js",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/modules && node ../../scripts/dep-build.mjs @mmo-engine/channel && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/world-server && node ../../scripts/dep-build.mjs @mmo-engine/scatter && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/rules && node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/placement && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/crafting && node ../../scripts/dep-build.mjs @mmo-engine/settlement && node ../../scripts/dep-build.mjs @mmo-engine/fortify && tsc -p tsconfig.json",
+    "test": "npm run build && node --expose-gc --test --test-force-exit --test-skip-pattern=\"latency budget\" \"dist/test/**/*.test.js\" && npm run test:perf",
+    "test:perf": "node --expose-gc --test --test-force-exit --test-name-pattern=\"latency budget\" dist/test/persist/store.test.js",
     "sim": "npm run build && node dist/src/sim.js",
     "server": "npm run build && node dist/src/server.js",
     "test:gateway": "npm run build && node --test \"dist/test/net/**/*.test.js\"",
@@ -25,16 +25,17 @@
   "version": "0.1.0",
   "dependencies": {
     "@mmo-engine/addon-navigation": "0.1.0",
-    "@mmo-engine/channel": "^0.1.0",
-    "@mmo-engine/modules": "0.1.0",
-    "@mmo-engine/nethealth": "^0.1.0",
     "@mmo-engine/addon-physics": "0.1.0",
     "@mmo-engine/addon-picg": "0.1.0",
     "@mmo-engine/addon-procgen": "0.1.0",
     "@mmo-engine/addon-scatter": "0.1.0",
     "@mmo-engine/art": "0.1.0",
+    "@mmo-engine/channel": "^0.1.0",
     "@mmo-engine/compose": "0.1.0",
     "@mmo-engine/crafting": "0.1.0",
+    "@mmo-engine/fortify": "0.1.0",
+    "@mmo-engine/modules": "0.1.0",
+    "@mmo-engine/nethealth": "^0.1.0",
     "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/placement": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
@@ -55,6 +56,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@mmo-engine/mirror": "0.1.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/ws": "^8.18.1"
   },

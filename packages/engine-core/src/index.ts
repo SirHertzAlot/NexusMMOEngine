@@ -39,7 +39,6 @@ export {
   Appearance,
   Action,
   WorldItem,
-  StructuralIntegrity,
 } from "./components.js";
 export * from "./items/index.js";
 
@@ -305,6 +304,7 @@ export type {
   WorldCharacterState,
   WorldCharacterSyncOptions,
   CharacterEconomyView,
+  CharacterExtrasView,
 } from "./world/character-sync.js";
 export {
   recallShardState,
@@ -373,7 +373,7 @@ export { SqliteFriendStore } from "./friend-store.js";
 export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
 export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
 export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
-export { CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
+export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
 export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";
@@ -384,9 +384,7 @@ export {
   startCoreChannel,
   createCoreChannelHandler,
   pushTick,
-  isSnapshotTick,
   coreChannelPort,
-  SNAPSHOT_EVERY_TICKS,
   createCoreMetrics,
   CORE_METRIC_NAMES,
 } from "./channel-server.js";
@@ -394,3 +392,100 @@ export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHo
 export type { GatewayTick } from "./net/gateway.js";
 export { backupWorld, discardBackup, hasBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
 export * from "./server-settings.js";
+
+// Zero-Copy Hybrid Engine Data Plane (ENGINE_IMPLEMENTATION_SPEC.md)
+export {
+  SAB_ENTITY_CAPACITY,
+  DATA_PLANE_ENTITY_CAPACITY,
+  BYTES_PER_FLOAT,
+  BYTES_PER_INT,
+  CACHE_LINE_BYTES,
+  SOA_LAYOUT,
+  INTENT_FLAGS,
+  OFFSETS,
+  TELEMETRY_SLOTS,
+  alignCacheLine,
+  computeArenaOffsets,
+  createSharedMemoryPlane,
+  attachSharedMemoryPlane,
+  syncMatrixToPlanar,
+  syncPlanarToMatrix,
+  sabBackComponent,
+  defineSABComponent,
+} from "./sab-store.js";
+export type {
+  MemoryArenaOffsets,
+  PlanarSoAViews,
+  SharedMemoryPlaneViews,
+} from "./sab-store.js";
+
+export {
+  SPSC_CACHE_LINE_BYTES,
+  SPSC_HEADER_BYTES,
+  packCommandToken,
+  unpackCommandToken,
+  AtomicSPSCQueue,
+  PERSIST_TX_KIND,
+  AtomicSPSCTransactionQueue,
+} from "./lockless-ring.js";
+export type { PersistTxKind, PersistTransaction } from "./lockless-ring.js";
+
+export {
+  TICK_RATE_HZ,
+  FRAME_BUDGET_MS,
+  DT,
+  DEFAULT_INPUT_RING_CAPACITY,
+  DEFAULT_PERSIST_RING_CAPACITY,
+  DEFAULT_BASE_SPEED,
+  loadNativeKernel,
+  SimWorkerRuntime,
+} from "./sim-worker.js";
+export type {
+  NativeEngineKernel,
+  SimExecutionMode,
+  SimWorkerConfig,
+  SimTickMetrics,
+} from "./sim-worker.js";
+
+export {
+  PERSIST_SCHEMA_SURREALQL,
+  loadPersistSchemaSurrealQL,
+  PersistenceWorkerRuntime,
+} from "./persist-worker.js";
+export type {
+  PersistWorkerConfig,
+  EntityPersistRecord,
+  InventorySlotRecord,
+} from "./persist-worker.js";
+
+export {
+  DEFAULT_DATA_PLANE_PORT,
+  WS_SIM_ROUTE,
+  encodeBinaryCommandFrame,
+  encodeBinaryCommandBatch,
+  HybridDataPlaneServer,
+} from "./data-plane-server.js";
+export type { HybridDataPlaneOptions } from "./data-plane-server.js";
+
+
+// PATCH-02, PATCH-03, PATCH-04, PATCH-05 Exports
+export {
+  MortonSpatialIndex,
+  encodeMorton2D,
+  decodeMorton2D,
+  part1By1,
+  compact1By1,
+  GenerationalSlabAllocator,
+  packEntityHandle,
+  unpackEntityHandle,
+  writeEntityStateToSAB,
+  readEntityStateFromSAB,
+  setEntityAliveBit,
+  type EntitySnapshot,
+} from "./sab-store.js";
+
+export {
+  AtomicMPSCQueue,
+  DEFAULT_RING_CAPACITY,
+  COMMAND_SLOT_UINT32_STRIDE,
+} from "./lockless-ring.js";

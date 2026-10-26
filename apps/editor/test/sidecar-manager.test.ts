@@ -9,7 +9,7 @@
 import { describe, it, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { get } from "node:http";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SidecarManager, type SidecarModule } from "../src/sidecar-manager.js";
@@ -171,8 +171,9 @@ describe("SidecarManager", () => {
 
   it("restarts a healthy sidecar that exits unexpectedly (EA11 supervision)", async () => {
     const port = nextPort++;
-    // A stub that exits after 300ms — the manager should restart it.
-    const crashStub = `\nconst http = require("http");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nsetTimeout(() => process.exit(1), 300);\n`;
+    // A stub that exits 300ms into its first life only (a marker file says it already crashed): the manager restarts it and it stays up.
+    const marker = join(dir, `crashed-${port}`);
+    const crashStub = `\nconst http = require("http");\nconst fs = require("fs");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nif (!fs.existsSync(${JSON.stringify(marker)})) { fs.writeFileSync(${JSON.stringify(marker)}, "1"); setTimeout(() => process.exit(1), 300); }\n`;
     writeFileSync(join(dir, "crash.js"), crashStub, "utf8");
     const mgr = tracked(
       new SidecarManager({
@@ -185,11 +186,12 @@ describe("SidecarManager", () => {
       { dir, manifest: { name: "crasher", sidecar: { command: `node crash.js ${port}`, port, health: "/health" } } },
     ]);
     assert.equal(report.status, "healthy");
-    // Wait for the crash + restart: the sidecar should come back.
-    assert.ok(await portOpenSoon(port, 60), "sidecar should be listening after restart");
-    // Give the restart a moment to register as healthy.
-    await new Promise((r) => setTimeout(r, 800));
+    // Wait for the crash and the restart: the sidecar comes back and stays.
+    await new Promise((r) => setTimeout(r, 500));
+    const deadline = Date.now() + 6000;
+    while (mgr.statusOf("crasher") !== "healthy" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
     assert.equal(mgr.statusOf("crasher"), "healthy");
+    assert.ok(await portOpenSoon(port, 60), "sidecar should be listening after restart");
     await mgr.stop();
   });
 
@@ -216,4 +218,73 @@ describe("SidecarManager", () => {
     assert.ok(lines.some((l) => l.includes("DISABLED after 1 restarts")), "should log the give-up");
     await mgr.stop();
   });
+
+  it("a crash loop leaves a dump of the error and its 5W1H context", async () => {
+    const port = nextPort++;
+    const dumpDir = join(dir, `dumps-${port}`);
+    const stub = `\nconst http = require("http");\nconst port = Number(process.argv[2]);\nhttp.createServer((req, res) => {\n  if (req.url === "/health") { res.writeHead(200); res.end("ok"); }\n  else { res.writeHead(404); res.end(); }\n}).listen(port, "127.0.0.1");\nconsole.error("boom: model file missing");\nsetTimeout(() => process.exit(3), 200);\n`;
+    writeFileSync(join(dir, "crash3.js"), stub, "utf8");
+    const mgr = tracked(
+      new SidecarManager({ healthTimeoutMs: 8000, pollIntervalMs: 100, dumpDir, restartPolicy: { maxRestarts: 1, baseBackoffMs: 100 } }),
+    );
+    await mgr.start([{ dir, manifest: { name: "brain", version: "1.2.3", sidecar: { command: `node crash3.js ${port}`, port, health: "/health" } } }]);
+    const deadline = Date.now() + 8000;
+    while (mgr.statusOf("brain") !== "unhealthy" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    const d = mgr.dumpOf("brain");
+    assert.ok(d, "a dump");
+    assert.equal(d.who.module, "brain");
+    assert.equal(d.who.version, "1.2.3");
+    assert.equal(d.what.trigger, "crash-loop");
+    assert.equal(d.what.error.exitCode, 3);
+    assert.ok(d.what.error.stderrTail.some((l) => l.includes("boom: model file missing")));
+    assert.equal(d.when.exits.length, 2);
+    assert.equal(d.where.port, port);
+    assert.equal(d.where.healthUrl, `http://127.0.0.1:${port}/health`);
+    assert.equal(d.why.restartPolicy.maxRestarts, 1);
+    assert.ok(d.how.command.includes("crash3.js"));
+    assert.ok(d.how.recentProbes.length > 0);
+    assert.ok(d.telemetry.instances >= 2);
+    assert.ok(Array.isArray(d.where.envKeys) && !JSON.stringify(d).includes(process.env.PATH ?? "\u0000never"), "env names only, never values");
+    const file = readdirDump(dumpDir);
+    assert.ok(file, "the dump is on disk");
+    assert.equal((JSON.parse(readFileSync(file, "utf8")) as { who: { module: string } }).who.module, "brain");
+  });
+
+  it("park stops a sidecar for good with a dump, and replace starts a fresh one", async () => {
+    const port = nextPort++;
+    const dumpDir = join(dir, `dumps-${port}`);
+    const mgr = tracked(new SidecarManager({ healthTimeoutMs: 8000, pollIntervalMs: 100, dumpDir, restartPolicy: { maxRestarts: 3, baseBackoffMs: 100 } }));
+    await mgr.start([stubMod("worker", port)]);
+    assert.equal(mgr.statusOf("worker"), "healthy");
+
+    const parked = await mgr.park("worker", "operator parked it");
+    assert.equal(parked.status, "parked");
+    assert.ok(parked.dumpFile && existsSync(parked.dumpFile), "dump written");
+    assert.ok(await portClosedSoon(port), "port closed after park");
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(mgr.statusOf("worker"), "parked", "a parked sidecar is not restarted");
+    const d = mgr.dumpOf("worker")!;
+    assert.equal(d.what.trigger, "manual");
+    assert.equal(d.what.reason, "operator parked it");
+    assert.equal(d.what.error.exitCode, null, "parking is not a crash");
+    assert.ok(d.when.uptimeMs! > 0);
+
+    const fresh = await mgr.replace("worker");
+    assert.equal(fresh.status, "healthy");
+    assert.equal(mgr.statusOf("worker"), "healthy");
+    assert.ok(await portOpenSoon(port), "the new instance listens");
+    assert.equal(mgr.dumpOf("worker")!.what.trigger, "manual", "the earlier dump is kept");
+    // Replacing a running sidecar parks it (with its own dump) first.
+    const again = await mgr.replace("worker");
+    assert.equal(again.status, "healthy");
+    assert.equal(mgr.dumpOf("worker")!.what.trigger, "replace");
+    assert.equal((await mgr.park("nope")).reason, "unknown sidecar");
+    assert.deepEqual(mgr.list(), [{ name: "worker", status: "healthy", dump: true }]);
+  });
 });
+
+/** The first dump file in a directory, if any. */
+function readdirDump(d: string): string | undefined {
+  const f = readdirSync(d).find((n) => n.endsWith(".json"));
+  return f ? join(d, f) : undefined;
+}

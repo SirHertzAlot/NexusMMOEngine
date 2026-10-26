@@ -3,21 +3,29 @@
  * crafting" (null, matching loadCombatContent's null-on-missing pattern) —
  * the engine boots game-less. A present but invalid file still fails loud.
  *
- * Fixtures are pre-created under /tmp (see /tmp/make-fixtures.sh); this test
- * performs no writes.
+ * Fixtures are written to a throwaway temp dir, so the test runs on a fresh checkout.
  */
 
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   EMPTY_CRAFTING_RULES,
   loadCraftingRules,
   CraftingRulesError,
 } from "../src/rules.js";
 
+const dir = mkdtempSync(join(tmpdir(), "fix-crafting-"));
+writeFileSync(join(dir, "bad.json"), "{ not json");
+writeFileSync(join(dir, "invalid.json"), JSON.stringify({ refining: "nope" }));
+
 describe("loadCraftingRules tolerates absence", () => {
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
   it("a missing file returns null (no crafting)", () => {
-    assert.equal(loadCraftingRules("/tmp/fix-crafting/no-such-file.json"), null);
+    assert.equal(loadCraftingRules(join(dir, "no-such-file.json")), null);
   });
 
   it("an empty rules object is valid and craft-free", () => {
@@ -29,10 +37,10 @@ describe("loadCraftingRules tolerates absence", () => {
   });
 
   it("a present but invalid file still fails loud", () => {
-    assert.throws(() => loadCraftingRules("/tmp/fix-crafting/bad.json"), CraftingRulesError);
+    assert.throws(() => loadCraftingRules(join(dir, "bad.json")), CraftingRulesError);
   });
 
   it("a present file with bad content still fails loud", () => {
-    assert.throws(() => loadCraftingRules("/tmp/fix-crafting/invalid.json"), CraftingRulesError);
+    assert.throws(() => loadCraftingRules(join(dir, "invalid.json")), CraftingRulesError);
   });
 });

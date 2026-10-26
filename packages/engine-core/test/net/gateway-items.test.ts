@@ -51,7 +51,7 @@ function makeItems(): ItemService {
     models: ["pack/SM_Wep_Sword_01"],
   };
   rules.items.bases.helm = { ...rules.items.fallback, slot: "head", models: ["pack/SM_Prop_Helm_01"] };
-  return new ItemService({ defs: new ItemDefs(POOL, rules), loot: rules.loot, tickHz: 30 });
+  return new ItemService({ defs: new ItemDefs(POOL, rules), loot: rules.loot, tickHz: 30, starterBase: "sword" });
 }
 
 async function startGateway(opts: GatewayOptions = {}): Promise<string> {
@@ -128,7 +128,7 @@ describe("gateway: items", () => {
     assert.ok(decodeDelta(delta).spawned.includes(BigInt(wid)), "the delta spawns it");
 
     const invP = alice.waitFor(MessageType.Inventory, 1);
-    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: wid }));
+    alice.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wid }));
     const bag = decodeControl<InventoryMessage>((await invP)[0]).bag;
     assert.equal(bag.filter((s) => s !== null).length, 1);
     assert.match(bag[0]!.name, /^Sword /);
@@ -152,7 +152,7 @@ describe("gateway: items", () => {
     const dropsP = bob.waitFor(MessageType.Drops, 1);
     tick();
     const wid = decodeControl<DropsMessage>((await dropsP)[0]).drops[0][0];
-    const refused = await nextError(bob, () => bob.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: wid })));
+    const refused = await nextError(bob, () => bob.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: wid })));
     assert.equal(refused.code, 4005);
     assert.match(refused.message, /someone else/);
     const malformed = await nextError(bob, () => bob.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "eat" })));
@@ -240,7 +240,7 @@ describe("gateway: items", () => {
     assert.match(bare.message, /"lost":\[[^\]]*"handRight"/, "everyone's look hides the lost hand");
     // Picked up again, it can't be held in a hand that is gone.
     const pickP = alice.waitFor(MessageType.Inventory, 1);
-    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "pickup", entity: drops[0][0] }));
+    alice.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: drops[0][0] }));
     const sword = decodeControl<InventoryMessage>((await pickP)[0]).bag.find((i) => i !== null)!;
     const refused = await nextError(alice, () => alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "equip", item: sword.id })));
     assert.equal(refused.code, 4005);

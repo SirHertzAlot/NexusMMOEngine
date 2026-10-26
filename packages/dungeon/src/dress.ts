@@ -25,7 +25,23 @@ import { solve, type WfcNeed, type WfcOption, type WfcProblem } from "@mmo-engin
 import { CELL, type Dungeon } from "./generate.js";
 import { deriveSeed } from "./rng.js";
 import type { Content, Dressing } from "./dressing.js";
-import { layFlank, layGrid, layRing, layRow, type ArrangeCtx } from "./arrange.js";
+import {
+  layBefore,
+  layBehind,
+  layCluster,
+  layColonnade,
+  layCorners,
+  layFlank,
+  layGrid,
+  layHead,
+  layLine,
+  layOver,
+  layRing,
+  layRow,
+  layWallFlush,
+  reachOf,
+  type ArrangeCtx,
+} from "./arrange.js";
 
 export interface DressedProp {
   kind: string;
@@ -67,6 +83,19 @@ export interface DungeonDressing {
 }
 
 const STAGE = { archetype: 1, inventory: 2, seams: 3, place: 4 } as const;
+
+/** Organic floor clutter that naturally lies at arbitrary angles; all other floor/centre furniture snaps to room axes. */
+const ORGANIC_CLUTTER = new Set([
+  "rubble",
+  "bone-pile",
+  "mushrooms",
+  "sack",
+  "coin-pile",
+  "candles",
+  "frozen-body",
+  "root-knot",
+  "ritual-circle",
+]);
 
 export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed = d.seed): DungeonDressing {
   if (!Number.isInteger(rank) || rank < 1) throw new RangeError(`rank must be a whole number >= 1 (got ${rank})`);
@@ -115,14 +144,21 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
   // ---- where: the dungeon as a distance field ---------------------------
   // Open space is floor; walls, liquid and the void are solid.
   const sdf = new GridSdf(d.width, d.height, (x, y) => d.grid[y * d.width + x] !== CELL.floor);
-  const nearDoor = (x: number, y: number): boolean => {
-    for (let oy = -1; oy <= 1; oy++)
-      for (let ox = -1; ox <= 1; ox++) {
-        const cx = x + ox, cy = y + oy;
-        if (cx >= 0 && cy >= 0 && cx < d.width && cy < d.height && d.doorway[cy * d.width + cx]) return true;
+  // Precompute a flat nearDoorMask (1 = cell has a doorway in its 3x3 neighborhood) once per dungeon
+  const nearDoorMask = new Uint8Array(d.width * d.height);
+  for (let cy = 0; cy < d.height; cy++) {
+    for (let cx = 0; cx < d.width; cx++) {
+      if (!d.doorway[cy * d.width + cx]) continue;
+      for (let oy = -1; oy <= 1; oy++) {
+        const ny = cy + oy;
+        if (ny < 0 || ny >= d.height) continue;
+        for (let ox = -1; ox <= 1; ox++) {
+          const nx = cx + ox;
+          if (nx >= 0 && nx < d.width) nearDoorMask[ny * d.width + nx] = 1;
+        }
       }
-    return false;
-  };
+    }
+  }
   const regionOf = (r: number) => {
     const room = rooms[r];
     return {
@@ -134,7 +170,7 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         const cx = Math.floor(x), cy = Math.floor(y);
         if (cx < 0 || cy < 0 || cx >= d.width || cy >= d.height) return false;
         const c = cy * d.width + cx;
-        return d.roomId[c] === r && d.grid[c] === CELL.floor && !d.lake[c] && !nearDoor(cx, cy);
+        return d.roomId[c] === r && d.grid[c] === CELL.floor && !d.lake[c] && !nearDoorMask[c];
       },
     };
   };
@@ -143,11 +179,15 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
   const reachable = (r: number, solids: readonly { x: number; y: number; radius: number }[]): boolean => {
     const reg = regionOf(r);
     const touches = (cx: number, cy: number): boolean => {
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (cx + ox >= 0 && cy + oy >= 0 && cx + ox < d.width && cy + oy < d.height && d.roomId[(cy + oy) * d.width + cx + ox] === r) return true;
+      for (let oy = -1; oy <= 1; oy++)
+        for (let ox = -1; ox <= 1; ox++)
+          if (cx + ox >= 0 && cy + oy >= 0 && cx + ox < d.width && cy + oy < d.height && d.roomId[(cy + oy) * d.width + cx + ox] === r) return true;
       return false;
     };
     const doors: number[] = [];
-    for (let cy = reg.y0; cy < reg.y1; cy++) for (let cx = reg.x0; cx < reg.x1; cx++) if (d.doorway[cy * d.width + cx] && touches(cx, cy)) doors.push(cy * d.width + cx);
+    for (let cy = reg.y0; cy < reg.y1; cy++)
+      for (let cx = reg.x0; cx < reg.x1; cx++)
+        if (d.doorway[cy * d.width + cx] && touches(cx, cy)) doors.push(cy * d.width + cx);
     if (doors.length < 2) return true;
     const open = (cx: number, cy: number): boolean => {
       const k = cy * d.width + cx;
@@ -193,8 +233,8 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         domains: lines.map((k) => Array.from({ length: k.count[1] - k.count[0] + 1 }, (_, i) => k.count[0] + i)),
         budgets: lines.map((k, i) => ({
           // Line i's footprint per item, counted only in its own slot.
-          cost: counts.map((_, n) => n * Math.PI * k.radius * k.radius * 4),
-          max: floor * 0.6,
+          cost: counts.map((_, n) => n * Math.PI * k.radius * (k.reach ?? k.radius) * 4),
+          max: floor * (arch.fill ?? 0.6),
           slots: [i],
         })),
       },
@@ -204,26 +244,50 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
     type Item = PlaceItem & { kind: string; collision: "solid" | "none"; line: Content };
     const items: Item[] = [];
     lines.forEach((k, i) => {
-      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius: k.radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid"), line: k });
+      // `before` and `behind` lines have one item per item of their anchor, laid after it (their WFC count is not used).
+      if (k.arrange === "before" || k.arrange === "behind") return;
+      const radius = Math.max(k.radius, k.reach ?? 0); // the footprint a scattered item needs (a pattern uses the line's own radius and reach)
+      for (let n = 0; n < inv.assignment[i]; n++) items.push({ kind: k.kind, where: k.where, radius, mount: k.mount, collision: k.collision ?? (k.mount ? "none" : "solid"), line: k });
     });
     const region = regionOf(r);
     const poses = new Map<string, Placed[]>();
-    const record = (it: Item, p: Placed): void => {
-      layoutTaken[r].push(p);
-      poses.set(it.kind, [...(poses.get(it.kind) ?? []), p]);
-      props.push({ kind: it.kind, x: p.x, y: p.y, rot: p.rot, room: r, mount: !!it.mount, radius: it.radius, collision: it.collision });
+    /** What hangs on this room's walls (mounted rows): clear only of each other. */
+    const mountedHere = new Map<string, Placed[]>();
+    const mountedOf = (kind: string): Placed[] => mountedHere.get(kind) ?? [];
+    const alongRoomX = _room.w >= _room.h;
+    const roomAxisRot = alongRoomX ? 0 : Math.PI / 2;
+    const record = (it: Item, p: Placed, hung = false, snapArchitectural = false): void => {
+      let finalRot = p.rot;
+      if (snapArchitectural && !it.mount && !ORGANIC_CLUTTER.has(it.kind)) {
+        if (it.where === "centre" || it.where === "floor") {
+          // Align centre/floor architectural furniture (sarcophagi, tables, lecterns, cauldrons) with the room's axes
+          finalRot = Math.round(p.rot / (Math.PI / 2)) * (Math.PI / 2);
+          if (it.where === "centre" && (it.line.reach ?? it.line.radius) !== it.line.radius) {
+            finalRot = roomAxisRot;
+          }
+        } else if (it.where === "wall") {
+          // Snap wall furniture normals to the 4 cardinal directions so desks/workbenches/racks never sit skewed on stair-step corners
+          finalRot = Math.round(p.rot / (Math.PI / 2)) * (Math.PI / 2);
+        }
+      }
+      const placedPose: Placed = { ...p, rot: finalRot };
+      // What later items keep clear of is the item's whole footprint (its length along its facing too); a hung item is clear of the floor.
+      if (hung) mountedHere.set(it.kind, [...mountedOf(it.kind), placedPose]);
+      else layoutTaken[r].push({ ...placedPose, radius: Math.max(placedPose.radius, reachOf(placedPose)) });
+      poses.set(it.kind, [...(poses.get(it.kind) ?? []), placedPose]);
+      props.push({ kind: it.kind, x: placedPose.x, y: placedPose.y, rot: placedPose.rot, room: r, mount: !!it.mount, radius: Math.max(it.radius, reachOf(placedPose)), collision: it.collision });
     };
     // Scatter a batch (each item on its own, as the dressing always has); the items with no room come back.
     const scatter = (batch: Item[], batchNo: number): Item[] => {
       if (batch.length === 0) return [];
-      const spots = placeInRegion(sdf, region, batch, { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * batchNo), taken: layoutTaken[r], reach: 3 });
+      const spots = placeInRegion(sdf, region, batch, { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * batchNo), taken: layoutTaken[r] });
       const left: Item[] = [];
       spots.forEach((p, i) => (p ? record(batch[i], p) : left.push(batch[i])));
       return left;
     };
     // Big and centre pieces first.
     const bigFirst = (a: Item, b: Item): number => Number(b.where === "centre") - Number(a.where === "centre") || b.radius - a.radius;
-    if (items.every((it) => it.line.arrange === "scatter")) {
+    if (lines.every((k) => k.arrange === "scatter")) {
       items.sort(bigFirst);
       unplaced += scatter(items, 0).length;
     } else {
@@ -245,10 +309,11 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
       };
       const anchors = new Set(lines.filter((k) => k.arrange !== "scatter" && k.anchor).map((k) => k.anchor!));
       const focal = (it: Item): boolean => it.line.arrange === "scatter" && (it.where === "centre" || it.where === "corner" || anchors.has(it.kind));
+      const ctx: ArrangeCtx = { sdf, inside: region.inside!, taken: layoutTaken[r], centre: { x: _room.cx, y: _room.cy }, extent: { w: _room.w, h: _room.h } };
+
+      // Settle wide single wall focal pieces flush against straight wall runs at `reach` distance before general focal scatter
       unplaced += guarded(() => scatter(items.filter(focal).sort(bigFirst), 1));
-      const ctx: ArrangeCtx = { sdf, inside: region.inside!, taken: layoutTaken[r], centre: { x: _room.cx, y: _room.cy } };
-      const leftover: Item[] = items.filter((it) => it.line.arrange === "scatter" && !focal(it));
-      const arrangedLines = [...new Set(items.filter((it) => it.line.arrange !== "scatter").map((it) => it.line))].sort((a, b) => Number(anchors.has(b.kind)) - Number(anchors.has(a.kind)));
+
       /** `laid` less its last items until it no longer walls off a doorway the room's other items leave open. */
       const keepOpen = (laid: Placed[], line: Content): Placed[] => {
         if (line.collision === "none" || (line.mount && !line.collision)) return laid;
@@ -258,33 +323,84 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         while (kept.length > 0 && !reachable(r, [...before, ...kept])) kept = kept.slice(0, -1);
         return kept;
       };
+
+      
+
+
+
+      const leftover: Item[] = items.filter((it) => it.line.arrange === "scatter" && !focal(it));
+      const arrangedLines = lines.filter((k) => k.arrange !== "scatter").sort((a, b) => Number(anchors.has(b.kind)) - Number(anchors.has(a.kind)));
+
       arrangedLines.forEach((line, li) => {
         const its = items.filter((it) => it.line === line);
         const anchor = line.anchor ? poses.get(line.anchor)?.[0] : undefined;
+        const template: Item = { kind: line.kind, where: line.where, radius: line.radius, mount: line.mount, collision: line.collision ?? (line.mount ? "none" : "solid"), line };
+        const opts = { ...(line.reach ? { reach: line.reach } : {}), ...(line.mount ? { mounted: true } : {}), ...(line.aisle ? { aisle: line.aisle } : {}) };
         let laid: Placed[] = [];
         if (line.arrange === "row") {
           // Rows on the wall that holds the most (the best of a dozen spots round the walls); what is left over starts another
           // row on another wall, and what that cannot fit is scattered.
+          const rowCtx: ArrangeCtx = line.mount ? { ...ctx, taken: mountedOf(line.kind) } : ctx;
           for (let pass = 0; pass < 4 && laid.length < its.length; pass++) {
-            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: layoutTaken[r], reach: 3 });
+            const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius, ...(line.mount ? { mount: true } : {}) })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: line.mount ? mountedOf(line.kind) : layoutTaken[r] });
             let best: Placed[] = [];
+            const take = its.length - laid.length;
             for (const wall of wallSpots) {
-              const row = wall ? layRow(ctx, wall, line.radius, its.length - laid.length, line.gap) : [];
+              const row = wall ? layRow(rowCtx, wall, line.radius, take, line.gap, opts) : [];
               if (row.length > best.length) best = row;
             }
             best = keepOpen(best, line);
             if (best.length === 0) break;
-            best.forEach((p, k) => record(its[laid.length + k], p));
+            best.forEach((p, k) => record(its[laid.length + k], p, !!line.mount));
             laid = [...laid, ...best];
           }
+        } else if (line.arrange === "head") {
+          // One item at the head of the room: the middle of the longest free run of wall.
+          const seeds = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li)), taken: layoutTaken[r] });
+          laid = its.length === 0 ? [] : keepOpen(layHead(ctx, seeds.filter((p): p is Placed => !!p), line.radius, opts), line);
+          laid.forEach((p, k) => record(its[k], p));
+        } else if (line.arrange === "corners") {
+          // Symmetrical placement across the room's 4 concave corners facing inward toward the room's centre.
+          const seeds = placeInRegion(sdf, region, Array.from({ length: 6 }, () => ({ where: "corner" as const, radius: line.reach ?? line.radius })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li)), taken: layoutTaken[r] });
+          laid = its.length === 0 ? [] : keepOpen(layCorners(ctx, seeds.filter((p): p is Placed => !!p), line.radius, its.length, line.gap, opts), line);
+          laid.forEach((p, k) => record(its[k], p));
+        } else if (line.arrange === "colonnade") {
+          // Paired symmetrical columns/statues flanking the central nave axis.
+          laid = keepOpen(layColonnade(ctx, line.radius, its.length, line.gap, line.at ?? 2.0, opts), line);
+          laid.forEach((p, k) => record(its[k], p));
+        } else if (line.arrange === "cluster") {
+          // Tight functional grouping around anchor props (e.g. barrels/sacks beside crates).
+          const anchorList = line.anchor ? poses.get(line.anchor) ?? [] : [];
+          laid = keepOpen(layCluster(ctx, anchorList, line.radius, its.length, line.gap, opts), line);
+          laid.forEach((p, k) => record(its[k], p));
+        } else if (line.arrange === "over") {
+          // One over each item of the anchor kind (the upper tier of a wall of niches).
+          layOver(line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, opts).forEach((p) => record(template, p, !!line.mount));
+          return;
+        } else if (line.arrange === "before") {
+          // One item in front of each item of the anchor kind; the room's other items keep their places.
+          const front = layBefore(ctx, line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, line.gap, opts);
+          keepOpen(front, line).forEach((p) => record(template, p));
+          return;
+        } else if (line.arrange === "behind") {
+          // One item behind each item of the anchor kind (e.g. pairing benches on both sides of long-tables and reading-tables).
+          const back = layBehind(ctx, line.anchor ? poses.get(line.anchor) ?? [] : [], line.radius, line.gap, opts);
+          keepOpen(back, line).forEach((p) => record(template, p));
+          return;
         } else {
-          if (line.arrange === "grid") laid = layGrid(ctx, line.radius, its.length, line.gap, anchor ?? null);
-          else if (anchor && (line.arrange === "flank" || line.arrange === "beside")) laid = layFlank(ctx, anchor, line.radius, its.length, line.gap, line.arrange === "flank" ? 2 : 1);
-          else if (anchor && line.arrange === "ring") laid = layRing(ctx, anchor, line.radius, its.length, line.gap, line.faces === "out" ? "out" : "in");
+          if (line.arrange === "grid") laid = layGrid(ctx, line.radius, its.length, line.gap, anchor ?? null, opts);
+          else if (line.arrange === "line") laid = layLine(ctx, line.radius, its.length, line.gap, line.at ?? 0, opts);
+          else if (anchor && (line.arrange === "flank" || line.arrange === "beside")) laid = layFlank(ctx, anchor, line.radius, its.length, line.gap, line.arrange === "flank" ? 2 : 1, opts);
+          else if (anchor && line.arrange === "ring") laid = layRing(ctx, anchor, line.radius, its.length, line.gap, line.faces === "out" ? "out" : "in", opts);
           laid = keepOpen(laid, line);
           laid.forEach((p, k) => record(its[k], p));
         }
-        leftover.push(...its.slice(laid.length));
+        // What a row, corners, or cluster could not fit still goes along a wall/corner, and a line whose anchor never came is scattered as plain items; what a
+        // line, grid, colonnade, flank or ring could not fit is left out: a sarcophagus or a pew at a random angle would spoil the arrangement.
+        const needsAnchor = line.arrange === "flank" || line.arrange === "beside" || line.arrange === "ring" || line.arrange === "cluster";
+        const hasOver = lines.some((l) => l.arrange === "over" && l.anchor === line.kind);
+        if ((line.arrange === "row" && !hasOver) || line.arrange === "head" || line.arrange === "corners" || line.arrange === "cluster" || (needsAnchor && !anchor)) leftover.push(...its.slice(laid.length));
+        else unplaced += its.length - laid.length;
       });
       unplaced += guarded(() => scatter(leftover.sort(bigFirst), 2));
     }

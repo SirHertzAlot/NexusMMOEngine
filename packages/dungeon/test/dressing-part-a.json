@@ -1,0 +1,824 @@
+{
+ "archetypes": {
+  "gatehall": {
+   "roles": [
+    "entrance"
+   ],
+   "weight": 1,
+   "minSize": 0,
+   "repeatable": false,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "statue",
+     "where": "wall",
+     "radius": 0.7,
+     "count": [
+      1,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "brazier",
+     "where": "corner",
+     "radius": 0.5,
+     "count": [
+      1,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ]
+  },
+  "throne": {
+   "roles": [
+    "boss"
+   ],
+   "weight": 1,
+   "minSize": 0,
+   "repeatable": false,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "throne",
+     "where": "wall",
+     "radius": 1,
+     "count": [
+      1,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "statue",
+     "where": "wall",
+     "radius": 0.7,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "anchor": "throne",
+     "collision": "solid"
+    },
+    {
+     "kind": "brazier",
+     "where": "corner",
+     "radius": 0.5,
+     "count": [
+      2,
+      4
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ]
+  },
+  "vault": {
+   "roles": [
+    "treasure"
+   ],
+   "weight": 1,
+   "minSize": 0,
+   "repeatable": true,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "chest",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      1,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "coin-pile",
+     "where": "floor",
+     "radius": 0.5,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none",
+     "anchor": "chest"
+    },
+    {
+     "kind": "gilded-chest",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      0,
+      1
+     ],
+     "mount": false,
+     "minRank": 3,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ]
+  },
+  "chapel": {
+   "roles": [
+    "shrine"
+   ],
+   "weight": 1,
+   "minSize": 0,
+   "repeatable": true,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "candles",
+     "where": "corner",
+     "radius": 0.35,
+     "count": [
+      2,
+      4
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    },
+    {
+     "kind": "pew",
+     "where": "floor",
+     "radius": 0.6,
+     "count": [
+      0,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "faces": "anchor",
+     "anchor": "reliquary",
+     "collision": "solid"
+    },
+    {
+     "kind": "reliquary",
+     "where": "wall",
+     "radius": 0.5,
+     "count": [
+      0,
+      1
+     ],
+     "mount": false,
+     "minRank": 2,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ]
+  },
+  "crypt": {
+   "roles": [
+    "combat",
+    "elite"
+   ],
+   "weight": 2,
+   "minSize": 7,
+   "repeatable": false,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "sarcophagus",
+     "where": "centre",
+     "radius": 1.2,
+     "count": [
+      1,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "coffin",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "urn",
+     "where": "corner",
+     "radius": 0.35,
+     "count": [
+      1,
+      4
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ],
+   "themes": [
+    "grim",
+    "ancient",
+    "frost"
+   ]
+  },
+  "armoury": {
+   "roles": [
+    "combat",
+    "elite"
+   ],
+   "weight": 1,
+   "minSize": 6,
+   "repeatable": false,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "weapon-rack",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "armour-stand",
+     "where": "wall",
+     "radius": 0.5,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "anchor": "weapon-rack",
+     "collision": "solid"
+    },
+    {
+     "kind": "crate",
+     "where": "corner",
+     "radius": 0.45,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ],
+   "max": 2
+  },
+  "barracks": {
+   "roles": [
+    "combat"
+   ],
+   "weight": 1,
+   "minSize": 7,
+   "repeatable": true,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "bedroll",
+     "where": "floor",
+     "radius": 0.6,
+     "count": [
+      2,
+      5
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    },
+    {
+     "kind": "table",
+     "where": "centre",
+     "radius": 0.9,
+     "count": [
+      0,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "barrel",
+     "where": "corner",
+     "radius": 0.4,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ]
+  },
+  "storeroom": {
+   "roles": [
+    "combat"
+   ],
+   "weight": 1.5,
+   "minSize": 0,
+   "repeatable": false,
+   "avoid": [],
+   "near": [
+    "barracks",
+    "armoury"
+   ],
+   "contents": [
+    {
+     "kind": "crate",
+     "where": "floor",
+     "radius": 0.45,
+     "count": [
+      2,
+      5
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "barrel",
+     "where": "corner",
+     "radius": 0.4,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "sack",
+     "where": "floor",
+     "radius": 0.35,
+     "count": [
+      0,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    }
+   ]
+  },
+  "library": {
+   "roles": [
+    "combat",
+    "elite"
+   ],
+   "weight": 1,
+   "minSize": 8,
+   "repeatable": false,
+   "avoid": [
+    "forge",
+    "ritual"
+   ],
+   "near": [],
+   "contents": [
+    {
+     "kind": "bookshelf",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      2,
+      5
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "desk",
+     "where": "centre",
+     "radius": 0.8,
+     "count": [
+      1,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "candles",
+     "where": "corner",
+     "radius": 0.35,
+     "count": [
+      1,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    }
+   ],
+   "themes": [
+    "ancient",
+    "verdant",
+    "frost"
+   ],
+   "max": 1
+  },
+  "ritual": {
+   "roles": [
+    "elite",
+    "combat"
+   ],
+   "weight": 1,
+   "minSize": 8,
+   "repeatable": false,
+   "avoid": [
+    "library",
+    "chapel"
+   ],
+   "near": [],
+   "contents": [
+    {
+     "kind": "ritual-circle",
+     "where": "centre",
+     "radius": 1.4,
+     "count": [
+      1,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "candles",
+     "where": "corner",
+     "radius": 0.35,
+     "count": [
+      2,
+      4
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none",
+     "anchor": "ritual-circle"
+    },
+    {
+     "kind": "cage",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ],
+   "themes": [
+    "grim",
+    "molten",
+    "ancient"
+   ],
+   "max": 2
+  },
+  "forge": {
+   "roles": [
+    "combat",
+    "elite"
+   ],
+   "weight": 2,
+   "minSize": 7,
+   "repeatable": false,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "anvil",
+     "where": "centre",
+     "radius": 0.7,
+     "count": [
+      1,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "anchor": "smelter",
+     "collision": "solid"
+    },
+    {
+     "kind": "smelter",
+     "where": "wall",
+     "radius": 0.9,
+     "count": [
+      1,
+      1
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "crate",
+     "where": "corner",
+     "radius": 0.45,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ],
+   "themes": [
+    "molten"
+   ],
+   "max": 2
+  },
+  "grotto": {
+   "roles": [
+    "combat"
+   ],
+   "weight": 2,
+   "minSize": 0,
+   "repeatable": true,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "mushrooms",
+     "where": "floor",
+     "radius": 0.4,
+     "count": [
+      2,
+      6
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    },
+    {
+     "kind": "root-knot",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ],
+   "themes": [
+    "verdant"
+   ]
+  },
+  "icehall": {
+   "roles": [
+    "combat",
+    "elite"
+   ],
+   "weight": 1,
+   "minSize": 0,
+   "repeatable": true,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "ice-pillar",
+     "where": "floor",
+     "radius": 0.6,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    },
+    {
+     "kind": "frozen-body",
+     "where": "wall",
+     "radius": 0.6,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    }
+   ],
+   "themes": [
+    "frost"
+   ]
+  },
+  "hall": {
+   "roles": [
+    "combat",
+    "elite"
+   ],
+   "weight": 0.4,
+   "minSize": 0,
+   "repeatable": true,
+   "avoid": [],
+   "near": [],
+   "contents": [
+    {
+     "kind": "rubble",
+     "where": "floor",
+     "radius": 0.5,
+     "count": [
+      1,
+      3
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "none"
+    },
+    {
+     "kind": "statue",
+     "where": "wall",
+     "radius": 0.7,
+     "count": [
+      0,
+      2
+     ],
+     "mount": false,
+     "minRank": 1,
+     "arrange": "scatter",
+     "gap": 0.3,
+     "collision": "solid"
+    }
+   ]
+  }
+ },
+ "veins": {
+  "iron-seam": {
+   "weight": 3,
+   "tier": 1,
+   "minRank": 1,
+   "minDepth": 0,
+   "themes": [],
+   "themeBoost": 3
+  },
+  "gold-vein": {
+   "weight": 2,
+   "tier": 2,
+   "minRank": 2,
+   "minDepth": 0.2,
+   "themes": [
+    "ancient"
+   ],
+   "themeBoost": 2
+  },
+  "elemental-crystal": {
+   "weight": 2,
+   "tier": 3,
+   "minRank": 2,
+   "minDepth": 0.3,
+   "themes": [
+    "molten",
+    "frost"
+   ],
+   "themeBoost": 3
+  },
+  "enchanted-ore": {
+   "weight": 1.5,
+   "tier": 3,
+   "minRank": 3,
+   "minDepth": 0.4,
+   "themes": [
+    "verdant",
+    "ancient"
+   ],
+   "themeBoost": 2
+  },
+  "exotic-ore": {
+   "weight": 1,
+   "tier": 4,
+   "minRank": 4,
+   "minDepth": 0.55,
+   "themes": [
+    "molten"
+   ],
+   "themeBoost": 2
+  },
+  "rune-stone": {
+   "weight": 0.6,
+   "tier": 5,
+   "minRank": 5,
+   "minDepth": 0.7,
+   "themes": [
+    "grim",
+    "ancient"
+   ],
+   "themeBoost": 2
+  }
+ },
+ "veinRooms": 0.25,
+ "veinRoomsPerRank": 0.08,
+ "seam": [
+  2,
+  6
+ ]
+}

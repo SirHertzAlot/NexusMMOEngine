@@ -1,11 +1,15 @@
 /**
  * The core's end of the edge/core channel (slice E3 of
- * docs/EDGE-CORE-SPLIT.md, built additively: players still connect to the
- * gateway directly, and this serves the edge beside it).
+ * docs/EDGE-CORE-SPLIT.md). With MMO_EDGE=1 the players' sockets come
+ * through it too (E3b: the `wire.*` and `http` packets, an EdgeRelay);
+ * otherwise players connect to the gateway directly and this serves the
+ * edge beside it.
  *
  * Requests: player.intent, auth.login, session.validate, core.sync,
  * mythic.grant_item, mythic.spawn_boss, metrics.get. Pushes every tick:
- * tick.events and tick.delta; every 300th tick also snapshot.
+ * tick.events. Players' deltas and snapshots reach the edge as relayed
+ * `wire.*` frames (E3b), so the old base64 tick.delta / snapshot mirror
+ * stream is gone.
  *
  * metrics.get answers the core registry's Prometheus text (E6): the
  * `mmo_core_*` metrics and the channel's core side. The edge folds it into
@@ -14,12 +18,6 @@
 import { channelMetrics, serveChannel, type ChannelMetrics, type ChannelPacket, type ChannelServer } from "@mmo-engine/channel";
 import { netLogger, Registry, type Counter, type Gauge, type Histogram } from "@mmo-engine/nethealth";
 import type { GatewayTick } from "./net/gateway.js";
-
-/** The full-snapshot cadence: tick 0, 300, 600, ... */
-export const SNAPSHOT_EVERY_TICKS = 300;
-export function isSnapshotTick(n: number): boolean {
-  return n % SNAPSHOT_EVERY_TICKS === 0;
-}
 
 /** CORE_CHANNEL_PORT, parsed like the edge's config (copied, not imported). */
 export function coreChannelPort(env: NodeJS.ProcessEnv = process.env): number {
@@ -32,7 +30,7 @@ export function coreChannelPort(env: NodeJS.ProcessEnv = process.env): number {
 /** What the channel needs from the running core; the Gateway provides all of it. */
 export interface CoreChannelHost {
   readonly serverTick: number;
-  addTickListener(cb: (t: GatewayTick) => void): void;
+  addTickListener(cb: (t: GatewayTick) => void, needsDelta?: boolean): void;
   /** Each tick's wall time in ms; without it `tick_duration_ms` stays empty. */
   addTickTimeListener?(cb: (ms: number) => void): void;
   channelLogin(username: string, password: string): Promise<{ ok: true; token: string; playerId: string } | { ok: false; reason: string }>;
@@ -105,8 +103,16 @@ function intentOf(v: unknown): IntentPayload {
   return { mx: num("mx"), my: num("my"), mz: num("mz"), lookYaw: num("lookYaw"), lookPitch: num("lookPitch"), jump: o.jump === true, buttons };
 }
 
-export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHooks, metrics: CoreMetrics) {
+/** The players' sockets and HTTP relayed by the edge (E3b, net/channel-transport.ts): undefined for packets that aren't its. */
+export interface EdgeRelay {
+  handle(p: ChannelPacket): Promise<unknown> | undefined;
+  edgeGone(): void;
+}
+
+export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHooks, metrics: CoreMetrics, relay?: EdgeRelay) {
   return async (p: ChannelPacket): Promise<unknown> => {
+    const relayed = relay?.handle(p);
+    if (relayed !== undefined) return relayed;
     switch (p.type) {
       case "player.intent": {
         const o = obj(p.payload);
@@ -149,26 +155,21 @@ export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHo
   };
 }
 
-/**
- * Pushes for one finished tick: tick.events and tick.delta always (even with
- * no events), snapshot on snapshot ticks. Binary payloads travel as base64.
- */
+/** Pushes for one finished tick: tick.events, even with no events. */
 export function pushTick(push: (type: string, payload: unknown) => void, t: GatewayTick): void {
   push("tick.events", { tick: t.tick, events: t.events });
-  push("tick.delta", { tick: t.tick, delta: Buffer.from(t.delta).toString("base64") });
-  if (isSnapshotTick(t.tick)) push("snapshot", { tick: t.tick, snapshot: Buffer.from(t.fullState()).toString("base64") });
 }
 
 /** Serve the channel on `port` (loopback) and stream the host's ticks to every edge. */
-export async function startCoreChannel(host: CoreChannelHost, port: number, mythic: MythicHooks = {}, metrics: CoreMetrics = createCoreMetrics()): Promise<CoreChannel> {
-  const server = await serveChannel(port, createCoreChannelHandler(host, mythic, metrics), "127.0.0.1",
-    { metrics: metrics.channel, log: netLogger("core") });
+export async function startCoreChannel(host: CoreChannelHost, port: number, mythic: MythicHooks = {}, metrics: CoreMetrics = createCoreMetrics(), relay?: EdgeRelay): Promise<CoreChannel> {
+  const server = await serveChannel(port, createCoreChannelHandler(host, mythic, metrics, relay), "127.0.0.1",
+    { metrics: metrics.channel, log: netLogger("core") }, () => relay?.edgeGone());
   let open = true;
   host.addTickListener((t) => {
     if (!open) return;
     pushTick((type, payload) => server.pushToAll(type, payload), t);
     metrics.tickEventsPushed.inc();
-  });
+  }, false); // events only: the gateway need not encode the global delta for this listener
   host.addTickTimeListener?.((ms) => { if (open) metrics.tickDuration.observe(ms); });
   return {
     server,

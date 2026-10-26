@@ -69,6 +69,8 @@ import {
 } from "./index.js";
 import { closeWorldCatalogs } from "./persist/world-catalog.js";
 import { bakeWorldTerrain } from "./terrain/world-bake.js";
+import { bakeSettlementFortifications } from "./terrain/fortify-settlements.js";
+import type { SettlementBake } from "@mmo-engine/fortify";
 import { loadWorldSpec, parseWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
 
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
@@ -165,6 +167,7 @@ async function main(): Promise<void> {
   let spawn = { x: 0, z: 0 };
   let bounds: ChunkBounds | null = null;
   let report: Awaited<ReturnType<typeof bakeWorldTerrain>> | null = null;
+  let fortifiedSettlements: SettlementBake[] = [];
   if (spec) {
     report = await bakeWorldTerrain(spec, {
       dbPath,
@@ -174,6 +177,16 @@ async function main(): Promise<void> {
       region: REGION,
       surveyOnly: SURVEY_ONLY,
       existingSurveyHash,
+      // Settlement fortification rides the terrain survey (see
+      // terrain/fortify-settlements.ts); results persist as world meta
+      // below, next to the spawn point. (When the survey is skipped as
+      // unchanged, onSurvey never fires and the stored settlements
+      // from the previous bake stand.)
+      onSurvey: (survey) => {
+        fortifiedSettlements = bakeSettlementFortifications(survey, {
+          log: (l) => console.log(l),
+        });
+      },
     });
     // The bake is the catalog's only user here; an open connection would
     // keep this process alive.
@@ -270,6 +283,13 @@ async function main(): Promise<void> {
     const { minChunk, maxChunk } = worldBounds(spec);
     store.setMeta("world_bounds", JSON.stringify({ minChunk, maxChunk }));
     store.setMeta("spawn_point", JSON.stringify({ x: spawn.x, z: spawn.z }));
+    // Fortified settlements baked from the survey (terrain/fortify-
+    // settlements.ts): structure placements in world coordinates, with
+    // build logs — the town spawner / editor read them from here.
+    if (fortifiedSettlements.length > 0) {
+      store.setMeta("fortified_settlements", JSON.stringify(fortifiedSettlements));
+      console.log(`[bake] fortified settlements: ${fortifiedSettlements.length} stored in world meta`);
+    }
     store.setMeta("sea_level", String(spec.land.seaLevel));
     // Biome map values index this list (clients colour the ground by it).
     store.setMeta("world_biomes", JSON.stringify(spec.biomes.map((b) => b.id)));

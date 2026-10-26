@@ -12,6 +12,9 @@
  *
  * Environment:
  *   MMO_PORT       WebSocket listen port (default 7777)
+ *   MMO_EDGE       "1": players connect to the edge (EDGE_GAME_PORT), which
+ *                  relays them over the core channel; the core binds no
+ *                  player port (E3b). Unset: players connect here directly.
  *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
  *                  characters.db (default ./data, relative to the process cwd)
  *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
@@ -63,7 +66,8 @@
  *                  the settlements (livestock ring, safe radius, raids).
  *                  MMO_WILDLIFE_LOG=1 logs each pack spawned.
  *   MMO_SCENE      a scene (content/scenes/<name>.scene.json) whose nodes spawn at boot as
- *                  creatures, props, items and quest posts (roadmap EA6); MMO_SCENES
+ *                  creatures, props, items and quest posts (roadmap EA6); a comma-separated
+ *                  list spawns each, `world` every baked town plus places; MMO_SCENES
  *                  overrides the scenes dir (alias MMO_SCENES_DIR, as bake:all names it),
  *                  MMO_PREFABS the prefab files (content/prefabs)
  *   MMO_SPECIES    the species overlay file (default content/species/species.json),
@@ -159,8 +163,9 @@ import {
 import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
-import { ShardStateShipper } from "./world/state-shipper.js";
+import { ShardStateShipper, SNAPSHOT_UPLOAD_EVERY_TICKS } from "./world/state-shipper.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
+import { SocialWorldSync } from "./world/social-sync.js";
 import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
@@ -191,14 +196,17 @@ import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
-import { GatheringSystem, SqliteGatheringStore } from "./gathering/index.js";
+import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
+import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
-import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadSceneFile, spawnSceneOnBoot } from "./scene-spawn.js";
+import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
+import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
+import type { SceneDoc } from "@mmo-engine/scene";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
 import { CraftingService } from "./crafting/crafting-service.js";
@@ -218,14 +226,17 @@ import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from ".
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./procgen/wildlife-table.js";
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
-import { sceneSettlements } from "./procgen/wildlife-settlements.js";
+import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
 import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
-import { lineDef } from "./items/index.js";
+import { lineDef, rollTable } from "./items/index.js";
+import { loadLessons } from "./residents/lessons.js";
+import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
+import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
@@ -255,9 +266,14 @@ function abilityNames(bits: number): string {
 }
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
+const EDGE_MODE = process.env.MMO_EDGE === "1";
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
+/** The scenes MMO_SCENE names (read once: the spawn, the settlements and the residents share them). */
+let bootScenesRead: SceneDoc[] | null = null;
+const bootScenes = (): SceneDoc[] =>
+  (bootScenesRead ??= loadScenes(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE ?? ""));
 // Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
 const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
 if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
@@ -415,6 +431,22 @@ async function main(): Promise<void> {
         store,
         ledger: itemLedger,
         log: (line) => console.log(`[server] ${line}`),
+        // Node stocks (PL3a) go into gathering.db before the gathering system opens it, below.
+        seedPlaces: (places) => {
+          const nodes = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
+          try {
+            nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
+          } finally {
+            nodes.close();
+          }
+          // Broken props, opened chests and doors (IX5) go into places.db the same way.
+          const records = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
+          try {
+            records.replaceAll(placeRecordsOf(places["place_records"]));
+          } finally {
+            records.close();
+          }
+        },
       });
     } else {
       console.warn(`[server] world registration failed; running with local state only`);
@@ -713,9 +745,7 @@ async function main(): Promise<void> {
     return ids[n % ids.length];
   };
   const wildlifeSettlements: RaidSettlement[] =
-    wildlifeTable && process.env.MMO_SCENE
-      ? sceneSettlements(loadSceneFile(process.env.MMO_SCENES || DEFAULT_SCENES_DIR, process.env.MMO_SCENE), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR))
-      : [];
+    wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
   const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
   const creaturesConfig = {
@@ -802,6 +832,7 @@ async function main(): Promise<void> {
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
   // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
+  const gatheringStore = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
   const gathering = new GatheringSystem({
     reachM: game.rules.gathering.reachM,
     cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
@@ -809,7 +840,7 @@ async function main(): Promise<void> {
     trainPerTier: game.rules.gathering.trainDifficultyPerTier,
     regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
     regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
-    store: new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db")),
+    store: gatheringStore,
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);
       if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
@@ -828,7 +859,7 @@ async function main(): Promise<void> {
     dataDir: DATA_DIR,
     rules: game.rules,
     tickHz: 30,
-    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
+    groundHeightAt: (x: number, z: number) => characterRef ? characterOf().groundHeight(x, z) : 0 /* items restore before the character module exists; ground drops are short-lived */,
     rankOrder: DEFAULT_LADDER.ranks.map((r) => r.id),
     ledger: itemLedger,
     kindOf: (e: number) => creaturesOf().kindOf(e),
@@ -852,29 +883,14 @@ async function main(): Promise<void> {
   // through the @mmo-engine/crafting rules — recipe derivation, mastery
   // check, material consumption, item grant. The service owns no storage:
   // mastery reads the MasterySystem's sheets, the crafted item resolves to
-  // a loot-pool def by (base, rank), and raw materials live in a
-  // per-character pouch. The pouch is in-memory for this slice; persisting
-  // it (a SqliteMaterialStore beside SqliteQuestStore) is the follow-up —
-  // the countMaterial/takeMaterial seam makes that swap mechanical.
-  // Gathering (which fills the pouch) is a later slice.
-  const materialPouch = new Map<number, Map<string, number>>();
-  const pouchOf = (character: number): Map<string, number> => {
-    let p = materialPouch.get(character);
-    if (!p) materialPouch.set(character, (p = new Map()));
-    return p;
-  };
+  // a loot-pool def by (base, rank), and raw materials come from the
+  // gathering pouch — the one pouch gathering fills, persisted in
+  // gathering.db and shipped to the world record by PL3b.
   const craftingService = new CraftingService({
     rules: crafting ?? EMPTY_CRAFTING_RULES,
     masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
-    countMaterial: (character, material) => pouchOf(character).get(material) ?? 0,
-    takeMaterial: (character, material, qty) => {
-      const p = pouchOf(character);
-      const have = p.get(material) ?? 0;
-      if (have < qty) return false;
-      if (have === qty) p.delete(material);
-      else p.set(material, have - qty);
-      return true;
-    },
+    countMaterial: (character, material) => gathering.countOf(character, material),
+    takeMaterial: (character, material, qty) => gathering.take(character, material, qty),
     hasBagRoom: (character) => itemsOf().store.hasRoom(character),
     grantItem: (character, item, rank) => {
       const d = itemsOf().defs;
@@ -969,6 +985,57 @@ async function main(): Promise<void> {
   // Quests and dialog (P1): the gateway's "quest" extension and a system
   // checking places and bags; kills come through the death hook below.
   const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);
+  // World chests (IX1): scene Structures with a Chest component; opened chests drop their loot table at the chest.
+  let chestSeed = 20261024;
+  const dropTable = (s: SimWorld, table: string, x: number, z: number, owner: number): number => {
+    const items = itemsOf();
+    const defs = rollTable(game.rules.loot.tables ?? {}, table, items.defs, rankOrder, () => (chestSeed = (Math.imul(chestSeed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    defs.forEach((def, i) => items.spawnDrop(s, def, x + Math.cos(i * 2.4) * 0.8, z + Math.sin(i * 2.4) * 0.8, owner));
+    return defs.length;
+  };
+  // What players changed in the world that the snapshot does not keep: broken props, opened chests and doors (IX5).
+  const placesStore = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
+  const chests = new ChestSystem({
+    has: (holder, base) => itemsOf().countBase(holder, base) > 0,
+    take: (holder, base) => itemsOf().takeBase(holder, base),
+    drop: dropTable,
+    store: placesStore,
+  });
+  // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
+  // Shops placed in scenes (IX8): content/vendors.json templates, defined on the economy's vendor system the first time a node names one.
+  const { templates: vendorTemplates, byArchetype: shopByArchetype } = loadVendors(process.env.MMO_VENDORS || path.join(REPO_ROOT, "content", "vendors.json"));
+  /** Bind a content template to an entity, defining it on the economy's vendor system the first time. Null on success, else why not. */
+  const attachVendor = (eid: number, template: string): string | null => {
+    const vs = assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined;
+    if (!vs) return "this server has no economy";
+    const t = vendorTemplates.get(template);
+    if (!t) return `no vendor template "${template}"`;
+    if (!vs.templateIds().includes(template)) {
+      vs.define({
+        id: template,
+        name: t.name,
+        buybackRate: t.buybackRate,
+        stock: t.stock.flatMap((l) => {
+          const def = lineDef(itemsOf().defs, { base: l.base, rank: l.rank }, rankOrder);
+          return def < 0 ? [] : [{ def, price: l.price, quantity: l.quantity }];
+        }),
+      });
+    }
+    return vs.attach(eid, template) ? null : "could not attach";
+  };
+  const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
+  const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
+    store: placesStore,
+    // Mending a building spends the pouch (gathered materials).
+    materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
+    killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    onBreak: (s, ev) => {
+      if (ev.loot === undefined) return;
+      const killer = ev.killer;
+      const owner = killer !== undefined && hasComponent(s.ecs, CharacterRef, killer) ? CharacterRef.idHi[killer] * 4294967296 + CharacterRef.idLo[killer] : 0;
+      dropTable(s, ev.loot, ev.x, ev.z, owner);
+    },
+  });
   // Quests and dialog (P1, slice 4): the quests module builds the service
   // from this config during assembly. See modules/quests/server.js.
   const questsConfig = {
@@ -989,10 +1056,10 @@ async function main(): Promise<void> {
   // After items and quests exist, so item and quest nodes have somewhere to go: this runs once the systems are assembled.
   const spawnBootScene = (): void => {
   if (process.env.MMO_SCENE) {
-    const scene = loadSceneFile(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE);
+    const scenes = bootScenes();
     const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
     const r = spawnSceneOnBoot(
-      scene,
+      scenes,
       {
         sim,
         creatures: creaturesOf(),
@@ -1014,6 +1081,17 @@ async function main(): Promise<void> {
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
         resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
+        chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
+        // A region shard spawns only what stands in its chunks (the migration.ts convention: x0 <= cx < x1).
+        inRange: fleetChunkRange
+          ? (x, z) => {
+              const r = fleetChunkRange!, cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+              return cx >= r.x0 && cx < r.x1 && cz >= r.z0 && cz < r.z1;
+            }
+          : undefined,
+        breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
+        structureBreakable: (kind) => structureKinds.get(kind),
+        vendors: { attach: attachVendor },
         quests: {
           place: (quest, x, z) => {
             const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
@@ -1030,7 +1108,7 @@ async function main(): Promise<void> {
       store,
     );
     console.log(
-      `[scene] ${scene.name} (${scene.kind}): ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
+      `[scene] ${scenes.map((s) => s.name).join(", ")}: ${r.spawned.length} node(s) spawned (${r.spawned.map((s) => `${s.id}=${s.what}`).join(", ")})` +
         (r.skipped.length > 0 ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}` : ""),
     );
   }
@@ -1083,6 +1161,9 @@ async function main(): Promise<void> {
   // Combat domain (M2/M5, slice 5): the combat module builds the full cluster
   // from this config during assembly. See modules/combat/server.js.
   const combatConfig = {
+    // A building holds out against a blow from anyone below its minStrength (IX6).
+    canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
+    kindScale: (target: number, kind: string): number => breaks.kindScale(target, kind),
     rules: game.rules,
     hooks,
     combatSkills,
@@ -1090,7 +1171,8 @@ async function main(): Promise<void> {
     getWornFactor: wornFactor,
     getCreaturesPlace: (s: unknown, e: number) => creaturesOf().place(sim, e),
     getGateway: () => gw,
-    getRespawnSeconds: (e: number) => creaturesOf().respawnSeconds(e),
+    // A fallen resident lies where it fell (ResidentSystem removes it and brings someone new later); creatures rise on their own timers.
+    getRespawnSeconds: (e: number) => ((assembled.byName["residents"] as unknown as import("./residents/index.js").ResidentSystem | undefined)?.isResident(e) ? Number.POSITIVE_INFINITY : creaturesOf().respawnSeconds(e)),
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
@@ -1116,11 +1198,36 @@ async function main(): Promise<void> {
   // The module context outlives the assembly call: modules publish domain
   // stores on ctx.stores during createSystems (character, social, dungeons,
   // economy), and server.ts reads them back post-assembly below.
+  // The towns' people (SG3b): the boot scene's structure positions by node id (a structure's node id is its structure id), and the baked manifests.
+  const residentsConfig = {
+    structurePositions: (): Map<string, { x: number; z: number }> | null => {
+      if (!process.env.MMO_SCENE) return null;
+      const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+      return new Map(bootScenes().flatMap((s) => worldNodes(expandPrefabs(s, prefabs).doc)).map((w) => [w.node.id, { x: w.position[0], z: w.position[2] }]));
+    },
+    manifestsDir: process.env.MMO_SETTLEMENTS || path.join(REPO_ROOT, "content", "settlements"),
+    catalog: characterCatalog,
+    timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
+    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
+    maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
+    maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
+    // Deaths are kept (places.db); someone new moves in three game days after.
+    raided: () => creaturesOf().raids(),
+    store: placesStore,
+    // A resident who keeps a shop sells from the template for that kind of shop (content/vendors.json byArchetype).
+    attachShop: (eid: number, archetype: string) => {
+      const template = shopByArchetype[archetype] ?? shopByArchetype["*"];
+      if (template) attachVendor(eid, template);
+    },
+    detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
+    replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
+    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,
+  };
   const moduleCtx: ServerModuleContext = {
     sim,
     log: (m) => console.log(m),
     // Slices 2-6: modules read their bootstrap config from here.
-    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR } },
+    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig },
   };
   const assembled = await assembleServerSystems({
     modulesDir: path.join(REPO_ROOT, "modules"),
@@ -1130,6 +1237,8 @@ async function main(): Promise<void> {
         reloader,
         streamer,
         gathering,
+        chests,
+        breaks,
       },
     },
     ctx: moduleCtx,
@@ -1184,6 +1293,21 @@ async function main(): Promise<void> {
   const socialStore = moduleCtx.stores!.socialStore as import("./index.js").SqliteSocialStore | undefined;
   const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
   const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
+  const questStore = moduleCtx.stores!.questStore as import("./quests/quest-store.js").SqliteQuestStore | undefined;
+  // PL3c: guilds, parties, friends and blocks are world records; the local stores are seeded from them
+  // here, before the gateway's books read them, and written through the sync's tracked stores after.
+  const socialSync =
+    worldClient?.registered && guildStore && partyStore && socialStore
+      ? new SocialWorldSync({
+          client: worldClient,
+          guilds: guildStore,
+          parties: partyStore,
+          social: socialStore,
+          reload: (kind) => gw.reloadSocial(kind),
+          log: (line) => console.log(`[server] ${line}`),
+        })
+      : null;
+  await socialSync?.boot();
   spawnBootScene();
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
@@ -1227,6 +1351,17 @@ async function main(): Promise<void> {
           client: worldClient,
           store: effectiveCharacterStore,
           economy: economyView ?? undefined,
+          // PL3b: the character's quest log and pouch ride its world record, so they follow it to any region.
+          extras: {
+            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringStore.loadPouch(id) }),
+            seed: (id, extras) => {
+              if (questStore && extras.quests !== undefined) questStore.replace(id, questRecordsOf(extras.quests));
+              if (extras.pouch !== undefined) {
+                gatheringStore.replacePouch(id, materialCountsOf(extras.pouch));
+                gathering.forgetPouch(id);
+              }
+            },
+          },
           log: (line) => console.log(`[server] ${line}`),
         })
       : null;
@@ -1234,8 +1369,12 @@ async function main(): Promise<void> {
     ? new WorldAtomicOps({ client: worldClient, fences: worldCharacters })
     : null;
   if (atomicOps) atomicOpsRef.ops = atomicOps;
+  // E3b: with MMO_EDGE=1 the players' sockets are the edge's, relayed over the core channel (started below).
+  const toEdge: { push: EdgePush } = { push: () => {} };
+  const edgeRelay = EDGE_MODE ? new ChannelTransport((type, payload) => toEdge.push(type, payload), coreChannelPort()) : null;
   const gw: Gateway = new Gateway({
     port: PORT,
+    ...(edgeRelay ? { transport: edgeRelay } : {}),
     scale,
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
@@ -1245,6 +1384,8 @@ async function main(): Promise<void> {
     chatRules: await loadChatRules(),
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
+    needs: game.rules.needs,
+    lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
@@ -1260,6 +1401,8 @@ async function main(): Promise<void> {
     magic: magicRef!,
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
+    // Interest management: on unless MMO_INTEREST=0 (dungeon instances run their own gateway, which sees everything).
+    ...(process.env.MMO_INTEREST === "0" ? {} : { interest: game.rules.interest }),
     world: sim,
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
@@ -1282,9 +1425,9 @@ async function main(): Promise<void> {
     worldInfo: worldInfoFor(store, tiles, CHUNK_SIZE) ?? undefined,
     credentialStore,
     characterStore: effectiveCharacterStore,
-    guildStore,
-    socialStore,
-    partyStore,
+    guildStore: socialSync?.guildStore ?? guildStore,
+    socialStore: socialSync?.socialStore ?? socialStore,
+    partyStore: socialSync?.partyStore ?? partyStore,
     characterCatalog,
     playerAbilities,
     dayClock: dayClock ?? undefined,
@@ -1339,9 +1482,18 @@ async function main(): Promise<void> {
     gw.setMigrationAcceptor((id, verify) => coordinator.accept(id, false, verify));
     if (worldClient.registered) {
       await coordinator.refreshRegistry().catch(() => {});
+      // Cross-region view (IM8): neighbours from the registry, tickets signed with the fleet key.
+      const toRect = (r: { x0: number; x1: number; z0: number; z1: number }) => ({ x0: r.x0 * CHUNK_SIZE, x1: r.x1 * CHUNK_SIZE, z0: r.z0 * CHUNK_SIZE, z1: r.z1 * CHUNK_SIZE });
+      const borderKey = process.env.WORLD_API_KEY ?? "";
       migrationTimer = setInterval(() => {
         void coordinator.observe(gw.migrationPositions()).catch((err: unknown) =>
           console.warn(`[server] migration observe: ${(err as Error).message}`));
+        if (borderKey) {
+          gw.setBorders(
+            { regionId: worldClient!.regionId, key: borderKey, rect: toRect(chunkRange) },
+            coordinator.knownRegions.filter((r) => r.live).map((r) => ({ regionId: r.regionId, endpoint: r.endpoint, rect: toRect(r.chunkRange) })),
+          );
+        }
       }, 250);
       migrationTimer.unref();
       // Cross-region presence (S2): refresh friends lists from the world
@@ -1365,8 +1517,10 @@ async function main(): Promise<void> {
     ? new ShardStateShipper({
         client: worldClient,
         ledger: itemLedger,
-        snapshotIntervalTicks: SAVE_EVERY_TICKS,
+        snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => console.log(`[server] ${line}`),
+        // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
+        places: () => ({ resource_nodes: gatheringStore.allNodes(), place_records: placesStore.all() }),
       })
     : null;
 
@@ -1429,8 +1583,16 @@ async function main(): Promise<void> {
     if (stateShipper && worldClient?.registered) {
       void stateShipper.pump(gw.serverTick);
     }
+    // PL3c: changed guilds, parties, friends and blocks go uphill on the same cycle.
+    void socialSync?.push();
   }, 1000);
   saveTimer.unref();
+  if (socialSync) {
+    gw.socialIds("guild", () => socialSync.takeId("guild"));
+    gw.socialIds("party", () => socialSync.takeId("party"));
+    // Other regions' changes arrive within a minute.
+    setInterval(() => void socialSync.refresh(), 60_000).unref();
+  }
 
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
@@ -1453,15 +1615,20 @@ async function main(): Promise<void> {
 
   // PCG assets: the Pcg webrpc service on the game port (pcg.ridl).
   const pcg = startPcgService(gw, process.env.MMO_PCG_ASSETS || undefined);
-  const port = await gw.listen();
-  // The edge's channel (E3), beside the player port. A core that cannot
-  // bind it still serves players directly.
+  // The edge's channel (E3), up before the gateway listens. With MMO_EDGE=1 the
+  // players come through it, so it must bind; otherwise it serves the edge
+  // beside the player port, and a core that cannot bind it still serves players.
   const channelPort = coreChannelPort();
-  const coreChannel = await startCoreChannel(gw, channelPort).catch((err: Error) => {
+  const coreChannel = await startCoreChannel(gw, channelPort, {}, undefined, edgeRelay ?? undefined).catch((err: Error) => {
+    if (edgeRelay) throw new Error(`MMO_EDGE=1 needs the core channel on 127.0.0.1:${channelPort}: ${err.message}`);
     console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
     return null;
   });
-  if (coreChannel) console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  if (coreChannel) {
+    toEdge.push = (type, payload) => coreChannel.server.pushToAll(type, payload);
+    console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  }
+  const port = await gw.listen();
   gw.startTicking();
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse
@@ -1477,7 +1644,8 @@ async function main(): Promise<void> {
       /* already gone */
     }
   });
-  console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
+  if (edgeRelay) console.log(`[server] listening on the edge: players connect to the edge's game port, relayed over the core channel :${port}; no player port here`);
+  else console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
   console.log(`[server] ${pcg ? pcg.summary : "no PCG asset library (MMO_PCG_ASSETS)"}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +

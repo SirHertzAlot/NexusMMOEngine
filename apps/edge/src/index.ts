@@ -10,8 +10,12 @@
  * `GET /metrics` is the Prometheus scrape for the whole engine (E6,
  * metrics.ts); network lifecycle events log as JSON lines.
  *
+ * With EDGE_GAME_PORT set the edge is also the players' game port (E3b,
+ * game-relay.ts): their WebSocket and HTTP relayed to a core started with
+ * MMO_EDGE=1, which binds no player port of its own.
+ *
  * Environment: EDGE_HTTP_PORT (3000), EDGE_WS_PORT (3001),
- * CORE_CHANNEL_PORT (4000).
+ * CORE_CHANNEL_PORT (4000), EDGE_GAME_PORT (unset: no game port).
  */
 import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
@@ -21,13 +25,12 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import { ChannelClient } from "@mmo-engine/channel";
 import { netLogger } from "@mmo-engine/nethealth";
-import { loadConfig } from "./config.js";
+import { gamePort, loadConfig } from "./config.js";
+import { startGameRelay, type GameRelay } from "./game-relay.js";
 import { pingHandler } from "./modules/ping.js";
 import { loadRoutes, routePacket, type RouterCtx } from "./router.js";
 import { EdgeRegistry, edgeModulesHandler, loadEdgeModules } from "./edge-registry.js";
 import { createCoreLifecycle } from "./lifecycle.js";
-import { createMirrorBuffer } from "./mirror-buffer.js";
-import { pushTick } from "./tick-buffer.js";
 import { createCoreMetricsProxy, createEdgeMetrics, metricsHandler, packetTypeLabel, recordRoute } from "./metrics.js";
 
 /** Walks up from this file until a package.json with a `workspaces` field: the repo root. */
@@ -58,13 +61,6 @@ const log = netLogger("edge");
 const channel = new ChannelClient({ port: config.coreChannelPort, metrics: metrics.channel, log: netLogger("channel") });
 // E4: log outages, resync on reconnect, track sessions from logins.
 const lifecycle = createCoreLifecycle(channel);
-channel.onPush("tick.events", (p) => { const { tick, events } = p as { tick: number; events: unknown[] }; pushTick(tick, events); });
-// The core's mirror stream; read by the client cutover (players still connect to the core today).
-export const mirror = createMirrorBuffer(channel);
-mirror.onDelta((d) => {
-  metrics.mirrorDeltasFannedOut.inc();
-  if (mirror.latestSnapshot) metrics.mirrorSnapshotAgeTicks.set(d.tick - mirror.latestSnapshot.tick);
-});
 const coreMetrics = createCoreMetricsProxy(channel, metrics);
 coreMetrics.start();
 // Don't wait out the 15 s interval to un-stale after (re)connecting.
@@ -127,6 +123,22 @@ wss.on("connection", (socket) => {
   });
 });
 
+// 3b. The players' game port (E3b): their WebSocket and HTTP relayed to the core.
+const gamePortNo = gamePort();
+let gameRelay: GameRelay | null = null;
+if (gamePortNo !== null) {
+  startGameRelay(channel, gamePortNo).then(
+    (r) => {
+      gameRelay = r;
+      console.log(`[edge] game port :${r.port} (players relayed to the core over the channel)`);
+    },
+    (err: Error) => {
+      console.error(`[edge] game port :${gamePortNo} not served: ${err.message}`);
+      process.exit(1);
+    },
+  );
+}
+
 // 5. graceful shutdown: stop accepting now, close everything after 5 s, exit 0
 let shuttingDown = false;
 function shutdown(signal: string): void {
@@ -135,6 +147,7 @@ function shutdown(signal: string): void {
   console.log(`[edge] ${signal}: no longer accepting; closing in ${SHUTDOWN_GRACE_MS / 1000} s`);
   httpServer.close();
   wss.close();
+  void gameRelay?.close();
   coreMetrics.stop();
   channel.close();
   setTimeout(() => {
