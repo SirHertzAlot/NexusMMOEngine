@@ -724,7 +724,7 @@ export class FirstPersonRig {
     hand: "main" | "off",
     modelOrBase: string | null,
     kind: WeaponVisualKind,
-_rankColor?: string,
+    rankColor?: string,
   ): void {
     const socket = hand === "main" ? this.rightSocket : this.leftSocket;
     this.clearSocket(socket);
@@ -739,7 +739,9 @@ _rankColor?: string,
 
     // 1. Try loading Synty prop model immediately if already available
     if (!this.tryAttachSyntyProp(hand)) {
-      // Synty not ready; leave socket empty. Visibility will be gated elsewhere.
+      // 2. Fallback to procedural weapon mesh if custom Synty assets aren't yet loaded
+      const fallback = buildProceduralWeaponMesh(kind, rankColor);
+      socket.add(fallback);
     }
   }
 
