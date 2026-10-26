@@ -104,6 +104,7 @@ table Snapshot {
   staminas: StaminaBlock;
   characterRefs: CharacterRefBlock;
   animations: AnimationBlock;
+  vfxEmitters: VfxEmitterBlock;
 }
 
 table Delta {
@@ -125,6 +126,7 @@ table Delta {
   staminas: StaminaBlock;
   characterRefs: CharacterRefBlock;
   animations: AnimationBlock;
+  vfxEmitters: VfxEmitterBlock;
 }
 
 // ---- client -> server intent events (slice 1.3, additive) ----
@@ -249,5 +251,20 @@ table Animation {
 }
 
 table AnimationBlock { entities: [uint64]; items: [Animation]; }
+
+// ---- vfx emitter (additive; ComponentId 19) ----
+// A per-object particle emitter binding: `template` is the fnv1a32 hash
+// of the VfxEffect id (content/vfx/<id>.json), `intensity` scales the
+// authored emission rate. Configuration, like BodyConfig: set at spawn
+// (scene placement, admin verbs), in every snapshot, and in deltas only
+// when it changes. Clients resolve the hash against their bundled effect
+// registry and spawn the effect at the entity's Transform.
+
+table VfxEmitter {
+  template: uint32;
+  intensity: float;
+}
+
+table VfxEmitterBlock { entities: [uint64]; items: [VfxEmitter]; }
 
 root_type Snapshot;
