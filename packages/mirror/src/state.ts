@@ -23,6 +23,7 @@ import type {
   StaminaRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "@mmo-engine/protocol";
 
 export interface EntityMirror {
@@ -35,6 +36,7 @@ export interface EntityMirror {
   stamina?: StaminaRow;
   characterRef?: CharacterRefRow;
   animation?: AnimationRow;
+  vfxEmitter?: VfxEmitterRow;
   body?: BodyConfigRow;
   asset?: AssetRefRow;
   locomotion?: LocomotionRow;
@@ -105,6 +107,7 @@ export class MirrorState {
     for (const r of d.staminas) upsert(this.entities, r.wireId, "stamina", r);
     for (const r of d.characterRefs) upsert(this.entities, r.wireId, "characterRef", r);
     for (const r of d.animations) upsert(this.entities, r.wireId, "animation", r);
+    for (const r of d.vfxEmitters) upsert(this.entities, r.wireId, "vfxEmitter", r);
     for (const r of d.bodies) upsert(this.entities, r.wireId, "body", r);
     for (const r of d.assets) upsert(this.entities, r.wireId, "asset", r);
     for (const r of d.locomotions) upsert(this.entities, r.wireId, "locomotion", r);

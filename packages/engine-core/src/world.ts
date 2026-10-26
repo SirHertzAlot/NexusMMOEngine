@@ -194,6 +194,13 @@ function writeComponentRows(
     An.rate[eid] = r.rate;
     An.layerMask[eid] = r.layerMask;
   }
+  const Ve = C.VfxEmitter;
+  for (const r of state.vfxEmitters) {
+    const eid = eidOf(r.wireId);
+    addComponent(ecs, Ve, eid);
+    Ve.template[eid] = r.template;
+    Ve.intensity[eid] = r.intensity;
+  }
   const R = C.CharacterRef;
   for (const r of state.characterRefs) {
     const eid = eidOf(r.wireId);
@@ -385,6 +392,7 @@ export class SimWorld {
     for (const r of state.actions) take(r.wireId);
     for (const r of state.characterRefs) take(r.wireId);
     for (const r of state.animations) take(r.wireId);
+    for (const r of state.vfxEmitters) take(r.wireId);
 
     let maxSlot = -1;
     for (const slot of wanted.keys()) if (slot > maxSlot) maxSlot = slot;
@@ -425,7 +433,7 @@ export class SimWorld {
    */
   spawnFromState(state: CollectedState): number[] {
     const ids = new Set<bigint>();
-    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.staminas, state.bodies, state.assets, state.locomotions, state.appearances, state.actions, state.characterRefs, state.animations]) {
+    for (const block of [state.transforms, state.velocities, state.intents, state.chunks, state.healths, state.staminas, state.bodies, state.assets, state.locomotions, state.appearances, state.actions, state.characterRefs, state.animations, state.vfxEmitters]) {
       for (const r of block) ids.add(r.wireId);
     }
     const eids = new Map<bigint, number>();

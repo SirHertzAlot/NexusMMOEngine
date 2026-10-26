@@ -30,6 +30,7 @@ import type {
   LocomotionRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "./snapshot.js";
 
 export interface EntityState {
@@ -44,6 +45,7 @@ export interface EntityState {
   appearance?: AppearanceRow;
   action?: ActionRow;
   animation?: AnimationRow;
+  vfxEmitter?: VfxEmitterRow;
 }
 
 export type WorldState = Map<bigint, EntityState>;
@@ -52,7 +54,7 @@ function upsert(
   state: WorldState,
   wid: bigint,
   key: keyof EntityState,
-  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow | AppearanceRow | ActionRow | AnimationRow,
+  row: TransformRow | VelocityRow | IntentRow | ChunkRow | HealthRow | BodyConfigRow | AssetRefRow | LocomotionRow | AppearanceRow | ActionRow | AnimationRow | VfxEmitterRow,
 ): void {
   let e = state.get(wid);
   if (!e) {
@@ -86,6 +88,7 @@ export function applyDelta(state: WorldState, delta: CollectedState): WorldState
   for (const r of delta.appearances) upsert(state, r.wireId, "appearance", r);
   for (const r of delta.actions) upsert(state, r.wireId, "action", r);
   for (const r of delta.animations) upsert(state, r.wireId, "animation", r);
+  for (const r of delta.vfxEmitters) upsert(state, r.wireId, "vfxEmitter", r);
   return state;
 }
 
@@ -98,6 +101,7 @@ const FLOAT_FIELDS: Record<string, string[]> = {
   locomotion: ["breath"],
   action: ["yaw"],
   animation: ["rate"],
+  vfxEmitter: ["intensity"],
 };
 
 const EXACT_FIELDS: Record<string, string[]> = {
@@ -109,6 +113,7 @@ const EXACT_FIELDS: Record<string, string[]> = {
   appearance: ["look"],
   action: ["move", "started", "seq"],
   animation: ["clipId", "startTick", "layerMask"],
+  vfxEmitter: ["template"],
 };
 
 function rowsEqual(

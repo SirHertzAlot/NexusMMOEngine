@@ -67,6 +67,7 @@ import type {
   StaminaRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "@mmo-engine/protocol";
 export type {
   ActionRow,
@@ -83,6 +84,7 @@ export type {
   StaminaRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "@mmo-engine/protocol";
 // ------------------------------------------------------------ collection
 
@@ -99,6 +101,7 @@ const qAppearance: Query = defineQuery([C.Appearance]);
 const qAction: Query = defineQuery([C.Action]);
 const qCharacterRef: Query = defineQuery([C.CharacterRef]);
 const qAnimation: Query = defineQuery([C.Animation]);
+const qVfxEmitter: Query = defineQuery([C.VfxEmitter]);
 
 function readTransform(sim: SimWorld, eid: number): TransformRow {
   const T = C.Transform;
@@ -214,6 +217,11 @@ function readAnimation(sim: SimWorld, eid: number): AnimationRow {
   return { wireId: sim.wireId(eid), clipId: A.clipId[eid], startTick: A.startTick[eid], rate: A.rate[eid], layerMask: A.layerMask[eid] };
 }
 
+function readVfxEmitter(sim: SimWorld, eid: number): VfxEmitterRow {
+  const E = C.VfxEmitter;
+  return { wireId: sim.wireId(eid), template: E.template[eid], intensity: E.intensity[eid] };
+}
+
 function readCharacterRef(sim: SimWorld, eid: number): CharacterRefRow {
   const R = C.CharacterRef;
   return { wireId: sim.wireId(eid), characterId: R.idHi[eid] * 4294967296 + R.idLo[eid] };
@@ -237,6 +245,7 @@ export function collectFullState(sim: SimWorld, tick: number): CollectedState {
     staminas: qStamina(sim.ecs).map((e) => readStamina(sim, e)),
     characterRefs: qCharacterRef(sim.ecs).map((e) => readCharacterRef(sim, e)),
     animations: qAnimation(sim.ecs).map((e) => readAnimation(sim, e)),
+    vfxEmitters: qVfxEmitter(sim.ecs).map((e) => readVfxEmitter(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -266,6 +275,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
     staminas: having(C.Stamina).map((e) => readStamina(sim, e)),
     characterRefs: having(C.CharacterRef).map((e) => readCharacterRef(sim, e)),
     animations: having(C.Animation).map((e) => readAnimation(sim, e)),
+    vfxEmitters: having(C.VfxEmitter).map((e) => readVfxEmitter(sim, e)),
     spawned: [],
     despawned: [],
   };
@@ -273,7 +283,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
 
 // ---------------------------------------------------------- delta diff
 
-type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "staminas" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs" | "animations";
+type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "staminas" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs" | "animations" | "vfxEmitters";
 
 interface TrackedComponent {
   key: DiffKey;
@@ -353,6 +363,13 @@ const TRACKED: TrackedComponent[] = [
     stores: C.Animation as unknown as Record<string, ArrayLike<number>>,
     fields: ["clipId", "startTick", "rate", "layerMask"],
   },
+  {
+    // Configuration: template/intensity change only via spawn or admin
+    // verbs, so this diff is idle in the steady state.
+    key: "vfxEmitters", query: qVfxEmitter,
+    stores: C.VfxEmitter as unknown as Record<string, ArrayLike<number>>,
+    fields: ["template", "intensity"],
+  },
 ];
 
 export interface DiffResult {
@@ -369,6 +386,7 @@ export interface DiffResult {
   actions: number[];
   characterRefs: number[];
   animations: number[];
+  vfxEmitters: number[];
 }
 
 /**
@@ -410,7 +428,7 @@ export class DeltaTracker {
     const out: DiffResult = {
       transforms: [], velocities: [], intents: [], chunks: [], healths: [],
       staminas: [],
-      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [],
+      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [], vfxEmitters: [],
     };
     for (let ti = 0; ti < TRACKED.length; ti++) {
       const t = TRACKED[ti];
@@ -487,6 +505,7 @@ export function collectDeltaState(
     staminas: d.staminas.map((e) => readStamina(sim, e)),
     characterRefs: d.characterRefs.map((e) => readCharacterRef(sim, e)),
     animations: d.animations.map((e) => readAnimation(sim, e)),
+    vfxEmitters: d.vfxEmitters.map((e) => readVfxEmitter(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -535,6 +554,7 @@ export type {
   AppearanceSoA,
   ActionSoA,
   AnimationSoA,
+  VfxEmitterSoA,
 } from "@mmo-engine/protocol";
 
 // ------------------------------------------- SoA encode from the sim
@@ -574,6 +594,7 @@ export interface SoAEidLists {
   appearances: ArrayLike<number>;
   actions: ArrayLike<number>;
   animations: ArrayLike<number>;
+  vfxEmitters: ArrayLike<number>;
 }
 
 /** Heights resolver for chunk rows, mirroring attachChunkHeights. */
@@ -622,6 +643,7 @@ function soaState(
   const L = C.Locomotion;
   const AC = C.Action;
   const AN = C.Animation;
+  const VE = C.VfxEmitter;
   return {
     tick,
     baseTick,
@@ -674,6 +696,10 @@ function soaState(
       eids: eids.animations, wireIdOf,
       clipId: AN.clipId, startTick: AN.startTick, rate: AN.rate, layerMask: AN.layerMask,
     },
+    vfxEmitters: {
+      eids: eids.vfxEmitters, wireIdOf,
+      template: VE.template, intensity: VE.intensity,
+    },
     spawned: ids ? [...ids.spawned] : sim.spawnedWireIds(),
     despawned: ids ? [...ids.despawned] : sim.despawnedWireIds(),
   };
@@ -710,6 +736,7 @@ export function encodeSnapshotFromSim(
     appearances: qAppearance(sim.ecs),
     actions: qAction(sim.ecs),
     animations: qAnimation(sim.ecs),
+    vfxEmitters: qVfxEmitter(sim.ecs),
   };
   return encodeSnapshotSoA(
     soaState(sim, tick, 0, eids, opts?.chunkSource ?? null),
@@ -811,5 +838,6 @@ export function fullEidLists(sim: SimWorld): SoAEidLists {
     appearances: qAppearance(sim.ecs),
     actions: qAction(sim.ecs),
     animations: qAnimation(sim.ecs),
+    vfxEmitters: qVfxEmitter(sim.ecs),
   };
 }

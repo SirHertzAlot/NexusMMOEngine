@@ -33,12 +33,12 @@ const KEYS: Array<[Key, object]> = [
   ["transforms", C.Transform], ["velocities", C.Velocity], ["intents", C.PlayerIntent], ["chunks", C.Chunk],
   ["healths", C.Health], ["staminas", C.Stamina], ["characterRefs", C.CharacterRef], ["bodies", C.BodyConfig],
   ["assets", C.AssetRef], ["locomotions", C.Locomotion], ["appearances", C.Appearance], ["actions", C.Action],
-  ["animations", C.Animation],
+  ["animations", C.Animation], ["vfxEmitters", C.VfxEmitter],
 ];
 
 const emptyLists = (): Record<Key, number[]> => ({
   transforms: [], velocities: [], intents: [], chunks: [], healths: [], staminas: [], characterRefs: [],
-  bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [],
+  bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [], vfxEmitters: [],
 });
 
 const keyOf = (sx: number, sz: number): string => `${sx},${sz}`;
