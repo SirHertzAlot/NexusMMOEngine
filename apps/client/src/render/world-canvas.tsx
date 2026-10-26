@@ -39,6 +39,8 @@ import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
 import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
+import { EmitterFxLayer } from "./emitter-fx.js";
+import { EMITTER_REGISTRY } from "./emitter-content.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
 import { Telegraphs } from "./telegraphs.js";
@@ -366,6 +368,7 @@ interface Runtime {
   input: InputState;
   drops: DropLabels;
   resources: ResourceNodes;
+  emitters: EmitterFxLayer;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
   telegraphs: Telegraphs;
@@ -510,6 +513,8 @@ function MirrorWorld({
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
     const resources = new ResourceNodes();
+    // VfxEmitter rows (shrines): particles drawn by the entity layer's QuarksFx.
+    const emitters = new EmitterFxLayer(layer.vfx, EMITTER_REGISTRY);
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
     const telegraphs = new Telegraphs();
@@ -523,7 +528,7 @@ function MirrorWorld({
     const weatherFeel = new WeatherFeel();
     weatherFeel.setAudio(audio ?? null);
     const fpsRig = new FirstPersonRig(layer.syntyProps);
-    scene.add(sky.group, terrain.group, water.group, layer.group, fpsRig.root, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh);
+    scene.add(sky.group, terrain.group, water.group, layer.group, fpsRig.root, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh, emitters.group);
     ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
     // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
     // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
@@ -602,7 +607,7 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     const observerLayers = new Map<MirrorClient, EntityLayer>();
-    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, emitters, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client, capture).
@@ -628,6 +633,8 @@ function MirrorWorld({
       surfaces?.dispose();
       sky.dispose();
       particles.dispose();
+      emitters.dispose();
+      scene.remove(emitters.group);
       layer.dispose();
       for (const ol of observerLayers.values()) ol.dispose();
       scene.remove(drops.group, npcs.group, entrances.group, telegraphs.group);
@@ -739,6 +746,8 @@ function MirrorWorld({
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
     }, client.names);
+    // VfxEmitter rows (shrines): spawn/update/despawn their particle effects.
+    r.emitters.sync(client.state);
     // Neighbouring regions near the border (IM8): each in its own layer, so their wire ids never mix
     // with this region's; their terrain chunks go to a renderer that is never drawn (ours covers it).
     const seen = new Set<MirrorClient>();

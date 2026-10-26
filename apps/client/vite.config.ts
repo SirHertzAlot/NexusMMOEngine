@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { localAssets } from "./vite-local-assets.js";
 import { gpuBenchmarks } from "./vite-gpu-benchmarks.js";
-import { animationDoc, audioEvents, combatMoves, gameFlow, materialsDoc, vfxBudgets } from "./vite-game-flow.js";
+import { animationDoc, audioEvents, combatMoves, gameFlow, materialsDoc, vfxBudgets, vfxEffects } from "./vite-game-flow.js";
 import { gameStrings } from "./vite-game-strings.js";
 import compression from "vite-plugin-compression";
 
@@ -20,6 +20,13 @@ export default defineConfig(({ mode }) => {
       animationDoc(fileURLToPath(new URL("../../content/animation/animations.json", import.meta.url))),
       materialsDoc(fileURLToPath(new URL("../../content/materials/materials.json", import.meta.url))),
       vfxBudgets(fileURLToPath(new URL("../../content/vfx/budgets.json", import.meta.url))),
+      vfxEffects([
+        fileURLToPath(new URL("../../content/vfx/shrine-fire.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/shrine-water.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/shrine-earth.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/shrine-wind.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/shrine-darkness.json", import.meta.url)),
+      ]),
       gameStrings(fileURLToPath(new URL("../../content/strings", import.meta.url))),
       localAssets(fileURLToPath(new URL("../../assets", import.meta.url))),
       gpuBenchmarks(),
