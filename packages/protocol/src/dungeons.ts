@@ -53,4 +53,4 @@ export type DungeonMessage =
   | { kind: "dungeon"; op: "look"; look: DungeonLook }
   | { kind: "dungeon"; op: "state"; dungeon: string; secondsLeft: number; creaturesLeft: number; bossLeft: number; chests: { id: string; opened: boolean }[]; traps: { id: string; sprung: boolean }[] }
   /** `items`: what this character earned, put in their bag in the region. */
-  | { kind: "dungeon"; op: "ended"; outcome: "cleared" | "timeout" | "abandoned"; items: number };
+  | { kind: "dungeon"; op: "ended"; outcome: "cleared" | "timeout" | "abandoned" | "died"; items: number };

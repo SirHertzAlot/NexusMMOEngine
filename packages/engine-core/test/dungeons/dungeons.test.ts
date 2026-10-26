@@ -625,6 +625,40 @@ describe("dungeon instance", () => {
       assert.equal(results[0].outcome, want);
     }
   });
+
+  it("ends with died outcome when a member is killed, drops all run loot, and tells the member", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characterStore = new MemoryCharacterStore();
+    const rec = await characterStore.create("alice", "Alice", "{}", 1);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-death-test", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [{ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }],
+      credentialStore: await makeCredentialStore(), characterStore,
+      lootPool: [100, 101],
+      onEnd: (r) => results.push(r),
+      clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+    const avatar = inst.world.resolveWireId(BigInt(welcome.player_entity));
+    (inst as unknown as { loot: { characterId: number; def: number }[] }).loot.push({ characterId: rec.id, def: 100 });
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    C.Health.current[avatar] = 0;
+    onDeath(inst.world, { tick: 1, target: avatar, state: "dead" });
+    await until(() => results.length === 1);
+    assert.equal(results[0].outcome, "died");
+    assert.equal(results[0].loot.length, 0);
+    await until(() => ctl(c).some((m) => m.op === "ended"));
+    const ended = ctl(c).find((m) => m.op === "ended");
+    assert.ok(ended, "ended message received");
+    assert.equal(ended.outcome, "died");
+    assert.equal(ended.items, 0);
+  });
 });
 
 describe("instance manager", () => {

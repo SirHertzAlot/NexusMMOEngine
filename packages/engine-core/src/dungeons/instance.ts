@@ -48,7 +48,7 @@ import type { InstanceLayout, LayoutProp } from "./pool.js";
 import { placeChestsAndTraps } from "./placement.js";
 import { DungeonWallSystem } from "./walls.js";
 
-export type InstanceOutcome = "cleared" | "timeout" | "abandoned";
+export type InstanceOutcome = "cleared" | "timeout" | "abandoned" | "died";
 
 export interface InstanceMember {
   characterId: number;
@@ -422,10 +422,10 @@ export class DungeonInstance {
         return { characterId: Number(k.slice(0, i)), kind: k.slice(i + 1), count };
       }),
       deaths: [...this.deaths].map(([characterId, count]) => ({ characterId, count })),
-      loot: this.loot.slice(),
+      loot: outcome === "died" ? [] : this.loot.slice(),
     };
     for (const p of this.online.values()) {
-      const mine = result.loot.filter((l) => l.characterId === p.characterId).length;
+      const mine = outcome === "died" ? 0 : result.loot.filter((l) => l.characterId === p.characterId).length;
       p.send({ kind: "dungeon", op: "ended", outcome, items: mine });
     }
     this.opts.onEnd(result);
@@ -491,6 +491,7 @@ export class DungeonInstance {
     if (hasComponent(sim.ecs, C.CharacterRef, victim)) {
       const id = C.CharacterRef.idHi[victim] * 4294967296 + C.CharacterRef.idLo[victim];
       this.deaths.set(id, (this.deaths.get(id) ?? 0) + 1);
+      this.end("died");
       return;
     }
     if (!this.spawned.has(victim) || this.fallen.has(victim)) return;
