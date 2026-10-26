@@ -155,3 +155,80 @@ export function attackPose(t: number, hitAt: number, duration: number, out: { wi
 export function deathProgress(t: number, seconds = 0.9): number {
   return ease(Math.min(1, Math.max(0, t / seconds)));
 }
+
+/** Avian flapping and gliding solver. In flight (speed > 1.5), wings flap with harmonic roll & pitch. */
+export function avianFlightCurve(
+  phase: number,
+  speed: number,
+  out: { wingRoll: number; wingPitch: number; headBob: number }
+): void {
+  const isMoving = smoothstep(0.1, 1.0, speed);
+  const flap = Math.sin(2 * Math.PI * phase);
+  out.wingRoll = flap * 0.65 * isMoving;
+  out.wingPitch = Math.cos(2 * Math.PI * phase) * 0.25 * isMoving;
+  out.headBob = Math.sin(4 * Math.PI * phase) * 0.08 * isMoving;
+}
+
+/** Serpentine travelling wave solver: calculates lateral yaw angles along sequential vertebrae. */
+export function serpentineWave(
+  phase: number,
+  speed: number,
+  numBones: number,
+  outAngles: Float32Array
+): void {
+  const isMoving = smoothstep(0.05, 0.5, speed);
+  const waveFreq = 2 * Math.PI;
+  const spatialLag = (2 * Math.PI) / Math.max(1, numBones - 1);
+  for (let i = 0; i < numBones; i++) {
+    // Amplitude increases slightly toward the tail
+    const amp = (0.2 + 0.35 * (i / Math.max(1, numBones - 1))) * (0.3 + 0.7 * isMoving);
+    outAngles[i] = Math.sin(waveFreq * phase - i * spatialLag) * amp;
+  }
+}
+
+/** Aquatic swimming solver: sinusoidal tail swish and pectoral fin stabilization. */
+export function aquaticWave(
+  phase: number,
+  speed: number,
+  out: { tailYaw: number; finPitch: number; dorsalRoll: number }
+): void {
+  const isMoving = smoothstep(0.05, 0.8, speed);
+  const swish = Math.sin(2 * Math.PI * phase);
+  out.tailYaw = swish * 0.45 * (0.2 + 0.8 * isMoving);
+  out.finPitch = Math.cos(2 * Math.PI * phase) * 0.2 * isMoving;
+  out.dorsalRoll = swish * 0.05 * isMoving;
+}
+
+/** Arachnid alternating tripod / tetrapod scurrying gait solver. */
+export function arachnidGait(
+  phase: number,
+  speed: number,
+  outAngles: Float32Array
+): void {
+  const isMoving = smoothstep(0.05, 0.5, speed);
+  // 4 leg pairs = 8 legs [leg1L, leg1R, leg2L, leg2R, leg3L, leg3R, leg4L, leg4R]
+  // Tripod group A: 1L, 2R, 3L, 4R
+  // Tripod group B: 1R, 2L, 3R, 4L
+  const swingA = Math.sin(2 * Math.PI * phase) * 0.4 * isMoving;
+  const swingB = Math.sin(2 * Math.PI * phase + Math.PI) * 0.4 * isMoving;
+
+  outAngles[0] = swingA;
+  outAngles[1] = swingB;
+  outAngles[2] = swingB;
+  outAngles[3] = swingA;
+  outAngles[4] = swingA;
+  outAngles[5] = swingB;
+  outAngles[6] = swingB;
+  outAngles[7] = swingA;
+}
+
+/** Flora ambient wind sway and harmonic oscillation solver. */
+export function floraSway(
+  clock: number,
+  out: { swayX: number; swayZ: number; flutter: number }
+): void {
+  // Low-frequency wind gusts + higher-frequency foliage vibration
+  out.swayX = Math.sin(clock * 1.2) * 0.05 + Math.sin(clock * 2.8) * 0.02;
+  out.swayZ = Math.cos(clock * 0.9) * 0.06 + Math.cos(clock * 2.1) * 0.025;
+  out.flutter = Math.sin(clock * 4.5) * 0.04;
+}
