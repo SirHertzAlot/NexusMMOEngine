@@ -813,4 +813,3 @@ Newest first. One line per merged PR or decision.
   - Academic Improvement Crawler (`scripts/improvement-crawler.mjs`, `npm run crawler:improvements`) querying live OpenAlex API and foundational game engine theses.
 - **2026-10-26**: First-Person Viewmodel Fallback & Placement Engine Candidate Limiting (PR #433): Synty asset precedence over procedural hand meshes in FirstPersonRig, tiled terrain streaming throttle, and placement engine candidate cap (maxCandidates?: number in PlaceOptions) with full-sample Fisher-Yates shuffle reducing placement bake duration by ~65% (13.8s down to 4.78s).
 - **2026-10-26**: Dungeon Death Handling & Gate Respawn (PR #434): Player death in dungeon instances now terminates the run with outcome "died", drops/clears all run loot and chest rewards, prevents reward persistence, renders a death end-card with dungeon name and loot lost notices, and respawns the player with restored health at the nearest open-world dungeon gate.
-

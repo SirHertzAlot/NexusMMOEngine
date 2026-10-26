@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-26 — Dungeon Player Death, Loot Forfeiture, and Open-World Gate Respawn.**
+  When a player character dies inside a dungeon instance:
+  - **Run Termination (`InstanceOutcome: "died"`):** In `packages/engine-core/src/dungeons/instance.ts`, player death terminates the run immediately with outcome `"died"`. All chest drops and monster loot obtained during the run are emptied (`this.loot = []`) and reported as `items: 0`.
+  - **Loot Drop & Access Revocation:** In `InstanceManager.commit()`, runs ending with `"died"` skip reward item granting (`grant()`) and result persistence, ensuring players lose access to dungeon chests and instance progress on defeat.
+  - **Client Feedback & UI:** The client renders an active "You Died - Respawning at the gates..." HUD overlay while dead and presents the `DungeonResult` end-card with dungeon name, red death accenting, loss notifications, and a "Respawn at dungeon gates" action.
+  - **Gate Respawn:** `Gateway.respawnPlayer()` resolves the nearest open-world dungeon gate anchor (`respawnAnchors`) to teleport the player back alive with restored health.
+
 - **2026-10-25 — First-Person Viewmodel Rig (`FirstPersonRig`), Biomechanical Skeletal Camera Coupling, and Continuous Pitch/Reticle Anatomical Strike Aiming.**
   To overhaul the game's first-person perspective from a detached, static camera into an immersive, biomechanically responsive FPS combat experience with visible viewmodel arms and weapons:
   - **Biomechanical Camera Coupling (`apps/client/src/render/first-person-camera.ts`):** Replaced static eye translation with zero-heap `FirstPersonCameraState` and `stepFirstPersonMotion()`. Incorporates Lissajous idle breathing harmonics (0.40 Hz), stride-frequency translational and rotational head-bob (walk, jog, sprint, swim) with lateral banking roll tilt, critically-damped spring-damper landing dip (`landingDip` / `landingVel`), combat move impulses (`SwordA` / `SwordB` / `SwordC` forward roll/pitch lunges, `Guard` bracing, `ShieldBash` forward thrust, `Roll` rotational impulse), and skeletal `Head` bone tracking blend. Tuned `CAMERA_NEAR` from `0.5m` to `0.08m` to prevent viewmodel weapon clipping.
