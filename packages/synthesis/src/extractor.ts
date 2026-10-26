@@ -68,6 +68,8 @@ export function generatePartSockets(partId: string, category: string, bounds: Bo
   } else if (category === "wall") {
     sockets.push({ name: "edge_left", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
     sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
+    sockets.push({ name: "edge_px", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
+    sockets.push({ name: "edge_nx", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
     sockets.push({ name: "bottom", kind: "wall-base", offset: [0, -hy, 0], normal: [0, -1, 0] });
     sockets.push({ name: "top", kind: "wall-top", offset: [0, hy, 0], normal: [0, 1, 0] });
     sockets.push({ name: "front", kind: "wall-face", offset: [0, 0, hz], normal: [0, 0, 1] });
@@ -250,7 +252,6 @@ export function extractLearnedRuleSet(
         const dist = Math.hypot(dx, dy, dz);
 
         if (dist <= adjThreshold) {
-          // Identify candidate sockets based on direction
           const dirX = dx / (dist || 1);
           const dirY = dy / (dist || 1);
           const dirZ = dz / (dist || 1);
@@ -259,31 +260,49 @@ export function extractLearnedRuleSet(
           const bDef = partMap[b.partId];
           if (!aDef || !bDef) continue;
 
-          let bestASock = aDef.sockets[0]?.name || "default";
-          let bestBSock = bDef.sockets[0]?.name || "default";
-
-          if (Math.abs(dirY) > 0.6) {
-            bestASock = dirY > 0 ? "top" : "bottom";
-            bestBSock = dirY > 0 ? "bottom" : "top";
-          } else if (Math.abs(dirX) > Math.abs(dirZ)) {
-            bestASock = dirX > 0 ? "edge_px" : "edge_nx";
-            bestBSock = dirX > 0 ? "edge_nx" : "edge_px";
-          } else {
-            bestASock = dirZ > 0 ? "edge_pz" : "edge_nz";
-            bestBSock = dirZ > 0 ? "edge_nz" : "edge_pz";
+          // Find socket on A pointing towards B
+          let bestASock = aDef.sockets[0];
+          let bestADot = -Infinity;
+          for (const s of aDef.sockets) {
+            const dot = s.normal[0] * dirX + s.normal[1] * dirY + s.normal[2] * dirZ;
+            if (dot > bestADot) {
+              bestADot = dot;
+              bestASock = s;
+            }
           }
 
-          const pairKey = `${a.partId}:${bestASock}-->${b.partId}:${bestBSock}`;
-          connectedSockets.add(`${a.partId}:${bestASock}`);
-          connectedSockets.add(`${b.partId}:${bestBSock}`);
-
-          if (!pairStats.has(pairKey)) {
-            pairStats.set(pairKey, { count: 0, offsets: [], yawDeltas: [] });
+          // Find socket on B pointing towards A
+          let bestBSock = bDef.sockets[0];
+          let bestBDot = -Infinity;
+          for (const s of bDef.sockets) {
+            const dot = s.normal[0] * -dirX + s.normal[1] * -dirY + s.normal[2] * -dirZ;
+            if (dot > bestBDot) {
+              bestBDot = dot;
+              bestBSock = s;
+            }
           }
-          const stat = pairStats.get(pairKey)!;
-          stat.count++;
-          stat.offsets.push([dx, dy, dz]);
-          stat.yawDeltas.push(0);
+
+          // Forward rule (A -> B)
+          const pairKeyAB = `${a.partId}:${bestASock.name}-->${b.partId}:${bestBSock.name}`;
+          connectedSockets.add(`${a.partId}:${bestASock.name}`);
+          connectedSockets.add(`${b.partId}:${bestBSock.name}`);
+          if (!pairStats.has(pairKeyAB)) {
+            pairStats.set(pairKeyAB, { count: 0, offsets: [], yawDeltas: [] });
+          }
+          const statAB = pairStats.get(pairKeyAB)!;
+          statAB.count++;
+          statAB.offsets.push([dx, dy, dz]);
+          statAB.yawDeltas.push(0);
+
+          // Reverse symmetric rule (B -> A)
+          const pairKeyBA = `${b.partId}:${bestBSock.name}-->${a.partId}:${bestASock.name}`;
+          if (!pairStats.has(pairKeyBA)) {
+            pairStats.set(pairKeyBA, { count: 0, offsets: [], yawDeltas: [] });
+          }
+          const statBA = pairStats.get(pairKeyBA)!;
+          statBA.count++;
+          statBA.offsets.push([-dx, -dy, -dz]);
+          statBA.yawDeltas.push(0);
         }
       }
     }

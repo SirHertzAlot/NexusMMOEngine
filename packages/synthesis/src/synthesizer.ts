@@ -132,7 +132,13 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
   const siteMax = new THREE.Vector3(...problem.site.bounds.max);
 
   // Helper to add a part to the world
-  const addPlacement = (partDef: PartDef, pos: THREE.Vector3, rot: THREE.Quaternion, scale: THREE.Vector3): number => {
+  const addPlacement = (
+    partDef: PartDef,
+    pos: THREE.Vector3,
+    rot: THREE.Quaternion,
+    scale: THREE.Vector3,
+    ignoreSocketName?: string
+  ): number => {
     const partIdx = placements.length;
     const cat = partDef.category;
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
@@ -155,8 +161,10 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       },
     });
 
-    // Register sockets into open queue
+    // Register sockets into open queue (skipping connecting socket)
     for (const s of partDef.sockets) {
+      if (ignoreSocketName && s.name === ignoreSocketName) continue;
+
       const localOff = new THREE.Vector3(...s.offset);
       const localNorm = new THREE.Vector3(...s.normal);
 
@@ -222,87 +230,90 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       continue;
     }
 
-    // Pick a candidate rule weighted by frequency
-    const rule = rng.pickWeighted(matchingRules, (r) => r.frequency * (r.count || 1));
-    if (!rule) continue;
+    // Try up to 4 candidate rules for this active socket
+    for (let c = 0; c < Math.min(matchingRules.length, 4); c++) {
+      const rule = rng.pickWeighted(matchingRules, (r) => r.frequency * (r.count || 1));
+      if (!rule) break;
 
-    const bPartDef = ruleSet.parts[rule.bPart];
-    if (!bPartDef) continue;
+      const bPartDef = ruleSet.parts[rule.bPart];
+      if (!bPartDef) continue;
 
-    const bSocketDef = bPartDef.sockets.find((s) => s.name === rule.bSocket) || bPartDef.sockets[0];
-    if (!bSocketDef) continue;
+      const bSocketDef = bPartDef.sockets.find((s) => s.name === rule.bSocket) || bPartDef.sockets[0];
+      if (!bSocketDef) continue;
 
-    // Calculate rotation to align bSocket normal opposite to activeSocket normal
-    const targetNormal = activeSocket.worldNormal.clone().negate();
-    const candidateLocalNormal = new THREE.Vector3(...bSocketDef.normal);
+      // Calculate rotation to align bSocket normal opposite to activeSocket normal
+      const targetNormal = activeSocket.worldNormal.clone().negate();
+      const candidateLocalNormal = new THREE.Vector3(...bSocketDef.normal);
 
-    // Compute relative rotation from candidate local normal to target normal
-    const rot = new THREE.Quaternion().setFromUnitVectors(candidateLocalNormal, targetNormal);
+      // Compute relative rotation from candidate local normal to target normal
+      const rot = new THREE.Quaternion().setFromUnitVectors(candidateLocalNormal, targetNormal);
 
-    // If relative yaw was observed, apply slight yaw variation
-    if (rule.transformStats?.relativeYawDeg) {
-      const yawQuat = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        THREE.MathUtils.degToRad(rule.transformStats.relativeYawDeg)
-      );
-      rot.multiply(yawQuat);
-    }
-
-    // Candidate part origin position:
-    // P_b = P_socket - Rot(bSocket.offset)
-    const localSocketOff = new THREE.Vector3(...bSocketDef.offset).applyQuaternion(rot);
-    const candidatePos = activeSocket.worldPos.clone().sub(localSocketOff);
-
-    // Add mean offset adjustment from rule if present
-    if (rule.transformStats?.meanOffset) {
-      const [ox, oy, oz] = rule.transformStats.meanOffset;
-      const offVec = new THREE.Vector3(ox, oy, oz).applyQuaternion(rot).multiplyScalar(0.05); // subtle micro-shift
-      candidatePos.add(offVec);
-    }
-
-    // Ground clamping if provided
-    if (problem.site.groundHeight) {
-      const gh = problem.site.groundHeight(candidatePos.x, candidatePos.z);
-      if (candidatePos.y < gh) {
-        candidatePos.y = gh;
+      // If relative yaw was observed, apply slight yaw variation
+      if (rule.transformStats?.relativeYawDeg) {
+        const yawQuat = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          THREE.MathUtils.degToRad(rule.transformStats.relativeYawDeg)
+        );
+        rot.multiply(yawQuat);
       }
-    }
 
-    // Check bounds against site
-    const [sx, sy, sz] = bPartDef.bounds.size;
-    const halfSize = new THREE.Vector3(sx / 2, sy / 2, sz / 2);
-    const candidateAABB: BoundingAABB = {
-      min: new THREE.Vector3().subVectors(candidatePos, halfSize),
-      max: new THREE.Vector3().addVectors(candidatePos, halfSize),
-    };
+      // Candidate part origin position:
+      // P_b = P_socket - Rot(bSocket.offset)
+      const localSocketOff = new THREE.Vector3(...bSocketDef.offset).applyQuaternion(rot);
+      const candidatePos = activeSocket.worldPos.clone().sub(localSocketOff);
 
-    if (
-      candidateAABB.min.x < siteMin.x ||
-      candidateAABB.max.x > siteMax.x ||
-      candidateAABB.min.y < siteMin.y ||
-      candidateAABB.max.y > siteMax.y ||
-      candidateAABB.min.z < siteMin.z ||
-      candidateAABB.max.z > siteMax.z
-    ) {
-      // Out of site bounds, reject
-      continue;
-    }
-
-    // Check collision against placed parts
-    let collides = false;
-    for (const placed of placedAABBs) {
-      if (aabbIntersects(candidateAABB, placed, tolerance)) {
-        collides = true;
-        break;
+      // Add mean offset adjustment from rule if present
+      if (rule.transformStats?.meanOffset) {
+        const [ox, oy, oz] = rule.transformStats.meanOffset;
+        const offVec = new THREE.Vector3(ox, oy, oz).applyQuaternion(rot).multiplyScalar(0.05); // subtle micro-shift
+        candidatePos.add(offVec);
       }
-    }
 
-    if (collides) {
-      continue;
-    }
+      // Ground clamping if provided
+      if (problem.site.groundHeight) {
+        const gh = problem.site.groundHeight(candidatePos.x, candidatePos.z);
+        if (candidatePos.y < gh) {
+          candidatePos.y = gh;
+        }
+      }
 
-    // Successfully place part!
-    addPlacement(bPartDef, candidatePos, rot, new THREE.Vector3(1, 1, 1));
+      // Check bounds against site
+      const [sx, sy, sz] = bPartDef.bounds.size;
+      const halfSize = new THREE.Vector3(sx / 2, sy / 2, sz / 2);
+      const candidateAABB: BoundingAABB = {
+        min: new THREE.Vector3().subVectors(candidatePos, halfSize),
+        max: new THREE.Vector3().addVectors(candidatePos, halfSize),
+      };
+
+      if (
+        candidateAABB.min.x < siteMin.x ||
+        candidateAABB.max.x > siteMax.x ||
+        candidateAABB.min.y < siteMin.y ||
+        candidateAABB.max.y > siteMax.y ||
+        candidateAABB.min.z < siteMin.z ||
+        candidateAABB.max.z > siteMax.z
+      ) {
+        // Out of site bounds, reject
+        continue;
+      }
+
+      // Check collision against placed parts
+      let collides = false;
+      for (const placed of placedAABBs) {
+        if (aabbIntersects(candidateAABB, placed, tolerance)) {
+          collides = true;
+          break;
+        }
+      }
+
+      if (collides) {
+        continue;
+      }
+
+      // Successfully place part!
+      addPlacement(bPartDef, candidatePos, rot, new THREE.Vector3(1, 1, 1), bSocketDef.name);
+      break;
+    }
   }
 
   const elapsedMs = Date.now() - startTime;
