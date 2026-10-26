@@ -13,10 +13,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { addComponent, hasComponent } from "bitecs";
+import { VfxEmitter } from "../src/components.js";
 import {
   SimWorld,
   Transform,
-  VfxEmitter,
   collectDeltaState,
   collectEntitiesState,
   collectFullState,
