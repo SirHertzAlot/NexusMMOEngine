@@ -202,7 +202,7 @@ import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
-import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
+import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
@@ -1419,6 +1419,7 @@ async function main(): Promise<void> {
       entities: () => creaturesOf().entities(),
     },
     spawnPoint: spawn,
+    respawnAnchors: Object.values(loadDungeonContent(process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
     // "Start from": characters enter at the chosen point, not where they were saved.
     spawnOverridden: spawnOverride !== null,
     // Baked worlds: extent + coarse map for the client's far horizon.

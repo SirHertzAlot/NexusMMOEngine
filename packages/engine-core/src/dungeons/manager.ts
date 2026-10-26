@@ -199,9 +199,13 @@ export class InstanceManager implements GatewayExtension {
   private commit(result: InstanceResult): void {
     let granted = 0;
     let lost = 0;
-    for (const l of result.loot) {
-      if (this.opts.grant(l.characterId, l.def)) granted++;
-      else lost++;
+    if (result.outcome !== "died") {
+      for (const l of result.loot) {
+        if (this.opts.grant(l.characterId, l.def)) granted++;
+        else lost++;
+      }
+    } else {
+      lost = result.loot.length;
     }
     // Skill gains: one use of the killer's weapon skill per kill, at the
     // same difficulty as an open-world landed hit, keyed by victim kind
@@ -226,7 +230,7 @@ export class InstanceManager implements GatewayExtension {
     const run = this.running.get(result.instance);
     this.running.delete(result.instance);
     // Let the "ended" messages reach the clients before the port closes.
-    if (run) setTimeout(() => void run.instance.close(), 2000).unref();
+    if (run) setTimeout(() => void run.instance.close(), 30_000).unref();
   }
 
   private notice(p: ExtensionPlayer, text: string): void {

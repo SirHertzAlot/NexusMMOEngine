@@ -46,12 +46,17 @@ const OUTCOME_TONE: Record<DungeonEnded["outcome"], string> = {
   cleared: "text-yellow-300",
   timeout: "text-orange-300",
   abandoned: "text-muted-foreground",
+  died: "text-red-400 font-bold",
 };
 
 /** The result card's title, line and loot text. */
 export function outcomeText(r: DungeonEnded): { title: string; tone: string; line: string; loot: string } {
-  const loot = r.items === 0 ? t("dungeon.noLoot") : t("dungeon.loot", { count: r.items });
-  return { title: t(`dungeon.${r.outcome}.title`), tone: OUTCOME_TONE[r.outcome], line: t(`dungeon.${r.outcome}.line`), loot };
+  const loot = r.outcome === "died"
+    ? t("dungeon.died.loot")
+    : r.items === 0
+      ? t("dungeon.noLoot")
+      : t("dungeon.loot", { count: r.items });
+  return { title: t(`dungeon.${r.outcome}.title`), tone: OUTCOME_TONE[r.outcome] ?? "text-muted-foreground", line: t(`dungeon.${r.outcome}.line`), loot };
 }
 
 /** Top-centre while inside: the dungeon's name, the clock, what's left to kill, and and the chests left (E opens one in reach). */
@@ -82,14 +87,15 @@ export function DungeonHud({ run }: { run: Extract<DungeonRun, { phase: "in" }> 
 /** The run is over: how it went, the loot, and back to the world. */
 export function DungeonResult({ run, onLeave }: { run: Extract<DungeonRun, { phase: "ended" }>; onLeave: () => void }): React.ReactElement {
   const result = outcomeText(run.result);
+  const isDied = run.result.outcome === "died";
   return (
-    <div className="pointer-events-auto w-80 rounded-lg border bg-card/95 p-4 text-center text-card-foreground shadow-lg" role="dialog" aria-label={t("dungeon.result")}>
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">{run.dungeon}</div>
-      <div className={`mt-1 text-lg font-semibold ${result.tone}`}>{result.title}</div>
-      <div className="mt-1 text-sm">{result.line}</div>
-      <div className="mt-2 text-sm text-muted-foreground">{result.loot}</div>
-      <Button className="mt-3 w-full" onClick={onLeave}>
-        {t("dungeon.return")}
+    <div className={`pointer-events-auto w-84 rounded-lg border ${isDied ? "border-red-500/50 bg-black/95 shadow-red-950/50" : "bg-card/95"} p-5 text-center text-card-foreground shadow-2xl`} role="dialog" aria-label={t("dungeon.result")}>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{run.dungeon}</div>
+      <div className={`mt-1.5 text-xl font-bold ${result.tone}`}>{result.title}</div>
+      <div className="mt-2 text-sm leading-relaxed text-slate-300">{result.line}</div>
+      <div className={`mt-2.5 text-sm font-medium ${isDied ? "text-red-400/90" : "text-muted-foreground"}`}>{result.loot}</div>
+      <Button className={`mt-4 w-full py-2 font-semibold ${isDied ? "bg-red-800 hover:bg-red-700 text-white shadow-md shadow-red-900/40" : ""}`} onClick={onLeave}>
+        {isDied ? t("dungeon.respawnAtGate") : t("dungeon.return")}
       </Button>
     </div>
   );

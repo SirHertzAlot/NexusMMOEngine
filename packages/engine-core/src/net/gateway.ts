@@ -439,6 +439,8 @@ export interface GatewayOptions {
   };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
+  /** Dungeon gates / respawn anchors (where players respawn if nearer than spawnPoint). */
+  respawnAnchors?: { name: string; x: number; z: number }[];
   /**
    * The spawn point was chosen for this run (the editor's Play menu
    * "Start from"): characters enter there instead of where they were
@@ -850,6 +852,7 @@ export class Gateway {
       | "interest"
       | "worldCharacters"
       | "atomicOps"
+      | "respawnAnchors"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
@@ -900,6 +903,7 @@ export class Gateway {
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
+  private readonly respawnAnchors: { name: string; x: number; z: number }[];
   private readonly spawnOverridden: boolean;
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
@@ -1031,6 +1035,7 @@ export class Gateway {
     this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
+    this.respawnAnchors = opts.respawnAnchors ?? [];
     this.spawnOverridden = opts.spawnOverridden ?? false;
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
@@ -2026,8 +2031,21 @@ export class Gateway {
    */
   respawnPlayer(sim: SimWorld, eid: number): boolean {
     if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
-    const x = this.spawnPoint.x;
-    const z = this.spawnPoint.z;
+    let x = this.spawnPoint.x;
+    let z = this.spawnPoint.z;
+    if (this.respawnAnchors.length > 0) {
+      const px = C.Transform.px[eid];
+      const pz = C.Transform.pz[eid];
+      let bestDistSq = (px - x) ** 2 + (pz - z) ** 2;
+      for (const anchor of this.respawnAnchors) {
+        const dSq = (px - anchor.x) ** 2 + (pz - anchor.z) ** 2;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          x = anchor.x;
+          z = anchor.z;
+        }
+      }
+    }
     const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ?? null);
     return r.ok;
   }

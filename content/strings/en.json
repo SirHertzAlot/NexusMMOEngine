@@ -332,5 +332,9 @@
   "character.nameHint": "3–16 letters; ' and - allowed",
   "character.creating": "creating…",
   "character.createAndEnter": "Create & enter world",
-  "character.logOut": "log out"
+  "character.logOut": "log out",
+  "dungeon.died.title": "Fallen in battle",
+  "dungeon.died.line": "You perished in the dungeon and lost access to this instance, its treasure chests, and all loot.",
+  "dungeon.died.loot": "All dungeon loot and chests were lost.",
+  "dungeon.respawnAtGate": "Respawn at dungeon gates"
 }

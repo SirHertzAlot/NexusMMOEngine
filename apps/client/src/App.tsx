@@ -247,6 +247,7 @@ export function App(): React.ReactElement {
   const usernameRef = useRef(username);
   usernameRef.current = username;
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
+  const [isDead, setIsDead] = useState(false);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -419,7 +420,14 @@ export function App(): React.ReactElement {
         setMastery(next);
         if (text) setNotice({ text, at: performance.now() });
       },
-      onLife: (l) => combat.life(l),
+      onLife: (l) => {
+        combat.life(l);
+        const myWireId = clientRef.current?.playerEntity?.toString();
+        if (myWireId && l.target === myWireId) {
+          if (l.state === "dead") setIsDead(true);
+          else if (l.state === "alive") setIsDead(false);
+        }
+      },
       onTelegraph: (tg) => {
         combat.telegraphs.push(tg);
         if (combat.telegraphs.length > 64) combat.telegraphs.shift(); // nothing draws them until the canvas mounts
@@ -469,6 +477,7 @@ export function App(): React.ReactElement {
       else {
         regionRef.current = null;
         setRun(null);
+        setIsDead(false);
       }
       fire("net.joinReply.ok");
     } catch (err) {
@@ -818,6 +827,14 @@ export function App(): React.ReactElement {
         {run?.phase === "ended" && (
           <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
             <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
+          </div>
+        )}
+        {isDead && run?.phase !== "ended" && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center bg-red-950/40 backdrop-grayscale">
+            <div className="rounded-lg border border-red-500/40 bg-black/85 px-6 py-4 text-center text-red-200 shadow-2xl">
+              <div className="text-xl font-bold uppercase tracking-widest text-red-400">You Died</div>
+              <div className="mt-1 text-xs text-red-300/80">Respawning at the gates...</div>
+            </div>
           </div>
         )}
         {dialog && (
