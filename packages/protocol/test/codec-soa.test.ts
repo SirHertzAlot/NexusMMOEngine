@@ -44,6 +44,7 @@ function emptySoA(): CollectedStateSoA {
     appearances: { ...no, lookOf: () => "" },
     actions: { ...no, move: [], started: [], seq: [], yaw: [] },
     animations: { ...no, clipId: [], startTick: [], rate: [], layerMask: [] },
+    vfxEmitters: { ...no, template: [], intensity: [] },
     spawned: [],
     despawned: [],
   };
@@ -55,7 +56,7 @@ function emptyRows(): CollectedState {
     transforms: [], velocities: [], intents: [], chunks: [],
     healths: [], staminas: [], characterRefs: [], bodies: [],
     assets: [], locomotions: [], appearances: [], actions: [],
-    animations: [], spawned: [], despawned: [],
+    animations: [], vfxEmitters: [], spawned: [], despawned: [],
   };
 }
 

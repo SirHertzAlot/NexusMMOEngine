@@ -28,7 +28,7 @@ const empty = (tick: number): CollectedState => ({
   locomotions: [],
   appearances: [],
   actions: [],
-  characterRefs: [], animations: [],
+  characterRefs: [], animations: [], vfxEmitters: [],
 });
 
 test("stamina rows round-trip in snapshots and deltas", () => {

@@ -47,6 +47,8 @@ import {
   Vec3,
   Velocity,
   VelocityBlock,
+  VfxEmitter,
+  VfxEmitterBlock,
 } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 
 // ---------------------------------------------------------------- rows
@@ -167,6 +169,18 @@ export interface AnimationRow {
   layerMask: number;
 }
 
+/**
+ * VfxEmitter row (mirrors the FlatBuffers VfxEmitter table): a particle
+ * emitter binding — `template` is the fnv1a32 hash of the VfxEffect id,
+ * `intensity` scales the authored emission rate. Clients resolve the
+ * hash against their bundled effect registry.
+ */
+export interface VfxEmitterRow {
+  wireId: bigint;
+  template: number;
+  intensity: number;
+}
+
 /** Plain-data view of world state for one tick. baseTick is 0 for snapshots. */
 export interface CollectedState {
   tick: number;
@@ -184,6 +198,7 @@ export interface CollectedState {
   appearances: AppearanceRow[];
   actions: ActionRow[];
   animations: AnimationRow[];
+  vfxEmitters: VfxEmitterRow[];
   spawned: bigint[];
   despawned: bigint[];
 }
@@ -414,6 +429,18 @@ function readAnimationBlock(blk: AnimationBlock | null): AnimationRow[] {
   return out;
 }
 
+function readVfxEmitterBlock(blk: VfxEmitterBlock | null): VfxEmitterRow[] {
+  const out: VfxEmitterRow[] = [];
+  if (!blk) return out; // absent in snapshots saved before vfx emitters were wired
+  const n = blk.itemsLength();
+  for (let i = 0; i < n; i++) {
+    const e = blk.items(i);
+    if (!e) continue;
+    out.push({ wireId: blk.entities(i) ?? 0n, template: e.template(), intensity: e.intensity() });
+  }
+  return out;
+}
+
 function readIdList(n: number, at: (i: number) => bigint | null): bigint[] {
   const out: bigint[] = new Array(n);
   for (let i = 0; i < n; i++) out[i] = at(i) ?? 0n;
@@ -438,6 +465,7 @@ export function decodeSnapshot(bytes: Uint8Array): CollectedState {
     appearances: readAppearanceBlock(snap.appearances()),
     actions: readActionBlock(snap.actions()),
     animations: readAnimationBlock(snap.animations()),
+    vfxEmitters: readVfxEmitterBlock(snap.vfxEmitters()),
     staminas: readStaminaBlock(snap.staminas()),
     characterRefs: readCharacterRefBlock(snap.characterRefs()),
     spawned: readIdList(snap.spawnedLength(), (i) => snap.spawned(i)),
@@ -463,6 +491,7 @@ export function decodeDelta(bytes: Uint8Array): CollectedState {
     appearances: readAppearanceBlock(d.appearances()),
     actions: readActionBlock(d.actions()),
     animations: readAnimationBlock(d.animations()),
+    vfxEmitters: readVfxEmitterBlock(d.vfxEmitters()),
     staminas: readStaminaBlock(d.staminas()),
     characterRefs: readCharacterRefBlock(d.characterRefs()),
     spawned: readIdList(d.spawnedLength(), (i) => d.spawned(i)),
@@ -786,6 +815,20 @@ function buildAnimationBlock(b: flatbuffers.Builder, rows: AnimationRow[]): numb
   return AnimationBlock.endAnimationBlock(b);
 }
 
+function buildVfxEmitterBlock(b: flatbuffers.Builder, rows: VfxEmitterRow[]): number {
+  const items: number[] = new Array(rows.length);
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    items[i] = VfxEmitter.createVfxEmitter(b, r.template, r.intensity);
+  }
+  const entities = VfxEmitterBlock.createEntitiesVector(b, rows.map((r) => r.wireId));
+  const vec = VfxEmitterBlock.createItemsVector(b, items);
+  VfxEmitterBlock.startVfxEmitterBlock(b);
+  VfxEmitterBlock.addEntities(b, entities);
+  VfxEmitterBlock.addItems(b, vec);
+  return VfxEmitterBlock.endVfxEmitterBlock(b);
+}
+
 /**
  * Encode a full Snapshot from collected state.
  *
@@ -815,6 +858,7 @@ export function encodeSnapshot(
   const st = buildStaminaBlock(b, s.staminas);
   const cr = buildCharacterRefBlock(b, s.characterRefs);
   const an = buildAnimationBlock(b, s.animations);
+  const ve = buildVfxEmitterBlock(b, s.vfxEmitters);
   const spawned = Snapshot.createSpawnedVector(b, s.spawned);
   const despawned = Snapshot.createDespawnedVector(b, s.despawned);
   Snapshot.startSnapshot(b);
@@ -834,6 +878,7 @@ export function encodeSnapshot(
   Snapshot.addStaminas(b, st);
   Snapshot.addCharacterRefs(b, cr);
   Snapshot.addAnimations(b, an);
+  Snapshot.addVfxEmitters(b, ve);
   const root = Snapshot.endSnapshot(b);
   Snapshot.finishSnapshotBuffer(b, root);
   return b.asUint8Array();
@@ -855,6 +900,7 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   const st = buildStaminaBlock(b, s.staminas);
   const cr = buildCharacterRefBlock(b, s.characterRefs);
   const an = buildAnimationBlock(b, s.animations);
+  const ve = buildVfxEmitterBlock(b, s.vfxEmitters);
   const spawned = Delta.createSpawnedVector(b, s.spawned);
   const despawned = Delta.createDespawnedVector(b, s.despawned);
   Delta.startDelta(b);
@@ -875,6 +921,7 @@ export function encodeDelta(s: CollectedState): Uint8Array {
   Delta.addStaminas(b, st);
   Delta.addCharacterRefs(b, cr);
   Delta.addAnimations(b, an);
+  Delta.addVfxEmitters(b, ve);
   const root = Delta.endDelta(b);
   b.finish(root);
   return b.asUint8Array();
@@ -997,6 +1044,11 @@ export interface AnimationSoA extends SoAColumns {
   rate: ArrayLike<number>; layerMask: ArrayLike<number>;
 }
 
+/** SoA VfxEmitter block: field stores indexed by entity slot. */
+export interface VfxEmitterSoA extends SoAColumns {
+  template: ArrayLike<number>; intensity: ArrayLike<number>;
+}
+
 /** Columnar view of world state for one tick. baseTick is 0 for snapshots. */
 export interface CollectedStateSoA {
   tick: number;
@@ -1014,6 +1066,7 @@ export interface CollectedStateSoA {
   appearances: AppearanceSoA;
   actions: ActionSoA;
   animations: AnimationSoA;
+  vfxEmitters: VfxEmitterSoA;
   spawned: ArrayLike<bigint>;
   despawned: ArrayLike<bigint>;
 }
@@ -1277,6 +1330,21 @@ function buildAnimationBlockSoA(b: flatbuffers.Builder, src: AnimationSoA): numb
   return AnimationBlock.endAnimationBlock(b);
 }
 
+function buildVfxEmitterBlockSoA(b: flatbuffers.Builder, src: VfxEmitterSoA): number {
+  const n = src.eids.length;
+  const items: number[] = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    items[i] = VfxEmitter.createVfxEmitter(b, src.template[e], src.intensity[e]);
+  }
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => VfxEmitterBlock.startEntitiesVector(bb, k));
+  const vec = VfxEmitterBlock.createItemsVector(b, items);
+  VfxEmitterBlock.startVfxEmitterBlock(b);
+  VfxEmitterBlock.addEntities(b, entities);
+  VfxEmitterBlock.addItems(b, vec);
+  return VfxEmitterBlock.endVfxEmitterBlock(b);
+}
+
 /**
  * Encode a full Snapshot directly from columnar component stores.
  * Byte-identical to `encodeSnapshot` for the same world state.
@@ -1304,6 +1372,7 @@ export function encodeSnapshotSoA(
   const st = buildStaminaBlockSoA(b, s.staminas);
   const cr = buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = buildAnimationBlockSoA(b, s.animations);
+  const ve = buildVfxEmitterBlockSoA(b, s.vfxEmitters);
   const spawned = buildU64Vector(b, s.spawned, (bb, k) => Snapshot.startSpawnedVector(bb, k));
   const despawned = buildU64Vector(b, s.despawned, (bb, k) => Snapshot.startDespawnedVector(bb, k));
   Snapshot.startSnapshot(b);
@@ -1323,6 +1392,7 @@ export function encodeSnapshotSoA(
   Snapshot.addStaminas(b, st);
   Snapshot.addCharacterRefs(b, cr);
   Snapshot.addAnimations(b, an);
+  Snapshot.addVfxEmitters(b, ve);
   const root = Snapshot.endSnapshot(b);
   Snapshot.finishSnapshotBuffer(b, root);
   return b.asUint8Array();
@@ -1348,6 +1418,7 @@ export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Build
   const st = sparse && s.staminas.eids.length === 0 ? 0 : buildStaminaBlockSoA(b, s.staminas);
   const cr = sparse && s.characterRefs.eids.length === 0 ? 0 : buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = sparse && s.animations.eids.length === 0 ? 0 : buildAnimationBlockSoA(b, s.animations);
+  const ve = sparse && s.vfxEmitters.eids.length === 0 ? 0 : buildVfxEmitterBlockSoA(b, s.vfxEmitters);
   const spawned = buildU64Vector(b, s.spawned, (bb, k) => Delta.startSpawnedVector(bb, k));
   const despawned = buildU64Vector(b, s.despawned, (bb, k) => Delta.startDespawnedVector(bb, k));
   Delta.startDelta(b);
@@ -1368,6 +1439,7 @@ export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Build
   if (st) Delta.addStaminas(b, st);
   if (cr) Delta.addCharacterRefs(b, cr);
   if (an) Delta.addAnimations(b, an);
+  if (ve) Delta.addVfxEmitters(b, ve);
   const root = Delta.endDelta(b);
   b.finish(root);
   // A reused builder's bytes are overwritten by the next encode: copy them out.
