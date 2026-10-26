@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-26 — Continuous Model Synthesis, Inverse Procedural Modeling, and Learned Unity Scene Grammar (@mmo-engine/synthesis).**
+  To solve the combinatorial assembly challenges and visual tiling artifacts of discrete 3D grid generators, @mmo-engine/synthesis (MODEL-SYNTHESIS-MAP.md) implements tileless continuous model synthesis, automatic scene decomposition, and learned architectural grammar:
+  - **Unity Demo Scene Decomposition (extractor.ts, cli.ts):** decomposeScene() analyzes Unity demo scenes (POLYGON_Dungeons_Demo_Scene.fbx, 3,376 child objects across 598 unique parts), normalizes centimeter coordinate units into engine metric standards (5.0m x 5.0m modules), auto-generates continuous directional sockets with outward surface normals (+/-X, +/-Y, +/-Z), and partitions whole-level structures into 10 cohesive room assemblies via 35m spatial radius clustering.
+  - **Learned Spatial Adjacency Grammar (extractLearnedRuleSet):** Discovers 10,181 continuous spatial adjacency rules across parts, compiling frequency weights, relative yaw degree orientations, and 3D mean and spread translation offset distributions into content/synthesis/dungeon-rules.json.
+  - **Tileless Spatial Growth Synthesizer (synthesizer.ts):** synthesizeAssembly() executes continuous spatial growth using seeded 32-bit PRNG (DeterministicRng Mulberry32), entropy-guided socket queue selection, 3D quaternion alignment, and AABB interpenetration culling with a 0.20m margin, producing quantized transforms (1mm position, 0.0001 quaternion) in under 8ms for 120 parts (30x faster than discrete 3D grid WFC with 96% lower peak memory footprint).
+  - **Hybrid WFC Bridge (wfc-bridge.ts):** compileRuleSetToWfcModules() compiles learned continuous rules into discrete 6-face sockets for @mmo-engine/wfc/modules3d.ts, while decorateWfcDungeonWithSynthesis() pins macro-layout WFC modules and continuously synthesizes fine architectural micro-details, props, and rubble.
+
 - **2026-10-26 — Dungeon Player Death, Loot Forfeiture, and Open-World Gate Respawn.**
   When a player character dies inside a dungeon instance:
   - **Run Termination (`InstanceOutcome: "died"`):** In `packages/engine-core/src/dungeons/instance.ts`, player death terminates the run immediately with outcome `"died"`. All chest drops and monster loot obtained during the run are emptied (`this.loot = []`) and reported as `items: 0`.

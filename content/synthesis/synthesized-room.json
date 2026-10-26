@@ -1,0 +1,84 @@
+{
+  "placements": [
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          0,
+          0.1,
+          0
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Wall_End_Coner_Inner",
+      "assetRef": "models/glb/dungeon-pack/wall/SM_Env_Wall_End_Coner_Inner.glb",
+      "category": "wall",
+      "transform": {
+        "pos": [
+          0.007,
+          2.34,
+          -0.005
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Wall_End_Coner_Inner",
+      "assetRef": "models/glb/dungeon-pack/wall/SM_Env_Wall_End_Coner_Inner.glb",
+      "category": "wall",
+      "transform": {
+        "pos": [
+          -0.012,
+          6.521,
+          -0.005
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    }
+  ],
+  "report": {
+    "partsPlaced": 3,
+    "growthAttempts": 15,
+    "unfilledSockets": 0,
+    "elapsedMs": 8,
+    "ruleSetVersion": "1.0.0",
+    "categoryCounts": {
+      "floor": 1,
+      "wall": 2
+    }
+  }
+}
