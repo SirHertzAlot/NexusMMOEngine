@@ -290,7 +290,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       // Plain three.js colour output (no tone mapping), as before R3F.
       flat
       dpr={dpr}
-      gl={{ antialias: true, preserveDrawingBuffer: props.captureFrames === true }}
+      gl={{ antialias: true, preserveDrawingBuffer: true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
       onCreated={({ gl }) => {
         const gpu = detectGpu(gl);
@@ -605,11 +605,14 @@ function MirrorWorld({
     rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
-    // Dev builds: a handle for probes (layer stats, scenery, input, client).
+    // Dev builds: a handle for probes (layer stats, scenery, input, client, capture).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
-    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
-      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { layer, fpsRig, input, client };
-    }
+      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { gl, scene, camera, layer, fpsRig, input, client };
+      (window as unknown as { __mmoCapture?: () => Promise<string> }).__mmoCapture = () => {
+        return new Promise<string>((resolve) => {
+          (window as unknown as { __mmoCapturePending?: ((dataUrl: string) => void) | null }).__mmoCapturePending = resolve;
+        });
+      };
     }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
@@ -669,13 +672,14 @@ function MirrorWorld({
   // V toggles first/third person (uncontrolled mode only; a controlled
   // `view` prop owns the state instead).
   useEffect(() => {
-    if (viewProp !== undefined) return;
+
     const onKey = (e: KeyboardEvent): void => {
       if (e.code !== "KeyV" || e.repeat) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       setViewState((v) => {
-        const next = v === "third" ? "first" : "third";
+        const current = viewProp ?? v;
+        const next = current === "third" ? "first" : "third";
         onViewChange?.(next);
         return next;
       });
@@ -1013,6 +1017,17 @@ function MirrorWorld({
         maxSp: me?.stamina?.max ?? null,
         perf: perf.current.history(),
       });
+    }
+
+    const captureReq = (window as unknown as { __mmoCapturePending?: ((dataUrl: string) => void) | null }).__mmoCapturePending;
+    if (captureReq) {
+      (window as unknown as { __mmoCapturePending?: null }).__mmoCapturePending = null;
+      try {
+        const url = gl.domElement.toDataURL("image/png");
+        captureReq(url);
+      } catch (err) {
+        console.error("[capture] error:", err);
+      }
     }
   });
 
