@@ -222,7 +222,8 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
     const lines = arch.contents.filter((k) => rank >= k.minRank);
     if (lines.length === 0) return;
     // What: a count per line, the room's floor able to hold them (area budget).
-    const floor = d.roomId.filter((id) => id === r).length;
+    let floor = 0;
+    for (let c = 0; c < d.grid.length; c++) if (d.roomId[c] === r && d.grid[c] === CELL.floor) floor++;
     const maxCount = Math.max(...lines.map((k) => k.count[1]));
     const counts: WfcOption[] = Array.from({ length: maxCount + 1 }, (_, n) => ({ id: String(n), weight: 1 }));
     const inv = solveOrRelax(
@@ -338,12 +339,12 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         let laid: Placed[] = [];
         if (line.arrange === "row") {
           // Rows on the wall that holds the most (the best of a dozen spots round the walls); what is left over starts another
-          // row on another wall (up to ten passes, greedily filling straight wall runs down to 1 item), and what that cannot fit is scattered.
+          // row on another wall, and what that cannot fit is scattered.
           const rowCtx: ArrangeCtx = line.mount ? { ...ctx, taken: mountedOf(line.kind) } : ctx;
-          for (let pass = 0; pass < 2 && laid.length < its.length; pass++) {
+          for (let pass = 0; pass < 4 && laid.length < its.length; pass++) {
             const wallSpots = placeInRegion(sdf, region, Array.from({ length: 12 }, () => ({ where: "wall" as const, radius: line.reach ?? line.radius, ...(line.mount ? { mount: true } : {}) })), { seed: deriveSeed(seed, STAGE.place * 1000 + r + 10_000 * (3 + li) + 100_000 * pass), taken: line.mount ? mountedOf(line.kind) : layoutTaken[r] });
             let best: Placed[] = [];
-            const take = pass === 0 ? Math.min(its.length - laid.length, Math.max(4, Math.ceil(its.length / 2))) : its.length - laid.length;
+            const take = its.length - laid.length;
             for (const wall of wallSpots) {
               const row = wall ? layRow(rowCtx, wall, line.radius, take, line.gap, opts) : [];
               if (row.length > best.length) best = row;
@@ -397,7 +398,8 @@ export function dressDungeon(d: Dungeon, dressing: Dressing, rank: number, seed 
         // What a row, corners, or cluster could not fit still goes along a wall/corner, and a line whose anchor never came is scattered as plain items; what a
         // line, grid, colonnade, flank or ring could not fit is left out: a sarcophagus or a pew at a random angle would spoil the arrangement.
         const needsAnchor = line.arrange === "flank" || line.arrange === "beside" || line.arrange === "ring" || line.arrange === "cluster";
-        if (line.arrange === "row" || line.arrange === "head" || line.arrange === "corners" || line.arrange === "cluster" || (needsAnchor && !anchor)) leftover.push(...its.slice(laid.length));
+        const hasOver = lines.some((l) => l.arrange === "over" && l.anchor === line.kind);
+        if ((line.arrange === "row" && !hasOver) || line.arrange === "head" || line.arrange === "corners" || line.arrange === "cluster" || (needsAnchor && !anchor)) leftover.push(...its.slice(laid.length));
         else unplaced += its.length - laid.length;
       });
       unplaced += guarded(() => scatter(leftover.sort(bigFirst), 2));
