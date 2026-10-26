@@ -737,12 +737,12 @@ export class FirstPersonRig {
     }
     if (!modelOrBase || kind === "unarmed") return;
 
-    // 1. Immediate procedural weapon/shield mesh so the hand is never empty while loading
-    const fallback = buildProceduralWeaponMesh(kind, rankColor);
-    socket.add(fallback);
-
-    // 2. Try loading Synty prop model immediately if already available
-    this.tryAttachSyntyProp(hand);
+    // 1. Try loading Synty prop model immediately if already available
+    if (!this.tryAttachSyntyProp(hand)) {
+      // 2. Fallback to procedural weapon mesh if custom Synty assets aren't yet loaded
+      const fallback = buildProceduralWeaponMesh(kind, rankColor);
+      socket.add(fallback);
+    }
   }
 
   /** Current main-hand weapon visual family. */

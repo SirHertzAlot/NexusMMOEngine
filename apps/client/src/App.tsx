@@ -305,7 +305,7 @@ export function App(): React.ReactElement {
       onError: (e) => {
         // A refusal in the world (too far, someone else's, bag full) is a
         // notice, not a failed connection.
-        if (e.code === 4005 && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
+        if ((e.code === 4005 || e.code === 4003 || e.message.includes("tiles too frequent")) && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
         else setError(t("net.serverError", { code: e.code, message: e.message }));
       },
       onClose: () => {

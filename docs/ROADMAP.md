@@ -811,3 +811,4 @@ Newest first. One line per merged PR or decision.
   - `PATCH-04`: Atomic dirty-bitset deduplication and vectorized group-commit batching in `PersistenceWorkerRuntime.flushOnce()`.
   - `PATCH-05`: Generational handle slab allocator (`GenerationalSlabAllocator`, `packEntityHandle`, `unpackEntityHandle`) with ABA stale-handle guards and O(1) bitset freelist allocation.
   - Academic Improvement Crawler (`scripts/improvement-crawler.mjs`, `npm run crawler:improvements`) querying live OpenAlex API and foundational game engine theses.
+- **2026-10-26**: First-Person Viewmodel Fallback & Placement Engine Candidate Limiting (PR #433): Synty asset precedence over procedural hand meshes in FirstPersonRig, tiled terrain streaming throttle, and placement engine candidate cap (maxCandidates?: number in PlaceOptions) with full-sample Fisher-Yates shuffle reducing placement bake duration by ~65% (13.8s down to 4.78s).
