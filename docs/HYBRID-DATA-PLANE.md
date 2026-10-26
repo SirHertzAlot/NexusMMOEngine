@@ -59,3 +59,18 @@ The Hybrid Data Plane isolates high-frequency network ingestion, deterministic 3
 
 - **30Hz Stress Test (300 Ticks @ 10,000 Entities + 512 Binary Commands/Tick):**
   - `p50 = 0.0499 ms`, `p95 = 0.0896 ms`, `p99 = 0.1422 ms`, `mean = 0.0576 ms` (**`0.173%`** of the `33.33 ms` frame budget, **0 overruns**).
+
+---
+
+## 5. Academic Research Improvement Crawler & Memory/DoD Patches (`patches/`)
+
+[`scripts/improvement-crawler.mjs`](../scripts/improvement-crawler.mjs) (`npm run crawler:improvements`) queries OpenAlex and curated university theses/papers on game-engine data and memory management, synthesizes implementation Markdown specs in [`patches/`](../patches/INDEX.md), and delegates implementation to **Gemini**:
+
+| Patch ID | Specification | Academic / Systems Basis | Target Modules |
+| :--- | :--- | :--- | :--- |
+| **PATCH-01** | [`PATCH-01-avx2-fma-hierarchical-bitset-simd.md`](../patches/PATCH-01-avx2-fma-hierarchical-bitset-simd.md) | 8-wide AVX2 FMA3 (`_mm256_fmadd_ps`) + 64-bit `aliveBitset` zero-word skipping (Sun & Wang *C-AMAT*; BTH DiVA ECS/SIMD theses) | `packages/addons/integrate/src/integrate.cc`, `sab-store.ts`, `sim-worker.ts` |
+| **PATCH-02** | [`PATCH-02-morton-z-order-spatial-cache-locality.md`](../patches/PATCH-02-morton-z-order-spatial-cache-locality.md) | 32-bit 2D Morton Z-order curve SWAR bit-interleaving + 4-pass LSD radix sort for cache-coherent AoI queries (Karras HPG 2012) | `packages/engine-core/src/sab-store.ts` |
+| **PATCH-03** | [`PATCH-03-vyukov-mpsc-cacheline-coalesced-ring.md`](../patches/PATCH-03-vyukov-mpsc-cacheline-coalesced-ring.md) | Dmitry Vyukov bounded lock-free MPSC queue with per-slot sequence numbers & 64B cache-line isolation | `packages/engine-core/src/lockless-ring.ts` |
+| **PATCH-04** | [`PATCH-04-dirty-bitset-group-commit-surreal-ledger.md`](../patches/PATCH-04-dirty-bitset-group-commit-surreal-ledger.md) | 320-word dirty-bitset checkpoint deduplication & vectorized SurrealQL group-commit batching (DeWitt et al. SIGMOD) | `packages/engine-core/src/persist-worker.ts` |
+| **PATCH-05** | [`PATCH-05-generational-slab-arena-zero-gc-handles.md`](../patches/PATCH-05-generational-slab-arena-zero-gc-handles.md) | 32-bit generational handle (`[16b gen \| 16b idx]`) + bitset freelist slab allocator preventing ABA stale-slot corruption (Bitsquid / Fleury) | `packages/engine-core/src/sab-store.ts` |
+

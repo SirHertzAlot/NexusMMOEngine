@@ -6,7 +6,7 @@
 
 import { deflateSync } from "node:zlib";
 import { CELL, type Dungeon, type RoomType } from "./generate.js";
-import type { DungeonDressing } from "./dress.js";
+import type { DressedProp, DungeonDressing } from "./dress.js";
 
 type Rgb = [number, number, number];
 
@@ -20,6 +20,51 @@ const VOID: Rgb = [12, 13, 18];
 const POOL: Rgb = [255, 110, 40];
 const LAKE: Rgb = [170, 215, 245];
 const DOOR: Rgb = [230, 230, 230];
+
+/** Architectural palette for top-down floorplan rendering of dressed props. */
+function propColor(kind: string): Rgb {
+  if (kind === "carpet") return [168, 42, 48];
+  if (kind === "ritual-circle") return [185, 55, 210];
+  if (kind === "brazier" || kind === "hearth" || kind === "smelter" || kind === "candles" || kind === "candle-stand") return [255, 185, 55];
+  if (kind === "chest" || kind === "gilded-chest" || kind === "coin-pile" || kind === "reliquary" || kind === "throne") return [235, 190, 50];
+  if (
+    kind === "statue" ||
+    kind === "statue-large" ||
+    kind === "pillar" ||
+    kind === "ice-pillar" ||
+    kind === "altar" ||
+    kind === "grand-sarcophagus" ||
+    kind === "sarcophagus" ||
+    kind === "wall-coffin" ||
+    kind === "wall-coffin-high" ||
+    kind === "urn" ||
+    kind === "rubble" ||
+    kind === "bone-pile"
+  ) {
+    return [205, 212, 222];
+  }
+  if (
+    kind === "anvil" ||
+    kind === "cauldron" ||
+    kind === "jail-cell" ||
+    kind === "cage" ||
+    kind === "armour-stand" ||
+    kind === "sword-rack" ||
+    kind === "spear-rack" ||
+    kind === "shield-rack" ||
+    kind === "shield-wall" ||
+    kind === "tool-rack" ||
+    kind === "key-rack" ||
+    kind === "quench-trough" ||
+    kind === "coal-bin"
+  ) {
+    return [95, 110, 130];
+  }
+  if (kind === "mushrooms" || kind === "root-knot") return [80, 195, 120];
+  if (kind === "banner" || kind === "painting") return [195, 70, 85];
+  // Wood furniture (tables, benches, pews, bunks, bookshelves, crates, barrels, desks, counters)
+  return [115, 76, 44];
+}
 
 const CRC = (() => {
   const t = new Uint32Array(256);
@@ -93,13 +138,54 @@ export function dungeonPng(d: Dungeon, scale = 4, dressing?: DungeonDressing): B
   for (const t of d.torches) fill(t.x, t.y, [255, 170, 60], inset);
   for (const s of d.spawns) fill(s.x, s.y, s.tier === 3 ? [255, 40, 60] : s.tier === 2 ? [230, 90, 40] : [200, 140, 60], inset);
   if (dressing) {
-    // Continuous positions: a dot `size` pixels across.
     const dot = (x: number, y: number, c: Rgb, size: number): void => {
       const px = Math.round(x * scale), py = Math.round(y * scale), h = Math.floor(size / 2);
       for (let yy = py - h; yy < py - h + size; yy++)
         for (let xx = px - h; xx < px - h + size; xx++) if (xx >= 0 && yy >= 0 && xx < W && yy < H) img.set(c, (yy * W + xx) * 3);
     };
-    for (const p of dressing.props) dot(p.x, p.y, [70, 50, 35], Math.max(2, Math.round(scale * 0.6)));
+    const drawProp = (p: DressedProp): void => {
+      const col = propColor(p.kind);
+      if (scale < 4) {
+        dot(p.x, p.y, col, Math.max(2, Math.round(scale * 0.6)));
+        return;
+      }
+      // Oriented architectural footprint in pixel space
+      const cos = Math.cos(p.rot);
+      const sin = Math.sin(p.rot);
+      const isSlim =
+        p.kind === "long-table" ||
+        p.kind === "reading-table" ||
+        p.kind === "bench" ||
+        p.kind === "pew" ||
+        p.kind === "bookshelf" ||
+        p.kind === "bookshelf-tall" ||
+        p.kind === "serving-counter" ||
+        p.kind === "workbench" ||
+        p.kind === "guard-desk" ||
+        p.kind === "chest" ||
+        p.kind === "gilded-chest" ||
+        p.kind === "altar";
+      const halfLat = Math.max(1, Math.round(p.radius * scale * 0.75));
+      const halfLong = isSlim ? Math.max(1, Math.round(p.radius * scale * 0.38)) : halfLat;
+      const cx = p.x * scale;
+      const cy = p.y * scale;
+      const span = Math.max(halfLat, halfLong) + 1;
+      for (let dy = -span; dy <= span; dy++) {
+        for (let dx = -span; dx <= span; dx++) {
+          const xx = Math.round(cx + dx);
+          const yy = Math.round(cy + dy);
+          if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+          const along = dx * cos + dy * sin;
+          const across = -dx * sin + dy * cos;
+          if (Math.abs(along) <= halfLong && Math.abs(across) <= halfLat) {
+            img.set(col, (yy * W + xx) * 3);
+          }
+        }
+      }
+    };
+    // Render flat floor rugs/circles first so furniture draws cleanly on top of them
+    for (const p of dressing.props) if (p.collision === "none" && !p.mount) drawProp(p);
+    for (const p of dressing.props) if (p.collision === "solid" || p.mount) drawProp(p);
     for (const v of dressing.resources) dot(v.x, v.y, TIER[Math.min(4, v.tier - 1)], Math.max(2, Math.round(scale * 0.8)));
   }
   return encodePng(W, H, img);

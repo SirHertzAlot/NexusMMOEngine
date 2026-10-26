@@ -159,6 +159,47 @@ export interface Stance {
   aim?: string;
 }
 
+/** Pitch threshold (radians) above which looking up aims at the head (~10.3°). */
+export const PITCH_AIM_HIGH = 0.18;
+/** Pitch threshold (radians) below which looking down aims at the legs (~18.3°). */
+export const PITCH_AIM_LOW = 0.32;
+/** Pitch threshold (radians) for mid-low shoulder/arm aim when angled (~10.3°..18.3°). */
+export const PITCH_AIM_DEADZONE = 0.18;
+
+/**
+ * Pure DoD helper: derive the aimed body part from `PlayerIntent.lookPitch`
+ * (and optional lateral offset relative to the target) when no explicit
+ * `stance.aim` override is locked.
+ *
+ * Convention: `lookPitch < 0` looks UP; `lookPitch > 0` looks DOWN;
+ * `Math.abs(lookPitch) < PITCH_AIM_DEADZONE` aims at `root` ("torso").
+ */
+export function aimFromLookPitch(
+  lookPitch: number,
+  parts: readonly string[],
+  root: string,
+  lateralOffset = 0,
+): string {
+  if (!Number.isFinite(lookPitch) || Math.abs(lookPitch) < PITCH_AIM_DEADZONE) {
+    return root;
+  }
+  if (lookPitch <= -PITCH_AIM_HIGH) {
+    return parts.includes("head") ? "head" : root;
+  }
+  if (lookPitch >= PITCH_AIM_LOW) {
+    const preferred = lateralOffset > 0.05 ? "legRight" : "legLeft";
+    const fallback = preferred === "legLeft" ? "legRight" : "legLeft";
+    if (parts.includes(preferred)) return preferred;
+    if (parts.includes(fallback)) return fallback;
+    return root;
+  }
+  const preferredArm = lateralOffset > 0 ? "armUpperRight" : "armUpperLeft";
+  const fallbackArm = preferredArm === "armUpperLeft" ? "armUpperRight" : "armUpperLeft";
+  if (parts.includes(preferredArm)) return preferredArm;
+  if (parts.includes(fallbackArm)) return fallbackArm;
+  return root;
+}
+
 export class CombatSystem implements SimSystem {
   readonly name = "combat";
   private readonly query = defineQuery([PlayerIntent, Velocity, Action]);
@@ -332,8 +373,12 @@ export class CombatSystem implements SimSystem {
         const skill = weaponSkill ? sk!.get(e, weaponSkill) : 0;
         const body = dmg.body;
         const arm = body ? body.armFactor(sim, e) : 1;
+        // aim resolution
+        const lateral = d > 1e-4 ? (dx * fz - dz * fx) / d : 0;
+        const aimedPart = body ? (stance?.aim ?? aimFromLookPitch(PlayerIntent.lookPitch[e], body.parts, body.root, lateral)) : "torso";
         part = body
-          ? dmg.hooks.resolveLanding({ aim: stance?.aim ?? body.root, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
+        // aim resolution
+          ? dmg.hooks.resolveLanding({ aim: aimedPart, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
         const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
         const armourFactor = dmg.armourOf?.(t) ?? 1;

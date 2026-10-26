@@ -77,7 +77,7 @@ export function bakeSettlementFortifications(survey: Survey, opts: FortifySettle
     log(
       `[bake] settlement ${name} at survey cell ${site.u0},${site.v0}: ` +
         `${bake.placements.length} placements, spent ${bake.spent}, stop ${bake.stopReason}, ` +
-        `exposure ${Object.entries(bake.exposures).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(" / ")}`,
+        `exposure ${Object.entries(bake.exposures).map(([k, v]) => `${k} ${(Number(v)).toFixed(2)}`).join(" / ")}`,
     );
   }
   return bakes;

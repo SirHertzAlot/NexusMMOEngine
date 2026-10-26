@@ -300,3 +300,143 @@ export class AtomicSPSCTransactionQueue {
     return h >= t ? h - t : this.slotCapacity - t + h;
   }
 }
+
+// =============================================================================
+// PATCH-03: Dmitry Vyukov Bounded Lock-Free MPSC Ring Queue
+// =============================================================================
+
+export const MPSC_HEADER_BYTES = 192;
+export const MPSC_ENQUEUE_IDX = 0;
+export const MPSC_DEQUEUE_IDX = 16;
+export const MPSC_DROPPED_IDX = 32;
+
+export const DEFAULT_RING_CAPACITY = 1024;
+export const COMMAND_SLOT_UINT32_STRIDE = 4;
+
+export class AtomicMPSCQueue {
+  public readonly sab: SharedArrayBuffer;
+  public readonly capacity: number;
+  public readonly mask: number;
+  public readonly slotStrideU32: number;
+
+  private readonly ctrl: Int32Array;
+  private readonly seq: Int32Array;
+  private readonly data: Uint32Array;
+
+  constructor(
+    capacity: number = DEFAULT_RING_CAPACITY,
+    slotStrideU32: number = COMMAND_SLOT_UINT32_STRIDE,
+    existingSab?: SharedArrayBuffer
+  ) {
+    if (!isPowerOfTwo(capacity)) {
+      throw new RangeError(`Ring capacity must be a power of 2, received ${capacity}`);
+    }
+    this.capacity = capacity;
+    this.mask = capacity - 1;
+    this.slotStrideU32 = slotStrideU32;
+
+    const seqBytes = capacity * 4;
+    const dataBytes = capacity * slotStrideU32 * 4;
+    const totalBytes = MPSC_HEADER_BYTES + seqBytes + dataBytes;
+
+    this.sab = existingSab ?? new SharedArrayBuffer(totalBytes);
+    this.ctrl = new Int32Array(this.sab, 0, MPSC_HEADER_BYTES / 4);
+    this.seq = new Int32Array(this.sab, MPSC_HEADER_BYTES, capacity);
+    this.data = new Uint32Array(
+      this.sab,
+      MPSC_HEADER_BYTES + seqBytes,
+      capacity * slotStrideU32
+    );
+
+    if (!existingSab) {
+      for (let i = 0; i < capacity; i++) {
+        Atomics.store(this.seq, i, i);
+      }
+    }
+  }
+
+  public enqueueCommand(
+    entityIndex: number,
+    actionCode: number,
+    tickOrMeta = 0,
+    argFloatBits = 0
+  ): boolean {
+    const mask = this.mask;
+    let pos = Atomics.load(this.ctrl, MPSC_ENQUEUE_IDX);
+
+    for (;;) {
+      const slotIdx = pos & mask;
+      const seq = Atomics.load(this.seq, slotIdx);
+      const dif = seq - pos;
+
+      if (dif === 0) {
+        const prev = Atomics.compareExchange(
+          this.ctrl,
+          MPSC_ENQUEUE_IDX,
+          pos,
+          pos + 1
+        );
+        if (prev === pos) {
+          const base = slotIdx * this.slotStrideU32;
+          this.data[base] = entityIndex >>> 0;
+          this.data[base + 1] = actionCode >>> 0;
+          this.data[base + 2] = tickOrMeta >>> 0;
+          this.data[base + 3] = argFloatBits >>> 0;
+          Atomics.store(this.seq, slotIdx, pos + 1);
+          return true;
+        }
+        pos = prev;
+      } else if (dif < 0) {
+        Atomics.add(this.ctrl, MPSC_DROPPED_IDX, 1);
+        return false;
+      } else {
+        pos = Atomics.load(this.ctrl, MPSC_ENQUEUE_IDX);
+      }
+    }
+  }
+
+  public drainCommands(
+    visitor: (
+      entityIndex: number,
+      actionCode: number,
+      tickOrMeta: number,
+      argFloatBits: number
+    ) => void,
+    maxDrain: number = this.capacity
+  ): number {
+    const mask = this.mask;
+    const cap = this.capacity;
+    let pos = Atomics.load(this.ctrl, MPSC_DEQUEUE_IDX);
+    let drained = 0;
+
+    while (drained < maxDrain) {
+      const slotIdx = pos & mask;
+      const seq = Atomics.load(this.seq, slotIdx);
+      const dif = seq - (pos + 1);
+
+      if (dif === 0) {
+        const base = slotIdx * this.slotStrideU32;
+        const entityIndex = this.data[base];
+        const actionCode = this.data[base + 1];
+        const tickOrMeta = this.data[base + 2];
+        const argFloatBits = this.data[base + 3];
+
+        Atomics.store(this.seq, slotIdx, pos + cap);
+        pos += 1;
+        drained += 1;
+        visitor(entityIndex, actionCode, tickOrMeta, argFloatBits);
+      } else {
+        break;
+      }
+    }
+
+    if (drained > 0) {
+      Atomics.store(this.ctrl, MPSC_DEQUEUE_IDX, pos);
+    }
+    return drained;
+  }
+
+  public get droppedCount(): number {
+    return Atomics.load(this.ctrl, MPSC_DROPPED_IDX);
+  }
+}

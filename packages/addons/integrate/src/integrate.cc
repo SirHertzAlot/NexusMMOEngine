@@ -30,6 +30,10 @@
 #include <cstdint>
 #include <vector>
 
+#if defined(__AVX2__) || defined(_M_X64) || defined(__x86_64__)
+#include <immintrin.h>
+#define MMO_HAS_AVX2 1
+#endif
 #if defined(_M_X64) || defined(__x86_64__) || defined(__SSE2__)
 #include <emmintrin.h>
 #define MMO_HAS_SSE2 1
@@ -38,6 +42,14 @@
 #endif
 
 namespace mmo_integrate {
+
+// Hardware AVX2 8-Wide FMA3 Kernel Implementation (PATCH-01)
+#if defined(__AVX2__)
+inline __m256 fma3_integrate_kernel(__m256 p, __m256 v, __m256 dt) {
+  return _mm256_fmadd_ps(v, dt, p);
+}
+#endif
+
 
 // Stride structural dimensions matching TypeScript SOA_LAYOUT schema bounds
 constexpr size_t SOA_STRIDE    = 8;

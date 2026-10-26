@@ -38,7 +38,7 @@ const NEVER = ["bld", "chr", "fx", "particle", "lid", "broken", "damaged", "dest
  * Prop kind to the word sequence its model's name must contain (`words`, in order, next to each other) and the words it must
  * not (`avoid`). Kinds not listed stay procedural.
  */
-export const DUNGEON_ART_PATTERNS: Record<string, { words: string[]; avoid?: string[] }> = {
+export const DUNGEON_ART_PATTERNS: Record<string, { words: string[] | string[][]; avoid?: string[] }> = {
   "weapon-rack": { words: ["weapon", "rack"] },
   barrel: { words: ["barrel"] },
   chest: { words: ["chest"], avoid: ["plate", "armour", "armor", "rib", "drawer", "pile"] },
@@ -55,6 +55,36 @@ export const DUNGEON_ART_PATTERNS: Record<string, { words: string[]; avoid?: str
   candles: { words: ["candles"] },
   sack: { words: ["sack"], avoid: ["hanging"] },
   pew: { words: ["pew"] },
+  altar: { words: [["alter"], ["altar"]] },
+  bench: { words: ["bench"], avoid: ["seat", "pew"] },
+  bookshelf: { words: [["bookcase"], ["bookshelf"]] },
+  "bookshelf-tall": { words: [["bookcase"], ["bookshelf"]] },
+  "bunk-bed": { words: ["bed"], avoid: ["riverbed", "curtains"] },
+  carpet: { words: [["rug"], ["carpet"]], avoid: ["draped"] },
+  cauldron: { words: ["cauldron"] },
+  hearth: { words: [["fireplace"], ["hearth"]], avoid: ["wall"] },
+  "jail-cell": { words: ["cage"], avoid: ["ribcage", "rigcage", "bone"] },
+  lectern: { words: ["lectern"] },
+  painting: { words: ["painting"] },
+  "candle-stand": { words: ["candle", "stand"] },
+  "bone-pile": { words: ["bone", "pile"] },
+  stocks: { words: ["stocks"] },
+  workbench: { words: ["workbench"] },
+  "spear-rack": { words: ["spears"] },
+  "sword-rack": { words: ["weapon", "rack"] },
+  "bow-rack": { words: ["weapon", "rack"] },
+  "shield-rack": { words: ["weapon", "rack"] },
+  "scroll-rack": { words: ["shelf"] },
+  "skull-shelf": { words: ["shelf"] },
+  "tool-rack": { words: ["workbench"] },
+  "reading-table": { words: ["table"], avoid: ["desk", "picnic", "skeleton"] },
+  "long-table": { words: ["table"], avoid: ["desk", "picnic", "skeleton"] },
+  desk: { words: ["table"], avoid: ["picnic", "skeleton"] },
+  "guard-desk": { words: ["table"], avoid: ["picnic", "skeleton"] },
+  footlocker: { words: ["chest"], avoid: ["plate", "armour", "armor", "rib", "drawer", "pile"] },
+  "gear-locker": { words: ["chest"], avoid: ["plate", "armour", "armor", "rib", "drawer", "pile"] },
+  urn: { words: [["urn"], ["vase"]] },
+  "statue-large": { words: ["statue"], avoid: ["fountain", "head"] },
 };
 
 const hasRun = (words: readonly string[], run: readonly string[]): boolean => words.some((_, i) => run.every((r, j) => words[i + j] === r));
@@ -66,6 +96,11 @@ const hasRun = (words: readonly string[], run: readonly string[]): boolean => wo
 export const NOMINAL_LONGEST_M: Record<string, number> = {
   "weapon-rack": 1.5, barrel: 1.0, chest: 0.9, crate: 0.9, statue: 2.8, brazier: 1.2, throne: 2.0, anvil: 0.9, coffin: 2.0,
   pillar: 5.2, rubble: 1.0, table: 1.6, candles: 0.4, sack: 0.6, pew: 1.8,
+  altar: 2.0, bench: 1.8, bookshelf: 2.2, "bookshelf-tall": 3.0, "bunk-bed": 2.0, carpet: 3.2, cauldron: 1.2,
+  hearth: 2.2, "jail-cell": 2.4, lectern: 1.3, painting: 1.6, "candle-stand": 1.5, "bone-pile": 1.2, stocks: 1.6,
+  workbench: 1.8, "spear-rack": 2.0, "sword-rack": 1.6, "bow-rack": 1.6, "shield-rack": 1.6, "scroll-rack": 1.8,
+  "skull-shelf": 1.8, "tool-rack": 1.8, "reading-table": 1.8, "long-table": 3.2, desk: 1.6, "guard-desk": 1.6,
+  footlocker: 0.8, "gear-locker": 1.0, urn: 0.8, "statue-large": 5.0,
 };
 
 export interface ArtMatch {
@@ -85,7 +120,10 @@ export function matchProps(models: readonly CatalogModel[], kinds: readonly stri
     const hits = pat
       ? sorted.filter((x) => {
           const words = nameWords(x.name);
-          return hasRun(words, pat.words) && !words.some((w) => NEVER.includes(w) || pat.avoid?.includes(w));
+          if (words.some((w) => NEVER.includes(w) || pat.avoid?.includes(w))) return false;
+          return Array.isArray(pat.words[0])
+            ? (pat.words as string[][]).some((run) => hasRun(words, run))
+            : hasRun(words, pat.words as string[]);
         })
       : [];
     if (hits.length === 0) {

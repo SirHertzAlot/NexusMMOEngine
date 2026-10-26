@@ -12,3 +12,4 @@ export { populateDungeon, type Population, type PopulatedSpawn } from "./populat
 export { dungeonShell, DUNGEON_CELL, SHELL_DEFAULTS, SHELL_PARTS, type DungeonShell, type GeometryOps, type ShellOptions, type ShellPart } from "./shell.js";
 export { layBefore, layFlank, layGrid, layHead, layLine, layOver, layRing, layRow, reachOf, type ArrangeCtx, type LayOpts } from "./arrange.js";
 export { DUNGEON_ART_PATTERNS, matchProps, nameWords, writeArtOverlay, type ArtMatch, type CatalogModel } from "./art.js";
+export { propagateDungeonModules, type Dungeon3DModules, type DungeonModuleOptions } from "./modules.js";

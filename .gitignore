@@ -73,3 +73,7 @@ packages/engine-core/content/wildlife/*.local.json
 
 # Dungeon prop art overlay: names licensed catalog models (npm run dungeon:art); local only
 content/dungeons/props.local.json
+
+# Graphify indexing caches and reports
+graphify-out/
+packages/graphify-out/

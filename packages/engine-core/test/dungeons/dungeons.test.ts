@@ -32,7 +32,7 @@ import { HeadlessClient } from "../net/headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "../net/auth-harness.js";
 
 const game = loadGameRules();
-const content = loadDungeonContent();
+const content = loadDungeonContent(undefined, false);
 
 /** A 24 × 12 layout: an entrance room, a corridor, a boss room with two spawns, one spawn by the entrance. */
 function fixture(id = "grim-abc", theme = "grim", rank = 1): Record<string, unknown> {

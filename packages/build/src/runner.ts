@@ -40,7 +40,7 @@ export function collectInputFiles(rootDir: string, inputs: string[]): string[] {
       throw new Error(`collectInputFiles: input not found: ${input}`);
     }
     if (st.isFile()) {
-      out.add(input);
+      out.add(input.replace(/\\/g, "/"));
     } else if (st.isDirectory()) {
       walk(abs, rootDir, out);
     } else {
@@ -55,7 +55,7 @@ function walk(abs: string, rootDir: string, out: Set<string>): void {
     const child = join(abs, entry);
     const st = statSync(child);
     if (st.isDirectory()) walk(child, rootDir, out);
-    else if (st.isFile()) out.add(relative(rootDir, child));
+    else if (st.isFile()) out.add(relative(rootDir, child).replace(/\\/g, "/"));
   }
 }
 
