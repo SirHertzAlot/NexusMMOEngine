@@ -241,20 +241,26 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       const bSocketDef = bPartDef.sockets.find((s) => s.name === rule.bSocket) || bPartDef.sockets[0];
       if (!bSocketDef) continue;
 
-      // Calculate rotation to align bSocket normal opposite to activeSocket normal
+      // Compute strictly upright rotation (zero roll, zero pitch)
+      const rot = new THREE.Quaternion();
       const targetNormal = activeSocket.worldNormal.clone().negate();
       const candidateLocalNormal = new THREE.Vector3(...bSocketDef.normal);
 
-      // Compute relative rotation from candidate local normal to target normal
-      const rot = new THREE.Quaternion().setFromUnitVectors(candidateLocalNormal, targetNormal);
+      const tLenXZ = Math.hypot(targetNormal.x, targetNormal.z);
+      const cLenXZ = Math.hypot(candidateLocalNormal.x, candidateLocalNormal.z);
 
-      // If relative yaw was observed, apply slight yaw variation
-      if (rule.transformStats?.relativeYawDeg) {
-        const yawQuat = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 1, 0),
-          THREE.MathUtils.degToRad(rule.transformStats.relativeYawDeg)
-        );
-        rot.multiply(yawQuat);
+      if (tLenXZ > 0.1 && cLenXZ > 0.1) {
+        // Pure horizontal yaw alignment
+        const angTarget = Math.atan2(targetNormal.x, targetNormal.z);
+        const angLocal = Math.atan2(candidateLocalNormal.x, candidateLocalNormal.z);
+        const yaw = angTarget - angLocal;
+        rot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+      } else if (Math.abs(candidateLocalNormal.y) > 0.7) {
+        // Vertical socket (e.g. wall base on floor surface, or ceiling mount on wall top)
+        const snapYaw = rng.nextInt(0, 3) * (Math.PI / 2);
+        rot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), snapYaw);
+      } else {
+        rot.setFromUnitVectors(candidateLocalNormal, targetNormal);
       }
 
       // Candidate part origin position:
@@ -262,24 +268,105 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       const localSocketOff = new THREE.Vector3(...bSocketDef.offset).applyQuaternion(rot);
       const candidatePos = activeSocket.worldPos.clone().sub(localSocketOff);
 
-      // Add mean offset adjustment from rule if present
+      // Add mean offset adjustment from rule if present (pure horizontal)
       if (rule.transformStats?.meanOffset) {
-        const [ox, oy, oz] = rule.transformStats.meanOffset;
-        const offVec = new THREE.Vector3(ox, oy, oz).applyQuaternion(rot).multiplyScalar(0.05); // subtle micro-shift
+        const [ox, , oz] = rule.transformStats.meanOffset;
+        const offVec = new THREE.Vector3(ox, 0, oz).applyQuaternion(rot).multiplyScalar(0.02);
         candidatePos.add(offVec);
       }
 
-      // Ground clamping if provided
-      if (problem.site.groundHeight) {
-        const gh = problem.site.groundHeight(candidatePos.x, candidatePos.z);
-        if (candidatePos.y < gh) {
-          candidatePos.y = gh;
+      const [sx, sy, sz] = bPartDef.bounds.size;
+      const halfSize = new THREE.Vector3(sx / 2, sy / 2, sz / 2);
+
+      // 1. Floor Grounding Rule: Floors must sit on the ground level
+      if (bPartDef.category === "floor") {
+        const expectedFloorY = siteMin.y + halfSize.y;
+        if (activeSocket.kind !== "stairs-top") {
+          candidatePos.y = expectedFloorY;
         }
       }
 
-      // Check bounds against site
-      const [sx, sy, sz] = bPartDef.bounds.size;
-      const halfSize = new THREE.Vector3(sx / 2, sy / 2, sz / 2);
+      // 2. Wall Grounding Rule: Walls must sit on floors or directly on lower walls
+      if (bPartDef.category === "wall" || bPartDef.category === "door" || bPartDef.category === "railing") {
+        const wallBaseY = candidatePos.y - halfSize.y;
+        const isGroundLevel = wallBaseY <= siteMin.y + 0.4;
+
+        if (isGroundLevel) {
+          // Snap base cleanly to ground
+          candidatePos.y = siteMin.y + halfSize.y;
+
+          // Must have a floor tile within proximity (room perimeter)
+          let hasFloorNearby = false;
+          for (const p of placements) {
+            if (p.category === "floor") {
+              const dx = p.transform.pos[0] - candidatePos.x;
+              const dz = p.transform.pos[2] - candidatePos.z;
+              if (Math.hypot(dx, dz) <= 4.0) {
+                hasFloorNearby = true;
+                break;
+              }
+            }
+          }
+          if (!hasFloorNearby && placements.length > 0) {
+            continue; // Reject floating wall outside room bounds
+          }
+        } else {
+          // Upper wall must sit directly on top of a lower wall
+          let hasLowerWall = false;
+          for (const p of placements) {
+            if (p.category === "wall" || p.category === "door") {
+              const dx = Math.abs(p.transform.pos[0] - candidatePos.x);
+              const dz = Math.abs(p.transform.pos[2] - candidatePos.z);
+              const lowerTopY = p.transform.pos[1] + 2.0;
+              if (dx < 0.8 && dz < 0.8 && Math.abs(wallBaseY - lowerTopY) < 0.8) {
+                hasLowerWall = true;
+                break;
+              }
+            }
+          }
+          if (!hasLowerWall) {
+            continue; // Reject floating wall in mid-air
+          }
+        }
+      }
+
+      // 3. Pillar Grounding Rule: Pillars must sit on a floor or lower pillar
+      if (bPartDef.category === "pillar") {
+        const pillarBaseY = candidatePos.y - halfSize.y;
+        let supported = false;
+        for (const p of placements) {
+          if (p.category === "floor") {
+            const dx = Math.abs(p.transform.pos[0] - candidatePos.x);
+            const dz = Math.abs(p.transform.pos[2] - candidatePos.z);
+            if (dx < 2.5 && dz < 2.5 && Math.abs(pillarBaseY - p.transform.pos[1]) < 0.5) {
+              supported = true;
+              break;
+            }
+          }
+        }
+        if (!supported && pillarBaseY > siteMin.y + 0.4) {
+          continue; // Reject floating pillar
+        }
+      }
+
+      // 4. Props & Rubble Grounding Rule: Must sit on a floor surface
+      if (bPartDef.category === "prop" || bPartDef.category === "rubble") {
+        let onFloor = false;
+        for (const p of placements) {
+          if (p.category === "floor") {
+            const dx = Math.abs(p.transform.pos[0] - candidatePos.x);
+            const dz = Math.abs(p.transform.pos[2] - candidatePos.z);
+            if (dx < 2.5 && dz < 2.5) {
+              candidatePos.y = p.transform.pos[1] + 0.1 + halfSize.y;
+              onFloor = true;
+              break;
+            }
+          }
+        }
+        if (!onFloor) {
+          continue; // Reject floating prop
+        }
+      }
       const candidateAABB: BoundingAABB = {
         min: new THREE.Vector3().subVectors(candidatePos, halfSize),
         max: new THREE.Vector3().addVectors(candidatePos, halfSize),

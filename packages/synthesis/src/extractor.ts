@@ -86,6 +86,20 @@ export function generatePartSockets(partId: string, category: string, bounds: Bo
     sockets.push({ name: "edge_pz", kind: "ceiling-edge", offset: [0, 0, hz], normal: [0, 0, 1] });
     sockets.push({ name: "edge_nz", kind: "ceiling-edge", offset: [0, 0, -hz], normal: [0, 0, -1] });
     sockets.push({ name: "bottom", kind: "ceiling-mount", offset: [0, -hy, 0], normal: [0, -1, 0] });
+  } else if (category === "stairs") {
+    sockets.push({ name: "bottom", kind: "stairs-base", offset: [0, -hy, -hz], normal: [0, -1, 0] });
+    sockets.push({ name: "top", kind: "stairs-top", offset: [0, hy, hz], normal: [0, 0, 1] });
+    sockets.push({ name: "edge_left", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
+  } else if (category === "railing") {
+    sockets.push({ name: "edge_left", kind: "railing-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "railing-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
+    sockets.push({ name: "bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
+  } else if (category === "door") {
+    sockets.push({ name: "edge_left", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
+    sockets.push({ name: "bottom", kind: "wall-base", offset: [0, -hy, 0], normal: [0, -1, 0] });
+    sockets.push({ name: "top", kind: "wall-top", offset: [0, hy, 0], normal: [0, 1, 0] });
   } else {
     // Default prop / structure mount sockets
     sockets.push({ name: "mount_bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
@@ -93,6 +107,24 @@ export function generatePartSockets(partId: string, category: string, bounds: Bo
   }
 
   return sockets;
+}
+
+/** Check if two socket kinds are architecturally compatible. */
+export function isSocketCompatible(aKind: string, bKind: string): boolean {
+  if (aKind === "floor-edge") return bKind === "floor-edge" || bKind === "stairs-top";
+  if (aKind === "wall-edge") return bKind === "wall-edge" || bKind === "pillar-side";
+  if (aKind === "wall-base") return bKind === "surface-mount" || bKind === "wall-top";
+  if (aKind === "wall-top") return bKind === "wall-base" || bKind === "ceiling-mount";
+  if (aKind === "ceiling-edge") return bKind === "ceiling-edge";
+  if (aKind === "ceiling-mount") return bKind === "wall-top" || bKind === "pillar-cap";
+  if (aKind === "pillar-base") return bKind === "surface-mount";
+  if (aKind === "pillar-cap") return bKind === "ceiling-mount";
+  if (aKind === "surface-mount") return bKind === "wall-base" || bKind === "pillar-base" || bKind === "surface-contact" || bKind === "stairs-base";
+  if (aKind === "surface-contact") return bKind === "surface-mount";
+  if (aKind === "stairs-base") return bKind === "surface-mount";
+  if (aKind === "stairs-top") return bKind === "floor-edge";
+  if (aKind === "railing-edge") return bKind === "railing-edge" || bKind === "wall-edge" || bKind === "pillar-side";
+  return false;
 }
 
 /** Decompose an FBX or Three.js scene graph into ExampleAssemblies. */
@@ -280,6 +312,11 @@ export function extractLearnedRuleSet(
               bestBDot = dot;
               bestBSock = s;
             }
+          }
+
+          // Verify architectural socket compatibility
+          if (!isSocketCompatible(bestASock.kind, bestBSock.kind)) {
+            continue;
           }
 
           // Forward rule (A -> B)
