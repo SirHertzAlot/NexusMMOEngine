@@ -53,10 +53,9 @@ apps/client/public/surfaces/
 # Codebase snapshot dumps (copies of the repo itself; regenerate, never commit)
 /docs/kb/
 
-<<<<<<< HEAD
 #Valgrind reports
 /perf/
-=======
+
 # settlement scenes name licensed art models: bake locally, never commit
 /content/scenes/settlement-*.scene.json
 
@@ -71,4 +70,3 @@ packages/engine-core/content/wildlife/*.local.json
 /content/bake-env.local.txt
 /content/ecology/*.local.ecology.json
 /content/wildlife/*.local.json
->>>>>>> 097679f490213cbcb60a6090c695a833a7208964
