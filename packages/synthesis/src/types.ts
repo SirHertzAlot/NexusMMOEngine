@@ -105,6 +105,71 @@ export interface SynthesisBudget {
   timeBudgetMs?: number;
 }
 
+export interface PuzzleInputSlot {
+  slotIndex: number;
+  kind: "rune-pillar" | "dial" | "lever";
+  partId: string;
+  options: string[]; // Limited set of available states/symbols (e.g. ["Rune_01", "Rune_02", "Rune_04", "Rune_05"])
+  currentState: string;
+  transform: TransformData;
+}
+
+export interface PuzzleCluePlacement {
+  clueIndex: number;
+  partId: string;
+  symbol: string; // The correct answer plainly shown before the entrypoint
+  clueType: "banner" | "statue" | "book" | "carving" | "inscription";
+  description: string;
+  transform: TransformData;
+  roomLocation: string;
+}
+
+export interface CombinationPuzzleDefinition {
+  puzzleId: string;
+  name: string;
+  target: {
+    type: "door" | "chest";
+    partId: string;
+    targetRef: string;
+    transform: TransformData;
+    isLocked: boolean;
+  };
+  entrypoint: {
+    inputs: PuzzleInputSlot[];
+    promptTransform: TransformData;
+  };
+  solution: string[]; // Ordered sequence required to unlock
+  clues: PuzzleCluePlacement[]; // Plainly shown clues placed through earlier dungeon areas
+  possibleCombinationsCount: number; // Discrete bounded combinations space (e.g. 4^3 = 64)
+  onUnlock: {
+    action: "open_door" | "unlock_chest";
+    animation: string;
+    grantsAccessTo: string;
+  };
+}
+
+export interface CollisionTrapDefinition {
+  trapId: string;
+  trapType: "floor-spear-grate" | "swinging-blade" | "saw-rail" | "pit-hatch" | "grinder";
+  partId: string;
+  assetRef: string;
+  transform: TransformData;
+  triggerVolume: {
+    shape: "box" | "cylinder";
+    boundsMin: Vec3Tuple;
+    boundsMax: Vec3Tuple;
+    hidden: boolean; // Hidden spot flush with floor
+  };
+  onCollision: {
+    animation: string;
+    damage: number;
+    damageType: "physical" | "bleed" | "crush";
+    cooldownSec: number;
+    knockbackVec?: Vec3Tuple;
+  };
+  state: "armed" | "triggered" | "cooldown" | "disarmed";
+}
+
 export interface RoomBlueprint {
   archetype?: "crypt-hall" | "boss-arena" | "multi-level-descent" | "corridor" | "vault" | "chamber";
   widthM?: number;
@@ -124,6 +189,7 @@ export interface RoomBlueprint {
     enabled?: boolean;
     levers?: boolean;
     statueDials?: boolean;
+    combinationPillars?: boolean;
   };
 }
 
@@ -155,6 +221,8 @@ export interface SynthesisReport {
 export interface SynthesisOutput {
   placements: SynthesizedPlacement[];
   report: SynthesisReport;
+  puzzles?: CombinationPuzzleDefinition[];
+  traps?: CollisionTrapDefinition[];
 }
 
 export class SynthesisError extends Error {

@@ -700,3 +700,15 @@ Every entry: date, decision, rationale. Newest first.
   focal dressing (altars, sarcophagi, braziers, corner rubble). Rotations
   are strictly upright yaw-only (`[0, 1, 0]`), eliminating floating or
   incoherent parts and producing authentic Romanesque/Gothic dungeon chambers.
+
+- **2026-10-26 — Combination-style puzzles & collision-triggered hidden traps in architectural synthesis (PR #437).**
+  Dungeon puzzle and hazard mechanics follow core architectural principles:
+  1) **Combination-Style Puzzles (`CombinationPuzzleDefinition`)**:
+     - Locks a critical progression door (`SM_Env_Door_Bars_01`) or reward chest (`SM_Prop_Chest_01`).
+     - Places an interactive combination entrypoint directly before the locked target consisting of 3 rotating rune pillars, statue dials, or levers.
+     - Constrains each slot to a limited discrete set of choices (e.g. 3-4 options: Hawk, Serpent, Wolf, Dragon or Solar, Lunar, Eclipse) yielding bounded combination spaces ($4^3 = 64$ or $3^3 = 27$).
+     - Places plainly displayed clues (wall banners, inscribed statue tablets, and carved ledger books) throughout earlier bays and corridors *before* the player reaches the combination entrypoint, revealing the exact sequence.
+     - Unlocking event fires when the submitted sequence matches the solution, triggering the opening animation and granting chamber/quest progression.
+  2) **Hidden Collision-Triggered Traps (`CollisionTrapDefinition`)**:
+     - Traps (flush floor spear grates, circular saw rails, overhead pendulum blades) carry hidden bounding trigger volumes (`triggerVolume: { shape: "box", hidden: true }`) flush with floor tiles along natural corridors and chokepoints.
+     - When an entity collider overlaps the trigger volume, a collision event invocation fires: transitions state to `triggered`, executes the trap animation (e.g. `spears_thrust_up`, `saw_blade_spin_traverse`), delivers physical/bleed damage (35–50 HP), applies vertical/directional knockback, and enters a cooldown cycle before rearming.

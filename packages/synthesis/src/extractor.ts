@@ -40,6 +40,7 @@ export function categorizePart(partId: string): string {
   if (p.includes("tile") || p.includes("floor")) return "floor";
   if (p.includes("wall") || p.includes("basement")) return "wall";
   if (p.includes("ceiling") || p.includes("roof")) return "ceiling";
+  if (p.includes("rune_pillar")) return "puzzle";
   if (p.includes("pillar") || p.includes("column")) return "pillar";
   if (p.includes("stair") || p.includes("ramp") || p.includes("slope")) return "stairs";
   if (p.includes("door") || p.includes("gate")) return "door";

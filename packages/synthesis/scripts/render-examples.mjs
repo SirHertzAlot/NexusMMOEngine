@@ -317,17 +317,23 @@ async function main() {
     // Render placed parts as shaded boxes matching real bounds
     for (const p of placements) {
       const cat = p.category || "structure";
-      const col = catColors[cat] || 0x4a5568;
+      let col = catColors[cat] || 0x4a5568;
 
       let sx = 5.0, sy = 0.2, sz = 5.0;
-      if (cat === "floor") { sx = 5.0; sy = 0.2; sz = 5.0; }
+      if (p.partId.toLowerCase().includes("chest")) {
+        col = 0xffb703;
+        sx = 1.6; sy = 1.2; sz = 1.2;
+      } else if (p.partId.toLowerCase().includes("banner")) {
+        col = 0xf77f00;
+        sx = 1.5; sy = 2.4; sz = 0.2;
+      } else if (cat === "floor") { sx = 5.0; sy = 0.2; sz = 5.0; }
       else if (cat === "wall") { sx = 5.0; sy = 4.0; sz = 0.5; }
       else if (cat === "pillar") { sx = 1.4; sy = 4.0; sz = 1.4; }
       else if (cat === "ceiling") { sx = 5.0; sy = 0.4; sz = 5.0; }
       else if (cat === "stairs") { sx = 3.0; sy = 3.5; sz = 5.0; }
       else if (cat === "railing") { sx = 5.0; sy = 1.2; sz = 0.3; }
-      else if (cat === "trap") { sx = 2.4; sy = 0.25; sz = 2.4; }
-      else if (cat === "puzzle") { sx = 0.6; sy = 1.0; sz = 0.6; }
+      else if (cat === "trap") { sx = 2.5; sy = 0.25; sz = 2.5; }
+      else if (cat === "puzzle") { sx = 1.0; sy = 2.2; sz = 1.0; }
       else { sx = 1.0; sy = 1.0; sz = 1.0; }
 
       const geom = cat === "stairs"

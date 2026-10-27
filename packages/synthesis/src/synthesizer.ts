@@ -20,6 +20,10 @@ import type {
   AdjacencyRule,
   PartDef,
   RoomBlueprint,
+  CombinationPuzzleDefinition,
+  CollisionTrapDefinition,
+  PuzzleInputSlot,
+  PuzzleCluePlacement,
 } from "./types.js";
 
 /** Mulberry32 deterministic 32-bit PRNG. */
@@ -227,6 +231,9 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
     }
   }
 
+  const generatedPuzzles: CombinationPuzzleDefinition[] = [];
+  const generatedTraps: CollisionTrapDefinition[] = [];
+
   // 1. ARCHITECTURAL BLUEPRINT SYNTHESIS
   if (hasArchitecture) {
     const groundY = siteMin.y + 0.1;
@@ -340,16 +347,147 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 7: Traps & Puzzle Mechanics
-      // Floor spear traps in side aisles
-      for (const tx of [-5.0, 5.0]) {
-        const trapPart = pickCatPart("trap", "spear") || pickCatPart("trap");
-        if (trapPart) {
-          addPlacement(trapPart, new THREE.Vector3(tx, groundY + 0.05, 0), yawQuat(0));
+      // Phase 7: Traps & Combination Puzzle Mechanics
+      // 1. Combination Puzzle: 3 Rune Pillars / Dials guarding the Sanctum Door & Chest
+      const sanctumDoor = pickCatPart("door") || pickCatPart("wall");
+      const sanctumChest = pickCatPart("prop", "chest") || pickCatPart("prop");
+      if (sanctumChest) {
+        addPlacement(sanctumChest, new THREE.Vector3(0, groundY + 0.5, 12.5), yawQuat(0));
+      }
+
+      const puzzleSymbols = ["Hawk", "Serpent", "Wolf", "Dragon"];
+      const solution = [
+        puzzleSymbols[Math.floor(rng.next() * puzzleSymbols.length)],
+        puzzleSymbols[Math.floor(rng.next() * puzzleSymbols.length)],
+        puzzleSymbols[Math.floor(rng.next() * puzzleSymbols.length)],
+      ];
+
+      // Entrypoint Inputs (3 rotating pillars / dials directly before the sanctum)
+      const inputSlots: PuzzleInputSlot[] = [];
+      const inputXs = [-2.5, 0.0, 2.5];
+      const entryZ = 9.5;
+      for (let i = 0; i < 3; i++) {
+        const pillarModel = pickCatPart("puzzle", "rune_pillar") || pickCatPart("puzzle", "dial") || pickCatPart("puzzle") || pickCatPart("pillar");
+        const xPos = inputXs[i];
+        if (pillarModel) {
+          addPlacement(pillarModel, new THREE.Vector3(xPos, groundY + 1.5, entryZ), yawQuat(0));
+        }
+        inputSlots.push({
+          slotIndex: i,
+          kind: "rune-pillar",
+          partId: pillarModel?.id ?? `rune_pillar_${i}`,
+          options: [...puzzleSymbols],
+          currentState: puzzleSymbols[0],
+          transform: {
+            pos: [xPos, groundY + 1.5, entryZ],
+            rot: [0, 0, 0, 1],
+            scale: [1, 1, 1],
+          },
+        });
+      }
+
+      // Plainly Displayed Clues placed through the Crypt Hall before the entrypoint (Z < 9.5)
+      const cluePlacements: PuzzleCluePlacement[] = [
+        {
+          clueIndex: 0,
+          partId: "SM_Prop_Wall_Banner_02",
+          symbol: solution[0],
+          clueType: "banner",
+          description: `Ancient Hall Banner depicting the first seal: '${solution[0]}'`,
+          transform: { pos: [-6.8, groundY + 2.0, -10.0], rot: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "West Entrance Aisle (Bay 1)",
+        },
+        {
+          clueIndex: 1,
+          partId: "SM_Env_Statue_01",
+          symbol: solution[1],
+          clueType: "statue",
+          description: `Grave Keeper Statue inscription revealing the second seal: '${solution[1]}'`,
+          transform: { pos: [6.8, groundY + 1.5, -2.5], rot: [0, -Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "East Sarcophagus Colonnade (Bay 2)",
+        },
+        {
+          clueIndex: 2,
+          partId: "SM_Prop_Wall_Banner_05",
+          symbol: solution[2],
+          clueType: "carving",
+          description: `Sanctum Approach Wall Carving displaying the final seal: '${solution[2]}'`,
+          transform: { pos: [-6.8, groundY + 2.0, 5.0], rot: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "West Nave Colonnade (Bay 3)",
+        },
+      ];
+
+      for (const clue of cluePlacements) {
+        const cluePart = pickCatPart("prop", "banner") || pickCatPart("prop") || pickCatPart("structure");
+        if (cluePart) {
+          addPlacement(cluePart, new THREE.Vector3(...clue.transform.pos), new THREE.Quaternion(...clue.transform.rot));
         }
       }
 
-      // Puzzle Wall Levers inside alcoves (disarms aisle spear traps / unlocks sanctum)
+      generatedPuzzles.push({
+        puzzleId: "crypt_sanctum_combination",
+        name: "Trial of the Crypt Guardians",
+        target: {
+          type: "door",
+          partId: sanctumDoor?.id ?? "SM_Env_Door_Bars_01",
+          targetRef: "Sanctum_Iron_Gate_01",
+          transform: { pos: [0, groundY + 2.0, 14.8], rot: [0, 1, 0, 0], scale: [1, 1, 1] },
+          isLocked: true,
+        },
+        entrypoint: {
+          inputs: inputSlots,
+          promptTransform: { pos: [0, groundY + 1.0, 8.0], rot: [0, 0, 0, 1], scale: [1, 1, 1] },
+        },
+        solution,
+        clues: cluePlacements,
+        possibleCombinationsCount: Math.pow(puzzleSymbols.length, 3), // 4^3 = 64
+        onUnlock: {
+          action: "open_door",
+          animation: "door_bars_slide_open",
+          grantsAccessTo: "High Crypt Inner Sanctum",
+        },
+      });
+
+      // 2. Hidden Collision-Triggered Traps
+      const trapSpots = [
+        { id: "trap_spear_west_aisle", x: -5.0, z: 0.0, dmg: 35 },
+        { id: "trap_spear_east_aisle", x: 5.0, z: 0.0, dmg: 35 },
+        { id: "trap_spear_nave_chokepoint", x: 0.0, z: 6.0, dmg: 40 },
+      ];
+
+      for (const spot of trapSpots) {
+        const trapPart = pickCatPart("trap", "spear") || pickCatPart("trap");
+        if (trapPart) {
+          addPlacement(trapPart, new THREE.Vector3(spot.x, groundY + 0.05, spot.z), yawQuat(0));
+        }
+        generatedTraps.push({
+          trapId: spot.id,
+          trapType: "floor-spear-grate",
+          partId: trapPart?.id ?? "SM_Prop_Trap_Spears_Grate_01",
+          assetRef: trapPart?.assetRef ?? "SM_Prop_Trap_Spears_Grate_01",
+          transform: {
+            pos: [spot.x, groundY + 0.05, spot.z],
+            rot: [0, 0, 0, 1],
+            scale: [1, 1, 1],
+          },
+          triggerVolume: {
+            shape: "box",
+            boundsMin: [spot.x - 1.25, groundY, spot.z - 1.25],
+            boundsMax: [spot.x + 1.25, groundY + 0.4, spot.z + 1.25],
+            hidden: true,
+          },
+          onCollision: {
+            animation: "spears_thrust_up",
+            damage: spot.dmg,
+            damageType: "physical",
+            cooldownSec: 2.5,
+            knockbackVec: [0, 2.5, 0],
+          },
+          state: "armed",
+        });
+      }
+
+      // Alcove wall levers for secondary disarm
       const leverW = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
       const leverE = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
       if (leverW) addPlacement(leverW, new THREE.Vector3(-7.3, groundY + 1.8, 0), yawQuat(Math.PI / 2));
@@ -450,21 +588,135 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 7: Arena Saw Rail Traps & Coordinated Puzzle Levers
-      // Perimeter saw rail hazard tracks along arena flanks
+      // Phase 7: Arena Saw Rail Traps & Dais Combination Puzzle
+      // 1. Combination Puzzle: 3 Statue Dials flanking the Dais approach to unlock Dais Chest
+      const daisChest = pickCatPart("prop", "chest") || pickCatPart("prop");
+      if (daisChest) {
+        addPlacement(daisChest, new THREE.Vector3(0, groundY + 0.9, 6.5), yawQuat(Math.PI));
+      }
+
+      const arenaSymbols = ["Solar", "Lunar", "Eclipse"];
+      const arenaSolution = [
+        arenaSymbols[Math.floor(rng.next() * arenaSymbols.length)],
+        arenaSymbols[Math.floor(rng.next() * arenaSymbols.length)],
+        arenaSymbols[Math.floor(rng.next() * arenaSymbols.length)],
+      ];
+
+      const arenaInputSlots: PuzzleInputSlot[] = [];
+      const arenaXs = [-4.0, 0.0, 4.0];
+      for (let i = 0; i < 3; i++) {
+        const dialPart = pickCatPart("puzzle", "lever") || pickCatPart("puzzle") || pickCatPart("pillar");
+        const xPos = arenaXs[i];
+        if (dialPart) {
+          addPlacement(dialPart, new THREE.Vector3(xPos, groundY + 0.6, 1.5), yawQuat(Math.PI));
+        }
+        arenaInputSlots.push({
+          slotIndex: i,
+          kind: "dial",
+          partId: dialPart?.id ?? `arena_dial_${i}`,
+          options: [...arenaSymbols],
+          currentState: arenaSymbols[0],
+          transform: {
+            pos: [xPos, groundY + 0.6, 1.5],
+            rot: [0, 1, 0, 0],
+            scale: [1, 1, 1],
+          },
+        });
+      }
+
+      // Plainly Displayed Clues placed around outer arena naves before reaching the dais
+      const arenaClues: PuzzleCluePlacement[] = [
+        {
+          clueIndex: 0,
+          partId: "SM_Prop_Wall_Banner_02",
+          symbol: arenaSolution[0],
+          clueType: "banner",
+          description: `Southwest Arena Banner showing the first trial sign: '${arenaSolution[0]}'`,
+          transform: { pos: [-9.0, groundY + 2.0, -8.0], rot: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "Southwest Arena Nave",
+        },
+        {
+          clueIndex: 1,
+          partId: "SM_Env_Statue_03",
+          symbol: arenaSolution[1],
+          clueType: "statue",
+          description: `Southeast Warrior Statue tablet showing the second trial sign: '${arenaSolution[1]}'`,
+          transform: { pos: [9.0, groundY + 1.5, -8.0], rot: [0, -Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "Southeast Arena Nave",
+        },
+        {
+          clueIndex: 2,
+          partId: "SM_Prop_Wall_Banner_06",
+          symbol: arenaSolution[2],
+          clueType: "banner",
+          description: `Northwest Arena Wall Plaque showing the final trial sign: '${arenaSolution[2]}'`,
+          transform: { pos: [-9.0, groundY + 2.0, 5.0], rot: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "Northwest Arena Perimeter",
+        },
+      ];
+
+      for (const clue of arenaClues) {
+        const cPart = pickCatPart("prop", "banner") || pickCatPart("prop") || pickCatPart("structure");
+        if (cPart) {
+          addPlacement(cPart, new THREE.Vector3(...clue.transform.pos), new THREE.Quaternion(...clue.transform.rot));
+        }
+      }
+
+      generatedPuzzles.push({
+        puzzleId: "arena_dais_combination",
+        name: "Ritual of the Arena Champions",
+        target: {
+          type: "chest",
+          partId: daisChest?.id ?? "SM_Prop_Chest_03",
+          targetRef: "Champion_Treasure_Chest_01",
+          transform: { pos: [0, groundY + 0.9, 6.5], rot: [0, 1, 0, 0], scale: [1, 1, 1] },
+          isLocked: true,
+        },
+        entrypoint: {
+          inputs: arenaInputSlots,
+          promptTransform: { pos: [0, groundY + 0.6, 0.0], rot: [0, 0, 0, 1], scale: [1, 1, 1] },
+        },
+        solution: arenaSolution,
+        clues: arenaClues,
+        possibleCombinationsCount: Math.pow(arenaSymbols.length, 3), // 3^3 = 27
+        onUnlock: {
+          action: "unlock_chest",
+          animation: "chest_lid_open_spring",
+          grantsAccessTo: "Champion's Relic Cache",
+        },
+      });
+
+      // 2. Hidden Saw Rail Collision Traps along arena flanks
       for (const sx of [-8.0, 8.0]) {
         const sawTrap = pickCatPart("trap", "saw") || pickCatPart("trap");
         if (sawTrap) {
           addPlacement(sawTrap, new THREE.Vector3(sx, groundY + 0.2, -2.5), yawQuat(0));
         }
-      }
-
-      // Puzzle Levers flanking the Dais (requiring dual coordination to lower arena shields)
-      for (const lx of [-4.5, 4.5]) {
-        const lever = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
-        if (lever) {
-          addPlacement(lever, new THREE.Vector3(lx, groundY + 0.5, 4.0), yawQuat(Math.PI));
-        }
+        generatedTraps.push({
+          trapId: `arena_saw_rail_${sx > 0 ? "east" : "west"}`,
+          trapType: "saw-rail",
+          partId: sawTrap?.id ?? "SM_Prop_Trap_Saw_Rail_01",
+          assetRef: sawTrap?.assetRef ?? "SM_Prop_Trap_Saw_Rail_01",
+          transform: {
+            pos: [sx, groundY + 0.2, -2.5],
+            rot: [0, 0, 0, 1],
+            scale: [1, 1, 1],
+          },
+          triggerVolume: {
+            shape: "box",
+            boundsMin: [sx - 1.0, groundY, -5.0],
+            boundsMax: [sx + 1.0, groundY + 0.6, 0.0],
+            hidden: true,
+          },
+          onCollision: {
+            animation: "saw_blade_spin_traverse",
+            damage: 45,
+            damageType: "bleed",
+            cooldownSec: 3.0,
+            knockbackVec: [sx > 0 ? -1.5 : 1.5, 0.5, 0],
+          },
+          state: "armed",
+        });
       }
     } else if (archetype === "multi-level-descent") {
       // Second-level loft structure with structural pillars supporting the mezzanine from underneath
@@ -581,24 +833,167 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 8: Traps & Loft Puzzle Mechanism
+      // Phase 8: Traps & Loft Combination Puzzle Mechanism
+      // 1. Combination Puzzle: 3 Balustrade Levers along upper loft to unlock Mezzanine Vault Door
+      const vaultDoor = pickCatPart("door") || pickCatPart("wall");
+      const vaultDoorPos: Vec3Tuple = [0, lowerY + 5.5, -15.0];
+      if (vaultDoor) {
+        addPlacement(vaultDoor, new THREE.Vector3(...vaultDoorPos), yawQuat(0));
+      }
+
+      const loftPositions = ["Up", "Mid", "Down"];
+      const loftSolution = [
+        loftPositions[Math.floor(rng.next() * loftPositions.length)],
+        loftPositions[Math.floor(rng.next() * loftPositions.length)],
+        loftPositions[Math.floor(rng.next() * loftPositions.length)],
+      ];
+
+      const loftInputSlots: PuzzleInputSlot[] = [];
+      const loftXs = [-3.0, 0.0, 3.0];
+      for (let i = 0; i < 3; i++) {
+        const leverPart = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
+        const xPos = loftXs[i];
+        if (leverPart) {
+          addPlacement(leverPart, new THREE.Vector3(xPos, upperY + 1.0, -6.5), yawQuat(Math.PI));
+        }
+        loftInputSlots.push({
+          slotIndex: i,
+          kind: "lever",
+          partId: leverPart?.id ?? `loft_lever_${i}`,
+          options: [...loftPositions],
+          currentState: loftPositions[0],
+          transform: {
+            pos: [xPos, upperY + 1.0, -6.5],
+            rot: [0, 1, 0, 0],
+            scale: [1, 1, 1],
+          },
+        });
+      }
+
+      // Plainly Displayed Clues placed in the lower undercroft and ramp ascent before reaching the loft
+      const loftClues: PuzzleCluePlacement[] = [
+        {
+          clueIndex: 0,
+          partId: "SM_Prop_Bookcase_01",
+          symbol: loftSolution[0],
+          clueType: "book",
+          description: `Undercroft Scholar's Ledger recording lever 1 position: '${loftSolution[0]}'`,
+          transform: { pos: [-5.0, lowerY + 1.5, -10.0], rot: [0, 0, 0, 1], scale: [1, 1, 1] },
+          roomLocation: "Lower Undercroft West Pillar",
+        },
+        {
+          clueIndex: 1,
+          partId: "SM_Env_Statue_01",
+          symbol: loftSolution[1],
+          clueType: "statue",
+          description: `Undercroft Shrine Inscription recording lever 2 position: '${loftSolution[1]}'`,
+          transform: { pos: [5.0, lowerY + 1.5, -10.0], rot: [0, 0, 0, 1], scale: [1, 1, 1] },
+          roomLocation: "Lower Undercroft East Pillar",
+        },
+        {
+          clueIndex: 2,
+          partId: "SM_Prop_Wall_Banner_02",
+          symbol: loftSolution[2],
+          clueType: "banner",
+          description: `Ramp Ascent Banner indicating lever 3 position: '${loftSolution[2]}'`,
+          transform: { pos: [0.0, lowerY + 3.0, -2.5], rot: [0, -Math.SQRT1_2, 0, Math.SQRT1_2], scale: [1, 1, 1] },
+          roomLocation: "Stepped Ramp Mid-Landing",
+        },
+      ];
+
+      for (const clue of loftClues) {
+        const cPart = pickCatPart("prop") || pickCatPart("structure");
+        if (cPart) {
+          addPlacement(cPart, new THREE.Vector3(...clue.transform.pos), new THREE.Quaternion(...clue.transform.rot));
+        }
+      }
+
+      generatedPuzzles.push({
+        puzzleId: "loft_vault_combination",
+        name: "Mechanism of the High Mezzanine",
+        target: {
+          type: "door",
+          partId: vaultDoor?.id ?? "SM_Env_Door_Bars_01",
+          targetRef: "Upper_Vault_Reinforced_Door",
+          transform: { pos: vaultDoorPos, rot: [0, 0, 0, 1], scale: [1, 1, 1] },
+          isLocked: true,
+        },
+        entrypoint: {
+          inputs: loftInputSlots,
+          promptTransform: { pos: [0, upperY + 1.0, -7.5], rot: [0, 0, 0, 1], scale: [1, 1, 1] },
+        },
+        solution: loftSolution,
+        clues: loftClues,
+        possibleCombinationsCount: Math.pow(loftPositions.length, 3), // 3^3 = 27
+        onUnlock: {
+          action: "open_door",
+          animation: "door_bars_slide_open",
+          grantsAccessTo: "High Mezzanine Reliquary Vault",
+        },
+      });
+
+      // 2. Hidden Collision-Triggered Traps
       // Chokepoint floor spear trap embedded at base of descent ramp
       const rampTrap = pickCatPart("trap", "spear") || pickCatPart("trap");
       if (rampTrap) {
-        addPlacement(rampTrap, new THREE.Vector3(0, lowerY + 0.05, 0.0), yawQuat(0));
+        addPlacement(rampTrap, new THREE.Vector3(0, lowerY + 0.05, 1.5), yawQuat(0));
       }
-
-      // Loft Overseer puzzle lever mounted on upper balcony railing
-      const loftLever = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
-      if (loftLever) {
-        addPlacement(loftLever, new THREE.Vector3(-4.5, upperY + 1.0, -5.0), yawQuat(Math.PI));
-      }
+      generatedTraps.push({
+        trapId: "ramp_foot_spear_chokepoint",
+        trapType: "floor-spear-grate",
+        partId: rampTrap?.id ?? "SM_Prop_Trap_Spears_Grate_01",
+        assetRef: rampTrap?.assetRef ?? "SM_Prop_Trap_Spears_Grate_01",
+        transform: {
+          pos: [0, lowerY + 0.05, 1.5],
+          rot: [0, 0, 0, 1],
+          scale: [1, 1, 1],
+        },
+        triggerVolume: {
+          shape: "box",
+          boundsMin: [-1.25, lowerY, 0.25],
+          boundsMax: [1.25, lowerY + 0.4, 2.75],
+          hidden: true,
+        },
+        onCollision: {
+          animation: "spears_thrust_up",
+          damage: 40,
+          damageType: "physical",
+          cooldownSec: 2.5,
+          knockbackVec: [0, 2.0, 1.0],
+        },
+        state: "armed",
+      });
 
       // Overhead swinging blade trap housing above the ramp
       const swingBlade = pickCatPart("trap", "swing") || pickCatPart("trap");
       if (swingBlade) {
         addPlacement(swingBlade, new THREE.Vector3(0, lowerY + 3.8, -2.5), yawQuat(0));
       }
+      generatedTraps.push({
+        trapId: "ramp_overhead_swinging_blade",
+        trapType: "swinging-blade",
+        partId: swingBlade?.id ?? "SM_Prop_Trap_Swing_Blade_01",
+        assetRef: swingBlade?.assetRef ?? "SM_Prop_Trap_Swing_Blade_01",
+        transform: {
+          pos: [0, lowerY + 3.8, -2.5],
+          rot: [0, 0, 0, 1],
+          scale: [1, 1, 1],
+        },
+        triggerVolume: {
+          shape: "box",
+          boundsMin: [-1.5, lowerY + 1.0, -3.75],
+          boundsMax: [1.5, lowerY + 4.0, -1.25],
+          hidden: true,
+        },
+        onCollision: {
+          animation: "pendulum_swing_sweep",
+          damage: 50,
+          damageType: "crush",
+          cooldownSec: 2.0,
+          knockbackVec: [0, 0, 2.5],
+        },
+        state: "armed",
+      });
     }
   }
 
@@ -727,5 +1122,7 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
   return {
     placements,
     report,
+    puzzles: generatedPuzzles,
+    traps: generatedTraps,
   };
 }
