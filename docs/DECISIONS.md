@@ -2,6 +2,24 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — Native Performance & Serialization Roadmap: C++ AVX2 Codec, Native Spatial Grid, and Jolt Multi-Threading.**
+  To cure the B4 delta bandwidth p99 tail miss (spiking to 11.7ms–12.8ms at 5k–10k entities due to V8 DataView loops and GC churn) and interest management string allocations:
+  - **Native AVX2/SIMD Delta Serialization (addon-codec):** Build a dedicated C++ N-API addon reading directly from SharedArrayBuffer memory pointers to pack 32-byte wire frames in under 0.05ms for 10k entities with 0 bytes of V8 heap garbage, flattening p99 to < 0.1ms.
+  - **Native Spatial Grid (addon-spatial):** Replace dynamic template string keys ("${sx},${sz}") and Set<string> allocations in packages/engine-core/src/net/interest.ts with a dense 2D integer spatial hash in C++.
+  - **Jolt Multi-Threaded Job System:** Enable JPH::JobSystemThreadPool in packages/addons/physics to scale collision and rigid body simulation across hardware CPU cores without blocking the 30Hz Node.js event loop.
+  - **Bulk Native Raycasting & mimalloc:** Expose CastRaysBulk for parallel combat/LOS checks in under 0.2ms, and link native addons against mimalloc to prevent heap lock contention and memory fragmentation. Full details in docs/ENGINE-COMPARISON-AND-PERFORMANCE.md.
+
+- **2026-10-27 — Client Modernization Architecture: WebGPU + WGSL Compute Migration over Legacy WebGL2.**
+  Addressing graphics modernization and technical inquiries regarding OpenGL vs. WebGL:
+  - **API Clarification:** Confirmed that native desktop OpenGL and browser WebGL operate in disjoint execution environments; WebGL is a sandboxed JavaScript binding of OpenGL ES (translated to DirectX/Metal/Vulkan via ANGLE) and cannot extend native OpenGL. Both legacy APIs suffer from single-threaded state machine overhead and lack compute shaders.
+  - **WebGPU Adoption:** Formally selected WebGPU (WGSL) as the next-generation rendering standard. Using Three.js WebGPURenderer on the client and C++ Dawn/wgpu-native on desktop/server, WebGPU provides GPU-driven indirect multi-draws (bypassing the browser's 3k–5k draw call ceiling) and general-purpose GPU compute (100k GPU particles, weather, and crowd skinning).
+
+- **2026-10-27 — Unconstrained Engine Substrate & Strict Engine/Game Decoupling.**
+  To ensure the engine remains an unconstrained, high-performance substrate without forcing developers to accept or remove unwanted pre-built gameplay:
+  - **Zero-Content Engine Boot:** The core engine (packages/engine-core) owns generic systems only (30Hz tick loop, bitECS data plane, spatial indexing, persistence, and network gateways) and boots cleanly with zero gameplay rules, item catalogs, or species.
+  - **Pluggable Modular Systems (modules/ via content/modules.json):** Gameplay mechanics (combat, crafting, dungeons, quests, residents) are fully isolated modules. Non-RPG developers (e.g. flight sims, racing, sandboxes) simply omit unused modules from content/modules.json; omitted modules are never compiled, allocated, or ticked.
+  - **Data-Driven Rule Contracts (packages/rules):** Rules are data packs loaded via environment seams (MMO_*) and validated at boot with Zod schemas.
+
 - **2026-10-26 — Continuous Model Synthesis, Inverse Procedural Modeling, and Learned Unity Scene Grammar (@mmo-engine/synthesis).**
   To solve the combinatorial assembly challenges and visual tiling artifacts of discrete 3D grid generators, @mmo-engine/synthesis (MODEL-SYNTHESIS-MAP.md) implements tileless continuous model synthesis, automatic scene decomposition, and learned architectural grammar:
   - **Unity Demo Scene Decomposition (extractor.ts, cli.ts):** decomposeScene() analyzes Unity demo scenes (POLYGON_Dungeons_Demo_Scene.fbx, 3,376 child objects across 598 unique parts), normalizes centimeter coordinate units into engine metric standards (5.0m x 5.0m modules), auto-generates continuous directional sockets with outward surface normals (+/-X, +/-Y, +/-Z), and partitions whole-level structures into 10 cohesive room assemblies via 35m spatial radius clustering.
