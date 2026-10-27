@@ -30,7 +30,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   core.close();
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 32, retryDelay: 50 });
 });
 
 const rejects = (p: Promise<unknown>, code: string): Promise<void> =>
