@@ -353,11 +353,6 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async upsertRegion(r: RegionRecord): Promise<void> {
-    const existing = singleRow(
-      await this.db.query("SELECT * FROM ONLY region WHERE regionId = $id", {
-        id: r.regionId,
-      }),
-    );
     const data = {
       regionId: r.regionId,
       chunkRange: r.chunkRange,
@@ -373,28 +368,24 @@ export class SurrealWorldStore implements WorldStore {
       tokenHash: r.tokenHash,
       tokenIssuedAt: r.tokenIssuedAt,
     };
-    if (existing !== null) {
-      await this.db.query(
-        "UPDATE ONLY region SET chunkRange=$cr, endpoint=$ep, capacity=$cap, load=$load, tickJitterMs=$jit, entityCount=$ec, lastTick=$tick, lastHeartbeat=$hb, epoch=$epoch, apiKeyHash=$akh, tokenHash=$th, tokenIssuedAt=$tia WHERE regionId = $id",
-        {
-          id: r.regionId,
-          cr: r.chunkRange,
-          ep: r.endpoint,
-          cap: r.capacity,
-          load: r.load,
-          jit: r.tickJitterMs,
-          ec: r.entityCount,
-          tick: r.lastTick,
-          hb: r.lastHeartbeat,
-          epoch: r.epoch,
-          akh: r.apiKeyHash,
-          th: r.tokenHash,
-          tia: r.tokenIssuedAt,
-        },
-      );
-    } else {
-      await this.db.query("CREATE ONLY region CONTENT $data", { data });
-    }
+    await this.db.query(
+      "INSERT INTO region $row ON DUPLICATE KEY UPDATE chunkRange=$cr, endpoint=$ep, capacity=$cap, load=$load, tickJitterMs=$jit, entityCount=$ec, lastTick=$tick, lastHeartbeat=$hb, epoch=$epoch, apiKeyHash=$akh, tokenHash=$th, tokenIssuedAt=$tia",
+      {
+        row: data,
+        cr: r.chunkRange,
+        ep: r.endpoint,
+        cap: r.capacity,
+        load: r.load,
+        jit: r.tickJitterMs,
+        ec: r.entityCount,
+        tick: r.lastTick,
+        hb: r.lastHeartbeat,
+        epoch: r.epoch,
+        akh: r.apiKeyHash,
+        th: r.tokenHash,
+        tia: r.tokenIssuedAt,
+      },
+    );
   }
 
   async getRegion(regionId: string): Promise<RegionRecord | null> {
@@ -617,18 +608,14 @@ export class SurrealWorldStore implements WorldStore {
 
   // -- state plane (persistence P1) --
 
-  /** Shared counter behind both epoch kinds, following the check-then-write pattern of recordDungeonRun. */
+  /** Shared counter behind both epoch kinds: one upsert whose update clause increments in place, returning the issued value. */
   private async issueEpoch(key: string): Promise<number> {
-    const row = singleRow<Record<string, unknown>>(
-      await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("INSERT INTO epoch_counter $row ON DUPLICATE KEY UPDATE value += 1", {
+        row: { key, value: 1 },
+      }),
     );
-    const next = (row === null ? 0 : Number(row["value"] ?? 0)) + 1;
-    if (row === null) {
-      await this.db.query("CREATE ONLY epoch_counter CONTENT { key: $key, value: $value }", { key, value: next });
-    } else {
-      await this.db.query("UPDATE ONLY epoch_counter SET value = $value WHERE key = $key", { key, value: next });
-    }
-    return next;
+    return Number(rows[0]?.["value"] ?? 0);
   }
 
   private async currentEpoch(key: string): Promise<number> {
@@ -646,15 +633,10 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async putSocialRecord(r: SocialRecord): Promise<void> {
-    const existing = await this.getSocialRecord(r.kind, r.key);
-    if (existing !== null) {
-      await this.db.query(
-        "UPDATE ONLY social_record SET doc=$doc, version=$version, regionId=$region, updatedAt=$updatedAt WHERE kind = $kind AND key = $key",
-        { kind: r.kind, key: r.key, doc: r.doc, version: r.version, region: r.regionId, updatedAt: r.updatedAt },
-      );
-    } else {
-      await this.db.query("CREATE ONLY social_record CONTENT $data", { data: { ...r } });
-    }
+    await this.db.query(
+      "INSERT INTO social_record $row ON DUPLICATE KEY UPDATE doc=$doc, version=$version, regionId=$region, updatedAt=$updatedAt",
+      { row: { ...r }, doc: r.doc, version: r.version, region: r.regionId, updatedAt: r.updatedAt },
+    );
   }
 
   async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
@@ -682,17 +664,10 @@ export class SurrealWorldStore implements WorldStore {
   }
 
   async putShardSnapshot(s: ShardSnapshotRecord): Promise<void> {
-    const existing = singleRow(
-      await this.db.query("SELECT * FROM ONLY shard_snapshot WHERE rangeKey = $rk LIMIT 1", { rk: s.rangeKey }),
+    await this.db.query(
+      "INSERT INTO shard_snapshot $row ON DUPLICATE KEY UPDATE regionId=$region, tick=$tick, epoch=$epoch, digest=$digest, payload=$payload, storedAt=$storedAt",
+      { row: { ...s }, region: s.regionId, tick: s.tick, epoch: s.epoch, digest: s.digest, payload: s.payload, storedAt: s.storedAt },
     );
-    if (existing !== null) {
-      await this.db.query(
-        "UPDATE ONLY shard_snapshot SET regionId=$region, tick=$tick, epoch=$epoch, digest=$digest, payload=$payload, storedAt=$storedAt WHERE rangeKey = $rk",
-        { rk: s.rangeKey, region: s.regionId, tick: s.tick, epoch: s.epoch, digest: s.digest, payload: s.payload, storedAt: s.storedAt },
-      );
-    } else {
-      await this.db.query("CREATE ONLY shard_snapshot CONTENT $data", { data: { ...s } });
-    }
   }
 
   async getLatestShardSnapshot(rangeKey: string): Promise<ShardSnapshotRecord | null> {
@@ -1204,13 +1179,12 @@ export class SurrealWorldStore implements WorldStore {
   // -- host reports (persistence P5) --
 
   async upsertHostReport(r: HostResourceReport): Promise<void> {
-    const existing = singleRow(
-      await this.db.query("SELECT * FROM ONLY host_report WHERE hostId = $id LIMIT 1", { id: r.hostId }),
-    );
     // shardLoad is TYPE option<float> on a SCHEMAFULL table: an absent
     // value must be written as NONE (field omitted / explicit NONE),
     // never as SQL NULL — v2 rejects NULL for option<> fields. Writing
-    // `r.shardLoad ?? null` here failed the live contract test.
+    // `r.shardLoad ?? null` here failed the live contract test. The
+    // upsert keeps both halves of that rule: the insert row omits the
+    // field when undefined; the duplicate-update clause writes NONE.
     const data: Record<string, unknown> = {
       hostId: r.hostId,
       cpuCores: r.cpuCores,
@@ -1219,15 +1193,11 @@ export class SurrealWorldStore implements WorldStore {
       reportedAt: r.reportedAt,
     };
     if (r.shardLoad !== undefined) data["shardLoad"] = r.shardLoad;
-    if (existing !== null) {
-      const loadClause = r.shardLoad === undefined ? "shardLoad=NONE" : "shardLoad=$load";
-      await this.db.query(
-        `UPDATE ONLY host_report SET cpuCores=$cores, ramTotalBytes=$total, ramFreeBytes=$free, ${loadClause}, reportedAt=$at WHERE hostId = $id`,
-        { id: r.hostId, cores: r.cpuCores, total: r.ramTotalBytes, free: r.ramFreeBytes, load: r.shardLoad, at: r.reportedAt },
-      );
-    } else {
-      await this.db.query("CREATE ONLY host_report CONTENT $data", { data });
-    }
+    const loadClause = r.shardLoad === undefined ? "shardLoad=NONE" : "shardLoad=$load";
+    await this.db.query(
+      `INSERT INTO host_report $row ON DUPLICATE KEY UPDATE cpuCores=$cores, ramTotalBytes=$total, ramFreeBytes=$free, ${loadClause}, reportedAt=$at`,
+      { row: data, cores: r.cpuCores, total: r.ramTotalBytes, free: r.ramFreeBytes, load: r.shardLoad, at: r.reportedAt },
+    );
   }
 
   async getHostReport(hostId: string): Promise<HostResourceReport | null> {
