@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — SAB Logging Layer Phase 0: Ring Buffer, Append-Only Code Dictionary & Sacred TS Producers.**
+  Completed Phase 0 of the SAB Logging Layer specification (`docs/SAB-LOGGING-LAYER-SPEC.md` §4, `docs/SAB-LOGGING-PHASE0-REPORT.md`):
+  - **Shared Memory Ring Buffer (`LogRingBuffer`):** Implemented over Dmitry Vyukov's `AtomicMPSCQueue` with 128-byte fixed records ($32 \times \text{u32}$ words) in a 2MB default SAB ($16,384\text{ records}$). Added per-producer atomic level masks (cache-line 3) and atomic drop counter.
+  - **Code Dictionary & Generation (`codegen.ts`):** Created single-source-of-truth append-only dictionary `log-codes.ts` generating `generated/log-api.ts` (type-safe TS APIs), `generated/log-formatters.ts` (worker format table), and `generated/log_codes.h` (native C++ header with `static_assert(sizeof(LogRecord) == 128)`).
+  - **Sacred Hot Path Producer Client (`LogProducerClient`):** Unrolled, zero-closure, zero-array, in-place SAB emission with amortized monotonic timestamps ($< 5\text{ns}$ clock trap). Achieved **$83.9\text{ ns}$ single-thread latency** ($11.92\text{ M ops/s}$) and **$13.72\text{ M ops/s}$ throughput under 4 concurrent threads**, with zero heap allocations on the hot path.
+  - **Gateway Migration & Parity:** Replaced all 9 legacy `console.*` calls in `packages/engine-core/src/net/gateway.ts` with typed SAB log emissions. Full gateway unit test suite passed (22/22 green) with zero regressions. All Phase 0 gates PASS.
+
 - **2026-10-27 — SAB Logging Layer Commissioning, Architecture & Roadmap.**
   Commissioned by Joey: implement a performant logging layer extending the SharedArrayBuffer (`docs/SAB-LOGGING-LAYER-SPEC.md`):
   - **Sacred Producer Path:** Fixed 128-byte binary record format written directly to `AtomicMPSCQueue` in tens of nanoseconds with zero locks, zero formatting, and zero heap allocations.

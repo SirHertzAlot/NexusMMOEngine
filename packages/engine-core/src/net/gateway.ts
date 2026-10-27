@@ -192,6 +192,20 @@ import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
 import { AtomicSPSCQueue, packCommandToken } from "../lockless-ring.js";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  logAdminCommandExecuted,
+  logGatewayAuthError,
+  logGatewayHelloPassword,
+  logGatewayHelloMigration,
+  logGatewayHelloToken,
+  logGatewayContainedError,
+  logGatewayCharacterCreated,
+  logGatewayRegisterError,
+  logGatewayRegisterSuccess,
+} from "../logging/index.js";
 import { INTENT_FLAGS } from "../sab-store.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
 import type { WorldCharacterSync } from "../world/character-sync.js";
@@ -262,6 +276,8 @@ export interface GatewayOptions {
    * heap allocations.
    */
   dataPlaneQueue?: AtomicSPSCQueue;
+  /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
+  logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
   /** Missed heartbeats before the client is dropped. Default 3. */
@@ -863,8 +879,10 @@ export class Gateway {
       | "atomicOps"
       | "respawnAnchors"
       | "dataPlaneQueue"
+      | "logger"
     >
   > & { port: number };
+  public readonly logger: LogProducerClient;
   private readonly systems: SimSystem[];
   public readonly dataPlaneQueue?: AtomicSPSCQueue;
   private dataPlaneEnqueuedIntents = 0;
@@ -1022,6 +1040,7 @@ export class Gateway {
       );
     }
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
+    this.logger = opts.logger ?? new LogProducerClient(LogProducer.GATEWAY, new LogRingBuffer(1024));
     this.dataPlaneQueue = opts.dataPlaneQueue;
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
@@ -3377,7 +3396,7 @@ export class Gateway {
       this.adminLog.splice(0, this.adminLog.length - ADMIN_LOG_SIZE);
     }
     // eslint-disable-next-line no-console
-    console.log(`[admin] ${username} ${command} -> ${ok ? "ok" : "rejected"}`);
+    logAdminCommandExecuted(this.logger, username, command, ok ? "ok" : "rejected");
   }
 
   /** Recent admin commands, oldest first (a copy). */
@@ -3871,10 +3890,7 @@ export class Gateway {
     void this.authenticate(s, payload)
       .catch((err: unknown) => {
         // Defense in depth: a store/argon2 failure must not kill the pump.
-        // eslint-disable-next-line no-console
-        console.error(
-          `[gateway] auth error: ${err instanceof Error ? err.message : err}`,
-        );
+        logGatewayAuthError(this.logger, err instanceof Error ? err.message : String(err));
         this.sendErrorAndClose(s, 4004, "internal auth error");
       })
       .finally(() => {
@@ -3951,7 +3967,7 @@ export class Gateway {
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = this.authSessions.create(s.clientId, username);
       // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=password`);
+      logGatewayHelloPassword(this.logger, clientLabel);
     } else if (parsed.kind === "migration") {
       const token = await this.handoffArrive(parsed.value.migration, parsed.value.ticket);
       if (!token) {
@@ -3962,7 +3978,7 @@ export class Gateway {
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = token;
       // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=migration`);
+      logGatewayHelloMigration(this.logger, clientLabel);
     } else {
       const sess = this.authSessions.get(parsed.value.token);
       if (!sess) {
@@ -3973,7 +3989,7 @@ export class Gateway {
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = sess.token;
       // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=token`);
+      logGatewayHelloToken(this.logger, clientLabel);
     }
 
     await this.joinWithSession(s, sessionToken, parsed.value.characters === true);
@@ -4150,7 +4166,7 @@ export class Gateway {
   private contain(s: ClientSession, what: string, work: Promise<void>): void {
     void work.catch((err: unknown) => {
       // eslint-disable-next-line no-console
-      console.error(`[gateway] ${what} error: ${err instanceof Error ? err.message : err}`);
+      logGatewayContainedError(this.logger, what, err instanceof Error ? err.message : String(err));
       this.sendError(s, 4004, `internal error (${what})`);
     });
   }
@@ -4190,7 +4206,7 @@ export class Gateway {
       throw err;
     }
     // eslint-disable-next-line no-console
-    console.log(`[gateway] character created user=${JSON.stringify(s.username)} name=${JSON.stringify(record.name)}`);
+    logGatewayCharacterCreated(this.logger, s.username, record.name);
     await this.sendAccount(s, record.id);
   }
 
@@ -4240,10 +4256,7 @@ export class Gateway {
     void this.registerAccount(s, payload)
       .catch((err: unknown) => {
         // Defense in depth: a store/argon2 failure must not kill the pump.
-        // eslint-disable-next-line no-console
-        console.error(
-          `[gateway] register error: ${err instanceof Error ? err.message : err}`,
-        );
+        logGatewayRegisterError(this.logger, err instanceof Error ? err.message : String(err));
         this.sendErrorAndClose(s, 4004, "internal auth error");
       })
       .finally(() => {
@@ -4320,10 +4333,7 @@ export class Gateway {
     }
     this.rateLimiter.recordSuccess(s.remoteIp);
     const sessionToken = this.authSessions.create(s.clientId, username);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[gateway] register client=${JSON.stringify(client)} user=${JSON.stringify(username)}`,
-    );
+    logGatewayRegisterSuccess(this.logger, JSON.stringify(client), username);
     await this.joinWithSession(s, sessionToken, characters === true);
   }
 

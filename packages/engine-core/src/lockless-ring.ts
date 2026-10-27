@@ -309,6 +309,7 @@ export const MPSC_HEADER_BYTES = 192;
 export const MPSC_ENQUEUE_IDX = 0;
 export const MPSC_DEQUEUE_IDX = 16;
 export const MPSC_DROPPED_IDX = 32;
+export const MPSC_LEVEL_MASKS_IDX = 36; // 8 words for producer level masks
 
 export const DEFAULT_RING_CAPACITY = 1024;
 export const COMMAND_SLOT_UINT32_STRIDE = 4;
@@ -319,9 +320,9 @@ export class AtomicMPSCQueue {
   public readonly mask: number;
   public readonly slotStrideU32: number;
 
-  private readonly ctrl: Int32Array;
-  private readonly seq: Int32Array;
-  private readonly data: Uint32Array;
+  public readonly ctrl: Int32Array;
+  public readonly seq: Int32Array;
+  public readonly data: Uint32Array;
 
   constructor(
     capacity: number = DEFAULT_RING_CAPACITY,
@@ -438,5 +439,81 @@ export class AtomicMPSCQueue {
 
   public get droppedCount(): number {
     return Atomics.load(this.ctrl, MPSC_DROPPED_IDX);
+  }
+
+  public enqueueRaw(writer: (data: Uint32Array, base: number) => void): boolean {
+    const mask = this.mask;
+    let pos = Atomics.load(this.ctrl, MPSC_ENQUEUE_IDX);
+
+    for (;;) {
+      const slotIdx = pos & mask;
+      const seq = Atomics.load(this.seq, slotIdx);
+      const dif = seq - pos;
+
+      if (dif === 0) {
+        const prev = Atomics.compareExchange(
+          this.ctrl,
+          MPSC_ENQUEUE_IDX,
+          pos,
+          pos + 1
+        );
+        if (prev === pos) {
+          const base = slotIdx * this.slotStrideU32;
+          writer(this.data, base);
+          Atomics.store(this.seq, slotIdx, pos + 1);
+          return true;
+        }
+        pos = prev;
+      } else if (dif < 0) {
+        Atomics.add(this.ctrl, MPSC_DROPPED_IDX, 1);
+        return false;
+      } else {
+        pos = Atomics.load(this.ctrl, MPSC_ENQUEUE_IDX);
+      }
+    }
+  }
+
+  public drainRaw(
+    visitor: (data: Uint32Array, base: number, slotStrideU32: number) => void,
+    maxDrain: number = this.capacity
+  ): number {
+    const mask = this.mask;
+    const cap = this.capacity;
+    let pos = Atomics.load(this.ctrl, MPSC_DEQUEUE_IDX);
+    let drained = 0;
+
+    while (drained < maxDrain) {
+      const slotIdx = pos & mask;
+      const seq = Atomics.load(this.seq, slotIdx);
+      const dif = seq - (pos + 1);
+
+      if (dif === 0) {
+        const base = slotIdx * this.slotStrideU32;
+        visitor(this.data, base, this.slotStrideU32);
+        Atomics.store(this.seq, slotIdx, pos + cap);
+        pos += 1;
+        drained += 1;
+      } else {
+        break;
+      }
+    }
+
+    if (drained > 0) {
+      Atomics.store(this.ctrl, MPSC_DEQUEUE_IDX, pos);
+    }
+    return drained;
+  }
+
+  public setLevelMask(producer: number, level: number): void {
+    if (producer >= 0 && producer < 8) {
+      Atomics.store(this.ctrl, MPSC_LEVEL_MASKS_IDX + producer, level);
+    }
+  }
+
+  public getLevelMask(producer: number): number {
+    if (producer >= 0 && producer < 8) {
+      return Atomics.load(this.ctrl, MPSC_LEVEL_MASKS_IDX + producer);
+    }
+    return 0;
   }
 }
