@@ -61,7 +61,7 @@ export class LogProducerClient {
     this.mask = ring.queue.mask;
     this.slotStrideU32 = ring.queue.slotStrideU32;
     this.dataByteOffset = this.data.byteOffset;
-    this.cachedNowNs = performance.now() * 1_000_000;
+    this.cachedNowNs = (performance.timeOrigin + performance.now()) * 1_000_000;
   }
 
   /**
@@ -71,7 +71,7 @@ export class LogProducerClient {
   public emit(
     level: LogLevel,
     code: number,
-    entityRef: bigint = 0n,
+    entityRef?: bigint,
     a0?: number | bigint | string | boolean,
     a1?: number | bigint | string | boolean,
     a2?: number | bigint | string | boolean,
@@ -84,16 +84,16 @@ export class LogProducerClient {
       return false;
     }
 
-    // Amortized monotonic timestamp (refresh every 16 emits to eliminate OS QPC clock trap latency)
+    // Amortized epoch-based timestamp, comparable across threads (refresh every 16 emits to eliminate OS QPC clock trap latency)
     if ((this.emitCount++ & 15) === 0) {
-      this.cachedNowNs = performance.now() * 1_000_000;
+      this.cachedNowNs = (performance.timeOrigin + performance.now()) * 1_000_000;
     }
     const tsLo = this.cachedNowNs >>> 0;
     const tsHi = (this.cachedNowNs / 4294967296) >>> 0;
 
     let entLo = 0;
     let entHi = 0;
-    if (entityRef !== 0n) {
+    if (entityRef !== undefined && entityRef !== 0n) {
       entLo = Number(entityRef & 0xffffffffn);
       entHi = Number((entityRef >> 32n) & 0xffffffffn);
     }

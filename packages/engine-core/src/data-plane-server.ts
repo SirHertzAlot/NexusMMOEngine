@@ -1,6 +1,6 @@
-/**
+﻿/**
  * Real-Time Network Ingestion Gateway (`data-plane-server.ts`)
- * (ENGINE_IMPLEMENTATION_SPEC.md §6).
+ * (ENGINE_IMPLEMENTATION_SPEC.md Â§6).
  *
  * Isolates the Master Thread solely to binary WebSocket frame ingestion and worker
  * orchestration:
@@ -78,6 +78,13 @@ export interface HybridDataPlaneOptions {
   useBatchDrain?: boolean;
   dbUrl?: string;
   transport?: "auto" | "uws" | "ws";
+  /**
+   * SAB + capacity of the process's log ring (docs/SAB-LOGGING-LAYER-SPEC.md
+   * Â§2.1): the sim worker emits its tick-budget overruns as records instead of
+   * formatting stdio lines on the sim thread.
+   */
+  logRingSab?: SharedArrayBuffer;
+  logRingCapacity?: number;
 }
 
 function resolveWorkerScript(baseName: "sim-worker" | "persist-worker"): {
@@ -112,6 +119,8 @@ export class HybridDataPlaneServer {
   public persistWorker: Worker | null = null;
 
   private readonly opts: HybridDataPlaneOptions;
+  private readonly logRingSab?: SharedArrayBuffer;
+  private readonly logRingCapacity?: number;
   private uwsListenSocket: unknown = null;
   private httpServer: HttpServer | null = null;
   private wss: WebSocketServer | null = null;
@@ -123,6 +132,8 @@ export class HybridDataPlaneServer {
   constructor(opts: HybridDataPlaneOptions = {}) {
     this.opts = opts;
     this.entityCapacity = opts.entityCapacity ?? DATA_PLANE_ENTITY_CAPACITY;
+    this.logRingSab = opts.logRingSab;
+    this.logRingCapacity = opts.logRingCapacity;
     this.masterMemoryArena =
       opts.sharedMemory ??
       createSharedMemoryPlane(this.entityCapacity, opts.heapMegabytes ?? 32);
@@ -171,7 +182,7 @@ export class HybridDataPlaneServer {
   }
 
   /**
-   * Hot-path binary frame ingestion handler (ENGINE_IMPLEMENTATION_SPEC.md §6).
+   * Hot-path binary frame ingestion handler (ENGINE_IMPLEMENTATION_SPEC.md Â§6).
    * Accepts a 4-byte binary packet `[Uint16 entityIndex (LE), Uint16 actionCode (LE)]`
    * (or a packed batch of 4-byte frames up to 64 bytes) and enqueues into `gatewayInputQueue`.
    */
@@ -219,6 +230,10 @@ export class HybridDataPlaneServer {
         mode: this.opts.simMode ?? "matrix",
         decodeMovementIntents: this.opts.decodeMovementIntents ?? false,
         useBatchDrain: this.opts.useBatchDrain ?? false,
+        // Shared with the main thread's LogRingBuffer (capacity must match
+        // exactly; the MPSC header is validated against it on attach).
+        logRingSab: this.logRingSab,
+        logRingCapacity: this.logRingCapacity,
       },
     });
     this.simWorker = worker;
@@ -257,6 +272,8 @@ export class HybridDataPlaneServer {
           mode: this.opts.simMode ?? "matrix",
           decodeMovementIntents: this.opts.decodeMovementIntents ?? false,
           useBatchDrain: this.opts.useBatchDrain ?? false,
+          logRingSab: this.logRingSab,
+          logRingCapacity: this.logRingCapacity,
         },
       });
       this.simWorker = worker;

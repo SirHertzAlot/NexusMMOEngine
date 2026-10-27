@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import { RulesError, type RuleHooks } from "@mmo-engine/rules";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
+import { LogProducerClient, logRulesReloadRefused, stdioLog } from "../logging/index.js";
 import { loadGameRules, type GameRules } from "./boot.js";
 
 /**
@@ -53,6 +54,8 @@ export interface RulesReloaderOptions {
   debounceMs?: number;
   load?: (dir: string) => GameRules;
   log?: (line: string) => void;
+  /** Log-ring producer: refused reloads become records instead of seam lines. */
+  logProducer?: LogProducerClient;
 }
 
 export class RulesReloader implements SimSystem {
@@ -63,6 +66,7 @@ export class RulesReloader implements SimSystem {
   private readonly debounceMs: number;
   private readonly load: (dir: string) => GameRules;
   private readonly log: (line: string) => void;
+  private readonly logProducer?: LogProducerClient;
 
   constructor(
     readonly dir: string,
@@ -71,7 +75,8 @@ export class RulesReloader implements SimSystem {
   ) {
     this.debounceMs = opts.debounceMs ?? 150;
     this.load = opts.load ?? ((d) => loadGameRules(d));
-    this.log = opts.log ?? ((l) => console.log(l));
+    this.log = opts.log ?? stdioLog;
+    this.logProducer = opts.logProducer;
   }
 
   /** Watch the rules folder; each settled change is reloaded. */
@@ -99,7 +104,9 @@ export class RulesReloader implements SimSystem {
       return true;
     } catch (err) {
       if (!(err instanceof RulesError)) throw err;
-      this.log(`[rules] reload refused, keeping the running rules: ${err.message}`);
+      this.logProducer
+        ? logRulesReloadRefused(this.logProducer, err.message)
+        : this.log(`[rules] reload refused, keeping the running rules: ${err.message}`);
       return false;
     }
   }

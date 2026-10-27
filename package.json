@@ -19,6 +19,7 @@
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
     "codegen": "node scripts/codegen.mjs",
+    "lint": "node scripts/lint-no-console.mjs",
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",
     "editor:test": "npm test --workspace=@mmo-engine/editor",
@@ -62,6 +63,7 @@
   "workspaces": [
     "packages/schema",
     "packages/protocol",
+    "packages/logging",
     "packages/mirror",
     "packages/art",
     "packages/rules",

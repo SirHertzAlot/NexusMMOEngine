@@ -196,6 +196,7 @@ import {
   LogProducer,
   LogProducerClient,
   LogRingBuffer,
+  runLogLevelCommand,
   logAdminCommandExecuted,
   logGatewayAuthError,
   logGatewayHelloPassword,
@@ -2930,7 +2931,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -3042,6 +3043,14 @@ export class Gateway {
       s.interestAll = mode === "all";
       s.interestSet = null; // a full replace of the new view next tick
       res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
+    } else if (cmd.command === "loglevel") {
+      const r = runLogLevelCommand(this.logger.ring, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else if (cmd.command === "noclip") {
       const parsed = NoclipArgsSchema.safeParse(cmd.args ?? {});
       if (!parsed.success) {
@@ -3395,7 +3404,6 @@ export class Gateway {
     if (this.adminLog.length > ADMIN_LOG_SIZE) {
       this.adminLog.splice(0, this.adminLog.length - ADMIN_LOG_SIZE);
     }
-    // eslint-disable-next-line no-console
     logAdminCommandExecuted(this.logger, username, command, ok ? "ok" : "rejected");
   }
 
@@ -3966,7 +3974,6 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = this.authSessions.create(s.clientId, username);
-      // eslint-disable-next-line no-console
       logGatewayHelloPassword(this.logger, clientLabel);
     } else if (parsed.kind === "migration") {
       const token = await this.handoffArrive(parsed.value.migration, parsed.value.ticket);
@@ -3977,7 +3984,6 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = token;
-      // eslint-disable-next-line no-console
       logGatewayHelloMigration(this.logger, clientLabel);
     } else {
       const sess = this.authSessions.get(parsed.value.token);
@@ -3988,7 +3994,6 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = sess.token;
-      // eslint-disable-next-line no-console
       logGatewayHelloToken(this.logger, clientLabel);
     }
 
@@ -4165,7 +4170,6 @@ export class Gateway {
   /** Run an async handler; a store failure answers 4004 and never kills the pump. */
   private contain(s: ClientSession, what: string, work: Promise<void>): void {
     void work.catch((err: unknown) => {
-      // eslint-disable-next-line no-console
       logGatewayContainedError(this.logger, what, err instanceof Error ? err.message : String(err));
       this.sendError(s, 4004, `internal error (${what})`);
     });
@@ -4205,7 +4209,6 @@ export class Gateway {
       }
       throw err;
     }
-    // eslint-disable-next-line no-console
     logGatewayCharacterCreated(this.logger, s.username, record.name);
     await this.sendAccount(s, record.id);
   }

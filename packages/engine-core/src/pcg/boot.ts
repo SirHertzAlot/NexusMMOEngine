@@ -42,7 +42,7 @@ export interface PcgService {
  * claim the request wins. Call before gw.listen().
  */
 export function mountPcgService(gw: Gateway, library: PcgAssetLibrary): RpcServer {
-  const rpc = new RpcServer({ authenticate: (token) => gw.sessionUser(token) });
+  const rpc = new RpcServer({ authenticate: (token) => gw.sessionUser(token), logger: gw.logger });
   registerPcgRpc(rpc, library);
   const prev = gw.getHttpHandler();
   gw.setHttpHandler((req, res) => (prev ? prev(req, res) : false) || rpc.handle(req, res));

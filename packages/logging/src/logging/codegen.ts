@@ -20,7 +20,17 @@ const logCodesModule = await import(
 const LOG_CODES: readonly LogCodeDefinition[] = logCodesModule.LOG_CODES;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = path.resolve(__dirname, "./generated");
+// `npm run gen` runs this from dist/src/logging/codegen.js and the generated
+// files must land in the tracked source tree (they are committed artifacts,
+// same discipline as packages/schema/generated). From dist/src/logging the
+// package root is 4 up; from src it is 2 up. Resolve by walking up to the
+// directory that contains src/logging, prefer it, and let LOG_CODEGEN_OUT=dist
+// target the compiled-relative tree instead (sandbox/reproducibility checks).
+const upToPkgRoot = [4, 3, 2].find((up) => fs.existsSync(path.resolve(__dirname, Array(up).fill("..").join("/"), "src/logging/log-codes.ts")));
+if (!upToPkgRoot) throw new Error("codegen: package root with src/logging not found (run via `npm run gen` from packages/logging)");
+const OUT_DIR_SRC = path.resolve(__dirname, Array(upToPkgRoot).fill("..").join("/"), "src/logging/generated");
+const OUT_DIR_DIST = path.resolve(__dirname, "./generated");
+const OUT_DIR = process.env.LOG_CODEGEN_OUT === "dist" ? OUT_DIR_DIST : OUT_DIR_SRC;
 
 if (!fs.existsSync(OUT_DIR)) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -64,7 +74,7 @@ for (const code of LOG_CODES) {
   ];
 
   tsApi += `/** ${code.format} */\n`;
-  tsApi += `export function ${fnName}(logger: LogProducerClient${paramsWithComma}, entityRef: bigint = 0n): boolean {\n`;
+  tsApi += `export function ${fnName}(logger: LogProducerClient${paramsWithComma}, entityRef?: bigint): boolean {\n`;
   tsApi += `  return logger.emit(${callArgs.join(", ")});\n`;
   tsApi += `}\n\n`;
 }

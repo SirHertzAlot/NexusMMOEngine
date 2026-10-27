@@ -35,6 +35,12 @@ import {
   AtomicSPSCTransactionQueue,
   PERSIST_TX_KIND,
 } from "./lockless-ring.js";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  logSimTickOverrun,
+} from "./logging/index.js";
 
 const require = createRequire(import.meta.url);
 
@@ -215,6 +221,10 @@ export interface SimWorkerConfig {
   baseSpeed?: number;
   useBatchDrain?: boolean;
   kernel?: NativeEngineKernel;
+  /** SAB of the process's log ring. Absent (CLI benches) = no ring emission. */
+  logRingSab?: SharedArrayBuffer;
+  /** Exact record capacity the log ring was created with (must match its creator). */
+  logRingCapacity?: number;
 }
 
 export interface SimTickMetrics {
@@ -242,6 +252,8 @@ export class SimWorkerRuntime {
   public readonly useBatchDrain: boolean;
 
   private readonly drainScratch: Int32Array;
+  private readonly logRing?: LogRingBuffer;
+  private readonly logClient?: LogProducerClient;
   private timer: ReturnType<typeof setInterval> | null = null;
   public readonly stepMs: number = 1000 / TICK_RATE_HZ;
   public readonly maxStepsPerFrame: number = 5;
@@ -274,6 +286,10 @@ export class SimWorkerRuntime {
     this.baseSpeed = config.baseSpeed ?? DEFAULT_BASE_SPEED;
     this.useBatchDrain = config.useBatchDrain ?? false;
     this.drainScratch = new Int32Array(inputCap);
+    if (config.logRingSab && config.logRingCapacity) {
+      this.logRing = new LogRingBuffer(config.logRingCapacity, config.logRingSab);
+      this.logClient = new LogProducerClient(LogProducer.SIM, this.logRing);
+    }
   }
 
   private applyCommandToken(commandToken: number): boolean {
@@ -414,9 +430,10 @@ export class SimWorkerRuntime {
     }
     if (budgetOverrun) {
       Atomics.add(tel, TELEMETRY_SLOTS.BUDGET_OVERRUNS, 1);
-      console.warn(
-        `[SimWorker] Tick ${tickNum} exceeded budget: ${elapsedMs.toFixed(2)}ms / ${FRAME_BUDGET_MS.toFixed(2)}ms`,
-      );
+      // The locked counter above is the metric; this is the diagnostic. One
+      // lock-free enqueue, no formatting on the sim thread (docs/
+      // SAB-LOGGING-LAYER-SPEC.md §2.1). Without a ring (benches): nothing.
+      if (this.logClient) logSimTickOverrun(this.logClient, tickNum, elapsedUs);
     }
 
     return {
@@ -518,6 +535,8 @@ if (isSimWorkerEntrypoint) {
     decodeMovementIntents: workerData.decodeMovementIntents,
     baseSpeed: workerData.baseSpeed,
     useBatchDrain: workerData.useBatchDrain,
+    logRingSab: workerData.logRingSab instanceof SharedArrayBuffer ? workerData.logRingSab : undefined,
+    logRingCapacity: typeof workerData.logRingCapacity === "number" ? workerData.logRingCapacity : undefined,
   });
 
   if (workerData.autoStart !== false) {
