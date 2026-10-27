@@ -317,7 +317,6 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
     assert.equal(isConnectingTwoFloors(connectedPillar, twoFloorRoom), true, "Pillar connecting ground to upper loft must be accepted");
 
     // Stairs connecting ground (z=5) to upper loft (z=0)
-    // with yaw=0, bottom landing is at local +Z (z = 2.5 + 2.5 = 5.0) and top is at local -Z (z = 2.5 - 2.5 = 0.0)
     const connectedStairs = {
       partId: "stairs_connected",
       assetRef: "s",
@@ -325,5 +324,16 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
       transform: { pos: [0, 1.75, 2.5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
     };
     assert.equal(isConnectingTwoFloors(connectedStairs, twoFloorRoom), true, "Stairs connecting ground floor to loft must be accepted");
+
+    // 3. Pillar holding up an overhead roof/ceiling arch
+    const roomWithCeiling = [
+      ...singleFloorRoom,
+      { partId: "ceiling_arch_1", assetRef: "c", category: "ceiling", transform: { pos: [0, 3.5, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+    ];
+    assert.equal(
+      isConnectingTwoFloors(freestandingPillar, roomWithCeiling),
+      true,
+      "Pillar supporting overhead ceiling/roof arch must be accepted"
+    );
   });
 });

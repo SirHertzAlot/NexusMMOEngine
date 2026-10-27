@@ -731,11 +731,11 @@ Every entry: date, decision, rationale. Newest first.
      - Physics mass scaling cubically with scale ($M \propto s^3$).
      - Acoustic resonance pitch shifting inversely with cube-root scale ($f \propto \frac{1}{\sqrt[3]{s}}$), ensuring larger objects produce deeper, resonant thuds and smaller objects produce crisp clatters.
 
-- **2026-10-27 — Two-Floor Connectivity Invariant for Stairs and Pillars (PR #437).**
-  In classical architectural design, stairs and pillars exist strictly to bridge or support vertical circulation between distinct floor elevations. Freestanding pillars with no supported upper floor, and stairs leading into empty air or placed flat on a single-level slab, look awkward and unarchitectural.
-  1) **Two-Floor Connectivity Enforcement (`isConnectingTwoFloors`)**:
+- **2026-10-27 — Two-Floor Connectivity & Load-Bearing Invariant for Stairs and Pillars (PR #437).**
+  In classical architectural design, stairs and pillars exist strictly to bridge or support vertical circulation or load-bearing structures. Freestanding pillars sitting on a floor with empty air above them (random pillars out in the middle of a room), and stairs leading into empty air, look unnatural and sloppy:
+  1) **Structural Support Enforcement (`isConnectingTwoFloors`)**:
      - **Stairs**: A stair/ramp is valid IF AND ONLY IF its bottom landing rests on a lower floor slab and its top landing connects with an upper floor slab elevated by at least $1.5\text{m}$ above the lower floor.
-     - **Pillars**: A pillar is valid IF AND ONLY IF its base rests on a lower floor slab and its top directly supports an upper floor deck/loft elevated by at least $1.5\text{m}$ above the lower floor.
+     - **Pillars**: A pillar is valid IF AND ONLY IF its base rests on a lower floor slab and its top directly supports a load-bearing structure above it: either an upper floor deck/loft ($\Delta Y \ge 1.5\text{m}$, as in `multi-level-descent`), OR an overhead ceiling/roof/vault arch (as in `crypt-hall` where nave colonnades hold up the vaulted stone roof).
   2) **Synthesis Pruning & Socket Gate**:
-     - Both during socket expansion and in a post-synthesis verification pass, any stair or pillar failing `isConnectingTwoFloors` is rejected and pruned.
-     - Single-level chambers (e.g. `crypt-hall` and `boss-arena`) omit colonnade pillars to maintain clean, open cathedral/arena vaults without awkward freestanding poles, while multi-level chambers (`multi-level-descent`) preserve under-loft support pillars and circulation stairs bridging the ground floor to the upper loft deck.
+     - Both during socket expansion and in a post-synthesis verification pass, any stair or pillar lacking overhead support or floor connectivity is rejected and pruned.
+     - In intact dungeon spaces, random freestanding pillar stumps in the middle of a single-level court (such as `boss-arena`) are omitted, while vaulted crypt halls preserve their colonnades supporting the stone roof arches above, preventing floating ceilings.

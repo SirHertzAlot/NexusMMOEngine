@@ -122,9 +122,11 @@ function yawQuat(yawRad: number): THREE.Quaternion {
 
 /**
  * Structural architectural invariant:
- * - A stair is valid ONLY IF it connects two floor levels together (lower landing and upper landing).
- * - A pillar is valid ONLY IF it connects two floor levels together (supporting an upper floor deck from a lower floor).
- * Any freestanding or ungrounded stair or pillar is rejected.
+ * - A stair is valid ONLY IF it connects two distinct floor levels together (lower landing and upper landing).
+ * - A pillar is valid ONLY IF it rests on a supporting floor beneath AND has a load-bearing structure
+ *   directly above it (either an upper floor/loft deck OR an overhead ceiling/roof/vault arch).
+ * Any freestanding pillar sitting on a floor with open air above it (random pillar in the middle of a room),
+ * or stairs leading into empty air, is rejected.
  */
 export function isConnectingTwoFloors(
   placement: SynthesizedPlacement,
@@ -136,20 +138,7 @@ export function isConnectingTwoFloors(
   }
 
   const floorPlacements = allPlacements.filter((p) => p.category === "floor");
-  if (floorPlacements.length < 2) {
-    return false;
-  }
-
-  // Find distinct vertical floor elevations (separated by at least 1.5m)
-  const floorHeights = Array.from(
-    new Set(floorPlacements.map((f) => Math.round(f.transform.pos[1] * 10) / 10))
-  ).sort((a, b) => a - b);
-
-  if (
-    floorHeights.length < 2 ||
-    floorHeights[floorHeights.length - 1] - floorHeights[0] < 1.5
-  ) {
-    // Single floor level in room: neither stairs nor pillars can connect two floors
+  if (floorPlacements.length === 0) {
     return false;
   }
 
@@ -162,28 +151,54 @@ export function isConnectingTwoFloors(
   const yTop = py + sy / 2;
 
   if (placement.category === "pillar") {
-    // Lower floor directly beneath base
+    // 1. Must rest on a lower floor directly beneath base
     const hasLowerFloor = floorPlacements.some((f) => {
       const [fx, fy, fz] = f.transform.pos;
       const dx = Math.abs(fx - px);
       const dz = Math.abs(fz - pz);
       const dy = Math.abs(fy - yBase);
-      return dx <= 2.6 && dz <= 2.6 && dy <= 0.8;
+      return dx <= 3.5 && dz <= 3.5 && dy <= 0.8;
     });
+    if (!hasLowerFloor) return false;
 
-    // Upper floor directly above top
+    // 2. Must hold up a structure directly above it:
+    // Case A: Supporting an upper floor (mezzanine / loft deck)
     const hasUpperFloor = floorPlacements.some((f) => {
       const [fx, fy, fz] = f.transform.pos;
       const dx = Math.abs(fx - px);
       const dz = Math.abs(fz - pz);
       const dy = Math.abs(fy - yTop);
-      return dx <= 2.6 && dz <= 2.6 && dy <= 0.8 && fy >= yBase + 1.5;
+      return dx <= 3.5 && dz <= 3.5 && dy <= 0.8 && fy >= yBase + 1.5;
+    });
+    if (hasUpperFloor) return true;
+
+    // Case B: Supporting an overhead ceiling / roof / vault arch
+    const ceilingPlacements = allPlacements.filter((p) => p.category === "ceiling");
+    const hasOverheadCeiling = ceilingPlacements.some((c) => {
+      const [cx, cy, cz] = c.transform.pos;
+      const dx = Math.abs(cx - px);
+      const dz = Math.abs(cz - pz);
+      const dy = Math.abs(cy - yTop);
+      return dx <= 3.5 && dz <= 3.0 && dy <= 1.2 && cy >= yBase + 1.5;
     });
 
-    return hasLowerFloor && hasUpperFloor;
+    return hasOverheadCeiling;
   }
 
   if (placement.category === "stairs") {
+    // Stairs must connect two distinct floor levels together
+    const floorHeights = Array.from(
+      new Set(floorPlacements.map((f) => Math.round(f.transform.pos[1] * 10) / 10))
+    ).sort((a, b) => a - b);
+
+    if (
+      floorHeights.length < 2 ||
+      floorHeights[floorHeights.length - 1] - floorHeights[0] < 1.5
+    ) {
+      // Single floor level in room: stairs cannot connect two floors
+      return false;
+    }
+
     const sz = (size[2] || 5.0) * scale[2];
     const [qx, qy, qz, qw] = placement.transform.rot;
     // Extract yaw around Y axis
@@ -421,7 +436,18 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 3: Nave colonnade pillars omitted in single-level hall (pillars only placed when connecting two floors)
+      // Phase 3: Nave Colonnade Columns supporting the Overhead Vault Roof (x = -2.5, +2.5)
+      if (pillarList.length > 0 && ceilingList.length > 0) {
+        for (let iz = 1; iz < baysZ - 1; iz++) {
+          const z = (iz - (baysZ - 1) / 2) * cellM;
+          for (const colX of [-2.5, 2.5]) {
+            const pillarDef = pickCatPart("pillar");
+            if (pillarDef) {
+              addPlacement(pillarDef, new THREE.Vector3(colX, groundY + 2.0, z), yawQuat(0));
+            }
+          }
+        }
+      }
 
       // Phase 4: Overhead Ceiling Arches
       if (ceilingList.length > 0) {

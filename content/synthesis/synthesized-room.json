@@ -2742,7 +2742,7 @@
     "partsPlaced": 119,
     "growthAttempts": 112,
     "unfilledSockets": 478,
-    "elapsedMs": 26,
+    "elapsedMs": 8,
     "ruleSetVersion": "1.0.0",
     "categoryCounts": {
       "floor": 69,

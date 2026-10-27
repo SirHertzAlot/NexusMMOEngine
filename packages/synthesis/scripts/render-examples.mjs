@@ -11,9 +11,9 @@ const ruleSet = JSON.parse(fs.readFileSync(rulesPath, "utf-8"));
 // 1. Synthesize 3 distinct archetypes
 const archetypes = [
   {
-    name: "Vaulted Crypt & Tomb Hall",
+    name: "Pillared Crypt & Tomb Hall",
     filename: "example_1_crypt_hall.png",
-    subtitle: "Symmetrical crypt layout, continuous foundation plate, complete perimeter enclosure, traps & rune puzzle",
+    subtitle: "Symmetrical crypt layout: continuous foundation plate, colonnade pillars supporting the vaulted roof, traps & rune puzzle",
     problem: {
       ruleSet,
       seed: 1042,
@@ -499,11 +499,11 @@ async function main() {
       <img class="card-img" src="${img1B64}" />
       <div class="card-body">
         <div>
-          <div class="card-title">1. Vaulted Crypt Hall</div>
-          <div class="card-sub">Symmetrical hall layout with peripheral stone walls, continuous foundation deck, floor spear traps, and rune pillar puzzles.</div>
+          <div class="card-title">1. Pillared Crypt Hall</div>
+          <div class="card-sub">Symmetrical nave colonnade supporting overhead vaulted roof arches, continuous floor plate, perimeter walls, and rune pillar puzzles.</div>
         </div>
         <div class="card-stats">
-          <span>57 Parts</span>
+          <span>65 Parts</span>
           <span>11ms Solve</span>
         </div>
       </div>
