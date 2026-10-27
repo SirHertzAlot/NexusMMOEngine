@@ -387,13 +387,13 @@ describe("generateSettlement", () => {
   });
 
   it("logs a summary event per stage, and a collapse per parcel at verbose", () => {
-    assert.deepEqual(events.filter((e) => e.level === "summary").map((e) => e.stage), ["demographics", "demand", "layout", "structures", "occupancy", "props", "validation"]);
+    assert.deepEqual(events.filter((e) => e.level === "summary").map((e) => e.stage), ["demographics", "demand", "layout", "structures", "occupancy", "character", "props", "validation"]);
     assert.equal(events.filter((e) => e.event === "structure_collapsed").length, manifest.parcels.length);
   });
 
   it("keeps only what the verbosity asks for (silent: nothing)", () => {
     assert.deepEqual(must(generateSettlement({ ...request, verbosity: "silent" })).events, []);
-    assert.equal(must(generateSettlement({ ...request, verbosity: "summary" })).events.length, 7);
+    assert.equal(must(generateSettlement({ ...request, verbosity: "summary" })).events.length, 8);
   });
 
   it("fails with the stage and reason when the demand cannot be met", () => {
@@ -420,4 +420,4 @@ describe("generateSettlement", () => {
 // settlement-rules/9 and settlement-gen/0.6.0: industry (and its workplaces ruled out of a town without the land), and the
 // home-space cap no longer counting farmsteads. Again for settlement-rules/10 and settlement-gen/0.7.0: the guild hall; and for
 // settlement-rules/11 and settlement-gen/0.8.0: resource nodes (none here) and their gate.
-const GOLDEN = "a5612a7197eb481a5e30ab42a174767ebc83bd4a2004cf6281408c1b08c78fa0";
+const GOLDEN = "19252664017f0dc7e165005ac34982570868b819dc927b213a028b07bab32108";
