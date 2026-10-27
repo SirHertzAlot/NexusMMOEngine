@@ -83,3 +83,46 @@ the SCHEMAFULL host-report cases that guard the NONE rule.
   numbers here are the embedded 3.x engine).
 - **Recall under load (B2)** and **network fan-out (B3)** remain the
   open measurements from the roadmap.
+
+## Addendum (2026-10-27): the concurrency curve, and the road from ~2.6k to real headroom
+
+Sequential numbers above are latency, not throughput. A concurrency
+probe (putCharacterState, distinct characters, 2,000 ops per level,
+embedded engine, quiet box) scales then saturates:
+
+| Writers | Throughput |
+|---|---|
+| 1 | 1,215 ops/s |
+| 4 | 2,586 ops/s |
+| 8 | 2,648 ops/s |
+| 16 | 2,315 ops/s |
+| 32 | 2,179 ops/s |
+
+The embedded instance itself serializes writes internally past ~8
+writers — client behavior is no longer the limit there. What is
+still missing, in expected-value order:
+
+1. **Deployment shape.** All numbers here are the embedded `mem://`
+   engine in a shared sandbox — the floor configuration. Production
+   is an external SurrealDB server (own process, RocksDB, many
+   connections, several world-core processes). Unmeasured so far;
+   the 2.7.0 re-verification doubles as this measurement.
+2. **Statement count per logical op.** An atomic op still pays ~4–6
+   engine round trips (dedup pair + reads + fn invocation). The
+   fn-transaction fold (see Next steps) cuts it to ~1–2.
+3. **SQL-string overhead.** The store issues 59 `db.query()` sites
+   and zero SDK record-method calls; every statement pays SurrealQL
+   parse/plan. Hot puts could use the SDK's direct record RPCs.
+4. **Sweep batching.** Character saves can ride one multi-statement
+   request per sweep instead of one request per character.
+
+Reality check on the 100,000 mark: that figure (SpacetimeDB's) is an
+in-memory engine executing logic in-process with no SQL layer and no
+IPC — a different architecture, not a tuning target. Single-node
+SurrealDB does not reach 100k durable writes/s under any client
+behavior. Our realistic peak demand (1,000 players: saves, Tier-1
+bursts, atomic ops) is ~1–3k writes/s — roughly where the embedded
+floor already sits, with items 1–4 as the headroom. If a single lane
+ever truly needs 100k-class appends, the WorldStore interface is the
+seam that lets the Tier-1 ledger alone move to a log-optimized store
+while SurrealDB keeps world state.
