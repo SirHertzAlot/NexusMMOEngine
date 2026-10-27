@@ -1542,8 +1542,8 @@
       }
     },
     {
-      "partId": "SM_Prop_Tech_Engine_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_Engine_01.glb",
+      "partId": "SM_Prop_Forge_Ventilation_01",
+      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Forge_Ventilation_01.glb",
       "category": "prop",
       "transform": {
         "pos": [
@@ -1611,14 +1611,14 @@
       }
     },
     {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
+      "partId": "SM_Wep_Spear_02",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Wep_Spear_02.glb",
+      "category": "trap",
       "transform": {
         "pos": [
-          -2.5,
-          0.1,
-          -17.5
+          0,
+          0.15,
+          0
         ],
         "rot": [
           0,
@@ -1634,14 +1634,37 @@
       }
     },
     {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
+      "partId": "SM_Prop_Tech_Lever",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_Lever.glb",
+      "category": "puzzle",
       "transform": {
         "pos": [
-          -12.5,
-          0.1,
-          -12.5
+          -4.5,
+          4.6,
+          -5
+        ],
+        "rot": [
+          0,
+          1,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Prop_Trap_Swing_Blade_Housing_01",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_Housing_01.glb",
+      "category": "trap",
+      "transform": {
+        "pos": [
+          0,
+          3.9,
+          -2.5
         ],
         "rot": [
           0,
@@ -1685,9 +1708,101 @@
       "category": "floor",
       "transform": {
         "pos": [
+          -2.5,
+          0.1,
+          -17.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
           2.5,
           0.1,
           -17.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Rubble_Pebbles",
+      "assetRef": "models/glb/dungeon-pack/rubble/SM_Env_Rubble_Pebbles.glb",
+      "category": "rubble",
+      "transform": {
+        "pos": [
+          2.5,
+          0.7,
+          -12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          12.5,
+          0.1,
+          -12.5
+        ],
+        "rot": [
+          0,
+          -1,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Railing",
+      "assetRef": "models/glb/dungeon-pack/railing/SM_Env_Railing.glb",
+      "category": "railing",
+      "transform": {
+        "pos": [
+          -2.5,
+          1.45,
+          -12.5
         ],
         "rot": [
           0,
@@ -1731,7 +1846,7 @@
       "category": "floor",
       "transform": {
         "pos": [
-          12.5,
+          -12.5,
           0.1,
           -12.5
         ],
@@ -1809,29 +1924,6 @@
           0,
           0,
           1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
         ],
         "scale": [
           1,
@@ -1869,29 +1961,6 @@
       "category": "floor",
       "transform": {
         "pos": [
-          -2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          -1,
-          0,
-          0
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
           12.5,
           0.1,
           -2.5
@@ -1910,129 +1979,14 @@
       }
     },
     {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
+      "partId": "SM_Env_Railing",
+      "assetRef": "models/glb/dungeon-pack/railing/SM_Env_Railing.glb",
+      "category": "railing",
       "transform": {
         "pos": [
           2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -12.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          7.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          7.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles_Texture",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles_Texture.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.1,
-          2.5
+          1.45,
+          -2.5
         ],
         "rot": [
           0,
@@ -2056,6 +2010,52 @@
           -2.5,
           -1.4,
           -2.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          7.5,
+          0.1,
+          2.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          -1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          7.5,
+          0.1,
+          2.5
         ],
         "rot": [
           0,
@@ -2099,29 +2099,6 @@
       "category": "floor",
       "transform": {
         "pos": [
-          2.5,
-          0.1,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
           7.5,
           0.1,
           7.5
@@ -2131,75 +2108,6 @@
           0,
           0,
           -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.1,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          12.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
         ],
         "scale": [
           1,
@@ -2237,122 +2145,7 @@
       "category": "floor",
       "transform": {
         "pos": [
-          -2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
           2.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          7.5,
-          0.1,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Rubble_Pebbles",
-      "assetRef": "models/glb/dungeon-pack/rubble/SM_Env_Rubble_Pebbles.glb",
-      "category": "rubble",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.7,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          2.5,
-          0.1,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
           0.1,
           7.5
         ],
@@ -2378,167 +2171,6 @@
           2.5,
           0.1,
           7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          7.5,
-          0.1,
-          2.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          12.5,
-          0.1,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Stairs",
-      "assetRef": "models/glb/dungeon-pack/stairs/SM_Env_Stairs.glb",
-      "category": "stairs",
-      "transform": {
-        "pos": [
-          -7.5,
-          -1.4,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          2.5,
-          0.1,
-          12.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.1,
-          12.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.1,
-          7.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -2.5,
-          0.1,
-          17.5
         ],
         "rot": [
           0,
@@ -2561,76 +2193,7 @@
         "pos": [
           -12.5,
           0.1,
-          12.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          2.5,
-          0.1,
-          12.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          7.5,
-          0.1,
-          12.5
-        ],
-        "rot": [
-          0,
-          -1,
-          0,
-          0
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          2.5,
-          0.1,
-          7.5
+          2.5
         ],
         "rot": [
           0,
@@ -2653,7 +2216,53 @@
         "pos": [
           -2.5,
           0.1,
-          12.5
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Wall_Wood_Beams",
+      "assetRef": "models/glb/dungeon-pack/wall/SM_Env_Wall_Wood_Beams.glb",
+      "category": "wall",
+      "transform": {
+        "pos": [
+          -2.5,
+          2.2,
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          12.5,
+          0.1,
+          2.5
         ],
         "rot": [
           0,
@@ -2676,30 +2285,7 @@
         "pos": [
           2.5,
           0.1,
-          17.5
-        ],
-        "rot": [
-          0,
-          0,
-          0,
-          -1
-        ],
-        "scale": [
-          1,
-          1,
-          1
-        ]
-      }
-    },
-    {
-      "partId": "SM_Env_Tiles",
-      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
-      "category": "floor",
-      "transform": {
-        "pos": [
-          -7.5,
-          0.1,
-          17.5
+          12.5
         ],
         "rot": [
           0,
@@ -2745,7 +2331,421 @@
         "pos": [
           2.5,
           0.1,
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          12.5,
+          0.1,
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -12.5,
+          0.1,
           12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          7.5,
+          0.1,
+          2.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -2.5,
+          0.1,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -2.5,
+          0.1,
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          7.5,
+          0.1,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          -1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -2.5,
+          0.1,
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -7.5,
+          0.1,
+          17.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          -1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -2.5,
+          0.1,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          -1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -2.5,
+          0.1,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          2.5,
+          0.1,
+          7.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Wall",
+      "assetRef": "models/glb/dungeon-pack/wall/SM_Env_Wall.glb",
+      "category": "wall",
+      "transform": {
+        "pos": [
+          2.5,
+          2.2,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          7.5,
+          0.1,
+          17.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          -1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          2.5,
+          0.1,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles_01",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles_01.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          2.5,
+          0.1,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          0,
+          0.1,
+          -12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Wall",
+      "assetRef": "models/glb/dungeon-pack/wall/SM_Env_Wall.glb",
+      "category": "wall",
+      "transform": {
+        "pos": [
+          -2.5,
+          2.2,
+          12.5
+        ],
+        "rot": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "partId": "SM_Env_Tiles",
+      "assetRef": "models/glb/dungeon-pack/floor/SM_Env_Tiles.glb",
+      "category": "floor",
+      "transform": {
+        "pos": [
+          -10,
+          0.1,
+          -12.5
         ],
         "rot": [
           0,
@@ -2763,18 +2763,20 @@
   ],
   "report": {
     "partsPlaced": 120,
-    "growthAttempts": 112,
-    "unfilledSockets": 488,
-    "elapsedMs": 9,
+    "growthAttempts": 115,
+    "unfilledSockets": 484,
+    "elapsedMs": 15,
     "ruleSetVersion": "1.0.0",
     "categoryCounts": {
-      "floor": 74,
+      "floor": 67,
       "pillar": 5,
-      "stairs": 3,
-      "railing": 2,
-      "wall": 32,
+      "stairs": 2,
+      "railing": 4,
+      "wall": 35,
       "prop": 1,
-      "rubble": 3
+      "rubble": 3,
+      "trap": 2,
+      "puzzle": 1
     }
   }
 }

@@ -44,6 +44,8 @@ export function categorizePart(partId: string): string {
   if (p.includes("stair") || p.includes("ramp") || p.includes("slope")) return "stairs";
   if (p.includes("door") || p.includes("gate")) return "door";
   if (p.includes("railing") || p.includes("fence")) return "railing";
+  if (p.includes("trap") || p.includes("spear") || p.includes("grinder") || p.includes("saw_rail") || p.includes("saw_") || p.includes("swing_blade")) return "trap";
+  if (p.includes("lever") || p.includes("switch") || p.includes("dial") || p.includes("hatch")) return "puzzle";
   if (p.includes("prop") || p.includes("chest") || p.includes("barrel") || p.includes("crate") || p.includes("candle") || p.includes("torch")) return "prop";
   if (p.includes("rubble") || p.includes("pebble")) return "rubble";
   if (p.includes("rock") || p.includes("cave") || p.includes("stalactite") || p.includes("stalagmite")) return "rock";
@@ -100,6 +102,13 @@ export function generatePartSockets(partId: string, category: string, bounds: Bo
     sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
     sockets.push({ name: "bottom", kind: "wall-base", offset: [0, -hy, 0], normal: [0, -1, 0] });
     sockets.push({ name: "top", kind: "wall-top", offset: [0, hy, 0], normal: [0, 1, 0] });
+  } else if (category === "trap") {
+    sockets.push({ name: "bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
+    sockets.push({ name: "hazard", kind: "trap-hazard", offset: [0, hy, 0], normal: [0, 1, 0] });
+    sockets.push({ name: "top", kind: "ceiling-mount", offset: [0, hy, 0], normal: [0, 1, 0] });
+  } else if (category === "puzzle") {
+    sockets.push({ name: "bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
+    sockets.push({ name: "back", kind: "wall-face", offset: [0, 0, -hz], normal: [0, 0, -1] });
   } else {
     // Default prop / structure mount sockets
     sockets.push({ name: "mount_bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
@@ -124,6 +133,8 @@ export function isSocketCompatible(aKind: string, bKind: string): boolean {
   if (aKind === "stairs-base") return bKind === "surface-mount";
   if (aKind === "stairs-top") return bKind === "floor-edge";
   if (aKind === "railing-edge") return bKind === "railing-edge" || bKind === "wall-edge" || bKind === "pillar-side";
+  if (aKind === "trap-hazard") return bKind === "surface-mount";
+  if (aKind === "wall-face") return bKind === "surface-contact" || bKind === "wall-mount";
   return false;
 }
 

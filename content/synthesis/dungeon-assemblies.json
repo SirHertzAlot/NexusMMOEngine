@@ -16544,8 +16544,8 @@
       },
       {
         "partId": "SM_Prop_Tech_Lever_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_Lever_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_Lever_01.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             -34.38,
@@ -16590,8 +16590,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Grinder_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Grinder_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Grinder_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             -30.65,
@@ -16613,8 +16613,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Swing_Blade",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             -33.03,
@@ -28621,8 +28621,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Saw_Rail_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_Rail_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_Rail_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             21.61,
@@ -28644,8 +28644,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Saw_02",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_02.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_02.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             21.54,
@@ -28667,8 +28667,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Saw_Rail_02",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_Rail_02.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_Rail_02.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             24.79,
@@ -28690,8 +28690,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Saw_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             24.79,
@@ -28851,8 +28851,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Swing_Blade_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             32.34,
@@ -28874,8 +28874,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Swing_Blade",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             32.37,
@@ -28897,8 +28897,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Swing_Blade_Housing_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade_Housing_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_Housing_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             32.4,
@@ -28920,8 +28920,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Swing_Blade_Housing",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade_Housing.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_Housing.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             32.4,
@@ -30208,8 +30208,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Spears_Grate_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Spears_Grate_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Spears_Grate_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             32.48,
@@ -30231,8 +30231,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Spears_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Spears_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Spears_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             32.52,
@@ -70790,8 +70790,8 @@
       },
       {
         "partId": "SM_Env_Trap_Hatch_01",
-        "assetRef": "models/glb/dungeon-pack/structure/SM_Env_Trap_Hatch_01.glb",
-        "category": "structure",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Env_Trap_Hatch_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             46.55,
@@ -70974,8 +70974,8 @@
       },
       {
         "partId": "SM_Wep_Spear_02",
-        "assetRef": "models/glb/dungeon-pack/structure/SM_Wep_Spear_02.glb",
-        "category": "structure",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Wep_Spear_02.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             47.3,
@@ -75461,8 +75461,8 @@
       },
       {
         "partId": "SM_Prop_Tech_SwitchBoard_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_SwitchBoard_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_SwitchBoard_01.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             -40.02,
@@ -76427,8 +76427,8 @@
       },
       {
         "partId": "SM_Env_Trap_Hatch",
-        "assetRef": "models/glb/dungeon-pack/structure/SM_Env_Trap_Hatch.glb",
-        "category": "structure",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Env_Trap_Hatch.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             -36.5,
@@ -76496,8 +76496,8 @@
       },
       {
         "partId": "SM_Prop_Tech_Lever",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_Lever.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_Lever.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             -40.01,
@@ -76935,8 +76935,8 @@
       },
       {
         "partId": "SM_Prop_Trap_Pit_01",
-        "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Pit_01.glb",
-        "category": "prop",
+        "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Pit_01.glb",
+        "category": "trap",
         "transform": {
           "pos": [
             -37.51,

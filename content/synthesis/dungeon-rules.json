@@ -12374,32 +12374,32 @@
     },
     "SM_Prop_Tech_Lever_01": {
       "id": "SM_Prop_Tech_Lever_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_Lever_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_Lever_01.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -12409,17 +12409,17 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
-            0.5,
-            0
+            0,
+            -1.25
           ],
           "normal": [
             0,
-            1,
-            0
+            0,
+            -1
           ]
         }
       ]
@@ -12478,32 +12478,32 @@
     },
     "SM_Prop_Trap_Grinder_01": {
       "id": "SM_Prop_Trap_Grinder_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Grinder_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Grinder_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -12513,11 +12513,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -12530,32 +12544,32 @@
     },
     "SM_Prop_Trap_Swing_Blade": {
       "id": "SM_Prop_Trap_Swing_Blade",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -12565,11 +12579,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19030,32 +19058,32 @@
     },
     "SM_Prop_Trap_Saw_Rail_01": {
       "id": "SM_Prop_Trap_Saw_Rail_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_Rail_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_Rail_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19065,11 +19093,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19082,32 +19124,32 @@
     },
     "SM_Prop_Trap_Saw_02": {
       "id": "SM_Prop_Trap_Saw_02",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_02.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_02.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19117,11 +19159,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19134,32 +19190,32 @@
     },
     "SM_Prop_Trap_Saw_Rail_02": {
       "id": "SM_Prop_Trap_Saw_Rail_02",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_Rail_02.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_Rail_02.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19169,11 +19225,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19186,32 +19256,32 @@
     },
     "SM_Prop_Trap_Saw_01": {
       "id": "SM_Prop_Trap_Saw_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Saw_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Saw_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19221,11 +19291,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19290,32 +19374,32 @@
     },
     "SM_Prop_Trap_Swing_Blade_01": {
       "id": "SM_Prop_Trap_Swing_Blade_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19325,11 +19409,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19342,32 +19440,32 @@
     },
     "SM_Prop_Trap_Swing_Blade_Housing_01": {
       "id": "SM_Prop_Trap_Swing_Blade_Housing_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade_Housing_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_Housing_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19377,11 +19475,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -19394,32 +19506,32 @@
     },
     "SM_Prop_Trap_Swing_Blade_Housing": {
       "id": "SM_Prop_Trap_Swing_Blade_Housing",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Swing_Blade_Housing.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Swing_Blade_Housing.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -19429,11 +19541,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -20312,32 +20438,32 @@
     },
     "SM_Prop_Trap_Spears_Grate_01": {
       "id": "SM_Prop_Trap_Spears_Grate_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Spears_Grate_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Spears_Grate_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -20347,11 +20473,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -20364,32 +20504,32 @@
     },
     "SM_Prop_Trap_Spears_01": {
       "id": "SM_Prop_Trap_Spears_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Spears_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Spears_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -20399,11 +20539,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -37820,8 +37974,8 @@
     },
     "SM_Env_Trap_Hatch_01": {
       "id": "SM_Env_Trap_Hatch_01",
-      "assetRef": "models/glb/dungeon-pack/structure/SM_Env_Trap_Hatch_01.glb",
-      "category": "structure",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Env_Trap_Hatch_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
           -1.25,
@@ -37841,7 +37995,7 @@
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
@@ -37855,8 +38009,22 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
+          "offset": [
+            0,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
           "offset": [
             0,
             1.25,
@@ -38236,8 +38404,8 @@
     },
     "SM_Wep_Spear_02": {
       "id": "SM_Wep_Spear_02",
-      "assetRef": "models/glb/dungeon-pack/structure/SM_Wep_Spear_02.glb",
-      "category": "structure",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Wep_Spear_02.glb",
+      "category": "trap",
       "bounds": {
         "min": [
           -1.25,
@@ -38257,7 +38425,7 @@
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
@@ -38271,8 +38439,22 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
+          "offset": [
+            0,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
           "offset": [
             0,
             1.25,
@@ -40146,32 +40328,32 @@
     },
     "SM_Prop_Tech_SwitchBoard_01": {
       "id": "SM_Prop_Tech_SwitchBoard_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_SwitchBoard_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_SwitchBoard_01.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -40181,17 +40363,17 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
-            0.5,
-            0
+            0,
+            -1.25
           ],
           "normal": [
             0,
-            1,
-            0
+            0,
+            -1
           ]
         }
       ]
@@ -40874,8 +41056,8 @@
     },
     "SM_Env_Trap_Hatch": {
       "id": "SM_Env_Trap_Hatch",
-      "assetRef": "models/glb/dungeon-pack/structure/SM_Env_Trap_Hatch.glb",
-      "category": "structure",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Env_Trap_Hatch.glb",
+      "category": "trap",
       "bounds": {
         "min": [
           -1.25,
@@ -40895,7 +41077,7 @@
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
@@ -40909,8 +41091,22 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
+          "offset": [
+            0,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
           "offset": [
             0,
             1.25,
@@ -40926,32 +41122,32 @@
     },
     "SM_Prop_Tech_Lever": {
       "id": "SM_Prop_Tech_Lever",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Tech_Lever.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Prop_Tech_Lever.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -40961,17 +41157,17 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
-            0.5,
-            0
+            0,
+            -1.25
           ],
           "normal": [
             0,
-            1,
-            0
+            0,
+            -1
           ]
         }
       ]
@@ -41238,32 +41434,32 @@
     },
     "SM_Prop_Trap_Pit_01": {
       "id": "SM_Prop_Trap_Pit_01",
-      "assetRef": "models/glb/dungeon-pack/prop/SM_Prop_Trap_Pit_01.glb",
-      "category": "prop",
+      "assetRef": "models/glb/dungeon-pack/trap/SM_Prop_Trap_Pit_01.glb",
+      "category": "trap",
       "bounds": {
         "min": [
-          -0.5,
-          -0.5,
-          -0.5
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.5,
-          0.5,
-          0.5
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1,
-          1,
-          1
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
-          "name": "mount_bottom",
+          "name": "bottom",
           "kind": "surface-contact",
           "offset": [
             0,
-            -0.5,
+            -1.25,
             0
           ],
           "normal": [
@@ -41273,11 +41469,25 @@
           ]
         },
         {
-          "name": "mount_top",
-          "kind": "surface-contact",
+          "name": "hazard",
+          "kind": "trap-hazard",
           "offset": [
             0,
-            0.5,
+            1.25,
+            0
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "name": "top",
+          "kind": "ceiling-mount",
+          "offset": [
+            0,
+            1.25,
             0
           ],
           "normal": [
@@ -43475,6 +43685,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_Round_01",
+      "aSocket": "front",
+      "bPart": "SM_Env_Statue_03",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.15,
+          -0.04,
+          5.05
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Statue_03",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Round_01",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.15,
+          0.04,
+          -5.05
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall",
       "aSocket": "top",
       "bPart": "SM_Env_Wall",
@@ -43801,6 +44053,48 @@
           -0.03,
           4.95,
           0.07
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Quarter",
+      "aSocket": "front",
+      "bPart": "SM_Env_Railing_Angle",
+      "bSocket": "bottom",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          0.01,
+          0.04,
+          2.43
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Railing_Angle",
+      "aSocket": "bottom",
+      "bPart": "SM_Env_Wall_Quarter",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          -0.01,
+          -0.04,
+          -2.43
         ],
         "spreadOffset": [
           0,
@@ -52821,6 +53115,48 @@
     },
     {
       "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Background_Black",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.005037783375314861,
+      "transformStats": {
+        "meanOffset": [
+          -0.667,
+          -2.279,
+          2.557
+        ],
+        "spreadOffset": [
+          0.167,
+          0.169,
+          0.376
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Background_Black",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.15384615384615385,
+      "transformStats": {
+        "meanOffset": [
+          0.667,
+          2.279,
+          -2.556
+        ],
+        "spreadOffset": [
+          0.167,
+          0.169,
+          0.376
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
       "aSocket": "top",
       "bPart": "SM_Env_Wall_End_Coner_Outer",
       "bSocket": "bottom",
@@ -54921,6 +55257,48 @@
     },
     {
       "aPart": "SM_Env_Wall_Window_Bars",
+      "aSocket": "front",
+      "bPart": "SM_Env_Background_Black",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          -0.72,
+          -2.13,
+          2.17
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Background_Black",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Window_Bars",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          0.72,
+          2.13,
+          -2.17
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Window_Bars",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Basement_WallPanel",
       "bSocket": "edge_right",
@@ -56243,6 +56621,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_End_Coner_Outer",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Brazier",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.06451612903225806,
+      "transformStats": {
+        "meanOffset": [
+          0.018,
+          1.688,
+          4.649
+        ],
+        "spreadOffset": [
+          1.686,
+          0.025,
+          0.001
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Brazier",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_End_Coner_Outer",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          -0.018,
+          -1.688,
+          -4.648
+        ],
+        "spreadOffset": [
+          1.686,
+          0.025,
+          0.001
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Railing",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Railing_Pillar",
@@ -56328,6 +56748,90 @@
     },
     {
       "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Env_Railing",
+      "bSocket": "bottom",
+      "count": 1,
+      "frequency": 0.011764705882352941,
+      "transformStats": {
+        "meanOffset": [
+          -0.5,
+          0.62,
+          4.99
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Railing",
+      "aSocket": "bottom",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.01818181818181818,
+      "transformStats": {
+        "meanOffset": [
+          0.5,
+          -0.62,
+          -4.99
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Outer",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Brazier",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.06451612903225806,
+      "transformStats": {
+        "meanOffset": [
+          0.187,
+          -1.774,
+          4.649
+        ],
+        "spreadOffset": [
+          1.687,
+          0.025,
+          0.001
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Brazier",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_End_Coner_Outer",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          -0.187,
+          1.774,
+          -4.648
+        ],
+        "spreadOffset": [
+          1.687,
+          0.025,
+          0.001
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Wall_End_Coner_Inner",
       "bSocket": "edge_right",
@@ -56364,6 +56868,48 @@
           1.898,
           0.468,
           0.02
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Env_Background_Black",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.023529411764705882,
+      "transformStats": {
+        "meanOffset": [
+          -1.436,
+          -1.934,
+          2.297
+        ],
+        "spreadOffset": [
+          0.404,
+          0.414,
+          0.256
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Background_Black",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.15384615384615385,
+      "transformStats": {
+        "meanOffset": [
+          1.437,
+          1.934,
+          -2.296
+        ],
+        "spreadOffset": [
+          0.404,
+          0.414,
+          0.256
         ],
         "relativeYawDeg": 0
       }
@@ -58007,6 +58553,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_Alcove_Small",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.125,
+      "transformStats": {
+        "meanOffset": [
+          0.21,
+          -1.14,
+          1.65
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Alcove_Small",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.21,
+          1.14,
+          -1.65
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall",
       "aSocket": "bottom",
       "bPart": "SM_Env_Wall_DoorFrame_Round",
@@ -58253,6 +58841,48 @@
         "spreadOffset": [
           0.019,
           1.42,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          0.21,
+          -1.14,
+          1.65
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.21,
+          1.14,
+          -1.65
+        ],
+        "spreadOffset": [
+          0,
+          0,
           0
         ],
         "relativeYawDeg": 0
@@ -58548,6 +59178,216 @@
           0,
           0,
           0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Trap_Grinder_01",
+      "bSocket": "bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.65,
+          0.49,
+          0.99
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Trap_Grinder_01",
+      "aSocket": "bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.65,
+          -0.49,
+          -0.99
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain",
+      "bSocket": "mount_bottom",
+      "count": 3,
+      "frequency": 0.007556675062972292,
+      "transformStats": {
+        "meanOffset": [
+          -0.567,
+          0.7,
+          4.927
+        ],
+        "spreadOffset": [
+          1.532,
+          0.164,
+          0.033
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 3,
+      "frequency": 0.15789473684210525,
+      "transformStats": {
+        "meanOffset": [
+          0.567,
+          -0.7,
+          -4.927
+        ],
+        "spreadOffset": [
+          1.532,
+          0.164,
+          0.033
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain_06",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -2.13,
+          0.28,
+          4.91
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain_06",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          2.13,
+          -0.28,
+          -4.91
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain_02",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -1.7,
+          -0.6,
+          4.76
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain_02",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.7,
+          0.6,
+          -4.76
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain",
+      "bSocket": "mount_top",
+      "count": 5,
+      "frequency": 0.012594458438287154,
+      "transformStats": {
+        "meanOffset": [
+          0.376,
+          -1.644,
+          4.872
+        ],
+        "spreadOffset": [
+          1.467,
+          0.49,
+          0.059
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 5,
+      "frequency": 0.2631578947368421,
+      "transformStats": {
+        "meanOffset": [
+          -0.376,
+          1.644,
+          -4.872
+        ],
+        "spreadOffset": [
+          1.467,
+          0.49,
+          0.059
         ],
         "relativeYawDeg": 0
       }
@@ -60653,6 +61493,216 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Trap_Grinder_01",
+      "bSocket": "bottom",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          -0.65,
+          0.49,
+          0.99
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Trap_Grinder_01",
+      "aSocket": "bottom",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.65,
+          -0.49,
+          -0.99
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.15384615384615385,
+      "transformStats": {
+        "meanOffset": [
+          -1.64,
+          0.585,
+          4.93
+        ],
+        "spreadOffset": [
+          0.25,
+          0.025,
+          0.04
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.10526315789473684,
+      "transformStats": {
+        "meanOffset": [
+          1.64,
+          -0.585,
+          -4.93
+        ],
+        "spreadOffset": [
+          0.25,
+          0.025,
+          0.04
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain_06",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          -2.13,
+          0.28,
+          4.91
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain_06",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          2.13,
+          -0.28,
+          -4.91
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain_02",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          -1.7,
+          -0.6,
+          4.76
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain_02",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.7,
+          0.6,
+          -4.76
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.15384615384615385,
+      "transformStats": {
+        "meanOffset": [
+          -1.4,
+          -1.095,
+          4.92
+        ],
+        "spreadOffset": [
+          0.31,
+          0.165,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.10526315789473684,
+      "transformStats": {
+        "meanOffset": [
+          1.4,
+          1.095,
+          -4.92
+        ],
+        "spreadOffset": [
+          0.31,
+          0.165,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Basement_Support_Wall_01",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Basement_Support_Beam",
@@ -61194,6 +62244,174 @@
           0,
           0,
           0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Flat",
+      "bSocket": "mount_top",
+      "count": 3,
+      "frequency": 0.007556675062972292,
+      "transformStats": {
+        "meanOffset": [
+          0.487,
+          -0.71,
+          4.793
+        ],
+        "spreadOffset": [
+          2.046,
+          0.255,
+          0.3
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Flat",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 3,
+      "frequency": 0.0375,
+      "transformStats": {
+        "meanOffset": [
+          -0.487,
+          0.71,
+          -4.793
+        ],
+        "spreadOffset": [
+          2.046,
+          0.255,
+          0.3
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Pebble",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          0.14,
+          -0.43,
+          5.46
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Pebble",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.14,
+          0.43,
+          -5.46
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Goblin_Spikes",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.71,
+          -2.03,
+          4.82
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Goblin_Spikes",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.07142857142857142,
+      "transformStats": {
+        "meanOffset": [
+          0.71,
+          2.03,
+          -4.82
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_bottom",
+      "count": 4,
+      "frequency": 0.010075566750629723,
+      "transformStats": {
+        "meanOffset": [
+          0.662,
+          1.078,
+          3.638
+        ],
+        "spreadOffset": [
+          0.952,
+          0.302,
+          1.561
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 4,
+      "frequency": 0.03278688524590164,
+      "transformStats": {
+        "meanOffset": [
+          -0.662,
+          -1.078,
+          -3.637
+        ],
+        "spreadOffset": [
+          0.952,
+          0.302,
+          1.561
         ],
         "relativeYawDeg": 0
       }
@@ -62848,6 +64066,216 @@
           -2.99,
           -0.52,
           -2.98
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Tech_Lever_01",
+      "aSocket": "back",
+      "bPart": "SM_Wep_Hammer_Large_Metal_01",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.746,
+          3.747,
+          -0.39
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_Hammer_Large_Metal_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Prop_Tech_Lever_01",
+      "bSocket": "back",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -0.746,
+          -3.747,
+          0.39
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Tech_Lever_01",
+      "aSocket": "back",
+      "bPart": "SM_Wep_Goblin_Club_01",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.92,
+          3.68,
+          -0.43
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_Goblin_Club_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Prop_Tech_Lever_01",
+      "bSocket": "back",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -0.92,
+          -3.68,
+          0.43
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Tech_Lever_01",
+      "aSocket": "back",
+      "bPart": "SM_Wep_Goblin_Shiv_Stone_01",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.32,
+          3.31,
+          -0.41
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_Goblin_Shiv_Stone_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Prop_Tech_Lever_01",
+      "bSocket": "back",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.32,
+          -3.31,
+          0.41
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Tech_Lever_01",
+      "aSocket": "back",
+      "bPart": "SM_Wep_BrokenSword_01",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.788,
+          2.903,
+          -0.409
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_BrokenSword_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Prop_Tech_Lever_01",
+      "bSocket": "back",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -0.788,
+          -2.903,
+          0.409
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Tech_Lever_01",
+      "aSocket": "back",
+      "bPart": "SM_Prop_StoneChair",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.195,
+          2.317,
+          -1.244
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_StoneChair",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Prop_Tech_Lever_01",
+      "bSocket": "back",
+      "count": 1,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          -1.195,
+          -2.317,
+          1.244
         ],
         "spreadOffset": [
           0,
@@ -73212,6 +74640,90 @@
     },
     {
       "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Spike",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.873,
+          -1.423,
+          2.811
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Spike",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.023809523809523808,
+      "transformStats": {
+        "meanOffset": [
+          -1.873,
+          1.423,
+          -2.811
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Spike",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.005037783375314861,
+      "transformStats": {
+        "meanOffset": [
+          0.756,
+          1.561,
+          2.966
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Spike",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.047619047619047616,
+      "transformStats": {
+        "meanOffset": [
+          -0.756,
+          -1.561,
+          -2.966
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
       "aSocket": "bottom",
       "bPart": "SM_Env_Wall_End_Coner_Outer_01",
       "bSocket": "top",
@@ -73841,6 +75353,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_Window",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Brick_02",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.01,
+          2.83,
+          3.03
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Brick_02",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Window",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.01,
+          -2.83,
+          -3.03
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Pillar_Square_01",
@@ -73873,6 +75427,48 @@
           4.943,
           -0.338,
           -1.131
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Background_Black",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          0.781,
+          2.553,
+          2.933
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Background_Black",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          -0.781,
+          -2.553,
+          -2.933
         ],
         "spreadOffset": [
           0,
@@ -75101,6 +76697,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_Broken_Edge",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Brick_02",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.25,
+      "transformStats": {
+        "meanOffset": [
+          -0.01,
+          2.83,
+          3.03
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Brick_02",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Broken_Edge",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.01,
+          -2.83,
+          -3.03
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Door",
       "aSocket": "bottom",
       "bPart": "SM_Env_Wall_Trim_Top",
@@ -75222,6 +76860,48 @@
           0.055,
           0.035,
           0.056
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Window_Bars",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Brick_02",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          -0.09,
+          2.81,
+          2.98
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Brick_02",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Window_Bars",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.09,
+          -2.81,
+          -2.98
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
         ],
         "relativeYawDeg": 0
       }
@@ -75642,6 +77322,48 @@
           0.016,
           0.078,
           0.205
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Outer",
+      "aSocket": "front",
+      "bPart": "SM_Env_Railing",
+      "bSocket": "bottom",
+      "count": 1,
+      "frequency": 0.03225806451612903,
+      "transformStats": {
+        "meanOffset": [
+          0.01,
+          0.02,
+          4.55
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Railing",
+      "aSocket": "bottom",
+      "bPart": "SM_Env_Wall_End_Coner_Outer",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.01818181818181818,
+      "transformStats": {
+        "meanOffset": [
+          -0.01,
+          -0.02,
+          -4.55
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
         ],
         "relativeYawDeg": 0
       }
@@ -76141,6 +77863,48 @@
           0.4,
           0.67,
           -0.14
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame_Round",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          1.017,
+          0.266,
+          1.68
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_DoorFrame_Round",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -1.017,
+          -0.266,
+          -1.68
         ],
         "spreadOffset": [
           0,
@@ -76866,6 +78630,48 @@
     },
     {
       "aPart": "SM_Env_Wall_DoorFrame",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.0625,
+      "transformStats": {
+        "meanOffset": [
+          -0.017,
+          -0.304,
+          1.68
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_DoorFrame",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.2,
+      "transformStats": {
+        "meanOffset": [
+          0.017,
+          0.304,
+          -1.68
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame",
       "aSocket": "edge_right",
       "bPart": "SM_Env_Wall_Curved_Roof",
       "bSocket": "edge_left",
@@ -76939,6 +78745,48 @@
           4.97,
           0,
           1.25
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_DoorFrame",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.03125,
+      "transformStats": {
+        "meanOffset": [
+          0.03,
+          0.22,
+          1.68
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_DoorFrame",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.03,
+          -0.22,
+          -1.68
         ],
         "spreadOffset": [
           0,
@@ -78086,7 +79934,7 @@
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Prop_Trap_Saw_Rail_01",
-      "bSocket": "mount_bottom",
+      "bSocket": "bottom",
       "count": 2,
       "frequency": 0.007905138339920948,
       "transformStats": {
@@ -78105,7 +79953,7 @@
     },
     {
       "aPart": "SM_Prop_Trap_Saw_Rail_01",
-      "aSocket": "mount_bottom",
+      "aSocket": "bottom",
       "bPart": "SM_Env_Tiles",
       "bSocket": "top",
       "count": 2,
@@ -78128,7 +79976,7 @@
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Prop_Trap_Saw_02",
-      "bSocket": "mount_bottom",
+      "bSocket": "bottom",
       "count": 2,
       "frequency": 0.007905138339920948,
       "transformStats": {
@@ -78147,7 +79995,7 @@
     },
     {
       "aPart": "SM_Prop_Trap_Saw_02",
-      "aSocket": "mount_bottom",
+      "aSocket": "bottom",
       "bPart": "SM_Env_Tiles",
       "bSocket": "top",
       "count": 2,
@@ -78170,7 +80018,7 @@
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Prop_Trap_Saw_Rail_02",
-      "bSocket": "mount_bottom",
+      "bSocket": "bottom",
       "count": 1,
       "frequency": 0.003952569169960474,
       "transformStats": {
@@ -78189,7 +80037,7 @@
     },
     {
       "aPart": "SM_Prop_Trap_Saw_Rail_02",
-      "aSocket": "mount_bottom",
+      "aSocket": "bottom",
       "bPart": "SM_Env_Tiles",
       "bSocket": "top",
       "count": 1,
@@ -78212,7 +80060,7 @@
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Prop_Trap_Saw_01",
-      "bSocket": "mount_bottom",
+      "bSocket": "bottom",
       "count": 1,
       "frequency": 0.003952569169960474,
       "transformStats": {
@@ -78231,7 +80079,7 @@
     },
     {
       "aPart": "SM_Prop_Trap_Saw_01",
-      "aSocket": "mount_bottom",
+      "aSocket": "bottom",
       "bPart": "SM_Env_Tiles",
       "bSocket": "top",
       "count": 1,
@@ -80982,6 +82830,48 @@
     },
     {
       "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.023529411764705882,
+      "transformStats": {
+        "meanOffset": [
+          1.047,
+          0.721,
+          1.68
+        ],
+        "spreadOffset": [
+          0.51,
+          0.105,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.2,
+      "transformStats": {
+        "meanOffset": [
+          -1.047,
+          -0.721,
+          -1.68
+        ],
+        "spreadOffset": [
+          0.51,
+          0.105,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Wall_Wood_Beams",
       "bSocket": "edge_right",
@@ -81738,6 +83628,90 @@
     },
     {
       "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Forge_Ventilation_01",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.82,
+          -3.15,
+          3.23
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Forge_Ventilation_01",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.82,
+          3.15,
+          -3.23
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Forge_Ventilation_Pipe_01",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.83,
+          -3.12,
+          3.98
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Forge_Ventilation_Pipe_01",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.83,
+          3.12,
+          -3.98
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
       "aSocket": "top",
       "bPart": "SM_Env_Wall_Archway",
       "bSocket": "bottom",
@@ -81814,6 +83788,90 @@
         ],
         "spreadOffset": [
           0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Forge_Ventilation_01",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.005037783375314861,
+      "transformStats": {
+        "meanOffset": [
+          -0.68,
+          1.85,
+          3.23
+        ],
+        "spreadOffset": [
+          2.5,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Forge_Ventilation_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 2,
+      "transformStats": {
+        "meanOffset": [
+          0.68,
+          -1.85,
+          -3.23
+        ],
+        "spreadOffset": [
+          2.5,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Forge_Ventilation_Pipe_01",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.005037783375314861,
+      "transformStats": {
+        "meanOffset": [
+          -0.67,
+          1.88,
+          3.98
+        ],
+        "spreadOffset": [
+          2.5,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Forge_Ventilation_Pipe_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 2,
+      "transformStats": {
+        "meanOffset": [
+          0.67,
+          -1.88,
+          -3.98
+        ],
+        "spreadOffset": [
+          2.5,
           0,
           0
         ],
@@ -83334,6 +85392,48 @@
     },
     {
       "aPart": "SM_Env_Wall_Trim_Top",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Round",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.011363636363636364,
+      "transformStats": {
+        "meanOffset": [
+          -0.02,
+          2.99,
+          4.41
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Round",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Trim_Top",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.034482758620689655,
+      "transformStats": {
+        "meanOffset": [
+          0.02,
+          -2.99,
+          -4.41
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Trim_Top",
       "aSocket": "top",
       "bPart": "SM_Env_Wall_Broken_Edge",
       "bSocket": "bottom",
@@ -84342,6 +86442,48 @@
     },
     {
       "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.017,
+          0.266,
+          1.68
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -1.017,
+          -0.266,
+          -1.68
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
       "aSocket": "top",
       "bPart": "SM_Env_Wall_Tunnel",
       "bSocket": "bottom",
@@ -84373,6 +86515,216 @@
           0,
           -5,
           0
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_top",
+      "count": 4,
+      "frequency": 0.010075566750629723,
+      "transformStats": {
+        "meanOffset": [
+          -0.195,
+          -1.202,
+          4.205
+        ],
+        "spreadOffset": [
+          1.183,
+          0.095,
+          1.504
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 4,
+      "frequency": 0.03278688524590164,
+      "transformStats": {
+        "meanOffset": [
+          0.195,
+          1.202,
+          -4.205
+        ],
+        "spreadOffset": [
+          1.183,
+          0.095,
+          1.504
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel_01",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -1.02,
+          -0.82,
+          5.17
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel_01",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.02,
+          0.82,
+          -5.17
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel_Broken_01",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.87,
+          -1.72,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel_Broken_01",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.87,
+          1.72,
+          -5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.91,
+          1.1,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.034482758620689655,
+      "transformStats": {
+        "meanOffset": [
+          0.91,
+          -1.1,
+          -5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel_Broken",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -1.45,
+          0.05,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel_Broken",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          1.45,
+          -0.05,
+          -5.1
         ],
         "spreadOffset": [
           0,
@@ -84552,6 +86904,132 @@
     },
     {
       "aPart": "SM_Env_Wall_Tunnel_Entrance",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          0.53,
+          -0.97,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Tunnel_Entrance",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.034482758620689655,
+      "transformStats": {
+        "meanOffset": [
+          -0.53,
+          0.97,
+          -5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel_Entrance",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Crate_Wood_01",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          0.81,
+          0.07,
+          5.13
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Crate_Wood_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel_Entrance",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -0.81,
+          -0.07,
+          -5.13
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel_Entrance",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Crate_Wood_02",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          0.66,
+          1.23,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Crate_Wood_02",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel_Entrance",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -0.66,
+          -1.23,
+          -5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel_Entrance",
       "aSocket": "top",
       "bPart": "SM_Env_Wall_Tunnel_Entrance",
       "bSocket": "bottom",
@@ -84625,6 +87103,132 @@
           0,
           0,
           0
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel_Entrance",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel",
+      "bSocket": "mount_bottom",
+      "count": 3,
+      "frequency": 0.42857142857142855,
+      "transformStats": {
+        "meanOffset": [
+          -0.107,
+          0.687,
+          5.1
+        ],
+        "spreadOffset": [
+          0.595,
+          0.108,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel_Entrance",
+      "bSocket": "front",
+      "count": 3,
+      "frequency": 0.10344827586206896,
+      "transformStats": {
+        "meanOffset": [
+          0.107,
+          -0.687,
+          -5.1
+        ],
+        "spreadOffset": [
+          0.595,
+          0.108,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel_Entrance",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel_Broken",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          0.55,
+          1.75,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel_Broken",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel_Entrance",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          -0.55,
+          -1.75,
+          -5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel_Entrance",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          -0.73,
+          1.3,
+          5.03
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel_Entrance",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.00819672131147541,
+      "transformStats": {
+        "meanOffset": [
+          0.73,
+          -1.3,
+          -5.03
         ],
         "spreadOffset": [
           0,
@@ -84793,6 +87397,132 @@
           0,
           -5,
           0
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel",
+      "bSocket": "mount_bottom",
+      "count": 3,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -0.107,
+          0.687,
+          5.1
+        ],
+        "spreadOffset": [
+          0.595,
+          0.108,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel",
+      "bSocket": "front",
+      "count": 3,
+      "frequency": 0.10344827586206896,
+      "transformStats": {
+        "meanOffset": [
+          0.107,
+          -0.687,
+          -5.1
+        ],
+        "spreadOffset": [
+          0.595,
+          0.108,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel_Broken",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          0.55,
+          1.75,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel_Broken",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          -0.55,
+          -1.75,
+          -5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Tunnel",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          -0.73,
+          1.3,
+          5.03
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Tunnel",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.00819672131147541,
+      "transformStats": {
+        "meanOffset": [
+          0.73,
+          -1.3,
+          -5.03
         ],
         "spreadOffset": [
           0,
@@ -85260,6 +87990,132 @@
           0.03,
           0.09,
           0.99
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_RockPile_Square_03",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.21,
+          1.42,
+          5.01
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_RockPile_Square_03",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.21,
+          -1.42,
+          -5.01
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -2.27,
+          1.36,
+          4.7
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          2.27,
+          -1.36,
+          -4.7
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Round",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          0.1,
+          1.02,
+          1.7
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Round",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.034482758620689655,
+      "transformStats": {
+        "meanOffset": [
+          -0.1,
+          -1.02,
+          -1.7
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
         ],
         "relativeYawDeg": 0
       }
@@ -86525,6 +89381,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_Trim_Edge",
+      "aSocket": "front",
+      "bPart": "SM_Env_Background_Black",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.02564102564102564,
+      "transformStats": {
+        "meanOffset": [
+          -1.08,
+          0.75,
+          1.41
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Background_Black",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Trim_Edge",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.07692307692307693,
+      "transformStats": {
+        "meanOffset": [
+          1.08,
+          -0.75,
+          -1.41
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall_Tunnel_Entrance",
       "aSocket": "bottom",
       "bPart": "SM_Env_Wall_End_Coner_Inner",
@@ -86641,6 +89539,48 @@
           0.39,
           0.99,
           -0.39
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Wood_Beams",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.018518518518518517,
+      "transformStats": {
+        "meanOffset": [
+          1.027,
+          -0.054,
+          1.93
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Wood_Beams",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -1.027,
+          0.054,
+          -1.93
         ],
         "spreadOffset": [
           0,
@@ -87681,6 +90621,48 @@
     },
     {
       "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.023529411764705882,
+      "transformStats": {
+        "meanOffset": [
+          -0.04,
+          -1.845,
+          5.045
+        ],
+        "spreadOffset": [
+          0.65,
+          0.005,
+          0.075
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.01639344262295082,
+      "transformStats": {
+        "meanOffset": [
+          0.04,
+          1.845,
+          -5.045
+        ],
+        "spreadOffset": [
+          0.65,
+          0.005,
+          0.075
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
       "aSocket": "top",
       "bPart": "SM_Env_Wall_End_Coner_Outer",
       "bSocket": "bottom",
@@ -88058,6 +91040,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_End",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.09090909090909091,
+      "transformStats": {
+        "meanOffset": [
+          0.897,
+          0.246,
+          1.74
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_End",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.897,
+          -0.246,
+          -1.74
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Door",
       "aSocket": "bottom",
       "bPart": "SM_Env_Door_Frame_Round",
@@ -88184,6 +91208,90 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.011764705882352941,
+      "transformStats": {
+        "meanOffset": [
+          -1.42,
+          0.49,
+          5.02
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.034482758620689655,
+      "transformStats": {
+        "meanOffset": [
+          1.42,
+          -0.49,
+          -5.02
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Barrel_Broken",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.011764705882352941,
+      "transformStats": {
+        "meanOffset": [
+          -1.96,
+          -0.56,
+          5.02
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Barrel_Broken",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.14285714285714285,
+      "transformStats": {
+        "meanOffset": [
+          1.96,
+          0.56,
+          -5.02
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Env_BonePile",
@@ -88221,6 +91329,132 @@
           0.42,
           1.48,
           0.065
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Vase",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.011764705882352941,
+      "transformStats": {
+        "meanOffset": [
+          -1.55,
+          0.13,
+          2.69
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Vase",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.09090909090909091,
+      "transformStats": {
+        "meanOffset": [
+          1.55,
+          -0.13,
+          -2.69
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Vase",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.011764705882352941,
+      "transformStats": {
+        "meanOffset": [
+          -0.47,
+          -0.22,
+          2.69
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Vase",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.09090909090909091,
+      "transformStats": {
+        "meanOffset": [
+          0.47,
+          0.22,
+          -2.69
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_End_Coner_Inner",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Vase_Broken",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.023529411764705882,
+      "transformStats": {
+        "meanOffset": [
+          -0.53,
+          -1.28,
+          2.795
+        ],
+        "spreadOffset": [
+          0.26,
+          0.24,
+          0.135
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Vase_Broken",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_End_Coner_Inner",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.2222222222222222,
+      "transformStats": {
+        "meanOffset": [
+          0.53,
+          1.28,
+          -2.795
+        ],
+        "spreadOffset": [
+          0.26,
+          0.24,
+          0.135
         ],
         "relativeYawDeg": 0
       }
@@ -88940,6 +92174,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_01_Texture",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.417,
+          0.936,
+          1.54
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_01_Texture",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -1.417,
+          -0.936,
+          -1.54
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall_DoorFrame_Round",
       "aSocket": "bottom",
       "bPart": "SM_Env_Wall_Curved_Roof",
@@ -88972,6 +92248,90 @@
           -0.03,
           4.91,
           1.25
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Skeleton_Slave_Shackles",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 0.005037783375314861,
+      "transformStats": {
+        "meanOffset": [
+          0.265,
+          0.625,
+          5.11
+        ],
+        "spreadOffset": [
+          1.555,
+          0.005,
+          0.02
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Skeleton_Slave_Shackles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.6666666666666666,
+      "transformStats": {
+        "meanOffset": [
+          -0.265,
+          -0.625,
+          -5.11
+        ],
+        "spreadOffset": [
+          1.555,
+          0.005,
+          0.02
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Vase",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.98,
+          1.58,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Vase",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.09090909090909091,
+      "transformStats": {
+        "meanOffset": [
+          0.98,
+          -1.58,
+          -5.1
         ],
         "spreadOffset": [
           0,
@@ -89308,6 +92668,48 @@
           -4.19,
           2.41,
           -1.38
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Curved_Roof",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.125,
+      "transformStats": {
+        "meanOffset": [
+          -0.94,
+          0.94,
+          1.3
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Curved_Roof",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.00819672131147541,
+      "transformStats": {
+        "meanOffset": [
+          0.94,
+          -0.94,
+          -1.3
         ],
         "spreadOffset": [
           0,
@@ -90746,6 +94148,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall_Pillar_Large",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_top",
+      "count": 4,
+      "frequency": 0.23529411764705882,
+      "transformStats": {
+        "meanOffset": [
+          -0.525,
+          -0.06,
+          3.002
+        ],
+        "spreadOffset": [
+          0.864,
+          0.031,
+          0.064
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Pillar_Large",
+      "bSocket": "front",
+      "count": 4,
+      "frequency": 0.4,
+      "transformStats": {
+        "meanOffset": [
+          0.525,
+          0.06,
+          -3.002
+        ],
+        "spreadOffset": [
+          0.864,
+          0.031,
+          0.064
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall_Broken_Edge",
       "aSocket": "bottom",
       "bPart": "SM_Env_Wall_Trim_Edge",
@@ -91198,6 +94642,48 @@
           -3.9,
           0.99,
           0
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Trim_Edge",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.02564102564102564,
+      "transformStats": {
+        "meanOffset": [
+          -1.51,
+          -1.27,
+          1.6
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Trim_Edge",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.00819672131147541,
+      "transformStats": {
+        "meanOffset": [
+          1.51,
+          1.27,
+          -1.6
         ],
         "spreadOffset": [
           0,
@@ -92049,6 +95535,48 @@
     },
     {
       "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Candle_01",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.384,
+          1.062,
+          1.535
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Candle_01",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.384,
+          -1.062,
+          -1.535
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
       "aSocket": "edge_right",
       "bPart": "SM_Env_Pillar_Square_Base",
       "bSocket": "side_nx",
@@ -92542,6 +96070,90 @@
           -0.096,
           -0.002,
           0.358
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Pillar_Large_01",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          1.003,
+          0.078,
+          3.151
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Pillar_Large_01",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -1.003,
+          -0.078,
+          -3.151
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Pillar_Large",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Torch_Ornate",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.058823529411764705,
+      "transformStats": {
+        "meanOffset": [
+          0.972,
+          0,
+          3.144
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Torch_Ornate",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Pillar_Large",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.1,
+      "transformStats": {
+        "meanOffset": [
+          -0.972,
+          0,
+          -3.144
         ],
         "spreadOffset": [
           0,
@@ -94358,6 +97970,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain_04",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.21,
+          1.66,
+          4.92
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain_04",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.21,
+          -1.66,
+          -4.92
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Env_ReinforedPole_01",
@@ -94904,6 +98558,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Basement_Support_Pole",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chain_04",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.05,
+      "transformStats": {
+        "meanOffset": [
+          1.25,
+          1.4,
+          4.91
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chain_04",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Basement_Support_Pole",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.25,
+          -1.4,
+          -4.91
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Prop_Goblin_Fence",
       "aSocket": "edge_right",
       "bPart": "SM_Prop_Goblin_Fence",
@@ -94941,6 +98637,174 @@
           0.891,
           2.413,
           0.149
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Rock_Blocked",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Spike",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.6666666666666666,
+      "transformStats": {
+        "meanOffset": [
+          0.705,
+          -1.43,
+          3.86
+        ],
+        "spreadOffset": [
+          1.005,
+          0.46,
+          0.34
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Spike",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Rock_Blocked",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.047619047619047616,
+      "transformStats": {
+        "meanOffset": [
+          -0.705,
+          1.43,
+          -3.86
+        ],
+        "spreadOffset": [
+          1.005,
+          0.46,
+          0.34
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Rock_Blocked",
+      "aSocket": "front",
+      "bPart": "SM_Env_Cave_Large",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          -0.72,
+          -1.8,
+          3.53
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Cave_Large",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall_Rock_Blocked",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.25,
+      "transformStats": {
+        "meanOffset": [
+          0.72,
+          1.8,
+          -3.53
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Rock_Blocked",
+      "aSocket": "front",
+      "bPart": "SM_Env_Cave_Large",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          1.49,
+          2.42,
+          2.51
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Cave_Large",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Rock_Blocked",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.25,
+      "transformStats": {
+        "meanOffset": [
+          -1.49,
+          -2.42,
+          -2.51
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall_Rock_Blocked",
+      "aSocket": "front",
+      "bPart": "SM_Env_Rock_Spike",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          -2.12,
+          3.37,
+          3.77
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rock_Spike",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall_Rock_Blocked",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.023809523809523808,
+      "transformStats": {
+        "meanOffset": [
+          2.12,
+          -3.37,
+          -3.77
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
         ],
         "relativeYawDeg": 0
       }
@@ -95104,6 +98968,48 @@
           -5.03,
           0,
           1.25
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Chest",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          1.76,
+          -0.009,
+          5.1
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Chest",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.16666666666666666,
+      "transformStats": {
+        "meanOffset": [
+          -1.76,
+          0.009,
+          -5.1
         ],
         "spreadOffset": [
           0,
@@ -95786,6 +99692,132 @@
       }
     },
     {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Wep_HandAxe",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.802,
+          0.052,
+          2.38
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_HandAxe",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          0.802,
+          -0.052,
+          -2.38
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Wep_HandAxe",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.74,
+          -0.06,
+          2.38
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_HandAxe",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          0.74,
+          0.06,
+          -2.38
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Wall",
+      "aSocket": "front",
+      "bPart": "SM_Wep_Shield_Skull_01",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.0025188916876574307,
+      "transformStats": {
+        "meanOffset": [
+          -0.05,
+          -0.59,
+          2.77
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_Shield_Skull_01",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Wall",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.05,
+          0.59,
+          -2.77
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Prop_Chest",
@@ -95873,7 +99905,7 @@
       "aPart": "SM_Env_Tiles",
       "aSocket": "top",
       "bPart": "SM_Env_Trap_Hatch_01",
-      "bSocket": "mount_bottom",
+      "bSocket": "bottom",
       "count": 1,
       "frequency": 0.003952569169960474,
       "transformStats": {
@@ -95892,7 +99924,7 @@
     },
     {
       "aPart": "SM_Env_Trap_Hatch_01",
-      "aSocket": "mount_bottom",
+      "aSocket": "bottom",
       "bPart": "SM_Env_Tiles",
       "bSocket": "top",
       "count": 1,
@@ -96788,6 +100820,48 @@
         "spreadOffset": [
           0,
           0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Basement_Ceiling",
+      "aSocket": "front",
+      "bPart": "SM_Prop_Candle_Chandelier",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 0.09090909090909091,
+      "transformStats": {
+        "meanOffset": [
+          -0.008,
+          -0.003,
+          0.496
+        ],
+        "spreadOffset": [
+          0,
+          0.002,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Prop_Candle_Chandelier",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Basement_Ceiling",
+      "bSocket": "front",
+      "count": 2,
+      "frequency": 0.3333333333333333,
+      "transformStats": {
+        "meanOffset": [
+          0.008,
+          0.003,
+          -0.496
+        ],
+        "spreadOffset": [
+          0,
+          0.002,
           0
         ],
         "relativeYawDeg": 0
@@ -99230,6 +103304,132 @@
       }
     },
     {
+      "aPart": "SM_Env_Basement_Support_Pole",
+      "aSocket": "front",
+      "bPart": "SM_Wep_HandAxe",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 0.05,
+      "transformStats": {
+        "meanOffset": [
+          -0.372,
+          0.012,
+          2.37
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_HandAxe",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Basement_Support_Pole",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          0.372,
+          -0.012,
+          -2.37
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Basement_Support_Pole",
+      "aSocket": "front",
+      "bPart": "SM_Wep_HandAxe",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.05,
+      "transformStats": {
+        "meanOffset": [
+          -0.31,
+          -0.1,
+          2.37
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_HandAxe",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Basement_Support_Pole",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 0.5,
+      "transformStats": {
+        "meanOffset": [
+          0.31,
+          0.1,
+          -2.37
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Basement_Support_Pole",
+      "aSocket": "front",
+      "bPart": "SM_Wep_Shield_Skull_01",
+      "bSocket": "mount_top",
+      "count": 1,
+      "frequency": 0.05,
+      "transformStats": {
+        "meanOffset": [
+          -0.04,
+          -0.11,
+          2.76
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Wep_Shield_Skull_01",
+      "aSocket": "mount_top",
+      "bPart": "SM_Env_Basement_Support_Pole",
+      "bSocket": "front",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          0.04,
+          0.11,
+          -2.76
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall_Curved_Roof_01",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Wall_Curved_Roof",
@@ -101498,6 +105698,48 @@
       }
     },
     {
+      "aPart": "SM_Prop_Tech_Lever",
+      "aSocket": "back",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_top",
+      "count": 2,
+      "frequency": 2,
+      "transformStats": {
+        "meanOffset": [
+          0.28,
+          -0.955,
+          -1.44
+        ],
+        "spreadOffset": [
+          0.72,
+          0.355,
+          0.03
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_top",
+      "bPart": "SM_Prop_Tech_Lever",
+      "bSocket": "back",
+      "count": 2,
+      "frequency": 0.01639344262295082,
+      "transformStats": {
+        "meanOffset": [
+          -0.28,
+          0.955,
+          1.44
+        ],
+        "spreadOffset": [
+          0.72,
+          0.355,
+          0.03
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Prop_Trap_Pit_Door_L",
       "aSocket": "top",
       "bPart": "SM_Prop_Trap_Pit_Door_L2",
@@ -101676,10 +105918,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_Alcove_Small",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Statue_01",
       "socket": "mount_bottom"
     },
@@ -101744,16 +105982,8 @@
       "socket": "bottom"
     },
     {
-      "partId": "SM_Env_Wall_Round_01",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Statue_03",
       "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Env_Statue_03",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Env_Wall",
@@ -101762,10 +105992,6 @@
     {
       "partId": "SM_Env_Wall",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Stairs_Wall_01",
@@ -101800,10 +106026,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_Quarter",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Stairs_Wall",
       "socket": "edge_px"
     },
@@ -101836,20 +106058,12 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_Window",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Wall_DoorFrame",
       "socket": "edge_px"
     },
     {
       "partId": "SM_Env_Wall_DoorFrame",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_DoorFrame",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Wall_01_Alt",
@@ -102044,10 +106258,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_Trim_Top",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Ceiling_Stone_Pillar",
       "socket": "edge_pz"
     },
@@ -102156,10 +106366,6 @@
       "socket": "edge_right"
     },
     {
-      "partId": "SM_Env_Railing_Angle",
-      "socket": "bottom"
-    },
-    {
       "partId": "SM_Prop_Rug_03",
       "socket": "mount_bottom"
     },
@@ -102186,10 +106392,6 @@
     {
       "partId": "SM_Env_Wall_Pillar_Large",
       "socket": "top"
-    },
-    {
-      "partId": "SM_Env_Wall_Pillar_Large",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Pillar_Square_Base_01",
@@ -102232,10 +106434,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_Window_Bars",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Prop_Wall_Banner",
       "socket": "edge_px"
     },
@@ -102276,24 +106474,12 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Prop_Chain",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Chain",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Env_Wall_End_Coner_Outer",
       "socket": "edge_px"
     },
     {
       "partId": "SM_Env_Wall_End_Coner_Outer",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_End_Coner_Outer",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Wall_End_Coner_Inner",
@@ -102304,20 +106490,12 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_End_Coner_Inner",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Wall_Wood_Beams",
       "socket": "edge_px"
     },
     {
       "partId": "SM_Env_Wall_Wood_Beams",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_Wood_Beams",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Wall_End_01",
@@ -102344,10 +106522,6 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Env_Background_Black",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Env_Wall_Pillar_Large_Round_01_Base3",
       "socket": "edge_left"
     },
@@ -102462,10 +106636,6 @@
     {
       "partId": "SM_Env_Wall_DoorFrame_Round",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_DoorFrame_Round",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Stone_Vessel_01",
@@ -102494,10 +106664,6 @@
     {
       "partId": "SM_Env_Basement_Ceiling",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Basement_Ceiling",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Basement_Support_Wall_01",
@@ -102662,10 +106828,6 @@
     {
       "partId": "SM_Env_Wall_Trim_Edge",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_Trim_Edge",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Ceiling_Stone_Flat_05",
@@ -102749,10 +106911,6 @@
     },
     {
       "partId": "SM_Env_Rock_Flat_06",
-      "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Env_Rock_Flat",
       "socket": "mount_top"
     },
     {
@@ -102852,14 +107010,6 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Env_Rock_Spike",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Env_Rock_Spike",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Prop_StoneTable",
       "socket": "mount_top"
     },
@@ -102928,10 +107078,6 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Prop_Vase",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Env_Ceiling_Stone_Curved_End_01",
       "socket": "edge_px"
     },
@@ -102946,10 +107092,6 @@
     {
       "partId": "SM_Env_Ceiling_Stone_Curved_End_01",
       "socket": "bottom"
-    },
-    {
-      "partId": "SM_Prop_Vase_Broken",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Prop_Wall_Banner_02",
@@ -102970,10 +107112,6 @@
     {
       "partId": "SM_Prop_Wall_Banner_02",
       "socket": "front"
-    },
-    {
-      "partId": "SM_Env_Rubble_Pebbles",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Env_Rubble_Pebbles_02",
@@ -103004,20 +107142,12 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Prop_Torch_Ornate",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Prop_Toture_Cage",
       "socket": "mount_top"
     },
     {
       "partId": "SM_Prop_Tech_Lever_01",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Tech_Lever_01",
-      "socket": "mount_top"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Skeleton_Slave_Shackles_01",
@@ -103025,19 +107155,23 @@
     },
     {
       "partId": "SM_Prop_Trap_Grinder_01",
-      "socket": "mount_bottom"
+      "socket": "hazard"
     },
     {
       "partId": "SM_Prop_Trap_Grinder_01",
-      "socket": "mount_top"
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Swing_Blade",
+      "socket": "top"
     },
     {
       "partId": "SM_Wep_Hammer_Large_Metal_01",
@@ -103069,23 +107203,11 @@
     },
     {
       "partId": "SM_Prop_Chain_06",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Chain_06",
       "socket": "mount_top"
     },
     {
       "partId": "SM_Prop_Chain_02",
       "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Chain_02",
-      "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Prop_Goblin_Spikes",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Env_Mushroom_Small",
@@ -103236,10 +107358,6 @@
       "socket": "mount_bottom"
     },
     {
-      "partId": "SM_Env_Rock_Pebble",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Env_Wall_DoorFrame_Double_Round",
       "socket": "edge_px"
     },
@@ -103276,23 +107394,11 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Prop_Brazier",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Prop_TorchStick",
       "socket": "mount_top"
     },
     {
       "partId": "SM_Prop_Candle_Chandelier",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Candle_Chandelier",
-      "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Prop_Skeleton_Slave_Shackles",
       "socket": "mount_bottom"
     },
     {
@@ -103772,10 +107878,6 @@
       "socket": "top"
     },
     {
-      "partId": "SM_Env_Wall_Broken_Edge",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Prop_Skeleton_Table_01",
       "socket": "mount_top"
     },
@@ -103810,10 +107912,6 @@
     {
       "partId": "SM_Prop_Wall_Banner_05",
       "socket": "front"
-    },
-    {
-      "partId": "SM_Prop_Brick_02",
-      "socket": "mount_bottom"
     },
     {
       "partId": "SM_Prop_Brick_02",
@@ -103876,10 +107974,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_End",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Portcullis_01",
       "socket": "mount_bottom"
     },
@@ -103893,19 +107987,35 @@
     },
     {
       "partId": "SM_Prop_Trap_Saw_Rail_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Saw_Rail_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Saw_02",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Saw_02",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Saw_Rail_02",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Saw_Rail_02",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Saw_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Saw_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Skeleton_Slave_Lying_01",
@@ -103913,27 +108023,39 @@
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade_01",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Swing_Blade_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade_Housing_01",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade_Housing_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Swing_Blade_Housing_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade_Housing",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Swing_Blade_Housing",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Swing_Blade_Housing",
+      "socket": "top"
     },
     {
       "partId": "SM_Env_Wall_Archway_01",
@@ -104028,22 +108150,6 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Prop_Forge_Ventilation_01",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Forge_Ventilation_01",
-      "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Prop_Forge_Ventilation_Pipe_01",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Forge_Ventilation_Pipe_01",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Env_Wall_Fireplace_01",
       "socket": "edge_px"
     },
@@ -104061,19 +108167,27 @@
     },
     {
       "partId": "SM_Prop_Trap_Spears_Grate_01",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Spears_Grate_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Spears_Grate_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Spears_01",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Spears_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Spears_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Table_01",
@@ -104168,20 +108282,12 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_Tunnel_Entrance",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Wall_Tunnel",
       "socket": "edge_px"
     },
     {
       "partId": "SM_Env_Wall_Tunnel",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_Tunnel",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Railing_Angle_Broken_02",
@@ -104420,14 +108526,6 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Env_Cave_Large",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Env_Cave_Large",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Env_Stalactite_02",
       "socket": "mount_bottom"
     },
@@ -104500,10 +108598,6 @@
       "socket": "mount_top"
     },
     {
-      "partId": "SM_Prop_Chest",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Prop_Chest_03_Lid3",
       "socket": "mount_bottom"
     },
@@ -104516,16 +108610,8 @@
       "socket": "mount_bottom"
     },
     {
-      "partId": "SM_Prop_Barrel_01",
-      "socket": "mount_top"
-    },
-    {
       "partId": "SM_Prop_Barrel_Broken_01",
       "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Barrel_Broken_01",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Prop_Barrel_Broken_02",
@@ -104546,18 +108632,6 @@
     {
       "partId": "SM_Env_Ceiling_Stone_Curved_End",
       "socket": "bottom"
-    },
-    {
-      "partId": "SM_Prop_Barrel",
-      "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Prop_Barrel_Broken",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Barrel_Broken",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Env_Grass_01",
@@ -104586,10 +108660,6 @@
     {
       "partId": "SM_Env_Rubble_Pebbles_01",
       "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Prop_Crate_Wood_01",
-      "socket": "mount_bottom"
     },
     {
       "partId": "SM_Prop_Crate_Wood_01",
@@ -104780,10 +108850,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Wall_01_Texture",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Pillar_Square_02",
       "socket": "bottom"
     },
@@ -104902,10 +108968,6 @@
     {
       "partId": "SM_Env_Wall_Curved_Roof",
       "socket": "edge_nx"
-    },
-    {
-      "partId": "SM_Env_Wall_Curved_Roof",
-      "socket": "front"
     },
     {
       "partId": "SM_Env_Wall_Half",
@@ -105256,10 +109318,6 @@
       "socket": "top"
     },
     {
-      "partId": "SM_Env_Wall_Rock_Blocked",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_Sewer_Canal_Drain",
       "socket": "mount_bottom"
     },
@@ -105352,10 +109410,6 @@
       "socket": "top"
     },
     {
-      "partId": "SM_Env_Wall_Pillar_Large_01",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Env_DoorDouble_Flat_01",
       "socket": "edge_right"
     },
@@ -105424,10 +109478,6 @@
       "socket": "edge_nx"
     },
     {
-      "partId": "SM_Env_Basement_Support_Pole",
-      "socket": "front"
-    },
-    {
       "partId": "SM_Prop_Barrel_Large",
       "socket": "mount_bottom"
     },
@@ -105485,19 +109535,11 @@
     },
     {
       "partId": "SM_Prop_Chain_04",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Chain_04",
       "socket": "mount_top"
     },
     {
       "partId": "SM_Prop_Candle",
       "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Prop_Candle_01",
-      "socket": "mount_bottom"
     },
     {
       "partId": "SM_Prop_Candle_01",
@@ -106537,7 +110579,11 @@
     },
     {
       "partId": "SM_Env_Trap_Hatch_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Env_Trap_Hatch_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Bookcase_01",
@@ -106597,11 +110643,15 @@
     },
     {
       "partId": "SM_Wep_Spear_02",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Wep_Spear_02",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Wep_Spear_02",
+      "socket": "top"
     },
     {
       "partId": "SM_Wep_HandAxe_01",
@@ -106614,10 +110664,6 @@
     {
       "partId": "SM_Wep_Shield_Skull_01",
       "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Wep_Shield_Skull_01",
-      "socket": "mount_top"
     },
     {
       "partId": "SM_Item_Potion_05",
@@ -106661,14 +110707,6 @@
     },
     {
       "partId": "SM_Prop_Rug_02",
-      "socket": "mount_top"
-    },
-    {
-      "partId": "SM_Wep_HandAxe",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Wep_HandAxe",
       "socket": "mount_top"
     },
     {
@@ -106865,11 +110903,11 @@
     },
     {
       "partId": "SM_Prop_Tech_SwitchBoard_01",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Tech_SwitchBoard_01",
-      "socket": "mount_top"
+      "socket": "back"
     },
     {
       "partId": "SM_Prop_Tech_Chamber_Broken_01",
@@ -106973,19 +111011,19 @@
     },
     {
       "partId": "SM_Env_Trap_Hatch",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Env_Trap_Hatch",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Env_Trap_Hatch",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Tech_Lever",
-      "socket": "mount_bottom"
-    },
-    {
-      "partId": "SM_Prop_Tech_Lever",
-      "socket": "mount_top"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Cauldron_01",
@@ -107025,11 +111063,15 @@
     },
     {
       "partId": "SM_Prop_Trap_Pit_01",
-      "socket": "mount_bottom"
+      "socket": "bottom"
     },
     {
       "partId": "SM_Prop_Trap_Pit_01",
-      "socket": "mount_top"
+      "socket": "hazard"
+    },
+    {
+      "partId": "SM_Prop_Trap_Pit_01",
+      "socket": "top"
     },
     {
       "partId": "SM_Prop_Trap_Pit_Door_L",
@@ -107103,19 +111145,21 @@
   "stats": {
     "totalPlacements": 3376,
     "uniqueParts": 598,
-    "totalAdjacencyPairs": 10036,
+    "totalAdjacencyPairs": 10304,
     "categoryDistribution": {
       "floor": 272,
       "stairs": 24,
       "wall": 1057,
-      "structure": 298,
+      "structure": 295,
       "door": 80,
       "pillar": 157,
       "ceiling": 211,
       "railing": 99,
-      "prop": 351,
+      "prop": 335,
       "rock": 522,
       "rubble": 162,
+      "puzzle": 3,
+      "trap": 16,
       "nature": 143
     },
     "partFrequencies": {

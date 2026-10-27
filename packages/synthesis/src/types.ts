@@ -114,6 +114,17 @@ export interface RoomBlueprint {
   elevationDropM?: number;
   entranceDoor?: boolean;
   focalPiece?: "sarcophagus" | "altar" | "throne" | "none";
+  traps?: {
+    enabled?: boolean;
+    floorSpikes?: boolean;
+    sawRails?: boolean;
+    swingingBlades?: boolean;
+  };
+  puzzles?: {
+    enabled?: boolean;
+    levers?: boolean;
+    statueDials?: boolean;
+  };
 }
 
 export interface SynthesisProblem {

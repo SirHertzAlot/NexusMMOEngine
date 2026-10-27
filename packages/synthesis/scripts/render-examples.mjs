@@ -252,6 +252,8 @@ async function main() {
       prop: 0xc93b2b,
       rubble: 0x8b572a,
       structure: 0x4a5568,
+      trap: 0xe63946,
+      puzzle: 0x00f5d4,
     };
 
     function createStairOrRampGeometry(sx, sy, sz, numSteps = 7) {
@@ -324,6 +326,8 @@ async function main() {
       else if (cat === "ceiling") { sx = 5.0; sy = 0.4; sz = 5.0; }
       else if (cat === "stairs") { sx = 3.0; sy = 3.5; sz = 5.0; }
       else if (cat === "railing") { sx = 5.0; sy = 1.2; sz = 0.3; }
+      else if (cat === "trap") { sx = 2.4; sy = 0.25; sz = 2.4; }
+      else if (cat === "puzzle") { sx = 0.6; sy = 1.0; sz = 0.6; }
       else { sx = 1.0; sy = 1.0; sz = 1.0; }
 
       const geom = cat === "stairs"
@@ -370,6 +374,10 @@ async function main() {
   // 2. Generate a combined Showcase Triptych
   {
     const page = await browser.newPage({ viewport: { width: 1400, height: 700 } });
+    const img1B64 = `data:image/png;base64,${fs.readFileSync(path.join(artifactDir, "example_1_crypt_hall.png")).toString("base64")}`;
+    const img2B64 = `data:image/png;base64,${fs.readFileSync(path.join(artifactDir, "example_2_boss_arena.png")).toString("base64")}`;
+    const img3B64 = `data:image/png;base64,${fs.readFileSync(path.join(artifactDir, "example_3_multi_level_descent.png")).toString("base64")}`;
+
     const html = `
 <!DOCTYPE html>
 <html>
@@ -431,15 +439,15 @@ async function main() {
 <body>
   <div class="header">
     <h1>Continuous Model Synthesis — Archetype Gallery</h1>
-    <p>Procedural chambers grown from learned Unity scene grammar with sub-millimeter precision</p>
+    <p>Procedural chambers grown from learned Unity scene grammar with sub-millimeter precision, architectural grounding, traps & puzzles</p>
   </div>
   <div class="triptych">
     <div class="card">
-      <img class="card-img" src="${path.join(artifactDir, "example_1_crypt_hall.png")}" />
+      <img class="card-img" src="${img1B64}" />
       <div class="card-body">
         <div>
           <div class="card-title">1. Pillared Crypt Hall</div>
-          <div class="card-sub">Symmetrical hall layout with peripheral stone walls, interior column shafts, and center tomb.</div>
+          <div class="card-sub">Symmetrical hall layout with peripheral stone walls, interior column shafts, floor spear traps, and wall puzzle levers.</div>
         </div>
         <div class="card-stats">
           <span>65 Parts</span>
@@ -448,11 +456,11 @@ async function main() {
       </div>
     </div>
     <div class="card">
-      <img class="card-img" src="${path.join(artifactDir, "example_2_boss_arena.png")}" />
+      <img class="card-img" src="${img2B64}" />
       <div class="card-body">
         <div>
           <div class="card-title">2. Grand Boss Colonnade</div>
-          <div class="card-sub">Expansive great hall with 140 interlocking wall panels, stone floor grid, and dual colonnades.</div>
+          <div class="card-sub">Expansive great hall with 140 interlocking wall panels, stone floor grid, dual colonnades, perimeter saw rails, and dais switch puzzles.</div>
         </div>
         <div class="card-stats">
           <span>140 Parts</span>
@@ -461,11 +469,11 @@ async function main() {
       </div>
     </div>
     <div class="card">
-      <img class="card-img" src="${path.join(artifactDir, "example_3_multi_level_descent.png")}" />
+      <img class="card-img" src="${img3B64}" />
       <div class="card-body">
         <div>
           <div class="card-title">3. Multi-Level Descent</div>
-          <div class="card-sub">Split-level spatial connectivity featuring stair risers, mezzanine walkways, and perimeter railings.</div>
+          <div class="card-sub">Split-level spatial connectivity featuring stair risers, supported loft decks, perimeter railings, and chokepoint traps.</div>
         </div>
         <div class="card-stats">
           <span>85 Parts</span>

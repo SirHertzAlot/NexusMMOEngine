@@ -190,9 +190,19 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
     partsByCat[p.category].push(p);
   }
 
-  const pickCatPart = (cat: string): PartDef | null => {
-    const list = partsByCat[cat];
-    if (!list || list.length === 0) return null;
+  const pickCatPart = (cat: string, filterKeyword?: string): PartDef | null => {
+    let list = partsByCat[cat];
+    if (!list || list.length === 0) {
+      if (cat === "trap" || cat === "puzzle") {
+        list = partsByCat["prop"] || partsByCat["structure"] || [];
+      } else {
+        return null;
+      }
+    }
+    if (filterKeyword) {
+      const filtered = list.filter((p) => p.id.toLowerCase().includes(filterKeyword.toLowerCase()));
+      if (filtered.length > 0) list = filtered;
+    }
     return rng.pickWeighted(list, (p) => ruleSet.stats.partFrequencies?.[p.id] || 1) ?? list[0];
   };
 
@@ -329,6 +339,21 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
           }
         }
       }
+
+      // Phase 7: Traps & Puzzle Mechanics
+      // Floor spear traps in side aisles
+      for (const tx of [-5.0, 5.0]) {
+        const trapPart = pickCatPart("trap", "spear") || pickCatPart("trap");
+        if (trapPart) {
+          addPlacement(trapPart, new THREE.Vector3(tx, groundY + 0.05, 0), yawQuat(0));
+        }
+      }
+
+      // Puzzle Wall Levers inside alcoves (disarms aisle spear traps / unlocks sanctum)
+      const leverW = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
+      const leverE = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
+      if (leverW) addPlacement(leverW, new THREE.Vector3(-7.3, groundY + 1.8, 0), yawQuat(Math.PI / 2));
+      if (leverE) addPlacement(leverE, new THREE.Vector3(7.3, groundY + 1.8, 0), yawQuat(-Math.PI / 2));
     } else if (archetype === "boss-arena") {
       // Expansive 5x5 bay Grand Arena (25m x 25m) with Double-Height Perimeter Walls
       const bays = 5;
@@ -422,6 +447,23 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
           if (rub) {
             addPlacement(rub, new THREE.Vector3(cx, groundY + 0.3, cz), yawQuat(rng.next() * Math.PI * 2));
           }
+        }
+      }
+
+      // Phase 7: Arena Saw Rail Traps & Coordinated Puzzle Levers
+      // Perimeter saw rail hazard tracks along arena flanks
+      for (const sx of [-8.0, 8.0]) {
+        const sawTrap = pickCatPart("trap", "saw") || pickCatPart("trap");
+        if (sawTrap) {
+          addPlacement(sawTrap, new THREE.Vector3(sx, groundY + 0.2, -2.5), yawQuat(0));
+        }
+      }
+
+      // Puzzle Levers flanking the Dais (requiring dual coordination to lower arena shields)
+      for (const lx of [-4.5, 4.5]) {
+        const lever = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
+        if (lever) {
+          addPlacement(lever, new THREE.Vector3(lx, groundY + 0.5, 4.0), yawQuat(Math.PI));
         }
       }
     } else if (archetype === "multi-level-descent") {
@@ -537,6 +579,25 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         if (rub) {
           addPlacement(rub, new THREE.Vector3(-8.5, lowerY + 0.3, rz), yawQuat(rng.next() * Math.PI * 2));
         }
+      }
+
+      // Phase 8: Traps & Loft Puzzle Mechanism
+      // Chokepoint floor spear trap embedded at base of descent ramp
+      const rampTrap = pickCatPart("trap", "spear") || pickCatPart("trap");
+      if (rampTrap) {
+        addPlacement(rampTrap, new THREE.Vector3(0, lowerY + 0.05, 0.0), yawQuat(0));
+      }
+
+      // Loft Overseer puzzle lever mounted on upper balcony railing
+      const loftLever = pickCatPart("puzzle", "lever") || pickCatPart("puzzle");
+      if (loftLever) {
+        addPlacement(loftLever, new THREE.Vector3(-4.5, upperY + 1.0, -5.0), yawQuat(Math.PI));
+      }
+
+      // Overhead swinging blade trap housing above the ramp
+      const swingBlade = pickCatPart("trap", "swing") || pickCatPart("trap");
+      if (swingBlade) {
+        addPlacement(swingBlade, new THREE.Vector3(0, lowerY + 3.8, -2.5), yawQuat(0));
       }
     }
   }
