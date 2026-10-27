@@ -214,12 +214,18 @@ export function isConnectingTwoFloors(
 
     const hasLowerFloor = floorPlacements.some((f) => {
       const [fx, fy, fz] = f.transform.pos;
-      return Math.hypot(fx - xBot, fz - zBot) <= 3.0 && Math.abs(fy - yBase) <= 0.8;
+      const dx = Math.abs(fx - xBot);
+      const dz = Math.abs(fz - zBot);
+      const dy = Math.abs(fy - yBase);
+      return dx <= 3.8 && dz <= 3.8 && dy <= 1.0;
     });
 
     const hasUpperFloor = floorPlacements.some((f) => {
       const [fx, fy, fz] = f.transform.pos;
-      return Math.hypot(fx - xTop, fz - zTop) <= 3.0 && Math.abs(fy - yTop) <= 0.8 && fy >= yBase + 1.5;
+      const dx = Math.abs(fx - xTop);
+      const dz = Math.abs(fz - zTop);
+      const dy = Math.abs(fy - yTop);
+      return dx <= 3.8 && dz <= 3.8 && dy <= 1.0 && fy >= yBase + 1.5;
     });
 
     return hasLowerFloor && hasUpperFloor;
