@@ -23,6 +23,14 @@ import { streams, type Streams } from "./rng.js";
 import { ACCESS, BUILTIN_RULES, type Access, type SettlementRules, TRENDS, type Trend } from "./rules.js";
 import { placeStructures } from "./structures.js";
 import { validateTown, type Gate, type Town } from "./validate.js";
+import {
+  defaultCharacterCatalogs,
+  generateCharacter,
+  professionScore,
+  assembleBackstory,
+  alignmentBand,
+  type CharacterGenerationContext,
+} from "./character/index.js";
 
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
@@ -260,6 +268,230 @@ const STAGES: Stage[] = [
       ctx.town.guild = townGuild(ctx.town.industry ?? null, structures!, o, ctx.rules);
       const employed = o.npcs.filter((n) => n.workplace).length;
       ctx.events.emit("summary", "occupancy", "settled", { households: o.households.length, npcs: o.npcs.length, employed, shops: o.shops.length });
+    },
+  },
+  {
+    name: "character",
+    run(ctx) {
+      const { occupancy, structures } = ctx.town;
+      if (!occupancy || !structures) return;
+
+      const r = ctx.rng.get("character");
+      const catalogs = defaultCharacterCatalogs();
+      const byId = [...structures].sort((a, b) => (a.id < b.id ? -1 : 1));
+      const structureArchetype = new Map(byId.map((s) => [s.id, s.archetype]));
+      const professionOf = new Map(Object.entries(ctx.rules.mastery?.professions ?? {}).map(([name, p]) => [p.master, name]));
+
+      // 1. Initial character composition draw per NPC (deterministic by NPC ID order)
+      const npcs = occupancy.npcs;
+      for (const npc of npcs) {
+        const charCtx: CharacterGenerationContext = {
+          characterId: npc.id,
+          seedStream: { next: () => r.raw() },
+          cohort: npc.cohort,
+          classId: npc.class,
+          role: npc.role,
+          profession: npc.role,
+          townId: ctx.request.settlementId,
+        };
+        npc.character = generateCharacter(charCtx, catalogs);
+      }
+
+      // 2. Profession rescoring (§11, §15):
+      // Eligible candidates are working-age NPCs (adult, adolescent)
+      const WORKING = new Set(["adult", "adolescent"]);
+      const eligible = npcs.filter((n) => WORKING.has(n.cohort));
+
+      // Build job slots from structures with worker capacity
+      interface JobSlot {
+        structureId: string;
+        structureArchetype: string;
+        role: string;
+        professionKey: string;
+        isMaster: boolean;
+        isGrandMaster: boolean;
+      }
+
+      let grandMastersLeft = { ...(ctx.town.mastery?.grandMasters ?? {}) };
+      const jobSlots: JobSlot[] = [];
+
+      for (const s of byId) {
+        const arch = ctx.rules.archetypes[s.archetype];
+        if (!arch || arch.workers <= 0) continue;
+        const masterProf = professionOf.get(s.archetype);
+
+        for (let w = 0; w < arch.workers; w++) {
+          const isMaster = w === 0 && !!masterProf;
+          let isGrand = false;
+          if (isMaster && masterProf && (grandMastersLeft[masterProf] ?? 0) > 0) {
+            grandMastersLeft[masterProf] = grandMastersLeft[masterProf]! - 1;
+            isGrand = true;
+          }
+          jobSlots.push({
+            structureId: s.id,
+            structureArchetype: s.archetype,
+            role: arch.role,
+            professionKey: masterProf ?? arch.role,
+            isMaster,
+            isGrandMaster: isGrand,
+          });
+        }
+      }
+
+      // Pre-rank candidates for each unique (professionKey, role) pair for fast slot assignment
+      const rankedCandidatesByKey = new Map<string, (typeof eligible)[number][]>();
+      const cursorByKey = new Map<string, number>();
+
+      for (const slot of jobSlots) {
+        const key = `${slot.professionKey}|${slot.role}`;
+        if (!rankedCandidatesByKey.has(key)) {
+          const list = [...eligible].sort((a, b) => {
+            const charA = a.character!;
+            const charB = b.character!;
+            const scoreKeyA = professionScore(charA, slot.professionKey, catalogs);
+            const scoreRoleA = slot.role !== slot.professionKey ? professionScore(charA, slot.role, catalogs) : scoreKeyA;
+            const scoreA = Math.max(scoreKeyA, scoreRoleA);
+
+            const scoreKeyB = professionScore(charB, slot.professionKey, catalogs);
+            const scoreRoleB = slot.role !== slot.professionKey ? professionScore(charB, slot.role, catalogs) : scoreKeyB;
+            const scoreB = Math.max(scoreKeyB, scoreRoleB);
+
+            if (scoreA !== scoreB) return scoreB - scoreA;
+            return a.id < b.id ? -1 : 1;
+          });
+          rankedCandidatesByKey.set(key, list);
+          cursorByKey.set(key, 0);
+        }
+      }
+
+      // Match candidates to job slots by professionScore ranking
+      const unassigned = new Set(eligible);
+
+      for (const slot of jobSlots) {
+        if (unassigned.size === 0) break;
+        const key = `${slot.professionKey}|${slot.role}`;
+        const ranked = rankedCandidatesByKey.get(key)!;
+        let cursor = cursorByKey.get(key)!;
+
+        while (cursor < ranked.length && !unassigned.has(ranked[cursor]!)) {
+          cursor++;
+        }
+        cursorByKey.set(key, cursor);
+
+        if (cursor < ranked.length) {
+          const bestCandidate = ranked[cursor]!;
+          bestCandidate.workplace = slot.structureId;
+          if (slot.isMaster) bestCandidate.mastery = slot.professionKey;
+          else delete bestCandidate.mastery;
+          if (slot.isGrandMaster) bestCandidate.grandMaster = true;
+          else delete bestCandidate.grandMaster;
+          unassigned.delete(bestCandidate);
+        }
+      }
+
+      // Any remaining candidates without a workplace
+      for (const candidate of unassigned) {
+        delete candidate.workplace;
+        delete candidate.mastery;
+        delete candidate.grandMaster;
+      }
+
+      // Update NPC roles matching occupancy logic
+      for (const n of npcs) {
+        if (n.workplace) {
+          const sArch = structureArchetype.get(n.workplace)!;
+          const archDef = ctx.rules.archetypes[sArch]!;
+          if (n.grandMaster) {
+            n.role = `grand ${archDef.role}`;
+          } else if (n.mastery) {
+            n.role = archDef.role;
+          } else if (professionOf.has(sArch)) {
+            const profName = professionOf.get(sArch)!;
+            const baseArch = ctx.rules.mastery?.professions?.[profName]?.archetype ?? sArch;
+            const baseRole = ctx.rules.archetypes[baseArch]?.role ?? profName;
+            n.role = `apprentice ${baseRole}`;
+          } else {
+            n.role = archDef.role;
+          }
+        } else {
+          n.role = n.home === null
+            ? (n.cohort === "child" ? "orphan" : "beggar")
+            : (n.cohort === "child" ? "child" : n.cohort === "elder" ? "elder" : "resident");
+        }
+      }
+
+      // Shop ownership follows the worker as today
+      for (const shop of occupancy.shops) {
+        shop.owner = npcs.find((n) => n.workplace === shop.structure)?.id ?? null;
+      }
+
+      // Recompute guild with rescored masters
+      ctx.town.guild = townGuild(ctx.town.industry ?? null, structures, occupancy, ctx.rules);
+
+      // 3. Backstory re-render with assigned role and town (§12, §15)
+      for (const n of npcs) {
+        if (n.character) {
+          n.character.backstory = assembleBackstory(
+            {
+              characterId: n.id,
+              archetypeId: n.character.archetypeId,
+              temperamentId: n.character.temperamentId,
+              alignment: n.character.alignment,
+              interests: n.character.interests,
+              descriptorIds: n.character.descriptorIds,
+              profession: n.role,
+              townId: ctx.request.settlementId,
+              tier: "local",
+              pins: n.character.backstory,
+            },
+            catalogs,
+            {
+              next: () => r.raw(),
+              weightedPick: <T>(items: readonly T[], weightFn: (item: T) => number): T => {
+                let total = 0;
+                for (const it of items) total += weightFn(it);
+                if (total <= 0) return items[0];
+                let roll = r.raw() * total;
+                for (const it of items) {
+                  const w = weightFn(it);
+                  if (roll <= w) return it;
+                  roll -= w;
+                }
+                return items[items.length - 1];
+              },
+            },
+          );
+        }
+      }
+
+      // 4. Character distribution report and histograms (§15)
+      const archetypes: Record<string, number> = {};
+      const alignmentBands: Record<string, number> = {};
+      const topInterests: Record<string, number> = {};
+
+      for (const n of npcs) {
+        if (!n.character) continue;
+        archetypes[n.character.archetypeId] = (archetypes[n.character.archetypeId] ?? 0) + 1;
+        const bBand = alignmentBand(n.character.alignment.benevolence);
+        const oBand = alignmentBand(n.character.alignment.order);
+        alignmentBands[`benevolence:${bBand}`] = (alignmentBands[`benevolence:${bBand}`] ?? 0) + 1;
+        alignmentBands[`order:${oBand}`] = (alignmentBands[`order:${oBand}`] ?? 0) + 1;
+        const topInt = n.character.interests[0]?.id;
+        if (topInt) topInterests[topInt] = (topInterests[topInt] ?? 0) + 1;
+      }
+
+      const maxArch = Math.max(0, ...Object.values(archetypes));
+      const skew = npcs.length > 0 && maxArch / npcs.length > 0.40;
+      if (skew) {
+        ctx.events.emit("normal", "character", "distribution_skew", { archetypes, alignmentBands });
+      }
+
+      ctx.events.emit("summary", "character", "profiled", {
+        total: npcs.length,
+        archetypes,
+        alignmentBands,
+        topInterests,
+      });
     },
   },
   {

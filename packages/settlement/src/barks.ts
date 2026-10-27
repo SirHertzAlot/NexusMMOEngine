@@ -30,6 +30,65 @@ const GREET: Record<"morning" | "day" | "evening" | "night", readonly string[]> 
   night: ["Shouldn't you be abed?", "Late to be out.", "Quiet tonight.", "Keep your voice down, folk are sleeping."],
 };
 
+/** Specialized greeting by character barkTone (§12). */
+const TONE_GREET: Record<string, readonly string[]> = {
+  warm: ["Welcome, friend!", "Always good to see a friendly face.", "Blessings on your day.", "Good to see you."],
+  gruff: ["What do you want?", "Make it quick.", "Speak up, then.", "Hmph."],
+  laconic: ["Aye.", "Hullo.", "Morning.", "'Evening."],
+  earnest: ["Greetings! Hope the day treats you well.", "A good day to you, traveler.", "Peace and good fortune.", "Well met, friend."],
+  guarded: ["Who's asking?", "Mind yourself.", "Keep walking.", "Watching you."],
+  cheerful: ["Grand day, isn't it!", "Cheer up, friend!", "Sun's shining on us today!", "Hello there!"],
+  wry: ["Still alive, are we?", "Another day in paradise.", "Could be worse, I suppose.", "Back again?"],
+  mean: ["What do you want?", "Make it quick.", "Speak up, then.", "Hmph."],
+  "short-tempered": ["What do you want?", "Make it quick.", "Speak up, then.", "Hmph."],
+  "kind-hearted": ["Welcome, friend!", "Always good to see a friendly face.", "Blessings on your day.", "Good to see you."],
+  "even-keeled": ["Well met.", "Good day.", "Hello there."],
+  grim: ["Move along.", "Quiet day.", "Mind yourself."],
+};
+
+/** Lines keyed by descriptor ids or barkPools (§8, §12). */
+const DESCRIPTOR_BARKS: Record<string, readonly string[]> = {
+  mean: ["Don't get in my way.", "You're wasting my time.", "Get lost."],
+  demeanor_mean: ["Don't get in my way.", "You're wasting my time.", "Get lost."],
+  "kind-hearted": ["Take care out there.", "Let me know if you need a hand.", "Safe travels, friend."],
+  demeanor_kind: ["Take care out there.", "Let me know if you need a hand.", "Safe travels, friend."],
+  "short-tempered": ["I haven't got all day.", "Don't test my patience.", "What is it now?"],
+  demeanor_short_tempered: ["I haven't got all day.", "Don't test my patience.", "What is it now?"],
+  "even-keeled": ["One step at a time.", "Steady as she goes.", "No need to rush."],
+  demeanor_even_keeled: ["One step at a time.", "Steady as she goes.", "No need to rush."],
+  dutiful: ["Orders are orders.", "The post must be held.", "Duty comes before all else."],
+  moral_dutiful: ["Orders are orders.", "The post must be held.", "Duty comes before all else."],
+  cynical: ["Trust nobody, and you'll never be surprised.", "Promises are cheap around here."],
+  moral_cynical: ["Trust nobody, and you'll never be surprised.", "Promises are cheap around here."],
+  "loves-a-fight": ["Itching for a good brawl.", "Quiet days make my sword hand twitch.", "A good skirmish clears the mind."],
+  drive_loves_a_fight: ["Itching for a good brawl.", "Quiet days make my sword hand twitch.", "A good skirmish clears the mind."],
+  peaceable: ["May violence stay far from our walls.", "A quiet hearth is worth more than glory."],
+  drive_peaceable: ["May violence stay far from our walls.", "A quiet hearth is worth more than glory."],
+  gossip: ["Have you heard the talk about the old ruins?", "Word travels fast around here."],
+  social_gossip: ["Have you heard the talk about the old ruins?", "Word travels fast around here."],
+  taciturn: ["...", "Not much for talking.", "Quiet days are best."],
+  social_taciturn: ["...", "Not much for talking.", "Quiet days are best."],
+  generous: ["Share what you have, that's what I say.", "There's always enough to go around."],
+  social_generous: ["Share what you have, that's what I say.", "There's always enough to go around."],
+  miserly: ["Nothing in this life comes free.", "Count every coin twice."],
+  social_miserly: ["Nothing in this life comes free.", "Count every coin twice."],
+  ambitious: ["There's greater things waiting for me.", "One day they'll know my name."],
+  drive_ambitious: ["There's greater things waiting for me.", "One day they'll know my name."],
+  curious: ["I wonder what lies beyond the horizon.", "There is always something new to uncover."],
+  drive_curious: ["I wonder what lies beyond the horizon.", "There is always something new to uncover."],
+};
+
+/** Personal lines keyed by character backstory want/flaw fragment ids (§12). */
+const PERSONAL_BARKS: Record<string, readonly string[]> = {
+  "flaw:distrust": ["Keep your hands where I can see them.", "I don't trust strangers easily."],
+  "flaw:wrath": ["Cross me, and you'll regret it.", "My temper runs hot today."],
+  "flaw:greed": ["Gold is the only thing that never lies.", "A heavy purse makes a light heart."],
+  "want:wealth": ["Looking for opportunities to turn a profit.", "Every coin saved is a step forward."],
+  "want:mastery": ["Every day I strive to perfect my craft.", "Practice makes the master."],
+  "want:travel": ["One day I'll see what lies across the sea.", "The road is always calling."],
+  "want:peace": ["All I want is a quiet life without trouble.", "May peace last in our time."],
+};
+
 const WORK: Record<string, readonly string[]> = {
   bakery: ["The bread's fresh from the oven.", "Flour's dear this season.", "I was up before the sun for these loaves."],
   master_bakery: ["The bread's fresh from the oven.", "Folk come from three villages for my loaves."],
@@ -76,13 +135,47 @@ export function partOfDay(timeOfDay: number): "morning" | "day" | "evening" | "n
 export function barkFor(npc: Npc, ctx: BarkContext): string {
   const seed = hashOf(`${npc.id}|${ctx.day}`);
   if (ctx.raid) return pick(RAID, seed);
-  const greeting = pick(GREET[partOfDay(ctx.timeOfDay)], seed >>> 3);
+
+  // Profile-driven tone greeting, falling back to time-of-day greeting
+  let greeting: string;
+  const tone = npc.character?.profile?.barkTone;
+  if (tone && TONE_GREET[tone]) {
+    greeting = pick(TONE_GREET[tone]!, seed >>> 3);
+  } else {
+    greeting = pick(GREET[partOfDay(ctx.timeOfDay)], seed >>> 3);
+  }
+
+  // Check for character-specific lines (descriptors and personal wants/flaws)
+  const characterLines: string[] = [];
+  if (npc.character) {
+    for (const dId of npc.character.descriptorIds) {
+      if (DESCRIPTOR_BARKS[dId]) characterLines.push(...DESCRIPTOR_BARKS[dId]!);
+    }
+    const want = npc.character.backstory?.wantId;
+    if (want && PERSONAL_BARKS[want]) characterLines.push(...PERSONAL_BARKS[want]!);
+    const flaw = npc.character.backstory?.flawId;
+    if (flaw && PERSONAL_BARKS[flaw]) characterLines.push(...PERSONAL_BARKS[flaw]!);
+  }
+
   let line: string;
-  if (npc.cohort === "child") line = pick(CHILD, seed >>> 7);
-  else if (npc.role === "beggar") line = pick(BEGGAR, seed >>> 7);
-  else if (npc.workplace && ctx.workplace) line = pick(WORK[ctx.workplace] ?? WORKER_GENERIC, seed >>> 7);
-  else if (CLASS[npc.class] && seed % 3 === 0) line = pick(CLASS[npc.class]!, seed >>> 7);
-  else line = pick(IDLE, seed >>> 7);
-  // Children and beggars skip the formal greeting about half the time.
-  return npc.cohort === "child" || npc.role === "beggar" ? (seed % 2 ? line : `${greeting} ${line}`) : `${greeting} ${line}`;
+  // If character lines are available and seed selects character flavor (half the time for non-special roles)
+  if (characterLines.length > 0 && npc.cohort !== "child" && npc.role !== "beggar" && seed % 2 === 0) {
+    line = pick(characterLines, seed >>> 7);
+  } else if (npc.cohort === "child") {
+    line = pick(CHILD, seed >>> 7);
+  } else if (npc.role === "beggar") {
+    line = pick(BEGGAR, seed >>> 7);
+  } else if (npc.workplace && ctx.workplace) {
+    line = pick(WORK[ctx.workplace] ?? WORKER_GENERIC, seed >>> 7);
+  } else if (CLASS[npc.class] && seed % 3 === 0) {
+    line = pick(CLASS[npc.class]!, seed >>> 7);
+  } else if (characterLines.length > 0) {
+    line = pick(characterLines, seed >>> 7);
+  } else {
+    line = pick(IDLE, seed >>> 7);
+  }
+
+  // Children, beggars, and laconic characters skip the formal greeting about half the time.
+  const skipGreeting = npc.cohort === "child" || npc.role === "beggar" || tone === "laconic";
+  return skipGreeting ? (seed % 2 ? line : `${greeting} ${line}`) : `${greeting} ${line}`;
 }

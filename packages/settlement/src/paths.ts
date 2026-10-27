@@ -15,6 +15,8 @@ export interface SettlementPaths {
   catalog: string;
   /** The town generator's rules file (the editor's Towns screen edits it). */
   rules: string;
+  /** Character catalogs file (archetypes, temperaments, descriptors, rules, fragments). */
+  character: string;
 }
 
 /**
@@ -36,5 +38,6 @@ export function settlementPaths(env: NodeJS.ProcessEnv = process.env, cwd: strin
     catalog: abs(pick("MMO_CATALOG"), resolve(assets, "catalog.json")),
     // Authored content, not bake output: it stays with the repo when MMO_CONTENT_DIR points the bakes elsewhere.
     rules: abs(pick("MMO_SETTLEMENT_RULES"), resolve(root, "content", "settlements", "rules.json")),
+    character: abs(pick("MMO_CHARACTER_RULES"), resolve(root, "content", "settlements", "character.json")),
   };
 }
