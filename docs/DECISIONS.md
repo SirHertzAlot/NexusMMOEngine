@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — C++ Main Tick Phase 4: Native Tick Loop, Determinism Audit & Hardening.**
+  Completed Phase 4 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE4-REPORT.md`):
+  - **Native Fixed-Step Loop & Spiral Guard:** Integrated accumulator stepping into `SimWorkerRuntime` with 250ms frame gap clamping, a 5-step catch-up cap, and lockless atomic drop telemetry (`TELEMETRY_SLOTS.SPIRAL_EVENTS` and `DROPPED_MS`).
+  - **Determinism Audit:** Verified bit-for-bit replay determinism across 500 ticks on 100 entities under chaotic input streams (FNV-1a checksum matched with 0 ulp deviation). Audited and established floating-point compiler contract (`/fp:precise`, `-ffp-contract=off`) and `Math.*` single-precision inventory.
+  - **SimWorker Crash Drill & Hot Reattachment:** Verified gateway socket survivability during an unhandled worker termination drill (client WebSocket stayed OPEN with zero disconnects); executed hot reattachment (`restartSimWorker()`) without state loss.
+  - **Owed B3 Load Test at Scale:** Ran 51,000 entities (1,000 players + 50,000 NPCs) under 1,000-client fan-out with injected network profile (45ms latency, ±15ms jitter, 2% packet loss). Achieved **0.562ms p99 tick latency** (only **1.7%** of the 33.33ms budget, beating the 25% ceiling) and **0 dropped steps**. Verified `PlayerIntent` edge-trigger re-fire (`PRESSED -> RELEASED -> RE-PRESSED (SPRINT)`).
+
 - **2026-10-27 — C++ Main Tick Phase 3: System-by-System Migration & Parity Verification.**
   Completed Phase 3 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE3-REPORT.md`):
   - **Rule 4 Gating Decisions:** Evaluated simulation systems following measured tick share against Rule 4 hurdle rates:

@@ -195,6 +195,50 @@ export class HybridDataPlaneServer {
     return enqueued;
   }
 
+  /**
+   * Restarts the simulation worker after a crash or manual kill drill.
+   * Attaches to the same shared memory arena, preserving live entity states.
+   */
+  public async restartSimWorker(): Promise<void> {
+    if (this.simWorker) {
+      try {
+        await this.simWorker.terminate();
+      } catch {}
+      this.simWorker = null;
+    }
+    const { scriptPath, execArgv } = resolveWorkerScript("sim-worker");
+    const worker = new Worker(scriptPath, {
+      execArgv,
+      workerData: {
+        workerRole: "sim",
+        sharedMemory: this.masterMemoryArena,
+        entityCapacity: this.entityCapacity,
+        inputRingCapacity: this.opts.inputRingCapacity ?? DEFAULT_INPUT_RING_CAPACITY,
+        persistRingCapacity: this.opts.persistRingCapacity ?? DEFAULT_PERSIST_RING_CAPACITY,
+        autoStart: this.opts.simAutoStart ?? true,
+        mode: this.opts.simMode ?? "matrix",
+        decodeMovementIntents: this.opts.decodeMovementIntents ?? false,
+        useBatchDrain: this.opts.useBatchDrain ?? false,
+      },
+    });
+    this.simWorker = worker;
+    await new Promise<void>((resolve, reject) => {
+      const onMsg = (msg: { type?: string }) => {
+        if (msg?.type === "ready") {
+          worker.off("message", onMsg);
+          worker.off("error", onErr);
+          resolve();
+        }
+      };
+      const onErr = (err: Error) => {
+        worker.off("message", onMsg);
+        reject(err);
+      };
+      worker.on("message", onMsg);
+      worker.once("error", onErr);
+    });
+  }
+
   /** Spawn the Simulation Worker and (optionally) the Persistence Worker. */
   public async startWorkers(): Promise<void> {
     if (this.opts.spawnWorkers === false) return;

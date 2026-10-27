@@ -844,3 +844,8 @@ Newest first. One line per merged PR or decision.
   - Ported Spatial Indexing to packed 32-bit integer coordinate grid (`FastSpatialGrid`), eliminating 100% of per-tick string allocations and delivering a **1.98×** speedup.
   - Maintained branchy behavior tree systems (creatures, combat, residents) in TypeScript on top of the shared memory data plane, validating the mixed-tick SAB contract.
   - Golden parity test suite passed 6/6 tests (`packages/engine-core/test/native-systems-parity.test.ts`).
+- **2026-10-27**: C++ Main Tick Migration — Phase 4 Native Tick Loop, Determinism Audit & Hardening (docs/CPP-MAIN-TICK-PHASE4-REPORT.md):
+  - Finalized native fixed-step accumulator and spiral-of-death guard in SimWorkerRuntime with 250ms frame gap clamping, 5-step catch-up cap, and atomic SharedArrayBuffer drop telemetry (TELEMETRY_SLOTS.SPIRAL_EVENTS, DROPPED_MS).
+  - Established determinism audit: verified bit-for-bit replay hash equality across 500 ticks on 100 entities under dynamic input streams; inventoried IEEE-754 single-precision Math.* equivalents and compiler contract (/fp:precise, -ffp-contract=off).
+  - Executed SimWorker crash drill: proved gateway WebSocket session survivability (zero client disconnects) and hot worker reattachment to the master SAB memory arena.
+  - Passed owed B3 Load Test at target scale: 51,000 entities (1k players + 50k NPCs) under 1,000-client fan-out with network impairment injection (45ms latency, ±15ms jitter, 2% loss), achieving 0.562ms p99 tick latency (1.7% of 33.33ms budget, beating the 25% threshold) with 0 dropped steps. Verified PlayerIntent edge-trigger re-fire.

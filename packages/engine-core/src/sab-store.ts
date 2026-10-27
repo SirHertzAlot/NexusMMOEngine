@@ -303,7 +303,9 @@ export const TELEMETRY_SLOTS = {
   PERSIST_COMMITTED: 5,
   BUDGET_OVERRUNS: 6,
   SHUTDOWN_SIGNAL: 7,
-  COUNT: 8,
+  SPIRAL_EVENTS: 8,
+  DROPPED_MS: 9,
+  COUNT: 10,
 } as const;
 
 export interface MemoryArenaOffsets {
