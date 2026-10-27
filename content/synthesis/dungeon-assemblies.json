@@ -44836,8 +44836,8 @@
       },
       {
         "partId": "SM_Env_Rune_Pillar_04",
-        "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_04.glb",
-        "category": "pillar",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_04.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             34.84,
@@ -44859,8 +44859,8 @@
       },
       {
         "partId": "SM_Env_Rune_Pillar_01",
-        "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_01.glb",
-        "category": "pillar",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_01.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             34.12,
@@ -71595,8 +71595,8 @@
       },
       {
         "partId": "SM_Env_Rune_Pillar_05",
-        "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_05.glb",
-        "category": "pillar",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_05.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             40.68,
@@ -71618,8 +71618,8 @@
       },
       {
         "partId": "SM_Env_Rune_Pillar_02",
-        "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_02.glb",
-        "category": "pillar",
+        "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_02.glb",
+        "category": "puzzle",
         "transform": {
           "pos": [
             46.95,

@@ -245,5 +245,29 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
     assert.equal(trap.state, "armed");
     assert.equal(trap.triggerVolume.hidden, true);
     assert.ok(trap.onCollision.damage > 0);
+
+    // Universal Measurement System verification
+    assert.ok(output.measurement, "must generate measurement report");
+    assert.equal(output.measurement.humanScaleBaseline.referenceHeightM, 1.8);
+    assert.equal(output.measurement.humanScaleBaseline.eyeLevelM, 1.62);
+    assert.ok(output.measurement.spatialPerception.tier, "spatial tier must be computed");
+    assert.ok(output.measurement.scaleTierCounts.handheld >= 0);
+    assert.ok(output.measurement.scaleTierCounts.human > 0);
+    assert.ok(output.measurement.interactivitySummary.interactableCount > 0);
+
+    // Verify structural invariants: walls and floors preserve unit scale 1.0
+    const structuralPlacements = output.placements.filter(p =>
+      p.partId.includes("Wall") || p.partId.includes("Tiles")
+    );
+    for (const p of structuralPlacements) {
+      assert.deepEqual(p.transform.scale, [1, 1, 1], `Structural part ${p.partId} must maintain exact 1.0 scale`);
+    }
+
+    // Verify organic clutter or props have controlled size variance applied
+    const rubblePlacements = output.placements.filter(p => p.partId.includes("Rubble"));
+    if (rubblePlacements.length > 0) {
+      const hasVariedScale = rubblePlacements.some(p => p.transform.scale[0] !== 1.0);
+      assert.ok(hasVariedScale, "Rubble placements should feature size variance");
+    }
   });
 });

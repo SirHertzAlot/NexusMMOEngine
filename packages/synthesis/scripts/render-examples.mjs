@@ -163,12 +163,33 @@ async function main() {
       <div class="badge badge-green">${result.placements.length} Parts Placed</div>
       <div class="badge badge-purple">${result.report.elapsedMs}ms Solve Time</div>
       <div class="badge badge-amber">Seed: ${arch.problem.seed}</div>
+      <div class="badge" style="color: #00f5d4; border-color: #00f5d4;">Perception: ${(result.measurement?.spatialPerception.tier || "expansive").toUpperCase()}</div>
     </div>
   </div>
 
   <div class="content">
     <div class="viewport-box" id="viewport"></div>
     <div class="sidebar">
+      <div class="panel">
+        <h3>Universal Measurement System (UMS)</h3>
+        <div class="cat-row">
+          <div><span class="cat-dot" style="background:#00f5d4;"></span><span>Perception Tier</span></div>
+          <div style="font-weight:600; color:#00f5d4; text-transform:uppercase;">${result.measurement?.spatialPerception.tier || "expansive"}</div>
+        </div>
+        <div class="cat-row">
+          <div><span class="cat-dot" style="background:#58a6ff;"></span><span>Eye Horizon / Height</span></div>
+          <div style="font-weight:600; color:#f0f6fc;">1.62m / 1.80m</div>
+        </div>
+        <div class="cat-row">
+          <div><span class="cat-dot" style="background:#bc8cff;"></span><span>Interactables / Traps</span></div>
+          <div style="font-weight:600; color:#f0f6fc;">${result.measurement?.interactivitySummary.interactableCount || 0} / ${result.traps?.length || 0}</div>
+        </div>
+        <div class="cat-row">
+          <div><span class="cat-dot" style="background:#f0883e;"></span><span>Scale Tiers (Human/Prop)</span></div>
+          <div style="font-weight:600; color:#f0f6fc;">${result.measurement?.scaleTierCounts.human || 0} / ${result.measurement?.scaleTierCounts.handheld || 0}</div>
+        </div>
+      </div>
+
       <div class="panel">
         <h3>Architectural Composition</h3>
         ${Object.entries(result.report.categoryCounts)
@@ -350,6 +371,9 @@ async function main() {
       const [qx, qy, qz, qw] = p.transform.rot;
       mesh.position.set(px, py, pz);
       mesh.quaternion.set(qx, qy, qz, qw);
+      if (p.transform.scale) {
+        mesh.scale.set(p.transform.scale[0], p.transform.scale[1], p.transform.scale[2]);
+      }
 
       // Add edge highlight wireframe
       const wireGeom = new THREE.EdgesGeometry(geom);
@@ -359,6 +383,29 @@ async function main() {
 
       scene.add(mesh);
     }
+
+    // Human Reference Anchor (1.80m standing height, 1.62m eye horizon line)
+    const humanGroup = new THREE.Group();
+    const bodyGeom = new THREE.CylinderGeometry(0.35, 0.35, 1.4, 16);
+    const bodyMat = new THREE.MeshBasicMaterial({ color: 0x00f5d4, wireframe: true });
+    const bodyMesh = new THREE.Mesh(bodyGeom, bodyMat);
+    bodyMesh.position.y = 0.9;
+    humanGroup.add(bodyMesh);
+
+    const headGeom = new THREE.SphereGeometry(0.2, 16, 16);
+    const headMesh = new THREE.Mesh(headGeom, bodyMat);
+    headMesh.position.y = 1.7;
+    humanGroup.add(headMesh);
+
+    const eyeGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.6, 1.62, 0),
+      new THREE.Vector3(0.6, 1.62, 0)
+    ]);
+    const eyeLine = new THREE.Line(eyeGeom, new THREE.LineBasicMaterial({ color: 0xffff00 }));
+    humanGroup.add(eyeLine);
+
+    humanGroup.position.set(0, 0.1, 4);
+    scene.add(humanGroup);
 
     renderer.render(scene, camera);
   </script>
@@ -445,7 +492,7 @@ async function main() {
 <body>
   <div class="header">
     <h1>Continuous Model Synthesis — Archetype Gallery</h1>
-    <p>Procedural chambers grown from learned Unity scene grammar with sub-millimeter precision, architectural grounding, traps & puzzles</p>
+    <p>Procedural chambers grown from learned Unity scene grammar with sub-millimeter precision, architectural grounding, traps & puzzles, and universal measurement scale</p>
   </div>
   <div class="triptych">
     <div class="card">

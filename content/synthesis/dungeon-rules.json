@@ -26042,32 +26042,32 @@
     },
     "SM_Env_Rune_Pillar_04": {
       "id": "SM_Env_Rune_Pillar_04",
-      "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_04.glb",
-      "category": "pillar",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_04.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.75,
-          -2,
-          -0.75
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.75,
-          2,
-          0.75
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1.5,
-          4,
-          1.5
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
           "name": "bottom",
-          "kind": "pillar-base",
+          "kind": "surface-contact",
           "offset": [
             0,
-            -2,
+            -1.25,
             0
           ],
           "normal": [
@@ -26077,68 +26077,12 @@
           ]
         },
         {
-          "name": "top",
-          "kind": "pillar-cap",
-          "offset": [
-            0,
-            2,
-            0
-          ],
-          "normal": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "name": "side_px",
-          "kind": "pillar-side",
-          "offset": [
-            0.75,
-            0,
-            0
-          ],
-          "normal": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_nx",
-          "kind": "pillar-side",
-          "offset": [
-            -0.75,
-            0,
-            0
-          ],
-          "normal": [
-            -1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_pz",
-          "kind": "pillar-side",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
             0,
-            0.75
-          ],
-          "normal": [
-            0,
-            0,
-            1
-          ]
-        },
-        {
-          "name": "side_nz",
-          "kind": "pillar-side",
-          "offset": [
-            0,
-            0,
-            -0.75
+            -1.25
           ],
           "normal": [
             0,
@@ -26150,32 +26094,32 @@
     },
     "SM_Env_Rune_Pillar_01": {
       "id": "SM_Env_Rune_Pillar_01",
-      "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_01.glb",
-      "category": "pillar",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_01.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.75,
-          -2,
-          -0.75
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.75,
-          2,
-          0.75
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1.5,
-          4,
-          1.5
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
           "name": "bottom",
-          "kind": "pillar-base",
+          "kind": "surface-contact",
           "offset": [
             0,
-            -2,
+            -1.25,
             0
           ],
           "normal": [
@@ -26185,68 +26129,12 @@
           ]
         },
         {
-          "name": "top",
-          "kind": "pillar-cap",
-          "offset": [
-            0,
-            2,
-            0
-          ],
-          "normal": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "name": "side_px",
-          "kind": "pillar-side",
-          "offset": [
-            0.75,
-            0,
-            0
-          ],
-          "normal": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_nx",
-          "kind": "pillar-side",
-          "offset": [
-            -0.75,
-            0,
-            0
-          ],
-          "normal": [
-            -1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_pz",
-          "kind": "pillar-side",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
             0,
-            0.75
-          ],
-          "normal": [
-            0,
-            0,
-            1
-          ]
-        },
-        {
-          "name": "side_nz",
-          "kind": "pillar-side",
-          "offset": [
-            0,
-            0,
-            -0.75
+            -1.25
           ],
           "normal": [
             0,
@@ -38938,32 +38826,32 @@
     },
     "SM_Env_Rune_Pillar_05": {
       "id": "SM_Env_Rune_Pillar_05",
-      "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_05.glb",
-      "category": "pillar",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_05.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.75,
-          -2,
-          -0.75
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.75,
-          2,
-          0.75
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1.5,
-          4,
-          1.5
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
           "name": "bottom",
-          "kind": "pillar-base",
+          "kind": "surface-contact",
           "offset": [
             0,
-            -2,
+            -1.25,
             0
           ],
           "normal": [
@@ -38973,68 +38861,12 @@
           ]
         },
         {
-          "name": "top",
-          "kind": "pillar-cap",
-          "offset": [
-            0,
-            2,
-            0
-          ],
-          "normal": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "name": "side_px",
-          "kind": "pillar-side",
-          "offset": [
-            0.75,
-            0,
-            0
-          ],
-          "normal": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_nx",
-          "kind": "pillar-side",
-          "offset": [
-            -0.75,
-            0,
-            0
-          ],
-          "normal": [
-            -1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_pz",
-          "kind": "pillar-side",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
             0,
-            0.75
-          ],
-          "normal": [
-            0,
-            0,
-            1
-          ]
-        },
-        {
-          "name": "side_nz",
-          "kind": "pillar-side",
-          "offset": [
-            0,
-            0,
-            -0.75
+            -1.25
           ],
           "normal": [
             0,
@@ -39046,32 +38878,32 @@
     },
     "SM_Env_Rune_Pillar_02": {
       "id": "SM_Env_Rune_Pillar_02",
-      "assetRef": "models/glb/dungeon-pack/pillar/SM_Env_Rune_Pillar_02.glb",
-      "category": "pillar",
+      "assetRef": "models/glb/dungeon-pack/puzzle/SM_Env_Rune_Pillar_02.glb",
+      "category": "puzzle",
       "bounds": {
         "min": [
-          -0.75,
-          -2,
-          -0.75
+          -1.25,
+          -1.25,
+          -1.25
         ],
         "max": [
-          0.75,
-          2,
-          0.75
+          1.25,
+          1.25,
+          1.25
         ],
         "size": [
-          1.5,
-          4,
-          1.5
+          2.5,
+          2.5,
+          2.5
         ]
       },
       "sockets": [
         {
           "name": "bottom",
-          "kind": "pillar-base",
+          "kind": "surface-contact",
           "offset": [
             0,
-            -2,
+            -1.25,
             0
           ],
           "normal": [
@@ -39081,68 +38913,12 @@
           ]
         },
         {
-          "name": "top",
-          "kind": "pillar-cap",
-          "offset": [
-            0,
-            2,
-            0
-          ],
-          "normal": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "name": "side_px",
-          "kind": "pillar-side",
-          "offset": [
-            0.75,
-            0,
-            0
-          ],
-          "normal": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_nx",
-          "kind": "pillar-side",
-          "offset": [
-            -0.75,
-            0,
-            0
-          ],
-          "normal": [
-            -1,
-            0,
-            0
-          ]
-        },
-        {
-          "name": "side_pz",
-          "kind": "pillar-side",
+          "name": "back",
+          "kind": "wall-face",
           "offset": [
             0,
             0,
-            0.75
-          ],
-          "normal": [
-            0,
-            0,
-            1
-          ]
-        },
-        {
-          "name": "side_nz",
-          "kind": "pillar-side",
-          "offset": [
-            0,
-            0,
-            -0.75
+            -1.25
           ],
           "normal": [
             0,
@@ -92258,6 +92034,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Rune_Pillar_01",
+      "aSocket": "back",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_bottom",
+      "count": 1,
+      "frequency": 1,
+      "transformStats": {
+        "meanOffset": [
+          -1.32,
+          0.44,
+          0.33
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Rune_Pillar_01",
+      "bSocket": "back",
+      "count": 1,
+      "frequency": 0.00819672131147541,
+      "transformStats": {
+        "meanOffset": [
+          1.32,
+          -0.44,
+          -0.33
+        ],
+        "spreadOffset": [
+          0,
+          0,
+          0
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall",
       "aSocket": "front",
       "bPart": "SM_Prop_Skeleton_Slave_Shackles",
@@ -103430,6 +103248,48 @@
       }
     },
     {
+      "aPart": "SM_Env_Rune_Pillar_05",
+      "aSocket": "back",
+      "bPart": "SM_Env_Rubble_Pebbles",
+      "bSocket": "mount_bottom",
+      "count": 2,
+      "frequency": 2,
+      "transformStats": {
+        "meanOffset": [
+          0.93,
+          2.33,
+          -0.075
+        ],
+        "spreadOffset": [
+          2.23,
+          1.24,
+          0.035
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
+      "aPart": "SM_Env_Rubble_Pebbles",
+      "aSocket": "mount_bottom",
+      "bPart": "SM_Env_Rune_Pillar_05",
+      "bSocket": "back",
+      "count": 2,
+      "frequency": 0.01639344262295082,
+      "transformStats": {
+        "meanOffset": [
+          -0.93,
+          -2.33,
+          0.075
+        ],
+        "spreadOffset": [
+          2.23,
+          1.24,
+          0.035
+        ],
+        "relativeYawDeg": 0
+      }
+    },
+    {
       "aPart": "SM_Env_Wall_Curved_Roof_01",
       "aSocket": "edge_left",
       "bPart": "SM_Env_Wall_Curved_Roof",
@@ -108911,47 +108771,11 @@
     },
     {
       "partId": "SM_Env_Rune_Pillar_04",
-      "socket": "top"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_04",
-      "socket": "side_px"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_04",
-      "socket": "side_nx"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_04",
-      "socket": "side_pz"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_04",
-      "socket": "side_nz"
+      "socket": "back"
     },
     {
       "partId": "SM_Env_Rune_Pillar_01",
       "socket": "bottom"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_01",
-      "socket": "top"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_01",
-      "socket": "side_px"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_01",
-      "socket": "side_nx"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_01",
-      "socket": "side_pz"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_01",
-      "socket": "side_nz"
     },
     {
       "partId": "SM_Env_Sewer_Canal",
@@ -110714,48 +110538,12 @@
       "socket": "bottom"
     },
     {
-      "partId": "SM_Env_Rune_Pillar_05",
-      "socket": "top"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_05",
-      "socket": "side_px"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_05",
-      "socket": "side_nx"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_05",
-      "socket": "side_pz"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_05",
-      "socket": "side_nz"
-    },
-    {
       "partId": "SM_Env_Rune_Pillar_02",
       "socket": "bottom"
     },
     {
       "partId": "SM_Env_Rune_Pillar_02",
-      "socket": "top"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_02",
-      "socket": "side_px"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_02",
-      "socket": "side_nx"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_02",
-      "socket": "side_pz"
-    },
-    {
-      "partId": "SM_Env_Rune_Pillar_02",
-      "socket": "side_nz"
+      "socket": "back"
     },
     {
       "partId": "SM_Env_Sewer_Canal_01",
@@ -111145,20 +110933,20 @@
   "stats": {
     "totalPlacements": 3376,
     "uniqueParts": 598,
-    "totalAdjacencyPairs": 10304,
+    "totalAdjacencyPairs": 10310,
     "categoryDistribution": {
       "floor": 272,
       "stairs": 24,
       "wall": 1057,
       "structure": 295,
       "door": 80,
-      "pillar": 157,
+      "pillar": 153,
       "ceiling": 211,
       "railing": 99,
       "prop": 335,
       "rock": 522,
       "rubble": 162,
-      "puzzle": 3,
+      "puzzle": 7,
       "trap": 16,
       "nature": 143
     },

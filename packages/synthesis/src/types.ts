@@ -218,11 +218,34 @@ export interface SynthesisReport {
   categoryCounts: Record<string, number>;
 }
 
+export interface SynthesisMeasurementReport {
+  spatialPerception: {
+    tier: "claustrophobic" | "intimate" | "expansive" | "monumental" | "abyssal";
+    eyeClearanceM: number;
+    widthToHeightRatio: number;
+    apparentVolumeM3: number;
+    immersionDescription: string;
+  };
+  scaleTierCounts: Record<string, number>;
+  humanScaleBaseline: {
+    referenceHeightM: number;
+    eyeLevelM: number;
+    stepOverThresholdM: number;
+    reachRadiusM: number;
+  };
+  interactivitySummary: {
+    interactableCount: number;
+    traversalObstacleCount: number;
+    stepOverCount: number;
+  };
+}
+
 export interface SynthesisOutput {
   placements: SynthesizedPlacement[];
   report: SynthesisReport;
   puzzles?: CombinationPuzzleDefinition[];
   traps?: CollisionTrapDefinition[];
+  measurement?: SynthesisMeasurementReport;
 }
 
 export class SynthesisError extends Error {

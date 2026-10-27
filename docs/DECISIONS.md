@@ -712,3 +712,21 @@ Every entry: date, decision, rationale. Newest first.
   2) **Hidden Collision-Triggered Traps (`CollisionTrapDefinition`)**:
      - Traps (flush floor spear grates, circular saw rails, overhead pendulum blades) carry hidden bounding trigger volumes (`triggerVolume: { shape: "box", hidden: true }`) flush with floor tiles along natural corridors and chokepoints.
      - When an entity collider overlaps the trigger volume, a collision event invocation fires: transitions state to `triggered`, executes the trap animation (e.g. `spears_thrust_up`, `saw_blade_spin_traverse`), delivers physical/bleed damage (35–50 HP), applies vertical/directional knockback, and enters a cooldown cycle before rearming.
+
+- **2026-10-27 — Universal Measurement System (UMS) for scale, perspective, and size variance (PR #437).**
+  To anchor human perception, ergonomic gameplay, and visual immersion across procedural synthesis and scene management (`@mmo-engine/scene`, `@mmo-engine/synthesis`):
+  1) **Authoritative Reference Anchors**: Canonical SI meter scale ($1.0 = 1\text{m}$) anchored by standardized human proportions (standing height $1.80\text{m}$, eye horizon $1.62\text{m}$, crouch $1.05\text{m}$, capsule radius $0.35\text{m}$, step-over clearance $0.30\text{m}$, vault threshold $1.20\text{m}$, forward reach $2.20\text{m}$).
+  2) **Perspective & Spatial Immersion Classification**: Optical visual angle calculation ($\theta = 2 \arctan\frac{h}{2d}$) and proportion analysis classifying chambers into 5 immersion tiers:
+     - `claustrophobic` (height $< 2.4\text{m}$, clearance $< 0.8\text{m}$): cramped tunnels, tight crawlspaces.
+     - `intimate` (height $2.4\text{m} - 3.8\text{m}$): crypt burial chambers, residential alcoves.
+     - `expansive` (height $3.8\text{m} - 9.0\text{m}$): standard dungeon halls, nave colonnades.
+     - `monumental` (height $9.0\text{m} - 18.0\text{m}$ or span $> 20\text{m}$): cathedral boss arenas, great keeps.
+     - `abyssal` (height $> 18.0\text{m}$ or volume $> 50,000\text{m}^3$): subterranean chasms, titan vaults.
+  3) **Controlled Size Variance with Invariant Preservation**:
+     - Strict $5.0\text{m}$ grid snap ($s=1.0$) for structural load-bearing elements (walls, floors, stairs, portals) preventing seam cracks and ensuring doorway width $\ge 1.0\text{m}$ and step risers $\le 0.30\text{m}$.
+     - Controlled scale variation for organic clutter (rubble $\pm 30\%$, flora $\pm 20\%$) and dressing props (chests $\pm 10\%$, altars $\pm 15\%$) driven deterministically by Mulberry32 hashing.
+  4) **Gameplay & Physical Interactivity Scaling**:
+     - Reach scaling ($R_{\text{eff}} = R_{\text{base}}\sqrt{s}$): larger objects can be interacted with from further away.
+     - Traversal obstacle classification: `step-over` ($\le 0.30\text{m}$), `low-cover` ($0.30 - 1.20\text{m}$, vaultable), `high-cover` ($1.20 - 2.00\text{m}$), `full-obstacle` ($> 2.00\text{m}$).
+     - Physics mass scaling cubically with scale ($M \propto s^3$).
+     - Acoustic resonance pitch shifting inversely with cube-root scale ($f \propto \frac{1}{\sqrt[3]{s}}$), ensuring larger objects produce deeper, resonant thuds and smaller objects produce crisp clatters.

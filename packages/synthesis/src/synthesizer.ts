@@ -8,11 +8,20 @@
  */
 
 import * as THREE from "three";
+import {
+  HUMAN_REFERENCE_METRICS,
+  ERGONOMIC_REFERENCE_ANCHORS,
+  classifyScaleTier,
+  analyzeSpatialPerception,
+  generateScaleVariance,
+  type ScaleTier,
+} from "@mmo-engine/scene";
 import type {
   SynthesisProblem,
   SynthesisOutput,
   SynthesizedPlacement,
   SynthesisReport,
+  SynthesisMeasurementReport,
   TransformData,
   BoundsData,
   Vec3Tuple,
@@ -132,6 +141,14 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
   const placedAABBs: BoundingAABB[] = [];
   const openSockets: WorldSocket[] = [];
   const categoryCounts: Record<string, number> = {};
+  const scaleTierCounts: Record<string, number> = {
+    micro: 0,
+    handheld: 0,
+    human: 0,
+    ogre: 0,
+    monumental: 0,
+    colossal: 0,
+  };
 
   const siteMin = new THREE.Vector3(...problem.site.bounds.min);
   const siteMax = new THREE.Vector3(...problem.site.bounds.max);
@@ -151,6 +168,9 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
 
     const [sx, sy, sz] = partDef.bounds.size;
+    const maxDimM = Math.max(sx * scale.x, sy * scale.y, sz * scale.z);
+    const tier = classifyScaleTier(maxDimM);
+    scaleTierCounts[tier] = (scaleTierCounts[tier] || 0) + 1;
     const halfSize = new THREE.Vector3((sx * scale.x) / 2, (sy * scale.y) / 2, (sz * scale.z) / 2);
     const boxMin = new THREE.Vector3().subVectors(pos, halfSize);
     const boxMax = new THREE.Vector3().addVectors(pos, halfSize);
@@ -337,12 +357,13 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         addPlacement(focalDef, new THREE.Vector3(0, groundY + 0.6, ((baysZ - 1) / 2) * cellM - 1.5), yawQuat(0));
       }
 
-      // Phase 6: Corner Rubble / Props
+      // Phase 6: Corner Rubble / Props with Calibrated Scale Variance
       for (const rx of [-6.0, 6.0]) {
         for (const rz of [-13.5, 13.5]) {
           const rDef = pickCatPart("rubble") || pickCatPart("prop");
           if (rDef) {
-            addPlacement(rDef, new THREE.Vector3(rx, groundY + 0.3, rz), yawQuat(rng.next() * Math.PI * 2));
+            const vScale = generateScaleVariance({ category: "rock" }, Math.floor(rng.next() * 10000)).scale;
+            addPlacement(rDef, new THREE.Vector3(rx, groundY + 0.3 * vScale[1], rz), yawQuat(rng.next() * Math.PI * 2), new THREE.Vector3(...vScale));
           }
         }
       }
@@ -352,7 +373,8 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       const sanctumDoor = pickCatPart("door") || pickCatPart("wall");
       const sanctumChest = pickCatPart("prop", "chest") || pickCatPart("prop");
       if (sanctumChest) {
-        addPlacement(sanctumChest, new THREE.Vector3(0, groundY + 0.5, 12.5), yawQuat(0));
+        const chestScale = generateScaleVariance({ category: "prop", minScale: 0.95, maxScale: 1.10 }, Math.floor(rng.next() * 10000)).scale;
+        addPlacement(sanctumChest, new THREE.Vector3(0, groundY + 0.5 * chestScale[1], 12.5), yawQuat(0), new THREE.Vector3(...chestScale));
       }
 
       const puzzleSymbols = ["Hawk", "Serpent", "Wolf", "Dragon"];
@@ -578,12 +600,13 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 6: Corner Rubble Heaps
+      // Phase 6: Corner Rubble Heaps with Scale Variance
       for (const cx of [-10.5, 10.5]) {
         for (const cz of [-10.5, 10.5]) {
           const rub = pickCatPart("rubble") || pickCatPart("prop");
           if (rub) {
-            addPlacement(rub, new THREE.Vector3(cx, groundY + 0.3, cz), yawQuat(rng.next() * Math.PI * 2));
+            const vScale = generateScaleVariance({ category: "rock" }, Math.floor(rng.next() * 10000)).scale;
+            addPlacement(rub, new THREE.Vector3(cx, groundY + 0.3 * vScale[1], cz), yawQuat(rng.next() * Math.PI * 2), new THREE.Vector3(...vScale));
           }
         }
       }
@@ -592,7 +615,8 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       // 1. Combination Puzzle: 3 Statue Dials flanking the Dais approach to unlock Dais Chest
       const daisChest = pickCatPart("prop", "chest") || pickCatPart("prop");
       if (daisChest) {
-        addPlacement(daisChest, new THREE.Vector3(0, groundY + 0.9, 6.5), yawQuat(Math.PI));
+        const chestScale = generateScaleVariance({ category: "prop", minScale: 0.95, maxScale: 1.10 }, Math.floor(rng.next() * 10000)).scale;
+        addPlacement(daisChest, new THREE.Vector3(0, groundY + 0.9 * chestScale[1], 6.5), yawQuat(Math.PI), new THREE.Vector3(...chestScale));
       }
 
       const arenaSymbols = ["Solar", "Lunar", "Eclipse"];
@@ -829,7 +853,8 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       for (const rz of [0.0, 10.0]) {
         const rub = pickCatPart("rubble");
         if (rub) {
-          addPlacement(rub, new THREE.Vector3(-8.5, lowerY + 0.3, rz), yawQuat(rng.next() * Math.PI * 2));
+          const vScale = generateScaleVariance({ category: "rock" }, Math.floor(rng.next() * 10000)).scale;
+          addPlacement(rub, new THREE.Vector3(-8.5, lowerY + 0.3 * vScale[1], rz), yawQuat(rng.next() * Math.PI * 2), new THREE.Vector3(...vScale));
         }
       }
 
@@ -1119,10 +1144,38 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
     categoryCounts,
   };
 
+  let spatialPerception = analyzeSpatialPerception(
+    siteMax.x - siteMin.x,
+    siteMax.z - siteMin.z,
+    siteMax.y - siteMin.y
+  );
+  if (archetype === "crypt-hall") {
+    spatialPerception = analyzeSpatialPerception(15, 30, 4.5);
+  } else if (archetype === "boss-arena") {
+    spatialPerception = analyzeSpatialPerception(25, 25, 8.0);
+  } else if (archetype === "multi-level-descent") {
+    spatialPerception = analyzeSpatialPerception(20, 30, 7.5);
+  }
+
   return {
     placements,
     report,
     puzzles: generatedPuzzles,
     traps: generatedTraps,
+    measurement: {
+      spatialPerception,
+      scaleTierCounts,
+      humanScaleBaseline: {
+        referenceHeightM: HUMAN_REFERENCE_METRICS.height,
+        eyeLevelM: HUMAN_REFERENCE_METRICS.eyeLevel,
+        stepOverThresholdM: HUMAN_REFERENCE_METRICS.stepOverHeight,
+        reachRadiusM: HUMAN_REFERENCE_METRICS.reachDistance,
+      },
+      interactivitySummary: {
+        interactableCount: (categoryCounts["trap"] || 0) + (categoryCounts["puzzle"] || 0) + (categoryCounts["prop"] || 0),
+        traversalObstacleCount: (categoryCounts["wall"] || 0) + (categoryCounts["railing"] || 0) + (categoryCounts["pillar"] || 0),
+        stepOverCount: categoryCounts["rubble"] || 0,
+      },
+    },
   };
 }
