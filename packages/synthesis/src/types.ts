@@ -105,10 +105,22 @@ export interface SynthesisBudget {
   timeBudgetMs?: number;
 }
 
+export interface RoomBlueprint {
+  archetype?: "crypt-hall" | "boss-arena" | "multi-level-descent" | "corridor" | "vault" | "chamber";
+  widthM?: number;
+  lengthM?: number;
+  wallHeightM?: number;
+  colonnadeSpacingM?: number;
+  elevationDropM?: number;
+  entranceDoor?: boolean;
+  focalPiece?: "sarcophagus" | "altar" | "throne" | "none";
+}
+
 export interface SynthesisProblem {
   ruleSet: LearnedRuleSet;
   seed: number;
   site: SynthesisSite;
+  blueprint?: RoomBlueprint;
   pins?: Array<{ partId: string; transform: TransformData }>;
   budget: SynthesisBudget;
 }

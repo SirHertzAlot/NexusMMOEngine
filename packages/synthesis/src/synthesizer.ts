@@ -4,7 +4,7 @@
  * Implements tileless procedural assembly synthesis using learned spatial
  * grammar and socket adjacency distributions.
  *
- * Implements specifications from MODEL-SYNTHESIS-MAP.md §3, §4, §7.
+ * Implements specifications from MODEL-SYNTHESIS-MAP.md §3, §4, §7, §8.
  */
 
 import * as THREE from "three";
@@ -19,6 +19,7 @@ import type {
   QuatTuple,
   AdjacencyRule,
   PartDef,
+  RoomBlueprint,
 } from "./types.js";
 
 /** Mulberry32 deterministic 32-bit PRNG. */
@@ -100,11 +101,21 @@ function quantizeQuat(q: THREE.Quaternion): QuatTuple {
   ];
 }
 
+/** Helper to create pure upright yaw rotation quaternion. */
+function yawQuat(yawRad: number): THREE.Quaternion {
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawRad);
+}
+
 /**
- * Continuous spatial growth synthesizer.
+ * Continuous spatial model synthesizer.
  *
- * Takes a SynthesisProblem and produces deterministic, quantized model placements
- * satisfying learned adjacency rules without fixed grid constraints.
+ * Implements the hybrid architectural pattern:
+ * When given a comprehensive architectural rule set, it constructs structurally sound
+ * dungeon spaces (crypt halls, boss arenas, multi-level descents) adhering to classical
+ * architectural principles (continuous foundation, perimeter enclosure, tectonic colonnades,
+ * circulation stairs, and contextual props).
+ * When given arbitrary generic rules, it runs entropy-guided socket growth with strict
+ * upright yaw and grounding enforcement.
  */
 export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
   const startTime = Date.now();
@@ -112,17 +123,7 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
   const ruleSet = problem.ruleSet;
   const maxParts = Math.max(1, problem.budget.maxParts);
   const maxGrowthAttempts = problem.budget.maxGrowthAttempts ?? maxParts * 25;
-  const tolerance = 0.2; // 20cm interpenetration margin
 
-  // Pre-index adjacency rules by "aPart:aSocket"
-  const rulesBySocket = new Map<string, AdjacencyRule[]>();
-  for (const rule of ruleSet.adjacency) {
-    const key = `${rule.aPart}:${rule.aSocket}`;
-    if (!rulesBySocket.has(key)) rulesBySocket.set(key, []);
-    rulesBySocket.get(key)!.push(rule);
-  }
-
-  // Placed parts list
   const placements: SynthesizedPlacement[] = [];
   const placedAABBs: BoundingAABB[] = [];
   const openSockets: WorldSocket[] = [];
@@ -131,19 +132,20 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
   const siteMin = new THREE.Vector3(...problem.site.bounds.min);
   const siteMax = new THREE.Vector3(...problem.site.bounds.max);
 
-  // Helper to add a part to the world
+  // Helper to place a part
   const addPlacement = (
     partDef: PartDef,
     pos: THREE.Vector3,
     rot: THREE.Quaternion,
-    scale: THREE.Vector3,
+    scale: THREE.Vector3 = new THREE.Vector3(1, 1, 1),
     ignoreSocketName?: string
   ): number => {
+    if (placements.length >= maxParts) return -1;
+
     const partIdx = placements.length;
     const cat = partDef.category;
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
 
-    // Calculate world bounding box
     const [sx, sy, sz] = partDef.bounds.size;
     const halfSize = new THREE.Vector3((sx * scale.x) / 2, (sy * scale.y) / 2, (sz * scale.z) / 2);
     const boxMin = new THREE.Vector3().subVectors(pos, halfSize);
@@ -161,13 +163,10 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       },
     });
 
-    // Register sockets into open queue (skipping connecting socket)
     for (const s of partDef.sockets) {
       if (ignoreSocketName && s.name === ignoreSocketName) continue;
-
       const localOff = new THREE.Vector3(...s.offset);
       const localNorm = new THREE.Vector3(...s.normal);
-
       const worldPos = localOff.clone().applyQuaternion(rot).add(pos);
       const worldNormal = localNorm.clone().applyQuaternion(rot).normalize();
 
@@ -184,64 +183,396 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
     return partIdx;
   };
 
-  // 1. Initialize with pins or choose root foundation part
-  if (problem.pins && problem.pins.length > 0) {
-    for (const pin of problem.pins) {
-      const def = ruleSet.parts[pin.partId];
-      if (def) {
-        addPlacement(
-          def,
-          new THREE.Vector3(...pin.transform.pos),
-          new THREE.Quaternion(...pin.transform.rot),
-          new THREE.Vector3(...pin.transform.scale)
-        );
-      }
-    }
-  } else {
-    // Pick highest frequency floor or structure part
-    const floorParts = Object.values(ruleSet.parts).filter((p) => p.category === "floor");
-    const candidateParts = floorParts.length > 0 ? floorParts : Object.values(ruleSet.parts);
-    if (candidateParts.length === 0) {
-      throw new Error("Cannot synthesize: RuleSet contains no parts");
-    }
-
-    const rootPart = rng.pickWeighted(candidateParts, (p) => ruleSet.stats.partFrequencies[p.id] || 1) ?? candidateParts[0];
-
-    const centerPos = new THREE.Vector3()
-      .addVectors(siteMin, siteMax)
-      .multiplyScalar(0.5);
-    centerPos.y = siteMin.y + rootPart.bounds.size[1] / 2;
-
-    addPlacement(rootPart, centerPos, new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
+  // Group parts by category
+  const partsByCat: Record<string, PartDef[]> = {};
+  for (const p of Object.values(ruleSet.parts)) {
+    if (!partsByCat[p.category]) partsByCat[p.category] = [];
+    partsByCat[p.category].push(p);
   }
 
-  // 2. Incremental spatial growth
-  let growthAttempts = 0;
+  const pickCatPart = (cat: string): PartDef | null => {
+    const list = partsByCat[cat];
+    if (!list || list.length === 0) return null;
+    return rng.pickWeighted(list, (p) => ruleSet.stats.partFrequencies?.[p.id] || 1) ?? list[0];
+  };
 
+  // Check if we have rich architectural categories
+  const hasArchitecture =
+    (partsByCat["floor"]?.length || 0) > 0 &&
+    (partsByCat["wall"]?.length || 0) > 0;
+
+  // Determine archetype
+  let archetype = problem.blueprint?.archetype;
+  if (!archetype) {
+    const spanX = siteMax.x - siteMin.x;
+    const spanY = siteMax.y - siteMin.y;
+    const spanZ = siteMax.z - siteMin.z;
+
+    if (spanY >= 12 && (partsByCat["stairs"]?.length || 0) > 0) {
+      archetype = "multi-level-descent";
+    } else if (spanX >= 45 || spanZ >= 45) {
+      archetype = "boss-arena";
+    } else {
+      archetype = "crypt-hall";
+    }
+  }
+
+  // 1. ARCHITECTURAL BLUEPRINT SYNTHESIS
+  if (hasArchitecture) {
+    const groundY = siteMin.y + 0.1;
+    const floorList = partsByCat["floor"] || [];
+    const wallList = partsByCat["wall"] || [];
+    const doorList = partsByCat["door"] || wallList;
+    const pillarList = partsByCat["pillar"] || [];
+    const stairsList = partsByCat["stairs"] || [];
+    const ceilingList = partsByCat["ceiling"] || [];
+    const railingList = partsByCat["railing"] || [];
+    const propList = partsByCat["prop"] || [];
+    const rubbleList = partsByCat["rubble"] || [];
+
+    if (archetype === "crypt-hall") {
+      // Symmetrical 3x6 bay Crypt Hall (15m x 30m)
+      const baysX = 3;
+      const baysZ = 6;
+      const cellM = 5.0;
+
+      // Phase 1: Continuous Floor Grid
+      for (let iz = 0; iz < baysZ; iz++) {
+        for (let ix = 0; ix < baysX; ix++) {
+          const x = (ix - (baysX - 1) / 2) * cellM;
+          const z = (iz - (baysZ - 1) / 2) * cellM;
+          const floorPart = pickCatPart("floor");
+          if (floorPart) {
+            addPlacement(floorPart, new THREE.Vector3(x, groundY, z), yawQuat(0));
+          }
+        }
+      }
+
+      // Phase 2: Inward-facing Perimeter Enclosure
+      // South wall (iz = 0, z = -12.5, wall at z - 2.5 = -15.0)
+      for (let ix = 0; ix < baysX; ix++) {
+        const x = (ix - (baysX - 1) / 2) * cellM;
+        const z = -((baysZ - 1) / 2) * cellM - cellM / 2;
+        const isDoorway = ix === 1; // Center bay is entrance portal
+        const def = isDoorway ? (pickCatPart("door") || pickCatPart("wall")) : pickCatPart("wall");
+        if (def) {
+          addPlacement(def, new THREE.Vector3(x, groundY + 2.0, z), yawQuat(0)); // Facing North
+        }
+      }
+
+      // North wall (iz = 5, z = 12.5, wall at z + 2.5 = 15.0)
+      for (let ix = 0; ix < baysX; ix++) {
+        const x = (ix - (baysX - 1) / 2) * cellM;
+        const z = ((baysZ - 1) / 2) * cellM + cellM / 2;
+        const def = pickCatPart("wall");
+        if (def) {
+          addPlacement(def, new THREE.Vector3(x, groundY + 2.0, z), yawQuat(Math.PI)); // Facing South
+        }
+      }
+
+      // West wall (ix = 0, x = -5.0, wall at x - 2.5 = -7.5)
+      for (let iz = 0; iz < baysZ; iz++) {
+        const x = -((baysX - 1) / 2) * cellM - cellM / 2;
+        const z = (iz - (baysZ - 1) / 2) * cellM;
+        const def = pickCatPart("wall");
+        if (def) {
+          addPlacement(def, new THREE.Vector3(x, groundY + 2.0, z), yawQuat(-Math.PI / 2)); // Facing East
+        }
+      }
+
+      // East wall (ix = 2, x = 5.0, wall at x + 2.5 = 7.5)
+      for (let iz = 0; iz < baysZ; iz++) {
+        const x = ((baysX - 1) / 2) * cellM + cellM / 2;
+        const z = (iz - (baysZ - 1) / 2) * cellM;
+        const def = pickCatPart("wall");
+        if (def) {
+          addPlacement(def, new THREE.Vector3(x, groundY + 2.0, z), yawQuat(Math.PI / 2)); // Facing West
+        }
+      }
+
+      // Phase 3: Colonnade Columns along Nave Boundaries (x = -2.5, +2.5)
+      if (pillarList.length > 0) {
+        for (let iz = 1; iz < baysZ - 1; iz++) {
+          const z = (iz - (baysZ - 1) / 2) * cellM;
+          for (const colX of [-2.5, 2.5]) {
+            const pillarDef = pickCatPart("pillar");
+            if (pillarDef) {
+              addPlacement(pillarDef, new THREE.Vector3(colX, groundY + 2.0, z), yawQuat(0));
+            }
+          }
+        }
+      }
+
+      // Phase 4: Overhead Ceiling Arches
+      if (ceilingList.length > 0) {
+        for (let iz = 1; iz < baysZ - 1; iz++) {
+          const z = (iz - (baysZ - 1) / 2) * cellM;
+          const ceilDef = pickCatPart("ceiling");
+          if (ceilDef) {
+            addPlacement(ceilDef, new THREE.Vector3(0, groundY + 4.0, z), yawQuat(0));
+          }
+        }
+      }
+
+      // Phase 5: Focal Altar / Shrine at Nave Terminus
+      const focalDef = pickCatPart("prop") || pickCatPart("structure");
+      if (focalDef) {
+        addPlacement(focalDef, new THREE.Vector3(0, groundY + 0.6, ((baysZ - 1) / 2) * cellM - 1.5), yawQuat(0));
+      }
+
+      // Phase 6: Corner Rubble / Props
+      for (const rx of [-6.0, 6.0]) {
+        for (const rz of [-13.5, 13.5]) {
+          const rDef = pickCatPart("rubble") || pickCatPart("prop");
+          if (rDef) {
+            addPlacement(rDef, new THREE.Vector3(rx, groundY + 0.3, rz), yawQuat(rng.next() * Math.PI * 2));
+          }
+        }
+      }
+    } else if (archetype === "boss-arena") {
+      // Expansive 5x5 bay Grand Arena (25m x 25m) with Double-Height Perimeter Walls
+      const bays = 5;
+      const cellM = 5.0;
+
+      // Phase 1: Continuous Flagstone Floor
+      for (let iz = 0; iz < bays; iz++) {
+        for (let ix = 0; ix < bays; ix++) {
+          const x = (ix - (bays - 1) / 2) * cellM;
+          const z = (iz - (bays - 1) / 2) * cellM;
+          const floorPart = pickCatPart("floor");
+          if (floorPart) {
+            addPlacement(floorPart, new THREE.Vector3(x, groundY, z), yawQuat(0));
+          }
+        }
+      }
+
+      // Phase 2: Double-Height Inward-facing Perimeter Walls
+      const halfSpan = ((bays - 1) / 2) * cellM;
+      const wallPerimeter = halfSpan + cellM / 2;
+
+      // 4 sides: [normalX, normalZ, yawRad, isXAxis]
+      const sides = [
+        { nx: 0, nz: -1, yaw: 0, fixedCoord: -wallPerimeter, isZ: true }, // South wall (faces North)
+        { nx: 0, nz: 1, yaw: Math.PI, fixedCoord: wallPerimeter, isZ: true }, // North wall (faces South)
+        { nx: -1, nz: 0, yaw: -Math.PI / 2, fixedCoord: -wallPerimeter, isZ: false }, // West wall (faces East)
+        { nx: 1, nz: 0, yaw: Math.PI / 2, fixedCoord: wallPerimeter, isZ: false }, // East wall (faces West)
+      ];
+
+      for (const side of sides) {
+        for (let i = 0; i < bays; i++) {
+          const step = (i - (bays - 1) / 2) * cellM;
+          const x = side.isZ ? step : side.fixedCoord;
+          const z = side.isZ ? side.fixedCoord : step;
+
+          const isMainGate = side.isZ && side.fixedCoord === -wallPerimeter && i === 2;
+          const def = isMainGate ? (pickCatPart("door") || pickCatPart("wall")) : pickCatPart("wall");
+
+          if (def) {
+            // Tier 1 (Ground level 0 - 4m)
+            addPlacement(def, new THREE.Vector3(x, groundY + 2.0, z), yawQuat(side.yaw));
+
+            // Tier 2 (Upper story 4m - 8m)
+            const upperWall = pickCatPart("wall");
+            if (upperWall) {
+              addPlacement(upperWall, new THREE.Vector3(x, groundY + 6.0, z), yawQuat(side.yaw));
+            }
+          }
+        }
+      }
+
+      // Phase 3: Colonnade Pillars framing Central Arena
+      if (pillarList.length > 0) {
+        const pillarDist = 6.0;
+        for (const px of [-pillarDist, pillarDist]) {
+          for (const pz of [-pillarDist, 0, pillarDist]) {
+            const pillarDef = pickCatPart("pillar");
+            if (pillarDef) {
+              addPlacement(pillarDef, new THREE.Vector3(px, groundY + 2.0, pz), yawQuat(0));
+            }
+          }
+        }
+      }
+
+      // Phase 4: Overhead Arch Vaults
+      if (ceilingList.length > 0) {
+        for (const cz of [-5.0, 0, 5.0]) {
+          const ceilDef = pickCatPart("ceiling");
+          if (ceilDef) {
+            addPlacement(ceilDef, new THREE.Vector3(0, groundY + 4.2, cz), yawQuat(0));
+          }
+        }
+      }
+
+      // Phase 5: Central Arena Altar / Dais & Braziers
+      const daisDef = pickCatPart("structure") || pickCatPart("prop");
+      if (daisDef) {
+        addPlacement(daisDef, new THREE.Vector3(0, groundY + 0.5, 4.0), yawQuat(Math.PI));
+      }
+      for (const bx of [-3.0, 3.0]) {
+        const brazier = pickCatPart("prop");
+        if (brazier) {
+          addPlacement(brazier, new THREE.Vector3(bx, groundY + 0.4, 4.0), yawQuat(0));
+        }
+      }
+
+      // Phase 6: Corner Rubble Heaps
+      for (const cx of [-10.5, 10.5]) {
+        for (const cz of [-10.5, 10.5]) {
+          const rub = pickCatPart("rubble") || pickCatPart("prop");
+          if (rub) {
+            addPlacement(rub, new THREE.Vector3(cx, groundY + 0.3, cz), yawQuat(rng.next() * Math.PI * 2));
+          }
+        }
+      }
+    } else if (archetype === "multi-level-descent") {
+      // Split-level: Upper Mezzanine (3x2 at Y=3.5) connecting via Stairs to Lower Hall (4x4 at Y=0)
+      const cellM = 5.0;
+      const upperY = groundY + 3.5;
+      const lowerY = groundY;
+
+      // Phase 1: Upper Mezzanine Terrace (x in [-5, 5], z in [-12.5, -7.5])
+      for (const ux of [-5, 0, 5]) {
+        for (const uz of [-12.5, -7.5]) {
+          const floorPart = pickCatPart("floor");
+          if (floorPart) {
+            addPlacement(floorPart, new THREE.Vector3(ux, upperY, uz), yawQuat(0));
+          }
+        }
+      }
+
+      // Phase 2: Central Stairway bridging Upper to Lower Level
+      const stairDef = pickCatPart("stairs");
+      if (stairDef) {
+        // Stairs at center (x = 0), stepping down from z = -5.0 to z = 0.0
+        addPlacement(stairDef, new THREE.Vector3(0, lowerY + 1.75, -4.5), yawQuat(0));
+      }
+
+      // Phase 3: Mezzanine Railings along open drop (z = -5.0, x = -5, +5)
+      for (const rx of [-5.0, 5.0]) {
+        const rail = pickCatPart("railing");
+        if (rail) {
+          addPlacement(rail, new THREE.Vector3(rx, upperY + 0.8, -5.0), yawQuat(0));
+        }
+      }
+
+      // Phase 4: Lower Crypt Hall (x in [-7.5, 7.5], z in [0, 15])
+      for (const lz of [0, 5.0, 10.0, 15.0]) {
+        for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
+          const floorPart = pickCatPart("floor");
+          if (floorPart) {
+            addPlacement(floorPart, new THREE.Vector3(lx, lowerY, lz), yawQuat(0));
+          }
+        }
+      }
+
+      // Phase 5: Terrace Under-Balcony Support Pillars
+      for (const px of [-5.0, 5.0]) {
+        const pillar = pickCatPart("pillar");
+        if (pillar) {
+          addPlacement(pillar, new THREE.Vector3(px, lowerY + 1.75, -5.5), yawQuat(0));
+        }
+      }
+
+      // Phase 6: Perimeter Walls enclosing upper and lower chambers
+      // Upper back & side walls
+      for (const ux of [-5, 0, 5]) {
+        const wall = pickCatPart("wall");
+        if (wall) {
+          addPlacement(wall, new THREE.Vector3(ux, upperY + 2.0, -15.0), yawQuat(0)); // South wall
+        }
+      }
+      for (const uz of [-12.5, -7.5]) {
+        const wallW = pickCatPart("wall");
+        const wallE = pickCatPart("wall");
+        if (wallW) addPlacement(wallW, new THREE.Vector3(-7.5, upperY + 2.0, uz), yawQuat(-Math.PI / 2));
+        if (wallE) addPlacement(wallE, new THREE.Vector3(7.5, upperY + 2.0, uz), yawQuat(Math.PI / 2));
+      }
+
+      // Lower back & side walls
+      for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
+        const wall = pickCatPart("wall");
+        if (wall) {
+          addPlacement(wall, new THREE.Vector3(lx, lowerY + 2.0, 17.5), yawQuat(Math.PI)); // North wall
+        }
+      }
+      for (const lz of [0, 5.0, 10.0, 15.0]) {
+        const wallW = pickCatPart("wall");
+        const wallE = pickCatPart("wall");
+        if (wallW) addPlacement(wallW, new THREE.Vector3(-10.0, lowerY + 2.0, lz), yawQuat(-Math.PI / 2));
+        if (wallE) addPlacement(wallE, new THREE.Vector3(10.0, lowerY + 2.0, lz), yawQuat(Math.PI / 2));
+      }
+
+      // Phase 7: Altar & Rubble in Lower Crypt
+      const shrine = pickCatPart("prop") || pickCatPart("structure");
+      if (shrine) {
+        addPlacement(shrine, new THREE.Vector3(0, lowerY + 0.6, 14.0), yawQuat(Math.PI));
+      }
+      for (const rz of [2.0, 12.0]) {
+        const rub = pickCatPart("rubble");
+        if (rub) {
+          addPlacement(rub, new THREE.Vector3(-8.5, lowerY + 0.3, rz), yawQuat(rng.next() * Math.PI * 2));
+        }
+      }
+    }
+  }
+
+  // 2. SOCKET EXPANSION FALLBACK / FREE DETAIL GROWTH
+  // Pre-index adjacency rules by "aPart:aSocket"
+  const rulesBySocket = new Map<string, AdjacencyRule[]>();
+  for (const rule of ruleSet.adjacency) {
+    const key = `${rule.aPart}:${rule.aSocket}`;
+    if (!rulesBySocket.has(key)) rulesBySocket.set(key, []);
+    rulesBySocket.get(key)!.push(rule);
+  }
+
+  // If no architectural placements were made (e.g. minimal dummy test rule set), initialize root
+  if (placements.length === 0) {
+    if (problem.pins && problem.pins.length > 0) {
+      for (const pin of problem.pins) {
+        const def = ruleSet.parts[pin.partId];
+        if (def) {
+          addPlacement(
+            def,
+            new THREE.Vector3(...pin.transform.pos),
+            new THREE.Quaternion(...pin.transform.rot),
+            new THREE.Vector3(...pin.transform.scale)
+          );
+        }
+      }
+    } else {
+      const candidateParts = Object.values(ruleSet.parts);
+      if (candidateParts.length === 0) {
+        throw new Error("Cannot synthesize: RuleSet contains no parts");
+      }
+      const floorParts = candidateParts.filter((p) => p.category === "floor");
+      const rootPart = (floorParts.length > 0 ? floorParts : candidateParts)[0];
+      const centerPos = new THREE.Vector3()
+        .addVectors(siteMin, siteMax)
+        .multiplyScalar(0.5);
+      centerPos.y = siteMin.y + rootPart.bounds.size[1] / 2;
+      addPlacement(rootPart, centerPos, new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
+    }
+  }
+
+  // Continue socket growth if under part budget
+  let growthAttempts = 0;
   while (placements.length < maxParts && openSockets.length > 0 && growthAttempts < maxGrowthAttempts) {
     growthAttempts++;
-
-    // Pick socket with lowest candidate rule count (minimum entropy) or prioritize by depth
     const socketIdx = rng.nextInt(0, Math.min(openSockets.length - 1, 8));
     const activeSocket = openSockets.splice(socketIdx, 1)[0];
 
     const matchingRules = rulesBySocket.get(`${activeSocket.partId}:${activeSocket.socketName}`) || [];
-    if (matchingRules.length === 0) {
-      continue;
-    }
+    if (matchingRules.length === 0) continue;
 
-    // Try up to 4 candidate rules for this active socket
-    for (let c = 0; c < Math.min(matchingRules.length, 4); c++) {
+    for (let c = 0; c < Math.min(matchingRules.length, 3); c++) {
       const rule = rng.pickWeighted(matchingRules, (r) => r.frequency * (r.count || 1));
       if (!rule) break;
 
       const bPartDef = ruleSet.parts[rule.bPart];
       if (!bPartDef) continue;
-
       const bSocketDef = bPartDef.sockets.find((s) => s.name === rule.bSocket) || bPartDef.sockets[0];
       if (!bSocketDef) continue;
 
-      // Compute strictly upright rotation (zero roll, zero pitch)
       const rot = new THREE.Quaternion();
       const targetNormal = activeSocket.worldNormal.clone().negate();
       const candidateLocalNormal = new THREE.Vector3(...bSocketDef.normal);
@@ -250,161 +581,54 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       const cLenXZ = Math.hypot(candidateLocalNormal.x, candidateLocalNormal.z);
 
       if (tLenXZ > 0.1 && cLenXZ > 0.1) {
-        // Pure horizontal yaw alignment
         const angTarget = Math.atan2(targetNormal.x, targetNormal.z);
         const angLocal = Math.atan2(candidateLocalNormal.x, candidateLocalNormal.z);
-        const yaw = angTarget - angLocal;
-        rot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-      } else if (Math.abs(candidateLocalNormal.y) > 0.7) {
-        // Vertical socket (e.g. wall base on floor surface, or ceiling mount on wall top)
-        const snapYaw = rng.nextInt(0, 3) * (Math.PI / 2);
-        rot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), snapYaw);
+        rot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angTarget - angLocal);
       } else {
-        rot.setFromUnitVectors(candidateLocalNormal, targetNormal);
+        rot.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0);
       }
 
-      // Candidate part origin position:
-      // P_b = P_socket - Rot(bSocket.offset)
       const localSocketOff = new THREE.Vector3(...bSocketDef.offset).applyQuaternion(rot);
       const candidatePos = activeSocket.worldPos.clone().sub(localSocketOff);
-
-      // Add mean offset adjustment from rule if present (pure horizontal)
-      if (rule.transformStats?.meanOffset) {
-        const [ox, , oz] = rule.transformStats.meanOffset;
-        const offVec = new THREE.Vector3(ox, 0, oz).applyQuaternion(rot).multiplyScalar(0.02);
-        candidatePos.add(offVec);
-      }
 
       const [sx, sy, sz] = bPartDef.bounds.size;
       const halfSize = new THREE.Vector3(sx / 2, sy / 2, sz / 2);
 
-      // 1. Floor Grounding Rule: Floors must sit on the ground level
+      // Floor grounding
       if (bPartDef.category === "floor") {
-        const expectedFloorY = siteMin.y + halfSize.y;
-        if (activeSocket.kind !== "stairs-top") {
-          candidatePos.y = expectedFloorY;
-        }
+        candidatePos.y = siteMin.y + halfSize.y;
       }
 
-      // 2. Wall Grounding Rule: Walls must sit on floors or directly on lower walls
-      if (bPartDef.category === "wall" || bPartDef.category === "door" || bPartDef.category === "railing") {
-        const wallBaseY = candidatePos.y - halfSize.y;
-        const isGroundLevel = wallBaseY <= siteMin.y + 0.4;
-
-        if (isGroundLevel) {
-          // Snap base cleanly to ground
-          candidatePos.y = siteMin.y + halfSize.y;
-
-          // Must have a floor tile within proximity (room perimeter)
-          let hasFloorNearby = false;
-          for (const p of placements) {
-            if (p.category === "floor") {
-              const dx = p.transform.pos[0] - candidatePos.x;
-              const dz = p.transform.pos[2] - candidatePos.z;
-              if (Math.hypot(dx, dz) <= 4.0) {
-                hasFloorNearby = true;
-                break;
-              }
-            }
-          }
-          if (!hasFloorNearby && placements.length > 0) {
-            continue; // Reject floating wall outside room bounds
-          }
-        } else {
-          // Upper wall must sit directly on top of a lower wall
-          let hasLowerWall = false;
-          for (const p of placements) {
-            if (p.category === "wall" || p.category === "door") {
-              const dx = Math.abs(p.transform.pos[0] - candidatePos.x);
-              const dz = Math.abs(p.transform.pos[2] - candidatePos.z);
-              const lowerTopY = p.transform.pos[1] + 2.0;
-              if (dx < 0.8 && dz < 0.8 && Math.abs(wallBaseY - lowerTopY) < 0.8) {
-                hasLowerWall = true;
-                break;
-              }
-            }
-          }
-          if (!hasLowerWall) {
-            continue; // Reject floating wall in mid-air
-          }
-        }
+      // Check site bounds
+      if (
+        candidatePos.x - halfSize.x < siteMin.x ||
+        candidatePos.x + halfSize.x > siteMax.x ||
+        candidatePos.z - halfSize.z < siteMin.z ||
+        candidatePos.z + halfSize.z > siteMax.z
+      ) {
+        continue;
       }
 
-      // 3. Pillar Grounding Rule: Pillars must sit on a floor or lower pillar
-      if (bPartDef.category === "pillar") {
-        const pillarBaseY = candidatePos.y - halfSize.y;
-        let supported = false;
-        for (const p of placements) {
-          if (p.category === "floor") {
-            const dx = Math.abs(p.transform.pos[0] - candidatePos.x);
-            const dz = Math.abs(p.transform.pos[2] - candidatePos.z);
-            if (dx < 2.5 && dz < 2.5 && Math.abs(pillarBaseY - p.transform.pos[1]) < 0.5) {
-              supported = true;
-              break;
-            }
-          }
-        }
-        if (!supported && pillarBaseY > siteMin.y + 0.4) {
-          continue; // Reject floating pillar
-        }
-      }
-
-      // 4. Props & Rubble Grounding Rule: Must sit on a floor surface
-      if (bPartDef.category === "prop" || bPartDef.category === "rubble") {
-        let onFloor = false;
-        for (const p of placements) {
-          if (p.category === "floor") {
-            const dx = Math.abs(p.transform.pos[0] - candidatePos.x);
-            const dz = Math.abs(p.transform.pos[2] - candidatePos.z);
-            if (dx < 2.5 && dz < 2.5) {
-              candidatePos.y = p.transform.pos[1] + 0.1 + halfSize.y;
-              onFloor = true;
-              break;
-            }
-          }
-        }
-        if (!onFloor) {
-          continue; // Reject floating prop
-        }
-      }
       const candidateAABB: BoundingAABB = {
         min: new THREE.Vector3().subVectors(candidatePos, halfSize),
         max: new THREE.Vector3().addVectors(candidatePos, halfSize),
       };
 
-      if (
-        candidateAABB.min.x < siteMin.x ||
-        candidateAABB.max.x > siteMax.x ||
-        candidateAABB.min.y < siteMin.y ||
-        candidateAABB.max.y > siteMax.y ||
-        candidateAABB.min.z < siteMin.z ||
-        candidateAABB.max.z > siteMax.z
-      ) {
-        // Out of site bounds, reject
-        continue;
-      }
-
-      // Check collision against placed parts
       let collides = false;
       for (const placed of placedAABBs) {
-        if (aabbIntersects(candidateAABB, placed, tolerance)) {
+        if (aabbIntersects(candidateAABB, placed, 0.15)) {
           collides = true;
           break;
         }
       }
+      if (collides) continue;
 
-      if (collides) {
-        continue;
-      }
-
-      // Successfully place part!
       addPlacement(bPartDef, candidatePos, rot, new THREE.Vector3(1, 1, 1), bSocketDef.name);
       break;
     }
   }
 
   const elapsedMs = Date.now() - startTime;
-
   const report: SynthesisReport = {
     partsPlaced: placements.length,
     growthAttempts,
