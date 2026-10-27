@@ -54,6 +54,16 @@ export const Move = {
   Guard: 6,
   Roll: 7,
   ShieldBash: 8,
+  Bite: 20,
+  Claw: 21,
+  Pounce: 22,
+  Roar: 23,
+  Breath: 24,
+  TailWhip: 25,
+  Stomp: 26,
+  WingBuffet: 27,
+  Sting: 28,
+  Cleave: 29,
 } as const;
 
 /**
@@ -92,6 +102,16 @@ export const DEFAULT_COMBAT_MOVES: readonly CombatMove[] = [
     advance: { distance: 4.5, from: 0.05, to: 1.05 }, moveScale: 0, iframes: { from: 0.05, to: 0.8 },
   },
   { id: Move.ShieldBash, name: "shield bash", clip: "Shield_OneShot", kind: "attack", duration: 0.8333, moveScale: 0 },
+  { id: Move.Bite, name: "bite", clip: "Creature_Bite", kind: "attack", duration: 0.6, hitAt: 0.25, moveScale: 0.2 },
+  { id: Move.Claw, name: "claw", clip: "Creature_Claw", kind: "attack", duration: 0.5, hitAt: 0.2, moveScale: 0.3 },
+  { id: Move.Pounce, name: "pounce", clip: "Creature_Pounce", kind: "attack", duration: 0.8, advance: { distance: 1.2, from: 0.1, to: 0.5 }, hitAt: 0.35, moveScale: 0 },
+  { id: Move.Roar, name: "roar", clip: "Creature_Roar", kind: "attack", duration: 1.0, hitAt: 0.4, moveScale: 0 },
+  { id: Move.Breath, name: "breath", clip: "Creature_Breath", kind: "attack", duration: 1.2, hitAt: 0.5, moveScale: 0 },
+  { id: Move.TailWhip, name: "tail whip", clip: "Creature_TailWhip", kind: "attack", duration: 0.7, hitAt: 0.3, moveScale: 0.1 },
+  { id: Move.Stomp, name: "stomp", clip: "Creature_Stomp", kind: "attack", duration: 0.9, hitAt: 0.4, moveScale: 0 },
+  { id: Move.WingBuffet, name: "wing buffet", clip: "Creature_WingBuffet", kind: "attack", duration: 0.6, hitAt: 0.25, moveScale: 0 },
+  { id: Move.Sting, name: "sting", clip: "Creature_Sting", kind: "attack", duration: 0.5, hitAt: 0.2, moveScale: 0.2 },
+  { id: Move.Cleave, name: "cleave", clip: "Creature_Cleave", kind: "attack", duration: 0.8, advance: { distance: 0.5, from: 0.1, to: 0.4 }, hitAt: 0.35, moveScale: 0 },
 ];
 
 /** The moves in force (a live array: `setCombatMoves` replaces its contents). */

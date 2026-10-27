@@ -29,6 +29,14 @@ export const BONE_NAMES = [
   "body", "head", "tail", "upperFL", "upperFR", "upperHL", "upperHR", "lowerFL", "lowerFR", "lowerHL", "lowerHR",
 ] as const;
 
+export type ModelRigType = "quadruped" | "avian" | "serpentine" | "aquatic" | "arachnid" | "flora";
+
+export const AVIAN_BONE_NAMES = ["body", "head", "tail", "wingL", "wingR", "legL", "legR"] as const;
+export const SERPENTINE_BONE_NAMES = ["spine0", "spine1", "spine2", "spine3", "tail"] as const;
+export const AQUATIC_BONE_NAMES = ["body", "head", "tail", "finL", "finR", "dorsal"] as const;
+export const ARACHNID_BONE_NAMES = ["body", "head", "leg1L", "leg1R", "leg2L", "leg2R", "leg3L", "leg3R", "leg4L", "leg4R"] as const;
+export const FLORA_BONE_NAMES = ["root", "trunk", "branchL", "branchR", "canopy"] as const;
+
 export interface Frame {
   /** Rotation about +Y (radians) that turns the mesh to face +Z. */
   yaw: number;
@@ -39,6 +47,9 @@ export interface Frame {
 }
 
 export interface Segmentation {
+  type?: ModelRigType;
+  boneNames?: readonly string[];
+  parentIndices?: readonly number[];
   frame: Frame;
   /** Size in the normalised frame. */
   length: number;
@@ -62,6 +73,8 @@ export interface SegmentHints {
   knee?: number;
   /** +1 / -1 forces which end of the spine is the head, in the normalised frame's input order. */
   headSign?: 1 | -1;
+  /** Force a procedural rig type. */
+  rigType?: ModelRigType;
 }
 
 const smooth = (a: number, b: number, x: number): number => {
@@ -286,5 +299,430 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
     pivots[BONE_FL + k] = hip;
     pivots[BONE_LOWER + k] = [hip[0], kneeY, hip[2]];
   }
-  return { frame, length: L, height: H, width: W, legLength: legTop, kneeHeight: kneeY, pivots, skinIndex, skinWeight };
+  return {
+    type: "quadruped",
+    boneNames: BONE_NAMES,
+    parentIndices: [-1, 0, 0, 0, 0, 0, 0, 3, 4, 5, 6],
+    frame,
+    length: L,
+    height: H,
+    width: W,
+    legLength: legTop,
+    kneeHeight: kneeY,
+    pivots,
+    skinIndex,
+    skinWeight,
+  };
+}
+
+/** Classify a model into a procedural rig type using name patterns or geometric proportions. */
+export function classifyModelType(positions: ArrayLike<number>, hints?: SegmentHints, modelName?: string): ModelRigType {
+  if (hints?.rigType) return hints.rigType;
+  if (modelName) {
+    const name = modelName.toLowerCase();
+    if (/snake|eel|worm|serpent|constrictor/.test(name)) return "serpentine";
+    if (/spider|centipede|crab|scorpion|ant|beetle|lobster|ladybug/.test(name)) return "arachnid";
+    if (/fish|shark|whale|dolphin|orca|trout|piranha|seahorse|walrus|seal|narwhal|squid|octopus|jellyfish/.test(name)) return "aquatic";
+    if (/bird|owl|hawk|eagle|crow|raven|duck|hen|rooster|goose|pelican|seagull|chick|falcon|bat|dragonfly|butterfly|pheasant|quail/.test(name)) return "avian";
+    if (/wolf|bear|deer|boar|cow|horse|sheep|goat|pig|coyote|fox|badger|raccoon|cat|dog|lion|tiger|elk|bull|donkey|llama/.test(name)) return "quadruped";
+    if (/tree|\bbush\b|plant|flower|grass|kelp|coral|mushroom|fern|anemone|sponge/.test(name)) return "flora";
+  }
+
+  // Geometric classification
+  const n = Math.floor(positions.length / 3);
+  if (n < 12) return "quadruped";
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (z < z0) z0 = z; if (z > z1) z1 = z;
+  }
+  const L = Math.max(x1 - x0, z1 - z0);
+  const W = Math.min(x1 - x0, z1 - z0);
+  const H = y1 - y0;
+
+  if (H > 1.8 * L && W < 0.6 * H) return "flora";
+  if (L > 2.8 * Math.max(H, W)) return "serpentine";
+  if (W > 1.3 * L && H < W * 0.9) return "avian";
+  if (H < 0.5 * Math.max(L, W) && W > 0.7 * L) return "arachnid";
+  return "quadruped";
+}
+
+/** Segment an avian/bird mesh into body, head, tail, wings, and legs. */
+export function segmentAvian(positions: ArrayLike<number>, hints: SegmentHints = {}): Segmentation | null {
+  const frame = findFrame(positions, hints);
+  if (!frame) return null;
+  const n = Math.floor(positions.length / 3);
+  const pts = new Float32Array(n * 3);
+  const tmp: [number, number, number] = [0, 0, 0];
+  let xMin = Infinity, xMax = -Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    toFrame(positions, i, frame, tmp);
+    pts[i * 3] = tmp[0]; pts[i * 3 + 1] = tmp[1]; pts[i * 3 + 2] = tmp[2];
+    if (tmp[0] < xMin) xMin = tmp[0]; if (tmp[0] > xMax) xMax = tmp[0];
+    if (tmp[1] > yMax) yMax = tmp[1];
+    if (tmp[2] < zMin) zMin = tmp[2]; if (tmp[2] > zMax) zMax = tmp[2];
+  }
+  const L = Math.max(zMax - zMin, 1e-4), H = Math.max(yMax, 1e-4), W = Math.max(xMax - xMin, 1e-4);
+  const zMid = (zMin + zMax) / 2;
+  const skinIndex = new Uint16Array(n * 4);
+  const skinWeight = new Float32Array(n * 4);
+  const cand = new Float32Array(7);
+
+  for (let i = 0; i < n; i++) {
+    const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
+    const ax = Math.abs(x);
+    const headW = smooth(zMid + 0.1 * L, zMax, z) * smooth(0.3 * H, 0.7 * H, y);
+    const tailW = (1 - smooth(zMin, zMid - 0.15 * L, z)) * (1 - smooth(0.15 * W, 0.4 * W, ax));
+    const wingW = smooth(0.2 * W, 0.45 * W, ax) * smooth(0.3 * H, 0.8 * H, y);
+    const legW = (1 - smooth(0.1 * H, 0.35 * H, y)) * smooth(0.08 * W, 0.25 * W, ax);
+
+    cand[0] = Math.max(0.05, 1 - (headW + tailW + wingW + legW)); // body
+    cand[1] = headW; // head
+    cand[2] = tailW; // tail
+    cand[3] = x > 0 ? wingW : 0; // wingL
+    cand[4] = x < 0 ? wingW : 0; // wingR
+    cand[5] = x > 0 ? legW : 0; // legL
+    cand[6] = x < 0 ? legW : 0; // legR
+
+    let sum = 0;
+    for (let k = 0; k < 7; k++) sum += cand[k];
+    let w4 = 0;
+    for (let k = 0; k < 4; k++) {
+      let best = -1, bw = 0;
+      for (let b = 0; b < 7; b++) if (cand[b] > bw) { bw = cand[b]; best = b; }
+      if (best < 0) break;
+      skinIndex[i * 4 + k] = best;
+      skinWeight[i * 4 + k] = bw;
+      w4 += bw;
+      cand[best] = 0;
+    }
+    if (w4 <= 0) {
+      skinIndex[i * 4] = 0;
+      skinWeight[i * 4] = 1;
+    } else for (let k = 0; k < 4; k++) skinWeight[i * 4 + k] /= w4;
+  }
+
+  const pivots: Array<[number, number, number]> = [
+    [0, 0.4 * H, zMid],
+    [0, 0.75 * H, zMax - 0.15 * L],
+    [0, 0.45 * H, zMin + 0.1 * L],
+    [0.35 * W, 0.5 * H, zMid],
+    [-0.35 * W, 0.5 * H, zMid],
+    [0.15 * W, 0.25 * H, zMid - 0.05 * L],
+    [-0.15 * W, 0.25 * H, zMid - 0.05 * L],
+  ];
+
+  return {
+    type: "avian",
+    boneNames: AVIAN_BONE_NAMES,
+    parentIndices: [-1, 0, 0, 0, 0, 0, 0],
+    frame, length: L, height: H, width: W, legLength: 0.25 * H, kneeHeight: 0.12 * H,
+    pivots, skinIndex, skinWeight,
+  };
+}
+
+/** Segment a serpentine/snake/eel mesh into 5 sequential spine vertebrae. */
+export function segmentSerpentine(positions: ArrayLike<number>, hints: SegmentHints = {}): Segmentation | null {
+  const frame = findFrame(positions, hints);
+  if (!frame) return null;
+  const n = Math.floor(positions.length / 3);
+  const pts = new Float32Array(n * 3);
+  const tmp: [number, number, number] = [0, 0, 0];
+  let xMin = Infinity, xMax = -Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    toFrame(positions, i, frame, tmp);
+    pts[i * 3] = tmp[0]; pts[i * 3 + 1] = tmp[1]; pts[i * 3 + 2] = tmp[2];
+    if (tmp[0] < xMin) xMin = tmp[0]; if (tmp[0] > xMax) xMax = tmp[0];
+    if (tmp[1] > yMax) yMax = tmp[1];
+    if (tmp[2] < zMin) zMin = tmp[2]; if (tmp[2] > zMax) zMax = tmp[2];
+  }
+  const L = Math.max(zMax - zMin, 1e-4), H = Math.max(yMax, 1e-4), W = Math.max(xMax - xMin, 1e-4);
+  const skinIndex = new Uint16Array(n * 4);
+  const skinWeight = new Float32Array(n * 4);
+
+  for (let i = 0; i < n; i++) {
+    const z = pts[i * 3 + 2];
+    // Fraction from head (+z = 1) to tail (-z = 0)
+    const u = Math.min(1, Math.max(0, (z - zMin) / L));
+    // 5 segments: spine0 (u: 0.8..1), spine1 (u: 0.6..0.8), spine2 (0.4..0.6), spine3 (0.2..0.4), tail (0..0.2)
+    const pos = (1 - u) * 4; // 0 at head (spine0), 4 at tail (tail)
+    const b0 = Math.min(4, Math.floor(pos));
+    const b1 = Math.min(4, b0 + 1);
+    const frac = pos - b0;
+
+    skinIndex[i * 4] = b0;
+    skinWeight[i * 4] = 1 - frac;
+    skinIndex[i * 4 + 1] = b1;
+    skinWeight[i * 4 + 1] = frac;
+    skinIndex[i * 4 + 2] = 0;
+    skinWeight[i * 4 + 2] = 0;
+    skinIndex[i * 4 + 3] = 0;
+    skinWeight[i * 4 + 3] = 0;
+  }
+
+  const pivots: Array<[number, number, number]> = [
+    [0, 0.2 * H, zMax - 0.1 * L],
+    [0, 0.2 * H, zMax - 0.3 * L],
+    [0, 0.2 * H, zMax - 0.5 * L],
+    [0, 0.2 * H, zMax - 0.7 * L],
+    [0, 0.2 * H, zMin + 0.1 * L],
+  ];
+
+  return {
+    type: "serpentine",
+    boneNames: SERPENTINE_BONE_NAMES,
+    parentIndices: [-1, 0, 1, 2, 3],
+    frame, length: L, height: H, width: W, legLength: 0.1 * H, kneeHeight: 0.05 * H,
+    pivots, skinIndex, skinWeight,
+  };
+}
+
+/** Segment an aquatic/fish/shark mesh into body, head, caudal tail, pectoral fins, and dorsal fin. */
+export function segmentAquatic(positions: ArrayLike<number>, hints: SegmentHints = {}): Segmentation | null {
+  const frame = findFrame(positions, hints);
+  if (!frame) return null;
+  const n = Math.floor(positions.length / 3);
+  const pts = new Float32Array(n * 3);
+  const tmp: [number, number, number] = [0, 0, 0];
+  let xMin = Infinity, xMax = -Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    toFrame(positions, i, frame, tmp);
+    pts[i * 3] = tmp[0]; pts[i * 3 + 1] = tmp[1]; pts[i * 3 + 2] = tmp[2];
+    if (tmp[0] < xMin) xMin = tmp[0]; if (tmp[0] > xMax) xMax = tmp[0];
+    if (tmp[1] > yMax) yMax = tmp[1];
+    if (tmp[2] < zMin) zMin = tmp[2]; if (tmp[2] > zMax) zMax = tmp[2];
+  }
+  const L = Math.max(zMax - zMin, 1e-4), H = Math.max(yMax, 1e-4), W = Math.max(xMax - xMin, 1e-4);
+  const zMid = (zMin + zMax) / 2;
+  const skinIndex = new Uint16Array(n * 4);
+  const skinWeight = new Float32Array(n * 4);
+  const cand = new Float32Array(6);
+
+  for (let i = 0; i < n; i++) {
+    const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
+    const ax = Math.abs(x);
+    const headW = smooth(zMid + 0.15 * L, zMax, z);
+    const tailW = 1 - smooth(zMin, zMid - 0.2 * L, z);
+    const finW = smooth(0.25 * W, 0.48 * W, ax) * (1 - smooth(0.6 * H, 0.9 * H, y));
+    const dorsalW = smooth(0.65 * H, 0.95 * H, y) * (1 - smooth(0.12 * W, 0.3 * W, ax));
+
+    cand[0] = Math.max(0.1, 1 - (headW + tailW + finW + dorsalW)); // body
+    cand[1] = headW; // head
+    cand[2] = tailW; // tail
+    cand[3] = x > 0 ? finW : 0; // finL
+    cand[4] = x < 0 ? finW : 0; // finR
+    cand[5] = dorsalW; // dorsal
+
+    let w4 = 0;
+    for (let k = 0; k < 4; k++) {
+      let best = -1, bw = 0;
+      for (let b = 0; b < 6; b++) if (cand[b] > bw) { bw = cand[b]; best = b; }
+      if (best < 0) break;
+      skinIndex[i * 4 + k] = best;
+      skinWeight[i * 4 + k] = bw;
+      w4 += bw;
+      cand[best] = 0;
+    }
+    if (w4 <= 0) {
+      skinIndex[i * 4] = 0;
+      skinWeight[i * 4] = 1;
+    } else for (let k = 0; k < 4; k++) skinWeight[i * 4 + k] /= w4;
+  }
+
+  const pivots: Array<[number, number, number]> = [
+    [0, 0.5 * H, zMid],
+    [0, 0.5 * H, zMax - 0.15 * L],
+    [0, 0.5 * H, zMin + 0.1 * L],
+    [0.3 * W, 0.4 * H, zMid + 0.1 * L],
+    [-0.3 * W, 0.4 * H, zMid + 0.1 * L],
+    [0, 0.85 * H, zMid],
+  ];
+
+  return {
+    type: "aquatic",
+    boneNames: AQUATIC_BONE_NAMES,
+    parentIndices: [-1, 0, 0, 0, 0, 0],
+    frame, length: L, height: H, width: W, legLength: 0.2 * H, kneeHeight: 0.1 * H,
+    pivots, skinIndex, skinWeight,
+  };
+}
+
+/** Segment an arachnid/spider/crab mesh into cephalothorax, abdomen, and 4 leg pairs. */
+export function segmentArachnid(positions: ArrayLike<number>, hints: SegmentHints = {}): Segmentation | null {
+  const frame = findFrame(positions, hints);
+  if (!frame) return null;
+  const n = Math.floor(positions.length / 3);
+  const pts = new Float32Array(n * 3);
+  const tmp: [number, number, number] = [0, 0, 0];
+  let xMin = Infinity, xMax = -Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  for (let i = 0; i < n; i++) {
+    toFrame(positions, i, frame, tmp);
+    pts[i * 3] = tmp[0]; pts[i * 3 + 1] = tmp[1]; pts[i * 3 + 2] = tmp[2];
+    if (tmp[0] < xMin) xMin = tmp[0]; if (tmp[0] > xMax) xMax = tmp[0];
+    if (tmp[1] > yMax) yMax = tmp[1];
+    if (tmp[2] < zMin) zMin = tmp[2]; if (tmp[2] > zMax) zMax = tmp[2];
+  }
+  const L = Math.max(zMax - zMin, 1e-4), H = Math.max(yMax, 1e-4), W = Math.max(xMax - xMin, 1e-4);
+  const zMid = (zMin + zMax) / 2;
+  const skinIndex = new Uint16Array(n * 4);
+  const skinWeight = new Float32Array(n * 4);
+  const cand = new Float32Array(10);
+
+  for (let i = 0; i < n; i++) {
+    const x = pts[i * 3], z = pts[i * 3 + 2];
+    const ax = Math.abs(x);
+    const isLeg = smooth(0.18 * W, 0.38 * W, ax);
+    const headW = (1 - isLeg) * smooth(zMid + 0.1 * L, zMax, z);
+    const bodyW = (1 - isLeg) * (1 - headW);
+
+    cand[0] = bodyW; // body / abdomen
+    cand[1] = headW; // head / cephalothorax
+
+    // Legs 1..4 along z axis from front to back
+    const uZ = Math.min(1, Math.max(0, (z - zMin) / L));
+    for (let k = 0; k < 4; k++) {
+      const wK = isLeg * Math.max(0, 1 - Math.abs((1 - uZ) * 4 - (k + 0.5)) * 1.5);
+      cand[2 + k * 2] = x > 0 ? wK : 0; // leg k L
+      cand[3 + k * 2] = x < 0 ? wK : 0; // leg k R
+    }
+
+    let w4 = 0;
+    for (let k = 0; k < 4; k++) {
+      let best = -1, bw = 0;
+      for (let b = 0; b < 10; b++) if (cand[b] > bw) { bw = cand[b]; best = b; }
+      if (best < 0) break;
+      skinIndex[i * 4 + k] = best;
+      skinWeight[i * 4 + k] = bw;
+      w4 += bw;
+      cand[best] = 0;
+    }
+    if (w4 <= 0) {
+      skinIndex[i * 4] = 0;
+      skinWeight[i * 4] = 1;
+    } else for (let k = 0; k < 4; k++) skinWeight[i * 4 + k] /= w4;
+  }
+
+  const pivots: Array<[number, number, number]> = [
+    [0, 0.35 * H, zMid - 0.1 * L], // body
+    [0, 0.4 * H, zMax - 0.15 * L], // head
+    // 4 leg pairs radiating outward
+    [0.25 * W, 0.3 * H, zMax - 0.2 * L], [-0.25 * W, 0.3 * H, zMax - 0.2 * L],
+    [0.32 * W, 0.3 * H, zMid + 0.1 * L], [-0.32 * W, 0.3 * H, zMid + 0.1 * L],
+    [0.32 * W, 0.3 * H, zMid - 0.1 * L], [-0.32 * W, 0.3 * H, zMid - 0.1 * L],
+    [0.25 * W, 0.3 * H, zMin + 0.2 * L], [-0.25 * W, 0.3 * H, zMin + 0.2 * L],
+  ];
+
+  return {
+    type: "arachnid",
+    boneNames: ARACHNID_BONE_NAMES,
+    parentIndices: [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    frame, length: L, height: H, width: W, legLength: 0.35 * H, kneeHeight: 0.2 * H,
+    pivots, skinIndex, skinWeight,
+  };
+}
+
+/** Segment a flora/tree/bush mesh into root, trunk, branches, and canopy. */
+export function segmentFlora(positions: ArrayLike<number>, _hints: SegmentHints = {}): Segmentation | null {
+  const n = Math.floor(positions.length / 3);
+  if (n < 12) return null;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (z < z0) z0 = z; if (z > z1) z1 = z;
+  }
+  const frame: Frame = { yaw: 0, dx: -(x0 + x1) / 2, dy: -y0, dz: -(z0 + z1) / 2 };
+  const L = Math.max(z1 - z0, 1e-4), H = Math.max(y1 - y0, 1e-4), W = Math.max(x1 - x0, 1e-4);
+  const skinIndex = new Uint16Array(n * 4);
+  const skinWeight = new Float32Array(n * 4);
+  const cand = new Float32Array(5);
+
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 3] + frame.dx;
+    const y = positions[i * 3 + 1] + frame.dy;
+    const ax = Math.abs(x);
+    const uY = Math.min(1, Math.max(0, y / H));
+
+    const rootW = 1 - smooth(0.05, 0.25, uY);
+    const canopyW = smooth(0.65, 0.95, uY);
+    const branchW = smooth(0.4, 0.75, uY) * smooth(0.2 * W, 0.45 * W, ax);
+    const trunkW = (1 - (rootW + canopyW + branchW));
+
+    cand[0] = rootW;
+    cand[1] = Math.max(0, trunkW);
+    cand[2] = x > 0 ? branchW : 0;
+    cand[3] = x < 0 ? branchW : 0;
+    cand[4] = canopyW;
+
+    let w4 = 0;
+    for (let k = 0; k < 4; k++) {
+      let best = -1, bw = 0;
+      for (let b = 0; b < 5; b++) if (cand[b] > bw) { bw = cand[b]; best = b; }
+      if (best < 0) break;
+      skinIndex[i * 4 + k] = best;
+      skinWeight[i * 4 + k] = bw;
+      w4 += bw;
+      cand[best] = 0;
+    }
+    if (w4 <= 0) {
+      skinIndex[i * 4] = 0;
+      skinWeight[i * 4] = 1;
+    } else for (let k = 0; k < 4; k++) skinWeight[i * 4 + k] /= w4;
+  }
+
+  const pivots: Array<[number, number, number]> = [
+    [0, 0, 0],
+    [0, 0.35 * H, 0],
+    [0.25 * W, 0.65 * H, 0],
+    [-0.25 * W, 0.65 * H, 0],
+    [0, 0.85 * H, 0],
+  ];
+
+  return {
+    type: "flora",
+    boneNames: FLORA_BONE_NAMES,
+    parentIndices: [-1, 0, 1, 1, 1],
+    frame, length: L, height: H, width: W, legLength: 0.35 * H, kneeHeight: 0.15 * H,
+    pivots, skinIndex, skinWeight,
+  };
+}
+
+/**
+ * Universal segmentation solver: classifies the model and generates procedural bones and skin weights.
+ */
+export function segmentModel(positions: ArrayLike<number>, hints: SegmentHints = {}, modelName?: string): Segmentation | null {
+  const targetType = classifyModelType(positions, hints, modelName);
+  if (targetType === "quadruped") {
+    const quad = segmentQuadruped(positions, hints);
+    if (quad) return quad;
+  }
+  if (targetType === "avian") {
+    const avian = segmentAvian(positions, hints);
+    if (avian) return avian;
+  }
+  if (targetType === "serpentine") {
+    const snake = segmentSerpentine(positions, hints);
+    if (snake) return snake;
+  }
+  if (targetType === "aquatic") {
+    const fish = segmentAquatic(positions, hints);
+    if (fish) return fish;
+  }
+  if (targetType === "arachnid") {
+    const spider = segmentArachnid(positions, hints);
+    if (spider) return spider;
+  }
+  if (targetType === "flora") {
+    const plant = segmentFlora(positions, hints);
+    if (plant) return plant;
+  }
+  // Fallback cascade
+  return segmentAvian(positions, hints) ??
+         segmentSerpentine(positions, hints) ??
+         segmentAquatic(positions, hints) ??
+         segmentArachnid(positions, hints) ??
+         segmentFlora(positions, hints);
 }

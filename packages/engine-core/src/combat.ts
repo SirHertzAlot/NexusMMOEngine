@@ -304,7 +304,16 @@ export class CombatSystem implements SimSystem {
         if ((pressed & IntentButton.Dodge) !== 0) {
           move = this.start(sim, e, Move.Roll, mx !== 0 || mz !== 0 ? Math.atan2(mx, mz) : look);
         } else if ((pressed & IntentButton.Attack) !== 0) {
-          move = this.start(sim, e, Move.SwordA, look);
+          const weapon = this.damage?.weaponOf?.(e);
+          const family = weapon?.family?.toLowerCase();
+          let attackMove: number = Move.SwordA;
+          if (family === "bite") attackMove = Move.Bite;
+          else if (family === "claw") attackMove = Move.Claw;
+          else if (family === "tusk" || family === "horn") attackMove = Move.Pounce;
+          else if (family === "crush") attackMove = Move.Stomp;
+          else if (family === "tailslam") attackMove = Move.TailWhip;
+          else if (family === "greatsword") attackMove = Move.Cleave;
+          move = this.start(sim, e, attackMove, look);
         } else if ((buttons & IntentButton.Block) !== 0) {
           move = this.start(sim, e, Move.Guard, look);
         }

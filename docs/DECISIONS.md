@@ -690,3 +690,12 @@ Every entry: date, decision, rationale. Newest first.
   Node single-threaded so counts don't depend on scheduling; the counts
   are committed as a baseline (`perf/callgrind-baseline.json`) that
   changes, the gateway split first, are measured against.
+- **2026-10-26 — Universal Procedural Multi-Rig Engine, Bone Ontology & Creature Catalog.**
+  The animation pipeline was constrained by quadruped-only segmentation and hardcoded humanoid sword attacks.
+  We established:
+  1. Canonical Bone Ontology (`CANONICAL_BONE_ONTOLOGY`) with complete finger chains, creature appendages, wings, and tails, supporting preset mappings for Mixamo, Synty, Rigify, Mannequin, Kevin Iglesias, and CMU, plus automated preset detection and synonym resolution (`resolveBoneMapping`).
+  2. Protocol & Animation expansion: 10 creature natural attacks (`Move.Bite`, `Move.Claw`, `Move.Pounce`, `Move.Roar`, `Move.Breath`, `Move.TailWhip`, `Move.Stomp`, `Move.WingBuffet`, `Move.Sting`, `Move.Cleave`), locomotion clips (`Trot`, `Gallop`, `Fly`), and creature behaviors (`Graze`, `Sleep`, `Threaten`, `DeathFall`).
+  3. Dynamic Weapon-to-Move Resolution in `CombatSystem`: Attacks resolve combat moves dynamically from the attacker's weapon/natural base (`family: "bite" -> Move.Bite`, `"claw" -> Move.Claw`, `"tusk" / "horn" -> Move.Pounce`, etc.) rather than forcing `Move.SwordA`.
+  4. Universal Multi-Rig Classification & Segmentation (`apps/client/src/render/animal/`): Added `segmentAvian`, `segmentSerpentine`, `segmentAquatic`, `segmentArachnid`, and `segmentFlora`, driven by geometric proportions and name patterns, while preserving `segmentQuadruped` backwards compatibility.
+  5. Multi-Rig Motion Solvers in `gait.ts`: Harmonic wing flapping and gliding, sinusoidal serpentine travelling waves, aquatic caudal/pectoral fin undulation, arachnid alternating tripod scurrying, and flora wind sway, updating scratch buffers with zero allocation in tick loops.
+  6. Comprehensive Creature & Loot Catalog: Complete rules for all 19 species in `content/rules/creatures.json`, monster loot tables in `content/rules/loot.json`, and model mapping catalog in `content/wildlife/flora-fauna-models.json`.

@@ -1,0 +1,2524 @@
+{
+ "version": 1,
+ "safeRadiusM": 250,
+ "rings": [
+  {
+   "fromM": 0,
+   "maxDanger": 1
+  },
+  {
+   "fromM": 250,
+   "maxDanger": 2
+  },
+  {
+   "fromM": 700,
+   "maxDanger": 3
+  },
+  {
+   "fromM": 1500,
+   "maxDanger": 4
+  },
+  {
+   "fromM": 1600,
+   "maxDanger": 5
+  }
+ ],
+ "livestock": {
+  "radiusM": [
+   20,
+   160
+  ],
+  "packsPerKm2": 150
+ },
+ "waterProximity": {
+  "rangeM": 250,
+  "boost": 0.6
+ },
+ "ratios": {
+  "predatorToPrey": [
+   0.0667,
+   0.125
+  ],
+  "apexToPrey": [
+   0,
+   0.07
+  ]
+ },
+ "biomes": {
+  "forest": {
+   "packsPerKm2": 55,
+   "fertility": 1
+  },
+  "plains": {
+   "packsPerKm2": 45,
+   "fertility": 0.9
+  },
+  "mountains": {
+   "packsPerKm2": 20,
+   "fertility": 0.5
+  },
+  "tundra": {
+   "packsPerKm2": 15,
+   "fertility": 0.4
+  },
+  "snow": {
+   "packsPerKm2": 10,
+   "fertility": 0.3
+  },
+  "swamp": {
+   "packsPerKm2": 40,
+   "fertility": 1
+  },
+  "rainforest": {
+   "packsPerKm2": 60,
+   "fertility": 1.2
+  },
+  "lake": {
+   "packsPerKm2": 20,
+   "fertility": 1
+  },
+  "sea": {
+   "packsPerKm2": 30,
+   "fertility": 1
+  }
+ },
+ "species": {
+  "deer": {
+   "role": "large_herbivore",
+   "models": "deer|mule_deer",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     4,
+     10
+    ]
+   },
+   "territoryM": 400,
+   "activity": "crepuscular",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 80,
+    "damageX": 0.4,
+    "noticeM": 30,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 3,
+    "plains": 3,
+    "mountains": 1,
+    "swamp": 1
+   },
+   "note": "Skittish grazers; bolt at the first sight of a player."
+  },
+  "elk": {
+   "role": "large_herbivore",
+   "models": "elk|moose",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 600,
+   "activity": "crepuscular",
+   "temperament": "territorial",
+   "danger": {
+    "tier": 2,
+    "health": 260,
+    "damageX": 1.4,
+    "noticeM": 14,
+    "telegraphS": 2,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 0.5,
+    "mountains": 0.5,
+    "tundra": 2,
+    "snow": 1
+   },
+   "note": "Bulls charge a close intruder, after a head-lowered warning."
+  },
+  "boar": {
+   "role": "large_herbivore",
+   "models": "boar",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     2,
+     5
+    ]
+   },
+   "territoryM": 250,
+   "activity": "cathemeral",
+   "temperament": "defend",
+   "danger": {
+    "tier": 2,
+    "health": 140,
+    "damageX": 1.2,
+    "noticeM": 10,
+    "telegraphS": 1.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1.5,
+    "plains": 1,
+    "swamp": 1.5,
+    "rainforest": 1.5
+   },
+   "note": "Sounders fight when approached or when piglets are near; tusks hurt."
+  },
+  "bighorn": {
+   "role": "large_herbivore",
+   "models": "bighorn",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 500,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 1,
+    "health": 110,
+    "damageX": 0.9,
+    "noticeM": 25,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "mountains": 3
+   },
+   "note": "Flees, rams only when cornered."
+  },
+  "porcupine": {
+   "role": "large_herbivore",
+   "models": "porcupine|hedgehog",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 60,
+   "activity": "nocturnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 1,
+    "health": 30,
+    "damageX": 0.5,
+    "noticeM": 4,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1.6,
+    "plains": 0.6
+   },
+   "note": "Harmless unless touched; quills punish a melee attacker."
+  },
+  "rabbit": {
+   "role": "small_prey",
+   "models": "rabbit|cottontail_rabbit",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     3,
+     6
+    ]
+   },
+   "territoryM": 60,
+   "activity": "crepuscular",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 8,
+    "damageX": 0.1,
+    "noticeM": 18,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 4,
+    "plains": 4,
+    "mountains": 2,
+    "tundra": 2,
+    "snow": 2,
+    "swamp": 1
+   },
+   "note": "Colony prey, the base of the pyramid."
+  },
+  "squirrel": {
+   "role": "small_prey",
+   "models": "squirrel|chipmunk",
+   "habitat": "land",
+   "group": {
+    "kind": "pair",
+    "size": [
+     1,
+     3
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 6,
+    "damageX": 0.1,
+    "noticeM": 15,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 4,
+    "rainforest": 1
+   },
+   "note": "Trees; flees up and away."
+  },
+  "quail": {
+   "role": "small_prey",
+   "models": "quail|pheasant|sparrow",
+   "habitat": "land",
+   "group": {
+    "kind": "flock",
+    "size": [
+     4,
+     9
+    ]
+   },
+   "territoryM": 80,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 5,
+    "damageX": 0.1,
+    "noticeM": 12,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1,
+    "plains": 2,
+    "tundra": 1,
+    "rainforest": 1
+   },
+   "note": "Flock birds, flush when approached."
+  },
+  "frog": {
+   "role": "small_prey",
+   "models": "frog|tree_frog|salamander",
+   "habitat": "land",
+   "group": {
+    "kind": "flock",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 30,
+   "activity": "nocturnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 3,
+    "damageX": 0.05,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "swamp": 4,
+    "rainforest": 3,
+    "lake": 3
+   },
+   "note": "Wetland prey."
+  },
+  "monkey": {
+   "role": "small_prey",
+   "models": "monkey",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 200,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 25,
+    "damageX": 0.3,
+    "noticeM": 20,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "rainforest": 2
+   },
+   "note": "Troops; scatter."
+  },
+  "fox": {
+   "role": "mesopredator",
+   "models": "fox|gray_fox",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 250,
+   "activity": "crepuscular",
+   "temperament": "flee",
+   "danger": {
+    "tier": 1,
+    "health": 35,
+    "damageX": 0.5,
+    "noticeM": 14,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1.5,
+    "plains": 1,
+    "mountains": 0.6,
+    "tundra": 0.5,
+    "snow": 0.5
+   },
+   "note": "Hunts rabbits and quail; shy of people, bites only when cornered."
+  },
+  "coyote": {
+   "role": "mesopredator",
+   "models": "coyote",
+   "habitat": "land",
+   "group": {
+    "kind": "pack",
+    "size": [
+     2,
+     4
+    ]
+   },
+   "territoryM": 500,
+   "activity": "crepuscular",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 3,
+    "health": 45,
+    "damageX": 0.7,
+    "noticeM": 20,
+    "telegraphS": 1.5,
+    "tactics": "flank"
+   },
+   "biomes": {
+    "plains": 0.8
+   },
+   "note": "Small packs that test lone travellers."
+  },
+  "bobcat": {
+   "role": "mesopredator",
+   "models": "bobcat",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 400,
+   "activity": "nocturnal",
+   "temperament": "territorial",
+   "danger": {
+    "tier": 2,
+    "health": 70,
+    "damageX": 1,
+    "noticeM": 12,
+    "telegraphS": 2,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "forest": 0.5,
+    "mountains": 0.3,
+    "swamp": 0.6,
+    "rainforest": 0.5
+   },
+   "note": "Solitary ambusher; crouches and growls before it springs."
+  },
+  "snake": {
+   "role": "mesopredator",
+   "models": "snake",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 20,
+   "activity": "diurnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 2,
+    "health": 12,
+    "damageX": 1,
+    "noticeM": 4,
+    "telegraphS": 2.5,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "forest": 0.5,
+    "plains": 0.5,
+    "swamp": 1.5,
+    "rainforest": 1.8
+   },
+   "note": "Coiled and hissing before it strikes; short reach, lethal if ignored."
+  },
+  "wolf": {
+   "role": "apex_predator",
+   "models": "wolf",
+   "habitat": "land",
+   "group": {
+    "kind": "pack",
+    "size": [
+     3,
+     6
+    ]
+   },
+   "territoryM": 1500,
+   "activity": "crepuscular",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 3,
+    "health": 90,
+    "damageX": 1,
+    "noticeM": 28,
+    "telegraphS": 3,
+    "tactics": "flank"
+   },
+   "biomes": {
+    "forest": 0.5,
+    "plains": 0.3,
+    "mountains": 0.25,
+    "tundra": 0.25,
+    "snow": 0.15,
+    "swamp": 0.15
+   },
+   "note": "Packs flank a target; a howl telegraphs them. Wounded or alone prey is hunted first."
+  },
+  "cougar": {
+   "role": "apex_predator",
+   "models": "cougar",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1200,
+   "activity": "nocturnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 3,
+    "health": 120,
+    "damageX": 1.6,
+    "noticeM": 16,
+    "telegraphS": 2,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "forest": 0.15,
+    "mountains": 0.3,
+    "swamp": 0.1,
+    "rainforest": 0.5
+   },
+   "note": "Stalks from behind cover; tail-twitch telegraph."
+  },
+  "bear": {
+   "role": "apex_predator",
+   "models": "bear|black_bear",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1500,
+   "activity": "diurnal",
+   "temperament": "territorial",
+   "danger": {
+    "tier": 4,
+    "health": 400,
+    "damageX": 2.4,
+    "noticeM": 14,
+    "telegraphS": 2.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 0.3,
+    "mountains": 0.25,
+    "tundra": 0.2
+   },
+   "note": "Rears up and huffs before charging; mothers with cubs defend at once."
+  },
+  "raven": {
+   "role": "scavenger",
+   "models": "raven|crow",
+   "habitat": "land",
+   "group": {
+    "kind": "flock",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 300,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 5,
+    "damageX": 0.1,
+    "noticeM": 15,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1,
+    "plains": 1,
+    "mountains": 1,
+    "tundra": 1,
+    "snow": 0.5
+   },
+   "note": "Gather where kills happen."
+  },
+  "raccoon": {
+   "role": "scavenger",
+   "models": "raccoon|skunk|badger",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 80,
+   "activity": "nocturnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 1,
+    "health": 45,
+    "damageX": 0.5,
+    "noticeM": 6,
+    "telegraphS": 1.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1,
+    "plains": 0.5,
+    "swamp": 1
+   },
+   "note": "Forages at edges and camps; bites when grabbed."
+  },
+  "cow": {
+   "role": "livestock",
+   "models": "cow|bull",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 1,
+    "health": 220,
+    "damageX": 1.2,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "sheep": {
+   "role": "livestock",
+   "models": "sheep",
+   "habitat": "land",
+   "group": {
+    "kind": "flock",
+    "size": [
+     5,
+     12
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 70,
+    "damageX": 0.3,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "goat": {
+   "role": "livestock",
+   "models": "goat",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     3,
+     7
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 1,
+    "health": 70,
+    "damageX": 0.6,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "pig": {
+   "role": "livestock",
+   "models": "pig",
+   "habitat": "land",
+   "group": {
+    "kind": "herd",
+    "size": [
+     2,
+     5
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 1,
+    "health": 110,
+    "damageX": 0.7,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "horse": {
+   "role": "livestock",
+   "models": "horse|donkey|llama",
+   "habitat": "land",
+   "group": {
+    "kind": "pair",
+    "size": [
+     1,
+     3
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 1,
+    "health": 200,
+    "damageX": 1,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "hen": {
+   "role": "livestock",
+   "models": "hen|rooster|chick|turkey",
+   "habitat": "land",
+   "group": {
+    "kind": "flock",
+    "size": [
+     4,
+     10
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 8,
+    "damageX": 0.1,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "duck": {
+   "role": "livestock",
+   "models": "duck|goose|mallard_duck",
+   "habitat": "land",
+   "group": {
+    "kind": "flock",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 40,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 12,
+    "damageX": 0.1,
+    "noticeM": 8,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 1,
+    "forest": 0.5
+   },
+   "note": "Docile near farmsteads; defends itself when attacked or with young."
+  },
+  "fish": {
+   "role": "aquatic",
+   "models": "fish|trout|piranha",
+   "habitat": "water",
+   "group": {
+    "kind": "shoal",
+    "size": [
+     5,
+     15
+    ]
+   },
+   "territoryM": 150,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 6,
+    "damageX": 0.1,
+    "noticeM": 10,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "sea": 4,
+    "lake": 5
+   },
+   "note": "",
+   "depthM": [
+    0.5,
+    40
+   ],
+   "trophic": "prey"
+  },
+  "squid": {
+   "role": "aquatic",
+   "models": "squid|cuttlefish|seahorse",
+   "habitat": "water",
+   "group": {
+    "kind": "shoal",
+    "size": [
+     3,
+     8
+    ]
+   },
+   "territoryM": 200,
+   "activity": "nocturnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 0,
+    "health": 20,
+    "damageX": 0.2,
+    "noticeM": 10,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "sea": 1
+   },
+   "note": "",
+   "depthM": [
+    2,
+    60
+   ],
+   "trophic": "prey"
+  },
+  "shark": {
+   "role": "aquatic",
+   "models": "shark",
+   "habitat": "water",
+   "group": {
+    "kind": "pair",
+    "size": [
+     1,
+     2
+    ]
+   },
+   "territoryM": 800,
+   "activity": "crepuscular",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 3,
+    "health": 300,
+    "damageX": 2.2,
+    "noticeM": 30,
+    "telegraphS": 3,
+    "tactics": "none"
+   },
+   "biomes": {
+    "sea": 1.1
+   },
+   "note": "Circles before a rush; stays in deep water.",
+   "depthM": [
+    3,
+    60
+   ],
+   "trophic": "predator",
+   "apex": true
+  },
+  "orca": {
+   "role": "aquatic",
+   "models": "orca|killer_whale",
+   "habitat": "water",
+   "group": {
+    "kind": "pack",
+    "size": [
+     3,
+     5
+    ]
+   },
+   "territoryM": 2000,
+   "activity": "diurnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 4,
+    "health": 900,
+    "damageX": 3,
+    "noticeM": 40,
+    "telegraphS": 3,
+    "tactics": "flank"
+   },
+   "biomes": {
+    "sea": 0.25
+   },
+   "note": "Pods; the sea's apex.",
+   "depthM": [
+    8,
+    80
+   ],
+   "trophic": "predator",
+   "apex": true
+  },
+  "eel": {
+   "role": "aquatic",
+   "models": "eel",
+   "habitat": "water",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 40,
+   "activity": "nocturnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 2,
+    "health": 40,
+    "damageX": 1,
+    "noticeM": 5,
+    "telegraphS": 2,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "sea": 0.6,
+    "lake": 2.5
+   },
+   "note": "Hides in the bed; strikes what swims close.",
+   "depthM": [
+    1,
+    12
+   ],
+   "trophic": "predator"
+  },
+  "octopus": {
+   "role": "aquatic",
+   "models": "octopus",
+   "habitat": "water",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 40,
+   "activity": "nocturnal",
+   "temperament": "defend",
+   "danger": {
+    "tier": 1,
+    "health": 60,
+    "damageX": 0.6,
+    "noticeM": 6,
+    "telegraphS": 1.5,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "sea": 0.6
+   },
+   "note": "",
+   "depthM": [
+    1,
+    20
+   ],
+   "trophic": "predator"
+  },
+  "otter": {
+   "role": "mesopredator",
+   "models": "otter",
+   "habitat": "shore",
+   "group": {
+    "kind": "pair",
+    "size": [
+     1,
+     2
+    ]
+   },
+   "territoryM": 150,
+   "activity": "diurnal",
+   "temperament": "flee",
+   "danger": {
+    "tier": 1,
+    "health": 35,
+    "damageX": 0.5,
+    "noticeM": 10,
+    "telegraphS": 0,
+    "tactics": "none"
+   },
+   "biomes": {
+    "lake": 1.8
+   },
+   "note": "Shore hunter of fish; bites when cornered."
+  },
+  "jellyfish": {
+   "role": "aquatic",
+   "models": "jellyfish",
+   "habitat": "water",
+   "group": {
+    "kind": "shoal",
+    "size": [
+     2,
+     6
+    ]
+   },
+   "territoryM": 100,
+   "activity": "cathemeral",
+   "temperament": "defend",
+   "danger": {
+    "tier": 2,
+    "health": 10,
+    "damageX": 0.8,
+    "noticeM": 3,
+    "telegraphS": 1,
+    "tactics": "none"
+   },
+   "biomes": {
+    "sea": 0.5
+   },
+   "note": "Drifts; stings on contact only.",
+   "depthM": [
+    0.5,
+    15
+   ],
+   "trophic": "other"
+  },
+  "short-faced-bear": {
+   "role": "apex_predator",
+   "models": "short_faced_bear|cave_bear|bear|black_bear",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 2500,
+   "activity": "cathemeral",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 2200,
+    "damageX": 9,
+    "noticeM": 60,
+    "telegraphS": 3,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 2,
+    "plains": 2,
+    "mountains": 1,
+    "tundra": 1
+   },
+   "boss": {
+    "lengthM": 3.8,
+    "heightM": 2.4,
+    "base": {
+     "species": "bear",
+     "lengthM": 2
+    },
+    "modelsNot": "cub|head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.35,
+    "lair": {
+     "radiusM": 200,
+     "floraBias": 0.3
+    },
+    "rarityPer100Km2": 1.5,
+    "loot": "boss-bear-hide",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "territory",
+     "scent_blood",
+     "scent_food"
+    ],
+    "weakPoints": [
+     {
+      "part": "snout",
+      "damageMult": 1.5,
+      "staggerS": 2
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 20,
+     "minFoodStores": 0,
+     "rangeM": 3500,
+     "cooldownS": 10800,
+     "approach": "habitat_edge",
+     "targets": [
+      "livestock",
+      "structures",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 5,
+      "hpBelowPct": 30,
+      "maxS": 900
+     },
+     "warningSigns": [
+      {
+       "kind": "tracks",
+       "radiusM": 400,
+       "leadS": 900
+      },
+      {
+       "kind": "claw_marks",
+       "radiusM": 150,
+       "leadS": 600
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 250,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Arctodus-scale bear, the largest land carnivore of the ice age: runs prey down on long legs and rears up to 3.4 m before it strikes."
+  },
+  "sabre-tooth": {
+   "role": "apex_predator",
+   "models": "sabre_tooth|smilodon|lion|tiger|cougar|panther",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 2200,
+   "activity": "nocturnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 1700,
+    "damageX": 8,
+    "noticeM": 70,
+    "telegraphS": 2.5,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "forest": 2,
+    "plains": 1.5,
+    "rainforest": 2,
+    "mountains": 1
+   },
+   "boss": {
+    "lengthM": 3,
+    "heightM": 1.4,
+    "base": {
+     "species": "cougar",
+     "lengthM": 1.1
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.7,
+    "lair": {
+     "radiusM": 150,
+     "floraBias": 0.5
+    },
+    "rarityPer100Km2": 1.5,
+    "loot": "boss-cat-pelt",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "scent_livestock",
+     "noise"
+    ],
+    "weakPoints": [
+     {
+      "part": "neck",
+      "damageMult": 2,
+      "staggerS": 1.5
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 30,
+     "minFoodStores": 0,
+     "rangeM": 3000,
+     "cooldownS": 7200,
+     "approach": "habitat_edge",
+     "targets": [
+      "livestock",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 2,
+      "hpBelowPct": 40,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "tracks",
+       "radiusM": 300,
+       "leadS": 900
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 200,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Smilodon-scale ambusher: a stalking crouch, then a pounce at the neck with blade teeth. Takes cattle and sleepers."
+  },
+  "dire-wolf": {
+   "role": "apex_predator",
+   "models": "dire_wolf|wolf",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 3000,
+   "activity": "crepuscular",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 1500,
+    "damageX": 7,
+    "noticeM": 80,
+    "telegraphS": 3,
+    "tactics": "flank"
+   },
+   "biomes": {
+    "forest": 2,
+    "plains": 2,
+    "mountains": 1,
+    "tundra": 2,
+    "snow": 1
+   },
+   "boss": {
+    "lengthM": 3,
+    "heightM": 1.6,
+    "base": {
+     "species": "wolf",
+     "lengthM": 1.2
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.6,
+    "lair": {
+     "radiusM": 180,
+     "floraBias": 0.4
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-wolf-pelt",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "territory",
+     "scent_livestock",
+     "scent_blood",
+     "noise"
+    ],
+    "weakPoints": [
+     {
+      "part": "throat",
+      "damageMult": 1.8,
+      "staggerS": 1.5
+     }
+    ],
+    "escort": {
+     "species": "wolf",
+     "count": [
+      4,
+      7
+     ]
+    },
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 40,
+     "minFoodStores": 0,
+     "rangeM": 4000,
+     "cooldownS": 7200,
+     "approach": "direct",
+     "targets": [
+      "livestock",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 3,
+      "hpBelowPct": 35,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "tracks",
+       "radiusM": 400,
+       "leadS": 900
+      },
+      {
+       "kind": "noise",
+       "radiusM": 800,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "The alpha of a great dire-wolf pack: heavier than any wolf and never alone; the escort wolves flank while it goes for the leg."
+  },
+  "terror-bird": {
+   "role": "apex_predator",
+   "models": "terror_bird|ostrich|emu|cassowary|rhea|turkey",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 2500,
+   "activity": "diurnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 1400,
+    "damageX": 7,
+    "noticeM": 90,
+    "telegraphS": 2.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "plains": 3,
+    "forest": 1
+   },
+   "boss": {
+    "lengthM": 3,
+    "heightM": 4,
+    "base": {
+     "species": "hen",
+     "lengthM": 0.44
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 2,
+    "lair": {
+     "radiusM": 160,
+     "floraBias": 0.2
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-feathers",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "noise"
+    ],
+    "weakPoints": [
+     {
+      "part": "head",
+      "damageMult": 2.2,
+      "staggerS": 2.5
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 30,
+     "minFoodStores": 0,
+     "rangeM": 3000,
+     "cooldownS": 7200,
+     "approach": "direct",
+     "targets": [
+      "livestock",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 3,
+      "hpBelowPct": 50,
+      "maxS": 480
+     },
+     "warningSigns": [
+      {
+       "kind": "tracks",
+       "radiusM": 300,
+       "leadS": 600
+      },
+      {
+       "kind": "noise",
+       "radiusM": 600,
+       "leadS": 200
+      }
+     ]
+    }
+   },
+   "note": "Flightless phorusrhacid, 4 m tall with a hooked beak: the fastest thing on the plains, it runs down and hammers prey. Light-boned, so it dies faster than its bulk suggests."
+  },
+  "giant-monitor": {
+   "role": "apex_predator",
+   "models": "monitor|komodo|goanna|lizard|iguana",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1500,
+   "activity": "diurnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 1600,
+    "damageX": 7,
+    "noticeM": 40,
+    "telegraphS": 3,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "swamp": 2,
+    "rainforest": 2,
+    "plains": 1
+   },
+   "boss": {
+    "lengthM": 5.5,
+    "heightM": 1.2,
+    "base": {
+     "species": "snake",
+     "lengthM": 1
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.3,
+    "lair": {
+     "radiusM": 120,
+     "floraBias": 0.5
+    },
+    "rarityPer100Km2": 1,
+    "loot": "boss-lizard-hide",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "scent_food"
+    ],
+    "weakPoints": [
+     {
+      "part": "throat",
+      "damageMult": 1.6,
+      "staggerS": 2
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 20,
+     "minFoodStores": 0,
+     "rangeM": 2500,
+     "cooldownS": 10800,
+     "approach": "habitat_edge",
+     "targets": [
+      "livestock",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 2,
+      "hpBelowPct": 40,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "tracks",
+       "radiusM": 300,
+       "leadS": 900
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 200,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Megalania-scale monitor lizard: a slow stalk, a gape, a bite that carries venom and rot; waits near water holes and trails."
+  },
+  "giant-crocodilian": {
+   "role": "apex_predator",
+   "models": "crocodile|croc|alligator|caiman|gator|deinosuchus",
+   "habitat": "shore",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1200,
+   "activity": "cathemeral",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 2800,
+    "damageX": 11,
+    "noticeM": 50,
+    "telegraphS": 3,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "swamp": 3,
+    "rainforest": 2,
+    "lake": 2
+   },
+   "boss": {
+    "lengthM": 10,
+    "heightM": 2,
+    "base": {
+     "species": "snake",
+     "lengthM": 1
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.2,
+    "swimSpeedX": 1.8,
+    "lair": {
+     "radiusM": 120,
+     "floraBias": 0.4
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-croc-hide",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "scent_livestock",
+     "noise"
+    ],
+    "weakPoints": [
+     {
+      "part": "eye",
+      "damageMult": 2.2,
+      "staggerS": 3
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 20,
+     "minFoodStores": 0,
+     "rangeM": 3000,
+     "cooldownS": 10800,
+     "approach": "along_water",
+     "targets": [
+      "livestock",
+      "players",
+      "boats"
+     ],
+     "retreat": {
+      "satiatedMeals": 2,
+      "hpBelowPct": 35,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "wake",
+       "radiusM": 300,
+       "leadS": 600
+      },
+      {
+       "kind": "tracks",
+       "radiusM": 200,
+       "leadS": 600
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 200,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Deinosuchus/Sarcosuchus-scale crocodilian, 10 m: lies half-sunk at the water line, takes whatever comes to drink, and is quick in water and brief on land."
+  },
+  "giant-constrictor": {
+   "role": "apex_predator",
+   "models": "python|boa|anaconda|constrictor|snake",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 800,
+   "activity": "nocturnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 1800,
+    "damageX": 6.5,
+    "noticeM": 25,
+    "telegraphS": 2.5,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "swamp": 2,
+    "rainforest": 3
+   },
+   "boss": {
+    "lengthM": 12,
+    "heightM": 1,
+    "base": {
+     "species": "snake",
+     "lengthM": 1
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.2,
+    "lair": {
+     "radiusM": 100,
+     "floraBias": 0.7
+    },
+    "rarityPer100Km2": 1,
+    "loot": "boss-snake-hide",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_food",
+     "scent_blood"
+    ],
+    "weakPoints": [
+     {
+      "part": "head",
+      "damageMult": 2,
+      "staggerS": 2
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 20,
+     "minFoodStores": 0,
+     "rangeM": 2000,
+     "cooldownS": 14400,
+     "approach": "habitat_edge",
+     "targets": [
+      "livestock",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 1,
+      "hpBelowPct": 40,
+      "maxS": 300
+     },
+     "warningSigns": [
+      {
+       "kind": "tracks",
+       "radiusM": 250,
+       "leadS": 900
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 150,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Titanoboa-scale constrictor, 12 m: hangs from the canopy or lies in the shallows, then coils and holds; slow to start, nearly impossible to pry off."
+  },
+  "mammoth": {
+   "role": "large_herbivore",
+   "models": "mammoth|mastodon|elephant",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 2500,
+   "activity": "diurnal",
+   "temperament": "territorial",
+   "danger": {
+    "tier": 5,
+    "health": 3000,
+    "damageX": 10,
+    "noticeM": 35,
+    "telegraphS": 3.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "tundra": 3,
+    "snow": 2,
+    "plains": 1,
+    "mountains": 1
+   },
+   "boss": {
+    "lengthM": 6,
+    "heightM": 4,
+    "base": {
+     "species": "cow",
+     "lengthM": 2.4
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.25,
+    "lair": {
+     "radiusM": 250,
+     "floraBias": 0
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-ivory",
+    "intelligence": 0,
+    "drives": [
+     "territory",
+     "noise",
+     "season"
+    ],
+    "weakPoints": [
+     {
+      "part": "foreleg",
+      "damageMult": 1.6,
+      "staggerS": 4
+     }
+    ]
+   },
+   "note": "Woolly mammoth bull: placid until provoked or in the autumn rut, then a trumpeting, tusk-swinging charge that flattens palisades. Does not hunt."
+  },
+  "woolly-rhino": {
+   "role": "large_herbivore",
+   "models": "rhino|rhinoceros|elasmotherium",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1800,
+   "activity": "diurnal",
+   "temperament": "territorial",
+   "danger": {
+    "tier": 5,
+    "health": 2000,
+    "damageX": 9.5,
+    "noticeM": 30,
+    "telegraphS": 2.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "tundra": 2,
+    "plains": 2,
+    "snow": 1
+   },
+   "boss": {
+    "lengthM": 4.2,
+    "heightM": 2,
+    "base": {
+     "species": "boar",
+     "lengthM": 1.3
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.5,
+    "lair": {
+     "radiusM": 200,
+     "floraBias": 0
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-horn",
+    "intelligence": 0,
+    "drives": [
+     "territory",
+     "noise",
+     "scent_food",
+     "season"
+    ],
+    "weakPoints": [
+     {
+      "part": "flank",
+      "damageMult": 1.5,
+      "staggerS": 2.5
+     }
+    ]
+   },
+   "note": "Woolly rhinoceros: poor sight, bad temper, a straight-line charge behind a horn as long as a man. Stampedes through anything that moves or smells wrong in the rut."
+  },
+  "giant-ground-sloth": {
+   "role": "large_herbivore",
+   "models": "sloth|megatherium",
+   "habitat": "land",
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1500,
+   "activity": "cathemeral",
+   "temperament": "defend",
+   "danger": {
+    "tier": 5,
+    "health": 2600,
+    "damageX": 8.5,
+    "noticeM": 20,
+    "telegraphS": 4,
+    "tactics": "none"
+   },
+   "biomes": {
+    "forest": 1.5,
+    "rainforest": 2,
+    "swamp": 1
+   },
+   "boss": {
+    "lengthM": 6,
+    "heightM": 3,
+    "base": {
+     "species": "bear",
+     "lengthM": 2
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "speedX": 1.1,
+    "lair": {
+     "radiusM": 150,
+     "floraBias": 0.6
+    },
+    "rarityPer100Km2": 1,
+    "loot": "boss-claws",
+    "intelligence": 0,
+    "drives": [
+     "territory",
+     "scent_food"
+    ],
+    "weakPoints": [
+     {
+      "part": "belly",
+      "damageMult": 1.5,
+      "staggerS": 3
+     }
+    ]
+   },
+   "note": "Megatherium-scale ground sloth, 6 m: rises on its hind legs with a roar and rakes with claws as long as a sword. Slow to anger, hard to stop, never retreats while its young are near."
+  },
+  "megalodon": {
+   "role": "aquatic",
+   "trophic": "predator",
+   "apex": true,
+   "models": "megalodon|great_white|shark",
+   "habitat": "water",
+   "depthM": [
+    6,
+    200
+   ],
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 3000,
+   "activity": "crepuscular",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 3500,
+    "damageX": 12,
+    "noticeM": 90,
+    "telegraphS": 3,
+    "tactics": "none"
+   },
+   "biomes": {
+    "sea": 1
+   },
+   "boss": {
+    "lengthM": 16,
+    "heightM": 4,
+    "base": {
+     "species": "shark",
+     "lengthM": 3
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "swimSpeedX": 1.9,
+    "lair": {
+     "radiusM": 250,
+     "floraBias": 0
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-teeth",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "noise",
+     "scent_food"
+    ],
+    "weakPoints": [
+     {
+      "part": "gills",
+      "damageMult": 2,
+      "staggerS": 3
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 0,
+     "minFoodStores": 0,
+     "rangeM": 4000,
+     "cooldownS": 10800,
+     "approach": "along_water",
+     "targets": [
+      "boats",
+      "players",
+      "structures"
+     ],
+     "retreat": {
+      "satiatedMeals": 3,
+      "hpBelowPct": 30,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "wake",
+       "radiusM": 400,
+       "leadS": 600
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 300,
+       "leadS": 300
+      },
+      {
+       "kind": "bones",
+       "radiusM": 200,
+       "leadS": 900
+      }
+     ]
+    }
+   },
+   "note": "Otodus megalodon: 16 m, a bite that cuts a boat in two; circles with the fin up first. Smells blood from far off and follows it to shore."
+  },
+  "raptorial-whale": {
+   "role": "aquatic",
+   "trophic": "predator",
+   "apex": true,
+   "models": "sperm_whale|raptorial_whale|livyatan",
+   "habitat": "water",
+   "depthM": [
+    10,
+    300
+   ],
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 4000,
+   "activity": "cathemeral",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 4000,
+    "damageX": 13,
+    "noticeM": 100,
+    "telegraphS": 3.5,
+    "tactics": "none"
+   },
+   "biomes": {
+    "sea": 1
+   },
+   "boss": {
+    "lengthM": 15,
+    "heightM": 4,
+    "base": {
+     "species": "orca",
+     "lengthM": 8
+    },
+    "modelsNot": "tail|head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "swimSpeedX": 2,
+    "lair": {
+     "radiusM": 300,
+     "floraBias": 0
+    },
+    "rarityPer100Km2": 0.6,
+    "loot": "boss-teeth",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "noise",
+     "territory"
+    ],
+    "weakPoints": [
+     {
+      "part": "eye",
+      "damageMult": 2,
+      "staggerS": 3
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 0,
+     "minFoodStores": 0,
+     "rangeM": 5000,
+     "cooldownS": 14400,
+     "approach": "along_water",
+     "targets": [
+      "boats",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 2,
+      "hpBelowPct": 25,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "wake",
+       "radiusM": 500,
+       "leadS": 600
+      },
+      {
+       "kind": "noise",
+       "radiusM": 800,
+       "leadS": 300
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 300,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Livyatan-scale raptorial sperm whale, 15 m with teeth a forearm long: hunts whales and sharks, rams and bites boats and piers. Clicks are heard before it surfaces."
+  },
+  "mosasaur": {
+   "role": "aquatic",
+   "trophic": "predator",
+   "apex": true,
+   "models": "mosasaur|plesiosaur|ichthyosaur|sea_serpent",
+   "habitat": "water",
+   "depthM": [
+    3,
+    80
+   ],
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 2500,
+   "activity": "diurnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 3000,
+    "damageX": 11,
+    "noticeM": 70,
+    "telegraphS": 3,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "sea": 1,
+    "lake": 0.3
+   },
+   "boss": {
+    "lengthM": 12,
+    "heightM": 2.5,
+    "base": {
+     "species": "shark",
+     "lengthM": 3
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "swimSpeedX": 2.1,
+    "lair": {
+     "radiusM": 220,
+     "floraBias": 0
+    },
+    "rarityPer100Km2": 1,
+    "loot": "boss-scales",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "noise"
+    ],
+    "weakPoints": [
+     {
+      "part": "eye",
+      "damageMult": 2,
+      "staggerS": 3
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 0,
+     "minFoodStores": 0,
+     "rangeM": 3500,
+     "cooldownS": 10800,
+     "approach": "along_water",
+     "targets": [
+      "boats",
+      "players",
+      "livestock"
+     ],
+     "retreat": {
+      "satiatedMeals": 3,
+      "hpBelowPct": 35,
+      "maxS": 600
+     },
+     "warningSigns": [
+      {
+       "kind": "wake",
+       "radiusM": 400,
+       "leadS": 600
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 250,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Mosasaur-scale marine reptile, 12 m: a shallow-water ambusher that rises under swimmers and wades; strikes from below the surface."
+  },
+  "giant-squid": {
+   "role": "aquatic",
+   "trophic": "predator",
+   "apex": true,
+   "models": "squid|kraken",
+   "habitat": "water",
+   "depthM": [
+    8,
+    400
+   ],
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 1500,
+   "activity": "nocturnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 3200,
+    "damageX": 10,
+    "noticeM": 50,
+    "telegraphS": 3,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "sea": 1
+   },
+   "boss": {
+    "lengthM": 16,
+    "heightM": 5,
+    "base": {
+     "species": "squid",
+     "lengthM": 0.8
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "swimSpeedX": 1.6,
+    "lair": {
+     "radiusM": 200,
+     "floraBias": 0
+    },
+    "rarityPer100Km2": 0.6,
+    "loot": "boss-beak",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_food",
+     "noise"
+    ],
+    "weakPoints": [
+     {
+      "part": "eye",
+      "damageMult": 2.5,
+      "staggerS": 4
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 0,
+     "minFoodStores": 0,
+     "rangeM": 3000,
+     "cooldownS": 14400,
+     "approach": "along_water",
+     "targets": [
+      "boats",
+      "structures",
+      "players"
+     ],
+     "retreat": {
+      "satiatedMeals": 2,
+      "hpBelowPct": 40,
+      "maxS": 480
+     },
+     "warningSigns": [
+      {
+       "kind": "wake",
+       "radiusM": 300,
+       "leadS": 600
+      },
+      {
+       "kind": "bones",
+       "radiusM": 200,
+       "leadS": 900
+      }
+     ]
+    }
+   },
+   "note": "Kraken-scale cephalopod, 16 m of arms: rises at night, finds boats and pier pilings by touch, and drags what it grips under."
+  },
+  "giant-eel": {
+   "role": "aquatic",
+   "trophic": "predator",
+   "apex": true,
+   "models": "eel|moray|conger",
+   "habitat": "water",
+   "depthM": [
+    2,
+    40
+   ],
+   "group": {
+    "kind": "solitary",
+    "size": [
+     1,
+     1
+    ]
+   },
+   "territoryM": 800,
+   "activity": "nocturnal",
+   "temperament": "hunt",
+   "danger": {
+    "tier": 5,
+    "health": 1500,
+    "damageX": 6.5,
+    "noticeM": 25,
+    "telegraphS": 2.5,
+    "tactics": "ambush"
+   },
+   "biomes": {
+    "sea": 1,
+    "lake": 2
+   },
+   "boss": {
+    "lengthM": 9,
+    "heightM": 1.2,
+    "base": {
+     "species": "eel",
+     "lengthM": 1.2
+    },
+    "modelsNot": "head|skull|gun|statue|rug|tooth|tail|fin|meat|roast|cooked|raw|item|prop|wep",
+    "swimSpeedX": 1.8,
+    "lair": {
+     "radiusM": 100,
+     "floraBias": 0.3
+    },
+    "rarityPer100Km2": 1.2,
+    "loot": "boss-eel-skin",
+    "intelligence": 0,
+    "drives": [
+     "hunger",
+     "scent_blood",
+     "scent_food"
+    ],
+    "weakPoints": [
+     {
+      "part": "head",
+      "damageMult": 2,
+      "staggerS": 2
+     }
+    ],
+    "raid": {
+     "minPopulation": 300,
+     "minStructures": 30,
+     "minLivestock": 0,
+     "minFoodStores": 0,
+     "rangeM": 2000,
+     "cooldownS": 10800,
+     "approach": "along_water",
+     "targets": [
+      "livestock",
+      "players",
+      "boats"
+     ],
+     "retreat": {
+      "satiatedMeals": 2,
+      "hpBelowPct": 40,
+      "maxS": 300
+     },
+     "warningSigns": [
+      {
+       "kind": "wake",
+       "radiusM": 250,
+       "leadS": 600
+      },
+      {
+       "kind": "carcass",
+       "radiusM": 150,
+       "leadS": 300
+      }
+     ]
+    }
+   },
+   "note": "Giant moray/eel, 9 m: lurks in reefs and river mouths, strikes at anything dangling, coils round a swimmer."
+  }
+ },
+ "megafauna": {
+  "maxPerWorld": 4,
+  "maxRarityPer100Km2": 2,
+  "totalRarityPer100Km2": 20,
+  "bossToPredator": [
+   0,
+   0.05
+  ],
+  "yardsticks": {
+   "goblin": 60,
+   "orc": 180,
+   "troll": 500,
+   "golem": 1000
+  },
+  "healthTrolls": [
+   2,
+   8
+  ],
+  "damageX": [
+   6,
+   16
+  ],
+  "minTelegraphS": 2.5,
+  "minSpeedX": 1.1,
+  "minSwimSpeedX": 1.3,
+  "raidMinPopulation": 300,
+  "raidCooldownMinS": 7200,
+  "minSeparationM": 800,
+  "lairMinFromSettlementM": 500,
+  "maxModelScale": 20
+ },
+ "megaflora": {
+  "giant-fern": {
+   "kind": "fern",
+   "names": "fern|tree_fern",
+   "not": "pot|planter|patch",
+   "scale": [
+    2.5,
+    4.5
+   ],
+   "collision": "none",
+   "biomes": {
+    "swamp": 3,
+    "rainforest": 3,
+    "forest": 0.4,
+    "lake": 0.5
+   },
+   "groves": true
+  },
+  "giant-horsetail": {
+   "kind": "fern",
+   "names": "horsetail|equisetum|bamboo",
+   "scale": [
+    3,
+    6
+   ],
+   "collision": "none",
+   "biomes": {
+    "swamp": 3,
+    "lake": 1.5,
+    "rainforest": 1
+   },
+   "groves": true
+  },
+  "scale-tree": {
+   "kind": "tree",
+   "names": "lepidodendron|sigillaria|calamites|palm",
+   "not": "olive|dead|stump|log",
+   "scale": [
+    2.5,
+    4
+   ],
+   "collision": "trunk",
+   "biomes": {
+    "swamp": 2,
+    "rainforest": 3,
+    "forest": 0.3
+   },
+   "groves": true
+  },
+  "giant-cycad": {
+   "kind": "tree",
+   "names": "cycad|sago|tree_fern|fern_tree",
+   "scale": [
+    3,
+    5
+   ],
+   "collision": "trunk",
+   "biomes": {
+    "swamp": 1,
+    "rainforest": 2,
+    "plains": 0.2
+   },
+   "groves": true
+  },
+  "giant-fungus": {
+   "kind": "fungus",
+   "names": "mushroom_giant|giant_mushroom|prototaxites|toadstool",
+   "scale": [
+    1.5,
+    2.5
+   ],
+   "collision": "trunk",
+   "biomes": {
+    "swamp": 2,
+    "rainforest": 1.5,
+    "forest": 0.5
+   },
+   "groves": true
+  },
+  "giant-pitcher": {
+   "kind": "carnivorous",
+   "names": "pitcher_plant|venus_flytrap|sundew|flytrap",
+   "scale": [
+    2,
+    4
+   ],
+   "collision": "none",
+   "biomes": {
+    "swamp": 1.5,
+    "rainforest": 1
+   },
+   "groves": true,
+   "hazard": {
+    "radiusM": 3.5,
+    "damageX": 2,
+    "telegraphS": 1.5
+   }
+  }
+ }
+}
