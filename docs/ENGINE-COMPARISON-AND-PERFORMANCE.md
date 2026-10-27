@@ -2,6 +2,10 @@
 
 This document details the architectural standing of the **Nexus MMO Engine** relative to industry-standard game engines, analyzes its foundational design philosophy (unconstrained engine substrate), clarifies graphics modernization pathways (OpenGL vs. WebGL vs. WebGPU), and provides a comprehensive performance audit with our native C++ optimization roadmap.
 
+> [!NOTE]
+> **Complete Business Analysis Suite:**
+> For the comprehensive executive intelligence package, including Cloud Infrastructure Economics (.06/CCU vs .15/CCU), Strategic SWOT positioning, full empirical benchmarks, and deep subsystem breakdowns, see the dedicated **[Business Analysis & Competitive Intelligence Suite](business-analysis/README.md)**.
+
 ---
 
 ## 1. Engine Identity & Architectural Philosophy

@@ -50,6 +50,14 @@ export { MasterySystem } from "./stats/mastery-system.js";
 export { SkillIndex, SkillSheet } from "./stats/mastery.js";
 
 export {
+  NativeIntegrateSystem,
+  NativeIntentSystem,
+  FastSpatialGrid,
+  loadNativeIntegrateAddon,
+  type NativeIntegrateBinding,
+} from "./native-systems.js";
+
+export {
   IntentSystem,
   IntegrateSystem,
   ColliderSystem,

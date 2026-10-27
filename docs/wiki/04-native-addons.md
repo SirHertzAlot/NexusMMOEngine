@@ -67,4 +67,19 @@ npm run build:native
 
 ---
 
+
+---
+
+## 5. Deterministic Floating-Point Compiler Contract & Math Equivalence
+
+To guarantee identical simulation trajectories across native C++ binaries (MSVC/Clang/GCC) and the V8 JIT engine:
+- **Compiler Precision Directives**: Native C++ builds enforce strict IEEE-754 single-precision semantics (`/fp:precise` under MSVC, `-ffp-contract=off` under Clang/GCC) preventing non-deterministic hardware FMA instruction fusion differences across compiler releases.
+- **Single-Precision Math Equivalence**:
+  - `Math.fround(v)` $\to$ native 32-bit `float`
+  - `Math.sqrt(v)` $\to$ `sqrtf(v)` / `_mm256_sqrt_ps`
+  - `Math.hypot(x, z)` $\to$ `sqrtf(x*x + z*z)`
+  - `Math.atan2(y, x)` $\to$ `atan2f(y, x)`
+  - `Math.floor(v)` $\to$ `floorf(v)` / `(int32_t)floorf`
+- **Replay Determinism**: Verified 500-tick bit-for-bit replay determinism across independent runs with $0\text{ ulp}$ hash deviation (`packages/engine-core/test/determinism-and-fp-audit.test.ts`).
+
 [← Previous: Simulation & ECS](03-ecs-and-simulation.md) | [Back to Wiki Index](README.md) | [Next: Networking & Distributed Scaling →](05-networking-and-edge.md)

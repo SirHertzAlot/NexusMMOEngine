@@ -2,6 +2,36 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — SAB Logging Layer Commissioning, Architecture & Roadmap.**
+  Commissioned by Joey: implement a performant logging layer extending the SharedArrayBuffer (`docs/SAB-LOGGING-LAYER-SPEC.md`):
+  - **Sacred Producer Path:** Fixed 128-byte binary record format written directly to `AtomicMPSCQueue` in tens of nanoseconds with zero locks, zero formatting, and zero heap allocations.
+  - **Disposable Sinks & Log Worker:** Background worker thread batches drain, formats entries once, and flushes to independent sinks (batched file sink, atomic metrics counters, and live edge pub/sub topic `logs` via uWebSockets.js for editor telemetry).
+  - **World-Tier Fan-In:** Multi-region deployments stream batches to an independent Go collector process backed by Redis Streams for durable storage and GraphQL live-ops queries.
+  - **Phased Implementation Roadmap:** Phase 0 (Ring + dictionary + TS producers), Phase 1 (Log worker + file/metrics sinks), Phase 2 (Native C++ producers), Phase 3 (Live edge uWS pub/sub + editor stream), and Phase 4 (World-tier fan-in).
+
+- **2026-10-27 — C++ Main Tick Phase 4: Native Tick Loop, Determinism Audit & Hardening.**
+  Completed Phase 4 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE4-REPORT.md`):
+  - **Native Fixed-Step Loop & Spiral Guard:** Integrated accumulator stepping into `SimWorkerRuntime` with 250ms frame gap clamping, a 5-step catch-up cap, and lockless atomic drop telemetry (`TELEMETRY_SLOTS.SPIRAL_EVENTS` and `DROPPED_MS`).
+  - **Determinism Audit:** Verified bit-for-bit replay determinism across 500 ticks on 100 entities under chaotic input streams (FNV-1a checksum matched with 0 ulp deviation). Audited and established floating-point compiler contract (`/fp:precise`, `-ffp-contract=off`) and `Math.*` single-precision inventory.
+  - **SimWorker Crash Drill & Hot Reattachment:** Verified gateway socket survivability during an unhandled worker termination drill (client WebSocket stayed OPEN with zero disconnects); executed hot reattachment (`restartSimWorker()`) without state loss.
+  - **Owed B3 Load Test at Scale:** Ran 51,000 entities (1,000 players + 50,000 NPCs) under 1,000-client fan-out with injected network profile (45ms latency, ±15ms jitter, 2% packet loss). Achieved **0.562ms p99 tick latency** (only **1.7%** of the 33.33ms budget, beating the 25% ceiling) and **0 dropped steps**. Verified `PlayerIntent` edge-trigger re-fire (`PRESSED -> RELEASED -> RE-PRESSED (SPRINT)`).
+
+- **2026-10-27 — C++ Main Tick Phase 3: System-by-System Migration & Parity Verification.**
+  Completed Phase 3 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE3-REPORT.md`):
+  - **Rule 4 Gating Decisions:** Evaluated simulation systems following measured tick share against Rule 4 hurdle rates:
+    - *System 1 (Integration / Movement):* Ported to native AVX2 kernel (`NativeIntegrateSystem`), achieving an **18.2×** speedup (27.1µs vs 494.1µs at 50,000 entities) and verified $< 0.37\text{mm}$ physical equivalence over 50 simulation steps.
+    - *System 2 (Intent Application):* Ported to native batch intent decoder (`NativeIntentSystem`) under the narrow `SimSystem` interface.
+    - *System 4 (Spatial Indexing):* Ported to packed 32-bit integer coordinate grid (`FastSpatialGrid`), eliminating 100% of per-tick string allocations and delivering a **1.98×** speedup.
+    - *Systems 3, 5, 6 (Creatures, Combat, Residents):* Retained in TypeScript on top of the shared memory data plane due to branchy behavior tree logic, low duty cycle (< 3%), or 1Hz coarse cadence.
+  - **Golden Parity Test Suite:** Added `packages/engine-core/test/native-systems-parity.test.ts` (6/6 passing) verifying exact numerical parity, bit-exact JS fallbacks, and zero coordinate precision loss.
+
+- **2026-10-27 — Synthesis Staircase Handrail Alignment & Balustrade Geometry Fix.**
+  Resolved staircase handrail misalignment in procedural dungeon synthesis (`@mmo-engine/synthesis`):
+  - **Incline Pitch Rotation:** Computed the exact pitch angle $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse slope length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.
+  - **Flank Alignment:** Positioned handrails at $X = \pm 2.00\text{m}$, centered at $Z = -2.50\text{m}, Y = \text{lowerY} + 2.20\text{m}$ using Euler `(pitch, 0, 0, "YXZ")` quaternion rotation.
+  - **Flush Threshold Contact:** Realigned loft balcony railings at $Z = -5.00\text{m}$ ($X = \pm 4.75\text{m}$, $Y = \text{upperY} + 0.45\text{m}$) flush with the stair handrail tops, eliminating previous horizontal barrier blocking stair traversal.
+  - **Architectural Balustrades:** Added custom balustrade geometry (`createStairHandrailGeometry`) with continuous top rail, bottom runner, and vertical newel posts across visualizer and Playwright locomotion playtest.
+
 - **2026-10-27 — Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/).**
   To provide an authoritative, hierarchical technical knowledge base for engine developers and content creators strictly focused on our engine without external comparisons or competitive commentary, deployed the Nexus MMO Engine Wiki:
   - Master single-page manual (docs/WIKI.md) and 9-chapter modular hub (docs/wiki/) covering architecture, engine/game decoupling, bitECS SoA, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
@@ -792,3 +822,25 @@ Every entry: date, decision, rationale. Newest first.
   4. Universal Multi-Rig Classification & Segmentation (`apps/client/src/render/animal/`): Added `segmentAvian`, `segmentSerpentine`, `segmentAquatic`, `segmentArachnid`, and `segmentFlora`, driven by geometric proportions and name patterns, while preserving `segmentQuadruped` backwards compatibility.
   5. Multi-Rig Motion Solvers in `gait.ts`: Harmonic wing flapping and gliding, sinusoidal serpentine travelling waves, aquatic caudal/pectoral fin undulation, arachnid alternating tripod scurrying, and flora wind sway, updating scratch buffers with zero allocation in tick loops.
   6. Comprehensive Creature & Loot Catalog: Complete rules for all 19 species in `content/rules/creatures.json`, monster loot tables in `content/rules/loot.json`, and model mapping catalog in `content/wildlife/flora-fauna-models.json`.
+
+- **2026-10-27 — Documentation Ecosystem Modernization, Private Business Analysis Suite, and Agent Invariants (AGENTS.md).**
+  1) **Documentation Separation Policy**: Public-facing manuals (docs/wiki/, docs/WIKI.md, README.md) focus exclusively on the Nexus MMO Engine's architecture, APIs, module systems, and developer workflows with zero competitor disparagement. All competitive intelligence, side-by-side matrices (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical benchmark telemetry (100k integration in 0.20ms, 64k req/s ingress), strategic SWOT, and cloud hosting OpEx models belong in the private repository under docs/business-analysis/.
+  2) **Interactive Documentation Tooling (Yank Note & Data Apps)**: Standardized on Yank Note (purocean/yn) as our interactive Markdown editor kernel. Documentation supports runnable in-note code blocks for 1-click test/benchmark execution, embedded HTML5 telemetry widgets (ws://127.0.0.1:3000/telemetry) and cloud cost calculators with dark-mode styling (color-scheme: dark), client-side AES-GCM encrypted notes (.c.md), and a drop-in editor plugin (docs/wiki/scripts/yn-nexus-plugin.js).
+  3) **Workspace Agent Guidelines (AGENTS.md)**: Enforced mandatory invariants across the repository:
+     - Strict Mermaid diagram rendering compatibility (prohibiting quadrantChart and experimental headers; permitting flowchart TD, xychart-beta, etc.).
+     - The Native C++ Marshalling Trap Invariant: No per-property N-API object traversal (obj.Get()) on hot paths; contiguous SharedArrayBuffer / TypedArray pointer crossings only.
+     - Local feature branches only (feat/*); no unapproved merges to main.
+     - Universal SI metric standard (1.0 unit = 1.0 meter).
+
+- **2026-10-27 — C++ Main Tick Migration Phase 2: Production Data-Plane Wiring & Security Perimeter.**
+  Implemented and verified Phase 2 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md`):
+  1) **Production Boot Flag (`MMO_DATA_PLANE=1`)**:
+     - Wires the uWebSockets.js Gateway to the 3-thread SharedArrayBuffer topology: Gateway (uWS with Argon2id auth, Zod validation, rate limiting) -> AtomicSPSCQueue -> 30Hz SimWorker -> persist ring -> PersistWorker.
+     - Rollback path remains instant and fully supported: omitting or setting `MMO_DATA_PLANE=0` keeps the legacy in-process simulation loop active with zero overhead.
+  2) **Strict Gateway Security Perimeter**:
+     - Enforces that memory-unsafe C++ worker threads and native kernels are never exposed to raw untrusted network frames.
+     - Inbound player intents are validated by the Gateway: unauthenticated intents, foreign entity intents, non-finite vectors, and out-of-order packets are rejected (code 4003) and never reach the SPSC ring.
+     - Validated intents are bit-packed into 32-bit tokens (`packCommandToken(slot, actionCode)`) with zero garbage-collection allocations.
+  3) **Crash Containment & Verification**:
+     - Worker failures are isolated from the Gateway process: background worker crashes do not drop client WebSocket connections or corrupt the master event loop.
+     - All 7 tests in `packages/engine-core/test/data-plane-production-boot.test.ts` pass cleanly along with the full protocol and hybrid data-plane test suites.

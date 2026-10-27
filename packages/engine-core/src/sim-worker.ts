@@ -243,6 +243,13 @@ export class SimWorkerRuntime {
 
   private readonly drainScratch: Int32Array;
   private timer: ReturnType<typeof setInterval> | null = null;
+  public readonly stepMs: number = 1000 / TICK_RATE_HZ;
+  public readonly maxStepsPerFrame: number = 5;
+  public readonly maxFrameDeltaMs: number = 250;
+  private accMs: number = 0;
+  private lastFrameMs: number | null = null;
+  private spirals: number = 0;
+  private droppedAccumulatedMs: number = 0;
 
   constructor(config: SimWorkerConfig) {
     this.entityCapacity = config.entityCapacity ?? DATA_PLANE_ENTITY_CAPACITY;
@@ -306,6 +313,10 @@ export class SimWorkerRuntime {
           this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_X] = vx;
           this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Y] = vy;
           this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Z] = vz;
+        } else {
+          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_X] = 0;
+          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Y] = 0;
+          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Z] = 0;
         }
       }
 
@@ -418,16 +429,65 @@ export class SimWorkerRuntime {
     };
   }
 
-  /** Start the 30Hz simulation interval loop. */
+  /**
+   * Advance the simulation by wall-clock time nowMs using the fixed-timestep accumulator
+   * and spiral-of-death guard (matching tick-loop.ts semantics).
+   * Returns the count of fixed steps executed.
+   */
+  public frame(nowMs: number): number {
+    if (this.lastFrameMs === null) {
+      this.lastFrameMs = nowMs;
+      return 0;
+    }
+    let delta = nowMs - this.lastFrameMs;
+    this.lastFrameMs = nowMs;
+    if (delta < 0) delta = 0;
+    if (delta > this.maxFrameDeltaMs) delta = this.maxFrameDeltaMs;
+
+    this.accMs += delta;
+    let steps = 0;
+    while (this.accMs + 1e-6 >= this.stepMs && steps < this.maxStepsPerFrame) {
+      this.tick(DT);
+      this.accMs -= this.stepMs;
+      steps += 1;
+    }
+    if (this.accMs + 1e-6 >= this.stepMs) {
+      this.spirals += 1;
+      const dropped = Math.round(this.accMs);
+      this.droppedAccumulatedMs += dropped;
+      this.accMs = 0;
+      Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.SPIRAL_EVENTS, 1);
+      Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.DROPPED_MS, dropped);
+    }
+    return steps;
+  }
+
+  /** Get live atomic telemetry and drop statistics. */
+  public stats() {
+    const tel = this.views.telemetryView;
+    return {
+      ticks: Atomics.load(tel, TELEMETRY_SLOTS.TICK_COUNT),
+      spiralEvents: Atomics.load(tel, TELEMETRY_SLOTS.SPIRAL_EVENTS),
+      droppedMs: Atomics.load(tel, TELEMETRY_SLOTS.DROPPED_MS),
+      lastTickUs: Atomics.load(tel, TELEMETRY_SLOTS.LAST_TICK_US),
+      maxTickUs: Atomics.load(tel, TELEMETRY_SLOTS.MAX_TICK_US),
+      commandsProcessed: Atomics.load(tel, TELEMETRY_SLOTS.COMMANDS_PROCESSED),
+      persistEnqueued: Atomics.load(tel, TELEMETRY_SLOTS.PERSIST_ENQUEUED),
+      budgetOverruns: Atomics.load(tel, TELEMETRY_SLOTS.BUDGET_OVERRUNS),
+    };
+  }
+
+  /** Start the 30Hz simulation loop driven by fixed-timestep accumulator. */
   public start(): void {
     if (this.timer !== null) return;
+    this.lastFrameMs = performance.now();
     this.timer = setInterval(() => {
       if (Atomics.load(this.views.telemetryView, TELEMETRY_SLOTS.SHUTDOWN_SIGNAL) !== 0) {
         this.stop();
         return;
       }
-      this.tick(DT);
-    }, FRAME_BUDGET_MS);
+      this.frame(performance.now());
+    }, 16);
   }
 
   /** Stop the 30Hz simulation interval loop. */

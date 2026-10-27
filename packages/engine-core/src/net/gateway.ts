@@ -191,6 +191,8 @@ import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import { AtomicSPSCQueue, packCommandToken } from "../lockless-ring.js";
+import { INTENT_FLAGS } from "../sab-store.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
 import type { WorldCharacterSync } from "../world/character-sync.js";
 import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
@@ -253,6 +255,13 @@ export interface GatewayOptions {
    * Default: the built-in rules (backward compat during migration).
    */
   chatRules?: ChatRules;
+  /**
+   * Lockless SPSC intent queue to the 30Hz Simulation Worker (PR #430 / Phase 2 data-plane topology).
+   * When provided, validated player intent messages are packed into 32-bit tokens
+   * (entity index + action code) and enqueued directly to the worker thread without
+   * heap allocations.
+   */
+  dataPlaneQueue?: AtomicSPSCQueue;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
   /** Missed heartbeats before the client is dropped. Default 3. */
@@ -853,9 +862,13 @@ export class Gateway {
       | "worldCharacters"
       | "atomicOps"
       | "respawnAnchors"
+      | "dataPlaneQueue"
     >
   > & { port: number };
   private readonly systems: SimSystem[];
+  public readonly dataPlaneQueue?: AtomicSPSCQueue;
+  private dataPlaneEnqueuedIntents = 0;
+  private dataPlaneDroppedIntents = 0;
   private readonly clock: () => number;
   private readonly loop: TickLoop;
   private readonly tracker = new DeltaTracker();
@@ -1009,6 +1022,7 @@ export class Gateway {
       );
     }
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
+    this.dataPlaneQueue = opts.dataPlaneQueue;
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
     this.parties = new PartyBook(() => this.clock(), opts.partyStore);
@@ -1094,6 +1108,15 @@ export class Gateway {
   }
 
   /** Rate-limiter diagnostics: dropped excess and abuse disconnects. */
+  /** Data plane queue stats (Phase 2 topology). */
+  get dataPlaneStats(): { hasQueue: boolean; enqueued: number; dropped: number } {
+    return {
+      hasQueue: this.dataPlaneQueue !== undefined,
+      enqueued: this.dataPlaneEnqueuedIntents,
+      dropped: this.dataPlaneDroppedIntents,
+    };
+  }
+
   ingressStats(): { droppedIntents: number; droppedPickups: number; abuseDisconnects: number } {
     return {
       droppedIntents: this.droppedByRateLimitIntents,
@@ -1317,7 +1340,24 @@ export class Gateway {
     if (!s || !s.welcomed || s.playerEntity === null) return "no_player";
     const clean = sanitizeIntent(intent);
     if (clean === null) return "bad_intent";
-    this.world.queueIntent(parseWireEntityId(s.playerEntity).slot, clean);
+    const slot = parseWireEntityId(s.playerEntity).slot;
+    this.world.queueIntent(slot, clean);
+    if (this.dataPlaneQueue) {
+      let actionCode = 0;
+      if (clean.mz > 0.1) actionCode |= INTENT_FLAGS.FORWARD;
+      if (clean.mz < -0.1) actionCode |= INTENT_FLAGS.BACKWARD;
+      if (clean.mx > 0.1) actionCode |= INTENT_FLAGS.RIGHT;
+      if (clean.mx < -0.1) actionCode |= INTENT_FLAGS.LEFT;
+      if (clean.my > 0.1) actionCode |= INTENT_FLAGS.UP;
+      if (clean.my < -0.1) actionCode |= INTENT_FLAGS.DOWN;
+      if ((clean.buttons & 1) !== 0) actionCode |= INTENT_FLAGS.SPRINT;
+      const packedToken = packCommandToken(slot, actionCode);
+      if (this.dataPlaneQueue.enqueue(packedToken)) {
+        this.dataPlaneEnqueuedIntents++;
+      } else {
+        this.dataPlaneDroppedIntents++;
+      }
+    }
     return "ok";
   }
 
@@ -4422,6 +4462,23 @@ export class Gateway {
     s.lastIntentTick = clientTick;
     const { slot } = parseWireEntityId(entity);
     this.world.queueIntent(slot, intent);
+
+    if (this.dataPlaneQueue) {
+      let actionCode = 0;
+      if (intent.mz > 0.1) actionCode |= INTENT_FLAGS.FORWARD;
+      if (intent.mz < -0.1) actionCode |= INTENT_FLAGS.BACKWARD;
+      if (intent.mx > 0.1) actionCode |= INTENT_FLAGS.RIGHT;
+      if (intent.mx < -0.1) actionCode |= INTENT_FLAGS.LEFT;
+      if (intent.my > 0.1) actionCode |= INTENT_FLAGS.UP;
+      if (intent.my < -0.1) actionCode |= INTENT_FLAGS.DOWN;
+      if ((intent.buttons & 1) !== 0) actionCode |= INTENT_FLAGS.SPRINT;
+      const token = packCommandToken(slot, actionCode);
+      if (this.dataPlaneQueue.enqueue(token)) {
+        this.dataPlaneEnqueuedIntents++;
+      } else {
+        this.dataPlaneDroppedIntents++;
+      }
+    }
   }
 
   // ------------------------------------------------------------ outbound

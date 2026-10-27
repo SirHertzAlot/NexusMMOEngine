@@ -27,8 +27,12 @@ The wiki is organized into focused, hierarchical chapters:
 
 ### 🛠️ Developer Operations & Guides
 * **[09. Developer Guide & Module Authoring](09-developer-guide.md)**: Environment setup (Node 22 LTS, C++ toolchain), authoring custom gameplay modules, writing native C++ addons, and running automated Playwright playtests.
-* **[10. Architectural Decision Log](../DECISIONS.md)**: Chronological record of locked architectural decisions.
-* **[11. Engine Roadmap](../ROADMAP.md)**: Active milestones, deliverables, and development schedule.
+* **[10. Developer Tooling & Interactive Documentation Ecosystem](10-developer-tooling-and-yank-note.md)**: Modernizing developer workflows with Yank Note (purocean/yn), executable code blocks, interactive data apps, real-time telemetry applets, and client-encrypted notes (.c.md).
+* **[11. Architectural Decision Log](../DECISIONS.md)**: Chronological record of locked architectural decisions.
+* **[12. Engine Roadmap](../ROADMAP.md)**: Active milestones, deliverables, and development schedule.
+
+### 📊 Private Repository Intelligence & Strategy
+* **[Business Analysis & Competitive Intelligence Suite](../business-analysis/README.md)**: Comprehensive competitive evaluations (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), verified benchmark telemetry (100k integration, 64k req/s ingress), strategic SWOT, and cloud hosting unit economics.
 
 ---
 
