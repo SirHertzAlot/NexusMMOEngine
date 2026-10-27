@@ -425,38 +425,14 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
     } else if (archetype === "multi-level-descent") {
-      // Split-level: Upper Mezzanine (3x2 at Y=3.5) connecting via Stairs to Lower Hall (4x4 at Y=0)
+      // Second-level loft structure with structural pillars supporting the mezzanine from underneath
+      // and triangular ramp / staircase bridging the elevation drop to the main hall
       const cellM = 5.0;
       const upperY = groundY + 3.5;
       const lowerY = groundY;
 
-      // Phase 1: Upper Mezzanine Terrace (x in [-5, 5], z in [-12.5, -7.5])
-      for (const ux of [-5, 0, 5]) {
-        for (const uz of [-12.5, -7.5]) {
-          const floorPart = pickCatPart("floor");
-          if (floorPart) {
-            addPlacement(floorPart, new THREE.Vector3(ux, upperY, uz), yawQuat(0));
-          }
-        }
-      }
-
-      // Phase 2: Central Stairway bridging Upper to Lower Level
-      const stairDef = pickCatPart("stairs");
-      if (stairDef) {
-        // Stairs at center (x = 0), stepping down from z = -5.0 to z = 0.0
-        addPlacement(stairDef, new THREE.Vector3(0, lowerY + 1.75, -4.5), yawQuat(0));
-      }
-
-      // Phase 3: Mezzanine Railings along open drop (z = -5.0, x = -5, +5)
-      for (const rx of [-5.0, 5.0]) {
-        const rail = pickCatPart("railing");
-        if (rail) {
-          addPlacement(rail, new THREE.Vector3(rx, upperY + 0.8, -5.0), yawQuat(0));
-        }
-      }
-
-      // Phase 4: Lower Crypt Hall (x in [-7.5, 7.5], z in [0, 15])
-      for (const lz of [0, 5.0, 10.0, 15.0]) {
+      // Phase 1: Continuous Ground Floor Plate (Walkable undercroft beneath the loft + main hall)
+      for (const lz of [-12.5, -7.5, -2.5, 2.5, 7.5, 12.5]) {
         for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
           const floorPart = pickCatPart("floor");
           if (floorPart) {
@@ -465,17 +441,47 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 5: Terrace Under-Balcony Support Pillars
-      for (const px of [-5.0, 5.0]) {
-        const pillar = pickCatPart("pillar");
-        if (pillar) {
-          addPlacement(pillar, new THREE.Vector3(px, lowerY + 1.75, -5.5), yawQuat(0));
+      // Phase 2: Second-Level Loft Floor Deck (Elevated mezzanine at Y = 3.5m)
+      for (const ux of [-5.0, 0, 5.0]) {
+        for (const uz of [-12.5, -7.5]) {
+          const floorPart = pickCatPart("floor");
+          if (floorPart) {
+            addPlacement(floorPart, new THREE.Vector3(ux, upperY, uz), yawQuat(0));
+          }
         }
       }
 
-      // Phase 6: Perimeter Walls enclosing upper and lower chambers
-      // Upper back & side walls
-      for (const ux of [-5, 0, 5]) {
+      // Phase 3: Structural Under-Loft Support Pillars
+      // Pillars stand on ground floor (Y = lowerY + 1.75m) and directly support the loft floor deck from underneath
+      const supportPillarLocations = [
+        [-5.0, -5.0], [5.0, -5.0],  // Front loft beam supports
+        [-5.0, -10.0], [5.0, -10.0], // Mid loft structural supports
+      ];
+      for (const [px, pz] of supportPillarLocations) {
+        const pillar = pickCatPart("pillar");
+        if (pillar) {
+          addPlacement(pillar, new THREE.Vector3(px, lowerY + 1.75, pz), yawQuat(0));
+        }
+      }
+
+      // Phase 4: Triangular Ramp / Stepped Staircase bridging Ground to Loft
+      // Descends from loft edge (z = -5.0, upperY) down to main hall (z = 0.0, lowerY)
+      const stairDef = pickCatPart("stairs");
+      if (stairDef) {
+        addPlacement(stairDef, new THREE.Vector3(0, lowerY + 1.75, -2.5), yawQuat(Math.PI));
+      }
+
+      // Phase 5: Loft Balcony Railings along open drop overlooking main hall
+      for (const rx of [-5.0, 5.0]) {
+        const rail = pickCatPart("railing");
+        if (rail) {
+          addPlacement(rail, new THREE.Vector3(rx, upperY + 0.8, -5.0), yawQuat(0));
+        }
+      }
+
+      // Phase 6: Perimeter Walls enclosing upper loft and lower hall
+      // Upper loft back & side walls
+      for (const ux of [-5.0, 0, 5.0]) {
         const wall = pickCatPart("wall");
         if (wall) {
           addPlacement(wall, new THREE.Vector3(ux, upperY + 2.0, -15.0), yawQuat(0)); // South wall
@@ -488,26 +494,26 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         if (wallE) addPlacement(wallE, new THREE.Vector3(7.5, upperY + 2.0, uz), yawQuat(Math.PI / 2));
       }
 
-      // Lower back & side walls
+      // Main hall perimeter walls
       for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
         const wall = pickCatPart("wall");
         if (wall) {
-          addPlacement(wall, new THREE.Vector3(lx, lowerY + 2.0, 17.5), yawQuat(Math.PI)); // North wall
+          addPlacement(wall, new THREE.Vector3(lx, lowerY + 2.0, 15.0), yawQuat(Math.PI)); // North wall
         }
       }
-      for (const lz of [0, 5.0, 10.0, 15.0]) {
+      for (const lz of [-2.5, 2.5, 7.5, 12.5]) {
         const wallW = pickCatPart("wall");
         const wallE = pickCatPart("wall");
         if (wallW) addPlacement(wallW, new THREE.Vector3(-10.0, lowerY + 2.0, lz), yawQuat(-Math.PI / 2));
         if (wallE) addPlacement(wallE, new THREE.Vector3(10.0, lowerY + 2.0, lz), yawQuat(Math.PI / 2));
       }
 
-      // Phase 7: Altar & Rubble in Lower Crypt
+      // Phase 7: Altar & Rubble in Main Hall
       const shrine = pickCatPart("prop") || pickCatPart("structure");
       if (shrine) {
-        addPlacement(shrine, new THREE.Vector3(0, lowerY + 0.6, 14.0), yawQuat(Math.PI));
+        addPlacement(shrine, new THREE.Vector3(0, lowerY + 0.6, 11.0), yawQuat(Math.PI));
       }
-      for (const rz of [2.0, 12.0]) {
+      for (const rz of [0.0, 10.0]) {
         const rub = pickCatPart("rubble");
         if (rub) {
           addPlacement(rub, new THREE.Vector3(-8.5, lowerY + 0.3, rz), yawQuat(rng.next() * Math.PI * 2));

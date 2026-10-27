@@ -37,9 +37,9 @@ const archetypes = [
     },
   },
   {
-    name: "Multi-Level Staircase Descent",
+    name: "Multi-Level Staircase Descent & Loft",
     filename: "example_3_multi_level_descent.png",
-    subtitle: "Vertical connectivity: Staircase elevations, mezzanine railings, wall alcoves, and split-level landings",
+    subtitle: "Second-level loft structure supported by structural pillars underneath, with triangular ramp/staircase access and balustrades",
     problem: {
       ruleSet,
       seed: 9913,
@@ -254,6 +254,64 @@ async function main() {
       structure: 0x4a5568,
     };
 
+    function createStairOrRampGeometry(sx, sy, sz, numSteps = 7) {
+      const stepH = sy / numSteps;
+      const stepL = sz / numSteps;
+      const hw = sx / 2;
+      const hh = sy / 2;
+      const hl = sz / 2;
+
+      const geom = new THREE.BufferGeometry();
+      const verts = [];
+
+      for (let s = 0; s < numSteps; s++) {
+        const y0 = -hh + s * stepH;
+        const y1 = y0 + stepH;
+        const z0 = hl - s * stepL;
+        const z1 = z0 - stepL;
+
+        // Riser vertical face
+        verts.push(
+          -hw, y0, z0,   hw, y0, z0,   hw, y1, z0,
+          -hw, y0, z0,   hw, y1, z0,  -hw, y1, z0
+        );
+
+        // Tread horizontal face
+        verts.push(
+          -hw, y1, z0,   hw, y1, z0,   hw, y1, z1,
+          -hw, y1, z0,   hw, y1, z1,  -hw, y1, z1
+        );
+
+        // Left side triangular step polygon
+        verts.push(
+          -hw, -hh, z0,  -hw, y1, z0,  -hw, y1, z1,
+          -hw, -hh, z0,  -hw, y1, z1,  -hw, -hh, z1
+        );
+
+        // Right side triangular step polygon
+        verts.push(
+          hw, -hh, z0,   hw, y1, z1,   hw, y1, z0,
+          hw, -hh, z0,   hw, -hh, z1,  hw, y1, z1
+        );
+      }
+
+      // Bottom face
+      verts.push(
+        -hw, -hh, -hl,   hw, -hh,  hl,   hw, -hh, -hl,
+        -hw, -hh, -hl,  -hw, -hh,  hl,   hw, -hh,  hl
+      );
+
+      // Back vertical face
+      verts.push(
+        -hw, -hh, -hl,   hw,  hh, -hl,   hw, -hh, -hl,
+        -hw, -hh, -hl,  -hw,  hh, -hl,   hw,  hh, -hl
+      );
+
+      geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts), 3));
+      geom.computeVertexNormals();
+      return geom;
+    }
+
     // Render placed parts as shaded boxes matching real bounds
     for (const p of placements) {
       const cat = p.category || "structure";
@@ -264,11 +322,13 @@ async function main() {
       else if (cat === "wall") { sx = 5.0; sy = 4.0; sz = 0.5; }
       else if (cat === "pillar") { sx = 1.4; sy = 4.0; sz = 1.4; }
       else if (cat === "ceiling") { sx = 5.0; sy = 0.4; sz = 5.0; }
-      else if (cat === "stairs") { sx = 3.0; sy = 3.0; sz = 5.0; }
+      else if (cat === "stairs") { sx = 3.0; sy = 3.5; sz = 5.0; }
       else if (cat === "railing") { sx = 5.0; sy = 1.2; sz = 0.3; }
       else { sx = 1.0; sy = 1.0; sz = 1.0; }
 
-      const geom = new THREE.BoxGeometry(sx, sy, sz);
+      const geom = cat === "stairs"
+        ? createStairOrRampGeometry(sx, sy, sz, 7)
+        : new THREE.BoxGeometry(sx, sy, sz);
       const mat = new THREE.MeshStandardMaterial({
         color: col,
         roughness: 0.5,

@@ -41,7 +41,7 @@ export function categorizePart(partId: string): string {
   if (p.includes("wall") || p.includes("basement")) return "wall";
   if (p.includes("ceiling") || p.includes("roof")) return "ceiling";
   if (p.includes("pillar") || p.includes("column")) return "pillar";
-  if (p.includes("stair")) return "stairs";
+  if (p.includes("stair") || p.includes("ramp") || p.includes("slope")) return "stairs";
   if (p.includes("door") || p.includes("gate")) return "door";
   if (p.includes("railing") || p.includes("fence")) return "railing";
   if (p.includes("prop") || p.includes("chest") || p.includes("barrel") || p.includes("crate") || p.includes("candle") || p.includes("torch")) return "prop";
