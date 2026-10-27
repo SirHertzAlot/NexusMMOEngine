@@ -66,9 +66,9 @@ This documentation suite is optimized for **Yank Note** ([`purocean/yn`](https:/
 ### Interactive Infrastructure Cost Comparison Applet
 
 ```html
-<div id="cost-calculator" style="background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 20px; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 720px; margin: 16px 0;">
+<div id="cost-calculator" style="background: #0d1117; color-scheme: dark; border: 1px solid #30363d; border-radius: 8px; padding: 20px; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 720px; margin: 16px 0;">
   <h4 style="margin: 0 0 12px 0; color: #58a6ff;">Interactive Monthly Cloud OpEx Calculator</h4>
-  <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+  <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px;">
     <div style="flex: 1;">
       <label style="display: block; font-size: 12px; color: #8b949e; margin-bottom: 4px;">Concurrent Users (CCU)</label>
       <input id="calc-ccu" type="number" value="10000" step="1000" style="width: 100%; background: #161b22; border: 1px solid #30363d; color: #fff; padding: 6px 10px; border-radius: 4px;" oninput="updateCost()">
@@ -79,7 +79,7 @@ This documentation suite is optimized for **Yank Note** ([`purocean/yn`](https:/
     </div>
   </div>
 
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
     <div style="background: #161b22; border: 1px solid #f85149; border-radius: 6px; padding: 12px;">
       <div style="font-size: 12px; color: #f85149; font-weight: bold;">Unreal Engine 5 (Dedicated Servers)</div>
       <div id="cost-ue5" style="font-size: 24px; font-weight: bold; margin: 6px 0; color: #fff;">$11,500 / mo</div>

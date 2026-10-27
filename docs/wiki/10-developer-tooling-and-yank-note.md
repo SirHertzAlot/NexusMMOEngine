@@ -62,9 +62,9 @@ In any documentation note (e.g. `docs/wiki/05-networking-and-edge.md`), an inter
 
 ````markdown
 ```html
-<div id="telemetry-card" style="padding: 16px; background: #161b22; border-radius: 8px; color: #f0f6fc; font-family: sans-serif;">
+<div id="telemetry-card" style="padding: 16px; background: #161b22; color-scheme: dark; border-radius: 8px; color: #f0f6fc; font-family: sans-serif;">
   <h3 style="margin-top: 0; color: #58a6ff;">Live Engine Telemetry</h3>
-  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px;">
     <div style="background: #21262d; padding: 10px; border-radius: 6px;">
       <small style="color: #8b949e;">Tick Rate</small>
       <div id="metric-tick" style="font-size: 20px; font-weight: bold; color: #3fb950;">30.0 Hz</div>
