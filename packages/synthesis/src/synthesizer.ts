@@ -479,33 +479,52 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 6: Perimeter Walls enclosing upper loft and lower hall
-      // Upper loft back & side walls
-      for (const ux of [-5.0, 0, 5.0]) {
-        const wall = pickCatPart("wall");
-        if (wall) {
-          addPlacement(wall, new THREE.Vector3(ux, upperY + 2.0, -15.0), yawQuat(0)); // South wall
-        }
-      }
-      for (const uz of [-12.5, -7.5]) {
-        const wallW = pickCatPart("wall");
-        const wallE = pickCatPart("wall");
-        if (wallW) addPlacement(wallW, new THREE.Vector3(-7.5, upperY + 2.0, uz), yawQuat(-Math.PI / 2));
-        if (wallE) addPlacement(wallE, new THREE.Vector3(7.5, upperY + 2.0, uz), yawQuat(Math.PI / 2));
-      }
-
-      // Main hall perimeter walls
+      // Phase 6: Complete Seamless Perimeter Walls (Fully enclosing lower and upper levels with zero gaps)
+      // Tier 1 (Ground level, Y = lowerY + 2.0m): Encloses entire room perimeter continuously
+      // South wall (Z = -15.0m, facing North into room)
       for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
         const wall = pickCatPart("wall");
         if (wall) {
-          addPlacement(wall, new THREE.Vector3(lx, lowerY + 2.0, 15.0), yawQuat(Math.PI)); // North wall
+          addPlacement(wall, new THREE.Vector3(lx, lowerY + 2.0, -15.0), yawQuat(0));
         }
       }
-      for (const lz of [-2.5, 2.5, 7.5, 12.5]) {
+      // North wall (Z = 15.0m, facing South into room)
+      for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
+        const wall = pickCatPart("wall");
+        if (wall) {
+          addPlacement(wall, new THREE.Vector3(lx, lowerY + 2.0, 15.0), yawQuat(Math.PI));
+        }
+      }
+      // West wall (X = -10.0m, facing East into room) across all 6 bays
+      for (const lz of [-12.5, -7.5, -2.5, 2.5, 7.5, 12.5]) {
+        const wall = pickCatPart("wall");
+        if (wall) {
+          addPlacement(wall, new THREE.Vector3(-10.0, lowerY + 2.0, lz), yawQuat(-Math.PI / 2));
+        }
+      }
+      // East wall (X = 10.0m, facing West into room) across all 6 bays
+      for (const lz of [-12.5, -7.5, -2.5, 2.5, 7.5, 12.5]) {
+        const wall = pickCatPart("wall");
+        if (wall) {
+          addPlacement(wall, new THREE.Vector3(10.0, lowerY + 2.0, lz), yawQuat(Math.PI / 2));
+        }
+      }
+
+      // Tier 2 (Upper level enclosure where levels switch and around the second-level loft):
+      // Stacked upper walls directly on top of Tier 1 at Y = lowerY + 6.0m (spanning height 4m to 8m)
+      // South upper wall (Z = -15.0m)
+      for (const lx of [-7.5, -2.5, 2.5, 7.5]) {
+        const wall = pickCatPart("wall");
+        if (wall) {
+          addPlacement(wall, new THREE.Vector3(lx, lowerY + 6.0, -15.0), yawQuat(0));
+        }
+      }
+      // West & East upper walls along the loft and staircase transition zone (Z = -12.5, -7.5, -2.5)
+      for (const lz of [-12.5, -7.5, -2.5]) {
         const wallW = pickCatPart("wall");
         const wallE = pickCatPart("wall");
-        if (wallW) addPlacement(wallW, new THREE.Vector3(-10.0, lowerY + 2.0, lz), yawQuat(-Math.PI / 2));
-        if (wallE) addPlacement(wallE, new THREE.Vector3(10.0, lowerY + 2.0, lz), yawQuat(Math.PI / 2));
+        if (wallW) addPlacement(wallW, new THREE.Vector3(-10.0, lowerY + 6.0, lz), yawQuat(-Math.PI / 2));
+        if (wallE) addPlacement(wallE, new THREE.Vector3(10.0, lowerY + 6.0, lz), yawQuat(Math.PI / 2));
       }
 
       // Phase 7: Altar & Rubble in Main Hall
