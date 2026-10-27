@@ -11,6 +11,7 @@ import { entityId } from "./ids.js";
 import { shuffle, type Streams } from "./rng.js";
 import type { SettlementRules } from "./rules.js";
 import type { Structure } from "./structures.js";
+import type { CharacterInstance } from "./character/types.js";
 
 export interface Household {
   id: string;
@@ -34,6 +35,8 @@ export interface Npc {
   mastery?: string;
   /** A grand master of it: pupils come from afar to learn from them. */
   grandMaster?: boolean;
+  /** Resolved character composition, profile, and backstory (§9). */
+  character?: CharacterInstance;
 }
 
 export interface Shop {

@@ -15,10 +15,13 @@
  */
 
 import * as THREE from "three";
-import { advancePhase, attackPose, deathProgress, gaitAt, legCurve, newGait, type GaitParams } from "./gait.js";
+import {
+  advancePhase, attackPose, deathProgress, gaitAt, legCurve, newGait, type GaitParams,
+  avianFlightCurve, serpentineWave, aquaticWave, arachnidGait, floraSway,
+} from "./gait.js";
 import {
   BONE_BODY, BONE_FL, BONE_HEAD, BONE_LOWER, BONE_NAMES, BONE_TAIL, segmentQuadruped,
-  type SegmentHints, type Segmentation,
+  segmentModel, type SegmentHints, type Segmentation,
 } from "./segment.js";
 
 /** Animals nearer than this (metres) are posed; farther ones hold the rest pose (no CPU cost). */
@@ -46,7 +49,7 @@ export class AnimalTemplate {
   }
 
   /** Null when the geometry does not look like a four-legged animal (it stays a static mesh). */
-  static from(source: THREE.BufferGeometry, hints?: SegmentHints): AnimalTemplate | null {
+  static from(source: THREE.BufferGeometry, hints?: SegmentHints, modelName?: string): AnimalTemplate | null {
     const position = source.getAttribute("position");
     if (!position) return null;
     const flat = new Float32Array(position.count * 3);
@@ -55,7 +58,9 @@ export class AnimalTemplate {
       flat[i * 3 + 1] = position.getY(i);
       flat[i * 3 + 2] = position.getZ(i);
     }
-    const seg = segmentQuadruped(flat, hints);
+    const seg = hints?.rigType
+      ? segmentModel(flat, hints, modelName)
+      : (segmentQuadruped(flat, hints) ?? segmentModel(flat, hints, modelName));
     if (!seg) return null;
     const g = source.clone();
     g.rotateY(seg.frame.yaw);
@@ -79,6 +84,11 @@ export class AnimalTemplate {
 
 const scratchPose = { angle: 0, lift: 0, flex: 0 };
 const scratchAttack = { windup: 0, strike: 0 };
+const scratchAvian = { wingRoll: 0, wingPitch: 0, headBob: 0 };
+const scratchAquatic = { tailYaw: 0, finPitch: 0, dorsalRoll: 0 };
+const scratchSerpentine = new Float32Array(8);
+const scratchArachnid = new Float32Array(8);
+const scratchFlora = { swayX: 0, swayZ: 0, flutter: 0 };
 
 export class AnimalRig {
   /** Add this to the scene; place and yaw it like any entity (it faces +Z). */
@@ -100,16 +110,18 @@ export class AnimalRig {
   private clock = 0;
 
   constructor(readonly template: AnimalTemplate, material: THREE.Material | THREE.Material[]) {
-    const { pivots } = template.seg;
-    for (const name of BONE_NAMES) {
+    const { pivots, boneNames, parentIndices } = template.seg;
+    const names = boneNames ?? BONE_NAMES;
+    for (const name of names) {
       const b = new THREE.Bone();
       b.name = name;
       this.bones.push(b);
     }
-    // Body is the root; head, tail and upper legs hang off it, each lower leg off its upper leg.
+    const defaultParents = (i: number) =>
+      i === BONE_BODY ? -1 : i >= BONE_LOWER ? i - BONE_LOWER + BONE_FL : BONE_BODY;
     for (let i = 0; i < this.bones.length; i++) {
       const [x, y, z] = pivots[i];
-      const parentIndex = i === BONE_BODY ? -1 : i >= BONE_LOWER ? i - BONE_LOWER + BONE_FL : BONE_BODY;
+      const parentIndex = parentIndices ? parentIndices[i] : defaultParents(i);
       const parent = parentIndex >= 0 ? pivots[parentIndex] : null;
       this.rest.push(parent ? [x - parent[0], y - parent[1], z - parent[2]] : [x, y, z]);
       this.bones[i].position.set(...this.rest[i]);
@@ -117,7 +129,7 @@ export class AnimalRig {
     }
     this.mesh = new THREE.SkinnedMesh(template.geometry, material);
     this.mesh.name = "animal";
-    this.mesh.add(this.bones[BONE_BODY]);
+    this.mesh.add(this.bones[0]);
     this.mesh.updateMatrixWorld(true);
     this.skeleton = new THREE.Skeleton(this.bones);
     this.mesh.bind(this.skeleton, new THREE.Matrix4());
@@ -155,6 +167,66 @@ export class AnimalRig {
       scratchAttack.strike = 0;
     }
     const { windup, strike } = scratchAttack;
+    const rigType = seg.type ?? "quadruped";
+
+    if (rigType === "avian") {
+      avianFlightCurve(this.phase, this.speed, scratchAvian);
+      const body = this.bones[0];
+      body.position.set(this.rest[0][0], this.rest[0][1] + Math.sin(this.clock * 2) * 0.005 * seg.height, this.rest[0][2]);
+      body.rotation.set(0, 0, 0);
+      if (this.bones[1]) this.bones[1].rotation.set(scratchAvian.headBob * alive + d * 0.3, 0, 0); // head
+      if (this.bones[2]) this.bones[2].rotation.set(0, 0, 0); // tail
+      if (this.bones[3]) this.bones[3].rotation.set(scratchAvian.wingPitch * alive, 0, scratchAvian.wingRoll * alive); // wingL
+      if (this.bones[4]) this.bones[4].rotation.set(scratchAvian.wingPitch * alive, 0, -scratchAvian.wingRoll * alive); // wingR
+      if (this.bones[5]) this.bones[5].rotation.set(Math.sin(2 * Math.PI * this.phase) * 0.3 * alive, 0, 0); // legL
+      if (this.bones[6]) this.bones[6].rotation.set(-Math.sin(2 * Math.PI * this.phase) * 0.3 * alive, 0, 0); // legR
+      this.lie.rotation.z = this.fallSide * d * (Math.PI / 2);
+      this.lie.position.y = d * seg.width * 0.5;
+      return;
+    }
+
+    if (rigType === "serpentine") {
+      serpentineWave(this.phase, this.speed, this.bones.length, scratchSerpentine);
+      for (let i = 0; i < this.bones.length; i++) {
+        this.bones[i].rotation.set(0, scratchSerpentine[i] * alive, 0);
+      }
+      this.lie.rotation.z = this.fallSide * d * (Math.PI / 2);
+      this.lie.position.y = d * seg.width * 0.5;
+      return;
+    }
+
+    if (rigType === "aquatic") {
+      aquaticWave(this.phase, this.speed, scratchAquatic);
+      const body = this.bones[0];
+      body.rotation.set(0, 0, scratchAquatic.dorsalRoll * alive);
+      if (this.bones[2]) this.bones[2].rotation.set(0, scratchAquatic.tailYaw * alive, 0); // caudal fin
+      if (this.bones[3]) this.bones[3].rotation.set(scratchAquatic.finPitch * alive, 0, 0); // finL
+      if (this.bones[4]) this.bones[4].rotation.set(-scratchAquatic.finPitch * alive, 0, 0); // finR
+      if (this.bones[5]) this.bones[5].rotation.set(0, 0, scratchAquatic.dorsalRoll * alive); // dorsal
+      this.lie.rotation.z = this.fallSide * d * (Math.PI / 2);
+      this.lie.position.y = d * seg.width * 0.5;
+      return;
+    }
+
+    if (rigType === "arachnid") {
+      arachnidGait(this.phase, this.speed, scratchArachnid);
+      const numLegs = Math.min(8, this.bones.length - 2);
+      for (let k = 0; k < numLegs; k++) {
+        this.bones[2 + k].rotation.set(0, scratchArachnid[k] * alive, 0);
+      }
+      this.lie.rotation.z = this.fallSide * d * (Math.PI / 2);
+      this.lie.position.y = d * seg.width * 0.5;
+      return;
+    }
+
+    if (rigType === "flora") {
+      floraSway(this.clock, scratchFlora);
+      if (this.bones[1]) this.bones[1].rotation.set(scratchFlora.swayX, 0, scratchFlora.swayZ); // trunk
+      if (this.bones[2]) this.bones[2].rotation.set(scratchFlora.flutter, 0, scratchFlora.flutter); // branchL
+      if (this.bones[3]) this.bones[3].rotation.set(scratchFlora.flutter, 0, -scratchFlora.flutter); // branchR
+      if (this.bones[4]) this.bones[4].rotation.set(scratchFlora.swayX * 1.5, 0, scratchFlora.swayZ * 1.5); // canopy
+      return;
+    }
 
     const body = this.bones[BONE_BODY];
     const bob = g.bob * Math.cos(4 * Math.PI * this.phase) * g.moveW;
