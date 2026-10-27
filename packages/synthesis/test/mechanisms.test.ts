@@ -8,6 +8,7 @@ import {
   disarmTrap,
   synthesizeAssembly,
   extractLearnedRuleSet,
+  isConnectingTwoFloors,
   type CombinationPuzzleDefinition,
   type CollisionTrapDefinition,
   type SynthesisProblem,
@@ -269,5 +270,60 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
       const hasVariedScale = rubblePlacements.some(p => p.transform.scale[0] !== 1.0);
       assert.ok(hasVariedScale, "Rubble placements should feature size variance");
     }
+
+    // In single-level crypt-hall: no freestanding pillars or disconnected stairs
+    const freestandingPillarsOrStairs = output.placements.filter(
+      p => p.category === "pillar" || p.category === "stairs"
+    );
+    assert.equal(freestandingPillarsOrStairs.length, 0, "Single-level room must not contain freestanding pillars or disconnected stairs");
+  });
+
+  it("isConnectingTwoFloors enforces floor connectivity for stairs and pillars", () => {
+    // 1. Single floor level: stairs and pillars must be rejected
+    const singleFloorRoom = [
+      { partId: "floor_1", assetRef: "a", category: "floor", transform: { pos: [0, 0, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+      { partId: "floor_2", assetRef: "a", category: "floor", transform: { pos: [0, 0, 5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+    ];
+
+    const freestandingPillar = {
+      partId: "pillar_1",
+      assetRef: "p",
+      category: "pillar",
+      transform: { pos: [0, 1.75, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+    };
+    assert.equal(isConnectingTwoFloors(freestandingPillar, singleFloorRoom), false, "Pillar on single floor must be rejected");
+
+    const disconnectedStairs = {
+      partId: "stairs_1",
+      assetRef: "s",
+      category: "stairs",
+      transform: { pos: [0, 1.75, 2.5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+    };
+    assert.equal(isConnectingTwoFloors(disconnectedStairs, singleFloorRoom), false, "Stairs on single floor must be rejected");
+
+    // 2. Two floor levels: ground (y=0) and upper loft (y=3.5)
+    const twoFloorRoom = [
+      ...singleFloorRoom,
+      { partId: "loft_floor_1", assetRef: "a", category: "floor", transform: { pos: [0, 3.5, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+    ];
+
+    // Pillar supporting loft deck from ground floor
+    const connectedPillar = {
+      partId: "pillar_supported",
+      assetRef: "p",
+      category: "pillar",
+      transform: { pos: [0, 1.75, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+    };
+    assert.equal(isConnectingTwoFloors(connectedPillar, twoFloorRoom), true, "Pillar connecting ground to upper loft must be accepted");
+
+    // Stairs connecting ground (z=5) to upper loft (z=0)
+    // with yaw=0, bottom landing is at local +Z (z = 2.5 + 2.5 = 5.0) and top is at local -Z (z = 2.5 - 2.5 = 0.0)
+    const connectedStairs = {
+      partId: "stairs_connected",
+      assetRef: "s",
+      category: "stairs",
+      transform: { pos: [0, 1.75, 2.5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+    };
+    assert.equal(isConnectingTwoFloors(connectedStairs, twoFloorRoom), true, "Stairs connecting ground floor to loft must be accepted");
   });
 });

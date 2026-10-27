@@ -730,3 +730,12 @@ Every entry: date, decision, rationale. Newest first.
      - Traversal obstacle classification: `step-over` ($\le 0.30\text{m}$), `low-cover` ($0.30 - 1.20\text{m}$, vaultable), `high-cover` ($1.20 - 2.00\text{m}$), `full-obstacle` ($> 2.00\text{m}$).
      - Physics mass scaling cubically with scale ($M \propto s^3$).
      - Acoustic resonance pitch shifting inversely with cube-root scale ($f \propto \frac{1}{\sqrt[3]{s}}$), ensuring larger objects produce deeper, resonant thuds and smaller objects produce crisp clatters.
+
+- **2026-10-27 — Two-Floor Connectivity Invariant for Stairs and Pillars (PR #437).**
+  In classical architectural design, stairs and pillars exist strictly to bridge or support vertical circulation between distinct floor elevations. Freestanding pillars with no supported upper floor, and stairs leading into empty air or placed flat on a single-level slab, look awkward and unarchitectural.
+  1) **Two-Floor Connectivity Enforcement (`isConnectingTwoFloors`)**:
+     - **Stairs**: A stair/ramp is valid IF AND ONLY IF its bottom landing rests on a lower floor slab and its top landing connects with an upper floor slab elevated by at least $1.5\text{m}$ above the lower floor.
+     - **Pillars**: A pillar is valid IF AND ONLY IF its base rests on a lower floor slab and its top directly supports an upper floor deck/loft elevated by at least $1.5\text{m}$ above the lower floor.
+  2) **Synthesis Pruning & Socket Gate**:
+     - Both during socket expansion and in a post-synthesis verification pass, any stair or pillar failing `isConnectingTwoFloors` is rejected and pruned.
+     - Single-level chambers (e.g. `crypt-hall` and `boss-arena`) omit colonnade pillars to maintain clean, open cathedral/arena vaults without awkward freestanding poles, while multi-level chambers (`multi-level-descent`) preserve under-loft support pillars and circulation stairs bridging the ground floor to the upper loft deck.

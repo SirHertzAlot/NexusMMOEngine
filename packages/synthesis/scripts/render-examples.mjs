@@ -11,9 +11,9 @@ const ruleSet = JSON.parse(fs.readFileSync(rulesPath, "utf-8"));
 // 1. Synthesize 3 distinct archetypes
 const archetypes = [
   {
-    name: "Pillared Crypt & Tomb Hall",
+    name: "Vaulted Crypt & Tomb Hall",
     filename: "example_1_crypt_hall.png",
-    subtitle: "Seeded spatial growth: Symmetrical crypt layout, perimeter walls, and interior pillar columns",
+    subtitle: "Symmetrical crypt layout, continuous foundation plate, complete perimeter enclosure, traps & rune puzzle",
     problem: {
       ruleSet,
       seed: 1042,
@@ -24,9 +24,9 @@ const archetypes = [
     },
   },
   {
-    name: "Grand Boss Arena & Colonnade",
+    name: "Grand Boss Arena & Colosseum",
     filename: "example_2_boss_arena.png",
-    subtitle: "High-budget expansive chamber: Colonnade pillars, reinforced masonry walls, and wide flagstone floor",
+    subtitle: "Expansive 8m double-height perimeter enclosure, continuous flagstone court, perimeter saw rail hazards, and dais switch puzzle",
     problem: {
       ruleSet,
       seed: 555,
@@ -499,11 +499,11 @@ async function main() {
       <img class="card-img" src="${img1B64}" />
       <div class="card-body">
         <div>
-          <div class="card-title">1. Pillared Crypt Hall</div>
-          <div class="card-sub">Symmetrical hall layout with peripheral stone walls, interior column shafts, floor spear traps, and wall puzzle levers.</div>
+          <div class="card-title">1. Vaulted Crypt Hall</div>
+          <div class="card-sub">Symmetrical hall layout with peripheral stone walls, continuous foundation deck, floor spear traps, and rune pillar puzzles.</div>
         </div>
         <div class="card-stats">
-          <span>65 Parts</span>
+          <span>57 Parts</span>
           <span>11ms Solve</span>
         </div>
       </div>
@@ -512,12 +512,12 @@ async function main() {
       <img class="card-img" src="${img2B64}" />
       <div class="card-body">
         <div>
-          <div class="card-title">2. Grand Boss Colonnade</div>
-          <div class="card-sub">Expansive great hall with 140 interlocking wall panels, stone floor grid, dual colonnades, perimeter saw rails, and dais switch puzzles.</div>
+          <div class="card-title">2. Grand Boss Colosseum</div>
+          <div class="card-sub">Expansive double-height enclosure with 134 interlocking wall panels, stone floor grid, perimeter saw rails, and dais switch puzzles.</div>
         </div>
         <div class="card-stats">
-          <span>140 Parts</span>
-          <span>22ms Solve</span>
+          <span>134 Parts</span>
+          <span>18ms Solve</span>
         </div>
       </div>
     </div>
@@ -525,8 +525,8 @@ async function main() {
       <img class="card-img" src="${img3B64}" />
       <div class="card-body">
         <div>
-          <div class="card-title">3. Multi-Level Descent</div>
-          <div class="card-sub">Split-level spatial connectivity featuring stair risers, supported loft decks, perimeter railings, and chokepoint traps.</div>
+          <div class="card-title">3. Multi-Level Descent & Loft</div>
+          <div class="card-sub">Two-level mezzanine connectivity with triangular stepped ramp/stairs and under-loft pillars directly connecting ground to upper deck.</div>
         </div>
         <div class="card-stats">
           <span>85 Parts</span>

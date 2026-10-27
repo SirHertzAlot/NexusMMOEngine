@@ -33,6 +33,7 @@ import type {
   CollisionTrapDefinition,
   PuzzleInputSlot,
   PuzzleCluePlacement,
+  LearnedRuleSet,
 } from "./types.js";
 
 /** Mulberry32 deterministic 32-bit PRNG. */
@@ -117,6 +118,99 @@ function quantizeQuat(q: THREE.Quaternion): QuatTuple {
 /** Helper to create pure upright yaw rotation quaternion. */
 function yawQuat(yawRad: number): THREE.Quaternion {
   return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawRad);
+}
+
+/**
+ * Structural architectural invariant:
+ * - A stair is valid ONLY IF it connects two floor levels together (lower landing and upper landing).
+ * - A pillar is valid ONLY IF it connects two floor levels together (supporting an upper floor deck from a lower floor).
+ * Any freestanding or ungrounded stair or pillar is rejected.
+ */
+export function isConnectingTwoFloors(
+  placement: SynthesizedPlacement,
+  allPlacements: SynthesizedPlacement[],
+  ruleSet?: LearnedRuleSet
+): boolean {
+  if (placement.category !== "stairs" && placement.category !== "pillar") {
+    return true;
+  }
+
+  const floorPlacements = allPlacements.filter((p) => p.category === "floor");
+  if (floorPlacements.length < 2) {
+    return false;
+  }
+
+  // Find distinct vertical floor elevations (separated by at least 1.5m)
+  const floorHeights = Array.from(
+    new Set(floorPlacements.map((f) => Math.round(f.transform.pos[1] * 10) / 10))
+  ).sort((a, b) => a - b);
+
+  if (
+    floorHeights.length < 2 ||
+    floorHeights[floorHeights.length - 1] - floorHeights[0] < 1.5
+  ) {
+    // Single floor level in room: neither stairs nor pillars can connect two floors
+    return false;
+  }
+
+  const partDef = ruleSet?.parts[placement.partId];
+  const size = partDef ? partDef.bounds.size : [2, 3.5, 2];
+  const scale = placement.transform.scale || [1, 1, 1];
+  const [px, py, pz] = placement.transform.pos;
+  const sy = (size[1] || 3.5) * scale[1];
+  const yBase = py - sy / 2;
+  const yTop = py + sy / 2;
+
+  if (placement.category === "pillar") {
+    // Lower floor directly beneath base
+    const hasLowerFloor = floorPlacements.some((f) => {
+      const [fx, fy, fz] = f.transform.pos;
+      const dx = Math.abs(fx - px);
+      const dz = Math.abs(fz - pz);
+      const dy = Math.abs(fy - yBase);
+      return dx <= 2.6 && dz <= 2.6 && dy <= 0.8;
+    });
+
+    // Upper floor directly above top
+    const hasUpperFloor = floorPlacements.some((f) => {
+      const [fx, fy, fz] = f.transform.pos;
+      const dx = Math.abs(fx - px);
+      const dz = Math.abs(fz - pz);
+      const dy = Math.abs(fy - yTop);
+      return dx <= 2.6 && dz <= 2.6 && dy <= 0.8 && fy >= yBase + 1.5;
+    });
+
+    return hasLowerFloor && hasUpperFloor;
+  }
+
+  if (placement.category === "stairs") {
+    const sz = (size[2] || 5.0) * scale[2];
+    const [qx, qy, qz, qw] = placement.transform.rot;
+    // Extract yaw around Y axis
+    const siny_cosp = 2 * (qw * qy + qx * qz);
+    const cosy_cosp = 1 - 2 * (qy * qy + qz * qz);
+    const yaw = Math.atan2(siny_cosp, cosy_cosp);
+
+    // Standard stair: bottom landing at local +Z, top landing at local -Z
+    const xBot = px + Math.sin(yaw) * (sz / 2);
+    const zBot = pz + Math.cos(yaw) * (sz / 2);
+    const xTop = px - Math.sin(yaw) * (sz / 2);
+    const zTop = pz - Math.cos(yaw) * (sz / 2);
+
+    const hasLowerFloor = floorPlacements.some((f) => {
+      const [fx, fy, fz] = f.transform.pos;
+      return Math.hypot(fx - xBot, fz - zBot) <= 3.0 && Math.abs(fy - yBase) <= 0.8;
+    });
+
+    const hasUpperFloor = floorPlacements.some((f) => {
+      const [fx, fy, fz] = f.transform.pos;
+      return Math.hypot(fx - xTop, fz - zTop) <= 3.0 && Math.abs(fy - yTop) <= 0.8 && fy >= yBase + 1.5;
+    });
+
+    return hasLowerFloor && hasUpperFloor;
+  }
+
+  return true;
 }
 
 /**
@@ -327,18 +421,7 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 3: Colonnade Columns along Nave Boundaries (x = -2.5, +2.5)
-      if (pillarList.length > 0) {
-        for (let iz = 1; iz < baysZ - 1; iz++) {
-          const z = (iz - (baysZ - 1) / 2) * cellM;
-          for (const colX of [-2.5, 2.5]) {
-            const pillarDef = pickCatPart("pillar");
-            if (pillarDef) {
-              addPlacement(pillarDef, new THREE.Vector3(colX, groundY + 2.0, z), yawQuat(0));
-            }
-          }
-        }
-      }
+      // Phase 3: Nave colonnade pillars omitted in single-level hall (pillars only placed when connecting two floors)
 
       // Phase 4: Overhead Ceiling Arches
       if (ceilingList.length > 0) {
@@ -565,18 +648,7 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         }
       }
 
-      // Phase 3: Colonnade Pillars framing Central Arena
-      if (pillarList.length > 0) {
-        const pillarDist = 6.0;
-        for (const px of [-pillarDist, pillarDist]) {
-          for (const pz of [-pillarDist, 0, pillarDist]) {
-            const pillarDef = pickCatPart("pillar");
-            if (pillarDef) {
-              addPlacement(pillarDef, new THREE.Vector3(px, groundY + 2.0, pz), yawQuat(0));
-            }
-          }
-        }
-      }
+      // Phase 3: Colonnade pillars omitted in single-level arena (pillars only placed when connecting two floors)
 
       // Phase 4: Overhead Arch Vaults
       if (ceilingList.length > 0) {
@@ -1130,8 +1202,47 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       }
       if (collides) continue;
 
+      // Architectural rule: do not place stairs or pillars unless they connect two floors together
+      if (bPartDef.category === "stairs" || bPartDef.category === "pillar") {
+        const dummyPlacement: SynthesizedPlacement = {
+          partId: bPartDef.id,
+          assetRef: bPartDef.assetRef,
+          category: bPartDef.category,
+          transform: {
+            pos: quantizeVec3(candidatePos),
+            rot: quantizeQuat(rot),
+            scale: [1, 1, 1],
+          },
+        };
+        if (!isConnectingTwoFloors(dummyPlacement, placements, ruleSet)) {
+          continue;
+        }
+      }
+
       addPlacement(bPartDef, candidatePos, rot, new THREE.Vector3(1, 1, 1), bSocketDef.name);
       break;
+    }
+  }
+
+  // Post-synthesis structural verification:
+  // Reject and prune any stairs or pillars that do not connect two floor levels together
+  const validPlacements = placements.filter((p) => isConnectingTwoFloors(p, placements, ruleSet));
+  if (validPlacements.length !== placements.length) {
+    placements.splice(0, placements.length, ...validPlacements);
+    for (const k of Object.keys(categoryCounts)) delete categoryCounts[k];
+    for (const k of Object.keys(scaleTierCounts)) scaleTierCounts[k] = 0;
+    for (const p of placements) {
+      categoryCounts[p.category] = (categoryCounts[p.category] || 0) + 1;
+      const partDef = ruleSet.parts[p.partId];
+      const maxDimM = partDef
+        ? Math.max(
+            partDef.bounds.size[0] * (p.transform.scale?.[0] || 1),
+            partDef.bounds.size[1] * (p.transform.scale?.[1] || 1),
+            partDef.bounds.size[2] * (p.transform.scale?.[2] || 1)
+          )
+        : 2.0;
+      const tier = classifyScaleTier(maxDimM);
+      scaleTierCounts[tier] = (scaleTierCounts[tier] || 0) + 1;
     }
   }
 
