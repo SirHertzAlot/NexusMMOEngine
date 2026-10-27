@@ -22,7 +22,7 @@ import { SurrealWorldStore } from "../src/surreal-store.js";
 const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 test(
-  "define functions: THROW inside fn::trade_commit rolls back the whole invocation (WORLD_TEST_DB_URL)",
+  "define functions: THROW inside fn::trade_commit_v2 rolls back the whole invocation (WORLD_TEST_DB_URL)",
   {
     skip:
       !process.env.WORLD_TEST_DB_URL &&
@@ -183,9 +183,11 @@ test(
           },
         ],
         credits: [],
+        op_id: "df-rollback-probe-op",
+        op_name: "tradeCommit",
       });
       const invoke =
-        "RETURN fn::trade_commit($baseSeq, $newSeq, $records, $entries, $credits);";
+        "RETURN fn::trade_commit_v2($baseSeq, $newSeq, $records, $entries, $credits, $op_id, $op_name);";
 
       await assert.rejects(
         raw.query(invoke, payload(999)),

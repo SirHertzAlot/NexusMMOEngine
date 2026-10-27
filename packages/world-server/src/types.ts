@@ -823,6 +823,10 @@ export interface WorldStore {
   // the item-ledger append happen inside it as one transaction /
   // critical section. Business failures are returned as typed
   // rejections (AtomicOpResult), never thrown, and commit nothing.
+  // Each method is also idempotent by opId (the dedup fold,
+  // 2026-10-27): the settled outcome is recorded atomically with
+  // the op inside the store, and a repeat call with the same opId
+  // returns the recorded outcome without re-applying anything.
   tradeCommit(input: TradeCommitInput): Promise<AtomicOpResult>;
   vendorTransact(input: VendorTransactInput): Promise<AtomicOpResult>;
   auctionSettle(input: AuctionSettleInput): Promise<AtomicOpResult>;

@@ -353,6 +353,12 @@ export class MemoryWorldStore implements WorldStore {
     participantIds: number[],
     apply: (ctx: AtomicContext) => AtomicOutcome,
   ): AtomicOpResult {
+    // Store-level dedup (the fold contract, shared with the Surreal
+    // store): an opId with a recorded outcome returns it verbatim
+    // and applies nothing — the core no longer brackets atomic calls
+    // with its own get/store pair.
+    const prior = this.ops.get(opId);
+    if (prior !== undefined) return prior as AtomicOpResult;
     const now = Date.now();
     const ctx: AtomicContext = {
       regionId,
@@ -372,7 +378,11 @@ export class MemoryWorldStore implements WorldStore {
     };
     const outcome = apply(ctx);
     if (!outcome.ok) {
-      return { ok: false, opId, op, rejection: outcome.rejection, message: outcome.message };
+      const rejected: AtomicOpResult = {
+        ok: false, opId, op, rejection: outcome.rejection, message: outcome.message,
+      };
+      this.ops.set(opId, rejected);
+      return rejected;
     }
     const entries: AtomicLedgerEntry[] = outcome.commit.ledger.map((d) => ({
       ...d,
@@ -386,13 +396,15 @@ export class MemoryWorldStore implements WorldStore {
       this.pendingCredits.push({ ...c, createdAt: now });
     }
     this.atomicLedgerEntries.push(...entries);
-    return {
+    const committed: AtomicOpResult = {
       ok: true,
       opId,
       op,
       characters: outcome.commit.records.map((r) => structuredClone(r)),
       ledger: entries.map((e) => ({ ...e })),
     };
+    this.ops.set(opId, committed);
+    return committed;
   }
 
   async tradeCommit(input: TradeCommitInput): Promise<AtomicOpResult> {

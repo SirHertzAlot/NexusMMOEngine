@@ -201,9 +201,24 @@ const ATOMIC_FN_NAMES: Record<AtomicOpKind, string> = {
   inventoryMutate: "inventory_mutate",
 };
 
+/**
+ * The dedup fold (2026-10-27): the v2 functions take the opId and
+ * OWN the dedup record. The outcome envelope is built and inserted
+ * into op_dedup INSIDE the same invocation as the effects, so an op
+ * and its replay record commit — or abort — together; the crash
+ * window where effects landed but the dedup record didn't (a retry
+ * then met moved versions and read a success as VERSION_CONFLICT)
+ * is closed. A dedup hit at function start returns the stored
+ * envelope untouched. The functions are versioned by name because
+ * the IF NOT EXISTS definition form keeps an existing database's
+ * old 5-parameter bodies; v1 definitions are simply no longer
+ * shipped (any already-defined v1 bodies stay inert).
+ */
 function defineAtomicFn(name: string): string {
   return `
-DEFINE FUNCTION IF NOT EXISTS fn::${name}($base_seq: int, $new_seq: int, $records: array, $entries: array, $credits: array) {
+DEFINE FUNCTION IF NOT EXISTS fn::${name}_v2($base_seq: int, $new_seq: int, $records: array, $entries: array, $credits: array, $op_id: string, $op_name: string) {
+  LET $prior = (SELECT result FROM ONLY op_dedup WHERE opId = $op_id);
+  IF $prior != NONE { RETURN { deduped: true, result: $prior.result }; };
   LET $ctr = (SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger);
   IF $ctr = NONE OR $ctr.seq != $base_seq { THROW "VERSION_CONFLICT"; };
   UPDATE ONLY atomic_meta SET seq = $new_seq WHERE id = atomic_meta:ledger;
@@ -217,7 +232,10 @@ DEFINE FUNCTION IF NOT EXISTS fn::${name}($base_seq: int, $new_seq: int, $record
   };
   FOR $e IN $entries { CREATE ONLY atomic_ledger CONTENT $e; };
   FOR $c IN $credits { CREATE ONLY pending_credit CONTENT $c; };
-  RETURN true;
+  LET $chars = (SELECT characterId, state, version, epoch, regionId, updatedAt FROM $records);
+  LET $env = { ok: true, opId: $op_id, op: $op_name, characters: $chars, ledger: $entries };
+  CREATE ONLY op_dedup CONTENT { opId: $op_id, result: $env };
+  RETURN { deduped: false, result: $env };
 };`;
 }
 
@@ -334,6 +352,23 @@ export class SurrealWorldStore implements WorldStore {
     });
     await this.db.query(SCHEMA);
     await this.db.query(DEFINE_ATOMIC_FUNCTIONS);
+    // The airtightener for the dedup fold: one dedup row per opId,
+    // ever, so two racing invocations of the same op cannot both
+    // record an outcome (the loser aborts on this index and the
+    // store replays the winner's record). A pre-existing database
+    // that already holds duplicate opIds fails the index build;
+    // that must not block boot — the fold still works through the
+    // in-function dedup check and the version guards — so warn and
+    // continue (dedupe the table, then the next boot installs it).
+    try {
+      await this.db.query(
+        "DEFINE INDEX IF NOT EXISTS idx_op_dedup_op ON op_dedup FIELDS opId UNIQUE;",
+      );
+    } catch (err) {
+      console.warn(
+        `[world-store] op_dedup unique index not installed: ${(err as Error).message}`,
+      );
+    }
     const meta = singleRow<Record<string, unknown>>(
       await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
     );
@@ -941,6 +976,12 @@ export class SurrealWorldStore implements WorldStore {
   // THROWs inside the function, SurrealDB aborts the invocation, and
   // nothing commits — the caller sees a VERSION_CONFLICT rejection
   // instead. A business rejection never invokes the function at all.
+  //
+  // Dedup (the 2026-10-27 fold): the store owns opId idempotency —
+  // the dedup read rides the read query above, the v2 function
+  // records the outcome inside its own transaction on commit, and
+  // rejections/conflicts are recorded explicitly on their (cold)
+  // paths. The core no longer brackets these calls.
 
   /** One statement's single-row value from a multi-statement query result. */
   private static rowValue(v: unknown): Record<string, unknown> | null {
@@ -964,7 +1005,21 @@ export class SurrealWorldStore implements WorldStore {
       readStmts.push(`SELECT * FROM ONLY character_lock WHERE characterId = $c${i} LIMIT 1`);
     });
     readStmts.push("SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger");
+    // The dedup read rides the same round trip (the fold): a prior
+    // outcome for this opId — committed by the v2 function's own
+    // in-transaction insert, or recorded for a rejection — answers
+    // the call without touching the transition or the function.
+    readParams["dedupOpId"] = opId;
+    readStmts.push("SELECT result FROM op_dedup WHERE opId = $dedupOpId");
     const results = (await this.db.query(readStmts.join(";\n"), readParams)) as unknown[];
+
+    const dedupStmt = results[results.length - 1];
+    const dedupRows = (
+      Array.isArray(dedupStmt) ? dedupStmt : dedupStmt == null ? [] : [dedupStmt]
+    ) as Record<string, unknown>[];
+    if (dedupRows.length > 0 && dedupRows[0]["result"] != null) {
+      return dedupRows[0]["result"] as AtomicOpResult;
+    }
 
     const records = new Map<number, CharacterStateRecord | null>();
     const locks = new Map<number, CharacterSessionLock | null>();
@@ -974,13 +1029,20 @@ export class SurrealWorldStore implements WorldStore {
       records.set(id, recRow === null ? null : stripId<CharacterStateRecord>(recRow));
       locks.set(id, lockRow === null ? null : stripId<CharacterSessionLock>(lockRow));
     });
-    const counterRow = SurrealWorldStore.rowValue(results[results.length - 1]);
+    const counterRow = SurrealWorldStore.rowValue(results[results.length - 2]);
     const baseSeq = counterRow === null ? 0 : Number(counterRow["seq"] ?? 0);
 
     const now = Date.now();
     const outcome = apply({ regionId, now, records, locks });
     if (!outcome.ok) {
-      return { ok: false, opId, op, rejection: outcome.rejection, message: outcome.message };
+      // A rejection commits nothing, so there is no transaction for
+      // the dedup record to ride; record it explicitly, preserving
+      // the stored-rejection replay the core bracket used to give.
+      const rejected: AtomicOpResult = {
+        ok: false, opId, op, rejection: outcome.rejection, message: outcome.message,
+      };
+      await this.storeOpResult(opId, rejected);
+      return rejected;
     }
 
     const entries: AtomicLedgerEntry[] = outcome.commit.ledger.map((d, j) => ({
@@ -1006,27 +1068,44 @@ export class SurrealWorldStore implements WorldStore {
       ...c,
       createdAt: now,
     }));
+    let fnResult: unknown;
     try {
-      await this.db.query(
-        `RETURN fn::${ATOMIC_FN_NAMES[op]}($baseSeq, $newSeq, $records, $entries, $credits);`,
+      fnResult = await this.db.query(
+        `RETURN fn::${ATOMIC_FN_NAMES[op]}_v2($baseSeq, $newSeq, $records, $entries, $credits, $opId, $opName);`,
         {
           baseSeq,
           newSeq: baseSeq + entries.length,
           records: fnRecords,
           entries,
           credits: fnCredits,
+          opId,
+          opName: op,
         },
       );
     } catch (err) {
-      // A guard tripped or an index raced: the function invocation
-      // was aborted and nothing committed.
-      return {
+      // A guard tripped or an index raced: the invocation aborted
+      // and nothing committed. If the abort was a lost dedup race,
+      // the winner's outcome is now on record — replay it. Otherwise
+      // this is a genuine version conflict; record it (as the core
+      // bracket used to) so its replay is stable, and return it.
+      const winner = await this.getOpResult(opId).catch(() => null);
+      if (winner !== null) return winner as AtomicOpResult;
+      const conflict: AtomicOpResult = {
         ok: false,
         opId,
         op,
         rejection: "VERSION_CONFLICT",
         message: `atomic commit aborted, nothing applied: ${(err as Error).message}`,
       };
+      await this.storeOpResult(opId, conflict);
+      return conflict;
+    }
+    // The function returns the envelope it committed — or the stored
+    // one, when its own dedup check fired in a race the read batch
+    // missed. Return exactly what is on record.
+    const envelope = SurrealWorldStore.rowValue(fnResult);
+    if (envelope !== null && typeof envelope === "object" && "result" in envelope) {
+      return (envelope as { result: AtomicOpResult }).result;
     }
     return { ok: true, opId, op, characters: outcome.commit.records, ledger: entries };
   }
