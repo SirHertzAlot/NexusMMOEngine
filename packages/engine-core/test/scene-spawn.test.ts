@@ -87,7 +87,10 @@ describe("data-driven entities in a scene", () => {
   });
 
   it("spawns a species at its roster pack size, and says why one can't spawn", () => {
-    const { creatures, deps } = setup();
+    const { deps } = setup();
+    // The repo's roster now defines a creature rule for every species, so the
+    // "no creature rules" branch is exercised with a partial spawner set.
+    const onlyGoblin = new CreatureSystem({ creatures: { goblin: game.rules.creatures.creatures.goblin }, bases: game.rules.items.bases });
     const species = (id: string) => (id === "goblin" ? { pack: [5, 5] as const } : id === "void-watcher" ? { pack: [1, 1] as const } : undefined);
     const r = spawnScene(
       doc([
@@ -95,10 +98,10 @@ describe("data-driven entities in a scene", () => {
         { id: "v", components: { Spawner: { species: "void-watcher" } } },
         { id: "x", components: { Spawner: { species: "dragon" } } },
       ]) as never,
-      { ...deps, species },
+      { ...deps, creatures: onlyGoblin, species },
     );
     assert.equal(r.spawned[0].entities.length, 5);
-    assert.ok(r.spawned[0].entities.every((e) => creatures.isCreature(e)));
+    assert.ok(r.spawned[0].entities.every((e) => onlyGoblin.isCreature(e)));
     assert.match(r.skipped.find((s) => s.id === "v")!.reason, /no creature rules/);
     assert.match(r.skipped.find((s) => s.id === "x")!.reason, /no species "dragon"/);
   });

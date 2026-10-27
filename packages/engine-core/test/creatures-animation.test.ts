@@ -6,16 +6,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Move } from "@mmo-engine/protocol";
 import { MOVE_CLIPS } from "../src/animation.js";
 
 describe("Creature rules & animation mapping", () => {
-  const rootDir = process.cwd();
-  const speciesData = JSON.parse(fs.readFileSync(path.join(rootDir, "content/species/species.json"), "utf8"));
-  const creaturesData = JSON.parse(fs.readFileSync(path.join(rootDir, "content/rules/creatures.json"), "utf8"));
-  const lootData = JSON.parse(fs.readFileSync(path.join(rootDir, "content/rules/loot.json"), "utf8"));
-  const modelsData = JSON.parse(fs.readFileSync(path.join(rootDir, "content/wildlife/flora-fauna-models.json"), "utf8"));
+  // Repo root regardless of cwd (tests compile to dist/test/, so four ups).
+  const rootDir = fileURLToPath(new URL("../../../..", import.meta.url));
+  const speciesData = JSON.parse(fs.readFileSync(`${rootDir}/content/species/species.json`, "utf8"));
+  const creaturesData = JSON.parse(fs.readFileSync(`${rootDir}/content/rules/creatures.json`, "utf8"));
+  const lootData = JSON.parse(fs.readFileSync(`${rootDir}/content/rules/loot.json`, "utf8"));
+  const modelsData = JSON.parse(fs.readFileSync(`${rootDir}/content/wildlife/flora-fauna-models.json`, "utf8"));
 
   it("defines every enemy species from species.json in creatures.json", () => {
     const speciesKeys = Object.keys(speciesData);

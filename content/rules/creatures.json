@@ -56,7 +56,7 @@
       "respawnSeconds": 60,
       "pack": [3, 6],
       "weapons": ["bite", "claw"],
-      "chaseSpeed": 1.3,
+      "behavior": { "speedX": 1.3 },
       "attackEverySeconds": 1.2,
       "drops": { "rolls": [1, 2], "chance": 0.75, "table": "beast-spoils" }
     },
@@ -68,7 +68,7 @@
       "respawnSeconds": 90,
       "pack": [1, 2],
       "weapons": ["claw", "bite"],
-      "chaseSpeed": 1.05,
+      "behavior": { "speedX": 1.05 },
       "attackEverySeconds": 1.8,
       "drops": { "rolls": [2, 3], "chance": 0.85, "table": "beast-spoils" }
     },
@@ -80,7 +80,7 @@
       "respawnSeconds": 60,
       "pack": [2, 4],
       "weapons": ["tusk"],
-      "chaseSpeed": 1.15,
+      "behavior": { "speedX": 1.15 },
       "attackEverySeconds": 1.4,
       "drops": { "rolls": [1, 2], "chance": 0.8, "table": "beast-spoils" }
     },
@@ -92,7 +92,7 @@
       "respawnSeconds": 60,
       "pack": [2, 5],
       "weapons": ["bite"],
-      "chaseSpeed": 1.25,
+      "behavior": { "speedX": 1.25 },
       "attackEverySeconds": 1.3,
       "drops": { "rolls": [1, 2], "chance": 0.7, "table": "beast-spoils" }
     },
@@ -116,7 +116,7 @@
       "respawnSeconds": 60,
       "pack": [2, 4],
       "weapons": ["claw", "bite"],
-      "chaseSpeed": 1.1,
+      "behavior": { "speedX": 1.1 },
       "attackEverySeconds": 1.4,
       "drops": { "rolls": [1, 2], "chance": 0.8, "table": "undead-spoils" }
     },
@@ -128,7 +128,7 @@
       "respawnSeconds": 90,
       "pack": [1, 3],
       "weapons": ["wand", "dagger"],
-      "chaseSpeed": 1.15,
+      "behavior": { "speedX": 1.15 },
       "attackEverySeconds": 1.5,
       "drops": { "rolls": [1, 3], "chance": 0.85, "table": "undead-spoils" }
     },
@@ -164,7 +164,7 @@
       "respawnSeconds": 45,
       "pack": [3, 6],
       "weapons": ["dagger", "claw"],
-      "chaseSpeed": 1.2,
+      "behavior": { "speedX": 1.2 },
       "attackEverySeconds": 1.1,
       "drops": { "rolls": [1, 2], "chance": 0.7, "table": "demon-spoils" }
     },
@@ -176,7 +176,7 @@
       "respawnSeconds": 75,
       "pack": [2, 3],
       "weapons": ["sword", "spear"],
-      "chaseSpeed": 1.1,
+      "behavior": { "speedX": 1.1 },
       "attackEverySeconds": 1.5,
       "drops": { "rolls": [1, 3], "chance": 0.85, "table": "demon-spoils" }
     },
