@@ -20,6 +20,7 @@ export const LOG_FORMATTERS: ReadonlyMap<number, LogFormatter> = new Map([
   [0x0201, (rec: LogRecordView) => "[sim] tick " + (rec.args[0] ?? "") + " budget overrun: " + (rec.args[1] ?? "") + "us"],
   [0x0202, (rec: LogRecordView) => "[sim] spiral guard fired: dropped " + (rec.args[0] ?? "") + "ms backlog"],
   [0x0203, (rec: LogRecordView) => "[sim] worker ready (native=" + (rec.args[0] ?? "") + ", capacity=" + (rec.args[1] ?? "") + ")"],
+  [0x0204, (rec: LogRecordView) => "[sim] kernel telemetry: entities=" + (rec.args[0] ?? "") + " dt=" + (rec.args[1] ?? "") + " step=" + (rec.args[2] ?? "") + ""],
   [0x0301, (rec: LogRecordView) => "[persist] checkpoint committed count=" + (rec.args[0] ?? "") + ""],
   [0x0302, (rec: LogRecordView) => "[persist] save phases: collect " + (rec.args[0] ?? "") + "ms encode " + (rec.args[1] ?? "") + "ms persist " + (rec.args[2] ?? "") + "ms"],
   [0x0303, (rec: LogRecordView) => "[persist] checkpoint failed: " + (rec.args[0] ?? "") + ""],

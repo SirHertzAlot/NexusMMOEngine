@@ -46,6 +46,8 @@ export interface LogRecordView {
 
 const textDecoder = new TextDecoder("utf-8");
 const textEncoder = new TextEncoder();
+const scratchF32 = new Float32Array(1);
+const scratchU32 = new Uint32Array(scratchF32.buffer);
 
 /**
  * Decode a 128-byte slot into a friendly LogRecordView.
@@ -104,6 +106,11 @@ export function decodeLogRecord(
       }
     } else if (tag === ARG_TAGS.I64 || tag === ARG_TAGS.U64) {
       args.push(valU64);
+    } else if (tag === ARG_TAGS.F32) {
+      // C++ producers write IEEE-754 float bits into the lo word; re-interpreting
+      // them as a float keeps parity between TS- and C++-emitted records.
+      scratchU32[0] = Number(lo);
+      args.push(scratchF32[0]);
     } else {
       args.push(Number(lo));
     }

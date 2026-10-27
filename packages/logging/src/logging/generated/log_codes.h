@@ -55,6 +55,7 @@ constexpr uint16_t ADMIN_COMMAND_EXECUTED = 0x0109; // [admin] {0} {1} -> {2}
 constexpr uint16_t SIM_TICK_OVERRUN = 0x0201; // [sim] tick {0} budget overrun: {1}us
 constexpr uint16_t SIM_SPIRAL_GUARD_FIRED = 0x0202; // [sim] spiral guard fired: dropped {0}ms backlog
 constexpr uint16_t SIM_WORKER_READY = 0x0203; // [sim] worker ready (native={0}, capacity={1})
+constexpr uint16_t SIM_KERNEL_TELEMETRY = 0x0204; // [sim] kernel telemetry: entities={0} dt={1} step={2}
 constexpr uint16_t PERSIST_CHECKPOINT_COMMITTED = 0x0301; // [persist] checkpoint committed count={0}
 constexpr uint16_t PERSIST_SAVE_PHASES = 0x0302; // [persist] save phases: collect {0}ms encode {1}ms persist {2}ms
 constexpr uint16_t PERSIST_CHECKPOINT_FAILED = 0x0303; // [persist] checkpoint failed: {0}

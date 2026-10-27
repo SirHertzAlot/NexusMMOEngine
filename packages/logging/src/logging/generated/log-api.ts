@@ -66,6 +66,11 @@ export function logSimWorkerReady(logger: LogProducerClient, isNative: boolean, 
   return logger.emit(2, 0x0203, entityRef, isNative, capacity);
 }
 
+/** [sim] kernel telemetry: entities={0} dt={1} step={2} */
+export function logSimKernelTelemetry(logger: LogProducerClient, entityCount: number, dt: number, step: number, entityRef?: bigint): boolean {
+  return logger.emit(1, 0x0204, entityRef, entityCount, dt, step);
+}
+
 /** [persist] checkpoint committed count={0} */
 export function logPersistCheckpointCommitted(logger: LogProducerClient, count: number, entityRef?: bigint): boolean {
   return logger.emit(1, 0x0301, entityRef, count);

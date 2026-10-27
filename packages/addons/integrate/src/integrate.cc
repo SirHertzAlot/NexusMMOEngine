@@ -30,6 +30,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "log_producer.h"
+
 #if defined(__AVX2__) || defined(_M_X64) || defined(__x86_64__)
 #include <immintrin.h>
 #define MMO_HAS_AVX2 1
@@ -41,7 +43,85 @@
 #define MMO_HAS_SSE2 0
 #endif
 
+namespace mmo::logging {  // SAB Logging Layer native producer statics (Phase 2)
+uint32_t* NativeLogProducer::base_ = nullptr;
+uint32_t NativeLogProducer::capacity_ = 0;
+uint32_t NativeLogProducer::mask_ = 0;
+uint32_t NativeLogProducer::telemetryEvery_ = 0;
+uint32_t NativeLogProducer::stepTick_ = 0;
+uint32_t NativeLogProducer::emitCount_ = 0;
+int64_t NativeLogProducer::cachedNowNs_ = 0;
+const NativeLogArg NativeLogProducer::empty_{};
+}  // namespace mmo::logging
+
 namespace mmo_integrate {
+
+using mmo::logging::NativeLogArg;
+using mmo::logging::NativeLogProducer;
+namespace codes = mmo::logging::codes;
+
+static NativeLogArg MakeArgU32(uint32_t v) {
+  NativeLogArg a;
+  a.tag = mmo::logging::TAG_U32;
+  a.lo = v;
+  return a;
+}
+
+static NativeLogArg MakeArgI32(int32_t v) {
+  NativeLogArg a;
+  a.tag = mmo::logging::TAG_I32;
+  a.lo = static_cast<uint32_t>(v);
+  return a;
+}
+
+static NativeLogArg MakeArgF32(float v) {
+  NativeLogArg a;
+  a.tag = mmo::logging::TAG_F32;
+  std::memcpy(&a.lo, &v, sizeof(uint32_t));
+  return a;
+}
+
+// Narrow single-process producer handle for Init-time bootstrap semantics.
+static NativeLogProducer& NativeLogProducerGetInstance() {
+  static NativeLogProducer instance;  // POD state only; safe under NAPI_DISABLE_CPP_EXCEPTIONS
+  return instance;
+}
+
+static NativeLogArg MakeTaggedArg(uint32_t tag, double value) {
+  NativeLogArg a;
+  a.tag = tag;
+  switch (tag) {
+    case mmo::logging::TAG_I32:
+      a.lo = static_cast<uint32_t>(static_cast<int32_t>(value));
+      break;
+    case mmo::logging::TAG_U32:
+      a.lo = static_cast<uint32_t>(value);
+      break;
+    case mmo::logging::TAG_F32: {
+      const float f = static_cast<float>(value);
+      std::memcpy(&a.lo, &f, sizeof(uint32_t));
+      break;
+    }
+    case mmo::logging::TAG_I64:
+    case mmo::logging::TAG_U64: {
+      const uint64_t bits = static_cast<uint64_t>(value);
+      a.lo = static_cast<uint32_t>(bits & 0xffffffffu);
+      a.hi = static_cast<uint32_t>((bits >> 32) & 0xffffffffu);
+      break;
+    }
+    case mmo::logging::TAG_F64: {
+      uint64_t bits;
+      std::memcpy(&bits, &value, sizeof(uint64_t));
+      a.lo = static_cast<uint32_t>(bits & 0xffffffffu);
+      a.hi = static_cast<uint32_t>((bits >> 32) & 0xffffffffu);
+      break;
+    }
+    default:
+      a.tag = mmo::logging::TAG_EMPTY;
+      break;
+  }
+  return a;
+}
 
 // Hardware AVX2 8-Wide FMA3 Kernel Implementation (PATCH-01)
 #if defined(__AVX2__)
@@ -314,6 +394,7 @@ Napi::Value StepSimulation(const Napi::CallbackInfo& info) {
 
   // Invoke compiled simulation processing core
   NativeIntegrateSystem(dataPointerFloat, dataPointerInt, entityCount, dt);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
 
   return Napi::Boolean::New(env, true);
 }
@@ -357,6 +438,7 @@ Napi::Value StepSimulationSoA(const Napi::CallbackInfo& info) {
 
   NativeIntegrateSoASystem(p[0], p[1], p[2], p[3], p[4], p[5], hp, entityCount,
                            dt);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
   return Napi::Boolean::New(env, true);
 }
 
@@ -393,6 +475,7 @@ Napi::Value ApplyIntentsAndStep(const Napi::CallbackInfo& info) {
   int32_t* dataPointerInt = reinterpret_cast<int32_t*>(dataPointerFloat);
   NativeApplyIntentsAndStep(dataPointerFloat, dataPointerInt, entityCount, dt,
                             baseSpeed);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
   return Napi::Boolean::New(env, true);
 }
 
@@ -571,6 +654,127 @@ Napi::Value WorldSize(const Napi::CallbackInfo& info) {
   return Napi::Number::New(env, static_cast<double>(world->n));
 }
 
+// ---- SAB logging layer Phase 2: native producers --------------------------
+// The TS side attaches the log ring SAB once per worker boot; every later
+// emission stays fully inside C++ (scope, MPSC ticketing, record layout).
+
+Napi::Value LogAttachRing(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[0].IsTypedArray() || !info[1].IsNumber()) {
+    Napi::TypeError::New(env, "logAttachRing expects (Uint8Array over the ring SAB, capacity)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  Napi::TypedArray ta = info[0].As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_uint8_array) {
+    Napi::TypeError::New(env, "First argument must be a Uint8Array over the ring SAB")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  void* data = nullptr;
+  size_t byteLen = 0;
+  const napi_status st = napi_get_typedarray_info(
+      env, info[0], nullptr, &byteLen, &data, nullptr, nullptr);
+  if (st != napi_ok || data == nullptr) {
+    Napi::TypeError::New(env, "cannot acquire ring backing memory")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  NativeLogProducer& prod = NativeLogProducerGetInstance();
+  const uint32_t capacity = info[1].As<Napi::Number>().Uint32Value();
+  const bool ok = prod.attach(data, byteLen, capacity);
+  return Napi::Boolean::New(env, ok);
+}
+
+Napi::Value LogNativeTelemetryEvery(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) {
+    Napi::TypeError::New(env, "logNativeTelemetryEvery(expected (n: number))")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  NativeLogProducerGetInstance().setTelemetryEvery(
+      info[0].As<Napi::Number>().Uint32Value());
+  return env.Undefined();
+}
+
+Napi::Value LogIsAttached(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  return Napi::Boolean::New(env, NativeLogProducerGetInstance().attached());
+}
+
+// [sim] tick {0} budget overrun: {1}us  (CODES: SIM_TICK_OVERRUN)
+Napi::Value LogSimTickOverrunNative(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsNumber()) {
+    Napi::TypeError::New(env, "logSimTickOverrunNative((tick, durationUs) expected")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  const uint32_t tick = info[0].As<Napi::Number>().Uint32Value();
+  const int32_t durationUs = info[1].As<Napi::Number>().Int32Value();
+  return Napi::Boolean::New(
+      env,
+      NativeLogProducerGetInstance().emit(
+          static_cast<uint8_t>(mmo::logging::LogLevel::Warn), static_cast<uint8_t>(mmo::logging::LogProducer::Sim),
+          codes::SIM_TICK_OVERRUN, 0u, 0u, 0u,
+          MakeArgI32(static_cast<int32_t>(tick)), MakeArgI32(durationUs),
+          NativeLogArg{}, NativeLogArg{}));}
+
+// [sim] spiral guard fired: dropped {0}ms backlog  (CODES: SIM_SPIRAL_GUARD_FIRED)
+Napi::Value LogSimSpiralGuardFiredNative(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) {
+    Napi::TypeError::New(env, "logSimSpiralGuardFiredNative expected (droppedMs: number)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  const int32_t droppedMs = info[0].As<Napi::Number>().Int32Value();
+  return Napi::Boolean::New(
+      env,
+      NativeLogProducerGetInstance().emit(
+          static_cast<uint8_t>(mmo::logging::LogLevel::Warn), static_cast<uint8_t>(mmo::logging::LogProducer::Sim),
+          codes::SIM_SPIRAL_GUARD_FIRED, 0u, 0u, 0u,
+          MakeArgI32(droppedMs), NativeLogArg{}, NativeLogArg{},
+          NativeLogArg{}));
+}
+
+// Generic native producer seam (fixed positional args, no object traversal):
+// logNativeEmit2(level, producerId, code, tick, entLo, entHi, t0, v0, t1, v1)
+// where t* is an ARG_TAGS code and v* is its value (number).
+Napi::Value LogNativeEmit2(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  const char* msg = "logNativeEmit2 expects (level, producerId, code, tick, entLo, entHi, t0, v0, t1, v1)";
+  if (info.Length() < 10 || !info[0].IsNumber() || !info[1].IsNumber() ||
+      !info[2].IsNumber() || !info[3].IsNumber() || !info[4].IsNumber() ||
+      !info[5].IsNumber() || !info[6].IsNumber() || !info[9].IsNumber()) {
+    Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  const uint8_t level = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+  const uint8_t producerId = static_cast<uint8_t>(info[1].As<Napi::Number>().Uint32Value());
+  const uint16_t code = static_cast<uint16_t>(info[2].As<Napi::Number>().Uint32Value());
+  const uint32_t tick = info[3].As<Napi::Number>().Uint32Value();
+  const uint32_t entLo = info[4].As<Napi::Number>().Uint32Value();
+  const uint32_t entHi = info[5].As<Napi::Number>().Uint32Value();
+  const uint32_t t0 = info[6].As<Napi::Number>().Uint32Value();
+  double v0 = 0;
+  if (info[7].IsNumber()) v0 = info[7].As<Napi::Number>().DoubleValue();
+  else if (info[7].IsBigInt()) v0 = static_cast<double>(info[7].As<Napi::BigInt>().Int64Value(nullptr));
+  uint32_t t1 = 0;
+  if (info[8].IsNumber()) t1 = info[8].As<Napi::Number>().Uint32Value();
+  double v1 = 0;
+  if (info[9].IsNumber()) v1 = info[9].As<Napi::Number>().DoubleValue();
+  else if (info[9].IsBigInt()) v1 = static_cast<double>(info[9].As<Napi::BigInt>().Int64Value(nullptr));
+
+  NativeLogArg a0 = MakeTaggedArg(t0, v0);
+  NativeLogArg a1 = MakeTaggedArg(t1, v1);
+  return Napi::Boolean::New(
+      env,
+      NativeLogProducerGetInstance().emit(
+          level, producerId, code, tick, entLo, entHi, a0, a1, NativeLogArg{}, NativeLogArg{}));
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("integrate", Napi::Function::New(env, Integrate));
   exports.Set("stepSimulation", Napi::Function::New(env, StepSimulation));
@@ -582,6 +786,12 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("copyPositions", Napi::Function::New(env, CopyPositions));
   exports.Set("worldSize", Napi::Function::New(env, WorldSize));
   exports.Set("deleteWorld", Napi::Function::New(env, DeleteWorld));
+  exports.Set("logAttachRing", Napi::Function::New(env, LogAttachRing));
+  exports.Set("logNativeTelemetryEvery", Napi::Function::New(env, LogNativeTelemetryEvery));
+  exports.Set("logIsAttached", Napi::Function::New(env, LogIsAttached));
+  exports.Set("logSimTickOverrunNative", Napi::Function::New(env, LogSimTickOverrunNative));
+  exports.Set("logSimSpiralGuardFiredNative", Napi::Function::New(env, LogSimSpiralGuardFiredNative));
+  exports.Set("logNativeEmit2", Napi::Function::New(env, LogNativeEmit2));
   return exports;
 }
 

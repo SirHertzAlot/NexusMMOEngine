@@ -164,6 +164,19 @@ export const LOG_CODES: readonly LogCodeDefinition[] = [
       { name: "capacity", type: "number" },
     ],
   },
+  {
+    id: 0x0204,
+    name: "SIM_KERNEL_TELEMETRY",
+    producer: LogProducer.SIM,
+    level: LogLevel.DEBUG,
+    format: "[sim] kernel telemetry: entities={0} dt={1} step={2}",
+    args: [
+      { name: "entityCount", type: "number" },
+      { name: "dt", type: "number" },
+      { name: "step", type: "number" },
+    ],
+    sampled: true,
+  },
 
   // ---------------------------------------------------------------------------
   // Persistence Subsystem (0x0300 - 0x03FF)
