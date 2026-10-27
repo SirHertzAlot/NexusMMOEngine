@@ -783,10 +783,11 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       }
 
       // Phase 4: Triangular Ramp / Stepped Staircase bridging Ground to Loft
-      // Descends from loft edge (z = -5.0, upperY) down to main hall (z = 0.0, lowerY)
+      // Ascends from main hall (z = 0.0, lowerY) up to loft mezzanine edge (z = -5.0, upperY)
+      // Rotated yaw = 0 so the bottom step meets ground floor at z = 0.0 and top step meets loft floor at z = -5.0
       const stairDef = pickCatPart("stairs");
       if (stairDef) {
-        addPlacement(stairDef, new THREE.Vector3(0, lowerY + 1.75, -2.5), yawQuat(Math.PI));
+        addPlacement(stairDef, new THREE.Vector3(0, lowerY + 1.75, -2.5), yawQuat(0));
       }
 
       // Phase 5: Loft Balcony Railings along open drop overlooking main hall

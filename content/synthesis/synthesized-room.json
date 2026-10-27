@@ -794,9 +794,9 @@
         ],
         "rot": [
           0,
-          1,
           0,
-          0
+          0,
+          1
         ],
         "scale": [
           1,
@@ -2765,7 +2765,7 @@
     "partsPlaced": 120,
     "growthAttempts": 109,
     "unfilledSockets": 480,
-    "elapsedMs": 10,
+    "elapsedMs": 31,
     "ruleSetVersion": "1.0.0",
     "categoryCounts": {
       "floor": 66,
