@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — Synthesis Staircase Handrail Alignment & Balustrade Geometry Fix.**
+  Resolved staircase handrail misalignment in procedural dungeon synthesis (`@mmo-engine/synthesis`):
+  - **Incline Pitch Rotation:** Computed the exact pitch angle $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse slope length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.
+  - **Flank Alignment:** Positioned handrails at $X = \pm 2.00\text{m}$, centered at $Z = -2.50\text{m}, Y = \text{lowerY} + 2.20\text{m}$ using Euler `(pitch, 0, 0, "YXZ")` quaternion rotation.
+  - **Flush Threshold Contact:** Realigned loft balcony railings at $Z = -5.00\text{m}$ ($X = \pm 4.75\text{m}$, $Y = \text{upperY} + 0.45\text{m}$) flush with the stair handrail tops, eliminating previous horizontal barrier blocking stair traversal.
+  - **Architectural Balustrades:** Added custom balustrade geometry (`createStairHandrailGeometry`) with continuous top rail, bottom runner, and vertical newel posts across visualizer and Playwright locomotion playtest.
+
 - **2026-10-27 — Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/).**
   To provide an authoritative, hierarchical technical knowledge base for engine developers and content creators strictly focused on our engine without external comparisons or competitive commentary, deployed the Nexus MMO Engine Wiki:
   - Master single-page manual (docs/WIKI.md) and 9-chapter modular hub (docs/wiki/) covering architecture, engine/game decoupling, bitECS SoA, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
