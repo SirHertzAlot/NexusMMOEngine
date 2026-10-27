@@ -904,18 +904,26 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
       }
 
       // Flanking staircase balustrades / handrails rising along stair flanks
-      for (const sx of [-2.1, 2.1]) {
-        const stairRail = pickCatPart("railing");
+      // Stairs run from Z = 0.0 (ground, lowerY) to Z = -5.0 (loft, upperY), width = 3.8m (tread edges X = ±1.9m)
+      // Stair slope: rise = 3.5m, run = 5.0m, pitch angle theta = atan2(3.5, 5.0) = ~34.99 deg (~0.6109 rad)
+      // Handrails flank both sides at X = ±2.0m, pitched along the incline so they ascend seamlessly from ground to loft
+      const stairPitchRad = Math.atan2(upperY - lowerY, 5.0);
+      const stairPitchQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(stairPitchRad, 0, 0, "YXZ"));
+      for (const sx of [-2.0, 2.0]) {
+        const stairRail = pickCatPart("railing", "angle") || pickCatPart("railing");
         if (stairRail) {
-          addPlacement(stairRail, new THREE.Vector3(sx, lowerY + 2.2, -2.5), yawQuat(0));
+          // Midpoint at Z = -2.5, Y = lowerY + 1.75 + 0.45 (handrail center 0.45m above stair slope center, 0.9m height)
+          addPlacement(stairRail, new THREE.Vector3(sx, lowerY + 2.2, -2.5), stairPitchQuat);
         }
       }
 
       // Phase 5: Loft Balcony Railings & Landing Torch Markers along open drop overlooking main hall
-      for (const rx of [-5.0, 5.0]) {
+      // Loft opening for staircase is X in [-2.0, 2.0] at Z = -5.0; balcony edges span X in [-7.5, -2.0] and [2.0, 7.5]
+      // Balcony railings centered at X = ±4.75m, Y = upperY + 0.45m to align flush with the stair handrail tops
+      for (const rx of [-4.75, 4.75]) {
         const rail = pickCatPart("railing");
         if (rail) {
-          addPlacement(rail, new THREE.Vector3(rx, upperY + 0.8, -5.0), yawQuat(0));
+          addPlacement(rail, new THREE.Vector3(rx, upperY + 0.45, -5.0), yawQuat(0));
         }
       }
       for (const tx of [-2.4, 2.4]) {

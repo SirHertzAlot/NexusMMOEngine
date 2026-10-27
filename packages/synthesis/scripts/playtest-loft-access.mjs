@@ -227,6 +227,42 @@ async function main() {
       return geom;
     }
 
+    function createStairHandrailGeometry(hw_x, h_y, len_z) {
+      const geom = new THREE.BufferGeometry();
+      const verts = [];
+      const hw = hw_x / 2;
+      const hh = h_y / 2;
+      const hl = len_z / 2;
+
+      function addBox(bx0, by0, bz0, bx1, by1, bz1) {
+        verts.push(bx0, by0, bz1,  bx1, by0, bz1,  bx1, by1, bz1);
+        verts.push(bx0, by0, bz1,  bx1, by1, bz1,  bx0, by1, bz1);
+        verts.push(bx1, by0, bz0,  bx0, by0, bz0,  bx0, by1, bz0);
+        verts.push(bx1, by0, bz0,  bx0, by1, bz0,  bx1, by1, bz0);
+        verts.push(bx0, by1, bz1,  bx1, by1, bz1,  bx1, by1, bz0);
+        verts.push(bx0, by1, bz1,  bx1, by1, bz0,  bx0, by1, bz0);
+        verts.push(bx0, by0, bz0,  bx1, by0, bz0,  bx1, by0, bz1);
+        verts.push(bx0, by0, bz0,  bx1, by0, bz1,  bx0, by0, bz1);
+        verts.push(bx1, by0, bz1,  bx1, by0, bz0,  bx1, by1, bz0);
+        verts.push(bx1, by0, bz1,  bx1, by0, bz0,  bx1, by1, bz1);
+        verts.push(bx0, by0, bz0,  bx0, by0, bz1,  bx0, by1, bz1);
+        verts.push(bx0, by0, bz0,  bx0, by1, bz1,  bx0, by1, bz0);
+      }
+
+      addBox(-hw, hh - 0.08, -hl,  hw, hh, hl);
+      addBox(-hw, -hh, -hl,  hw, -hh + 0.06, hl);
+      const numPosts = 6;
+      const postW = 0.08;
+      for (let i = 0; i < numPosts; i++) {
+        const zCenter = -hl + (i / (numPosts - 1)) * (hl * 2);
+        addBox(-hw, -hh + 0.06, zCenter - postW / 2,  hw, hh - 0.08, zCenter + postW / 2);
+      }
+
+      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+      geom.computeVertexNormals();
+      return geom;
+    }
+
     // Render placed parts
     for (const p of placements) {
       const cat = p.category || "structure";
@@ -247,16 +283,33 @@ async function main() {
       else if (cat === "pillar") { sx = 1.4; sy = 3.5; sz = 1.4; }
       else if (cat === "ceiling") { sx = 5.0; sy = 0.4; sz = 5.0; }
       else if (cat === "stairs") { sx = 3.8; sy = 3.5; sz = 5.0; }
-      else if (cat === "railing") { sx = 4.0; sy = 1.2; sz = 0.3; }
+      else if (cat === "railing") {
+        const isStairRail = p.partId.toLowerCase().includes("angle") || p.partId.toLowerCase().includes("stair") || Math.abs(p.transform.rot[0]) > 0.05;
+        if (isStairRail) {
+          sx = 0.14;
+          sy = 0.90;
+          sz = Math.sqrt(3.5 * 3.5 + 5.0 * 5.0);
+        } else {
+          sx = 5.5;
+          sy = 0.90;
+          sz = 0.14;
+        }
+      }
       else if (cat === "trap") { sx = 2.5; sy = 0.25; sz = 2.5; }
       else if (cat === "puzzle") { sx = 1.0; sy = 2.2; sz = 1.0; }
       else { sx = 1.0; sy = 1.0; sz = 1.0; }
 
-      const geom = cat === "stairs"
-        ? createStairOrRampGeometry(sx, sy, sz, 14)
-        : new THREE.BoxGeometry(sx, sy, sz);
+      const isStairRail = cat === "railing" && (p.partId.toLowerCase().includes("angle") || p.partId.toLowerCase().includes("stair") || Math.abs(p.transform.rot[0]) > 0.05);
+      let geom;
+      if (cat === "stairs") {
+        geom = createStairOrRampGeometry(sx, sy, sz, 14);
+      } else if (isStairRail) {
+        geom = createStairHandrailGeometry(sx, sy, sz);
+      } else {
+        geom = new THREE.BoxGeometry(sx, sy, sz);
+      }
       const mat = new THREE.MeshStandardMaterial({
-        color: cat === "stairs" ? 0xff6600 : col,
+        color: cat === "stairs" ? 0xff6600 : (isStairRail ? 0x00c4aa : col),
         roughness: cat === "stairs" ? 0.35 : 0.5,
         metalness: cat === "stairs" ? 0.15 : 0.1,
         emissive: cat === "stairs" ? 0x331400 : (p.partId.toLowerCase().includes("torch") || p.partId.toLowerCase().includes("brazier") ? 0x663300 : 0x000000),
@@ -275,7 +328,7 @@ async function main() {
       const wireMat = new THREE.LineBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: cat === "stairs" ? 0.85 : 0.25
+        opacity: cat === "stairs" || isStairRail ? 0.85 : 0.25
       });
       const wire = new THREE.LineSegments(wireGeom, wireMat);
       mesh.add(wire);
