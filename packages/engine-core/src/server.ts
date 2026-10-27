@@ -126,6 +126,8 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
+import { HybridDataPlaneServer } from "./data-plane-server.js";
+import { DATA_PLANE_ENTITY_CAPACITY } from "./sab-store.js";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -1369,10 +1371,31 @@ async function main(): Promise<void> {
     ? new WorldAtomicOps({ client: worldClient, fences: worldCharacters })
     : null;
   if (atomicOps) atomicOpsRef.ops = atomicOps;
+  // PR #430 / Phase 2: MMO_DATA_PLANE flag switches production boot to 3-thread data plane topology.
+  const DATA_PLANE_MODE = process.env.MMO_DATA_PLANE === "1" || process.env.MMO_DATA_PLANE === "true";
+  let dataPlaneServer: HybridDataPlaneServer | null = null;
+  if (DATA_PLANE_MODE) {
+    dataPlaneServer = new HybridDataPlaneServer({
+      entityCapacity: DATA_PLANE_ENTITY_CAPACITY,
+      spawnWorkers: true,
+      spawnPersistWorker: true,
+      simAutoStart: true,
+      simMode: "fused-intents",
+      decodeMovementIntents: true,
+    });
+    await dataPlaneServer.startWorkers();
+    console.log(
+      `[server] 3-thread data-plane topology ENABLED (MMO_DATA_PLANE=1): Gateway -> SPSC Queue -> 30Hz SimWorker -> PersistWorker`,
+    );
+  } else {
+    console.log(`[server] in-process simulation loop active (rollback path; MMO_DATA_PLANE=0)`);
+  }
+
   // E3b: with MMO_EDGE=1 the players' sockets are the edge's, relayed over the core channel (started below).
   const toEdge: { push: EdgePush } = { push: () => {} };
   const edgeRelay = EDGE_MODE ? new ChannelTransport((type, payload) => toEdge.push(type, payload), coreChannelPort()) : null;
   const gw: Gateway = new Gateway({
+    ...(dataPlaneServer ? { dataPlaneQueue: dataPlaneServer.gatewayInputQueue } : {}),
     port: PORT,
     ...(edgeRelay ? { transport: edgeRelay } : {}),
     scale,
@@ -1605,6 +1628,7 @@ async function main(): Promise<void> {
       itemLedger.close();
       sessionStore.close();
       void coreChannel?.close();
+      if (dataPlaneServer) void dataPlaneServer.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       if (migrationTimer) clearInterval(migrationTimer);

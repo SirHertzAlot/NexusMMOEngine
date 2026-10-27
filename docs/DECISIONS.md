@@ -804,7 +804,20 @@ Every entry: date, decision, rationale. Newest first.
   1) **Documentation Separation Policy**: Public-facing manuals (docs/wiki/, docs/WIKI.md, README.md) focus exclusively on the Nexus MMO Engine's architecture, APIs, module systems, and developer workflows with zero competitor disparagement. All competitive intelligence, side-by-side matrices (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical benchmark telemetry (100k integration in 0.20ms, 64k req/s ingress), strategic SWOT, and cloud hosting OpEx models belong in the private repository under docs/business-analysis/.
   2) **Interactive Documentation Tooling (Yank Note & Data Apps)**: Standardized on Yank Note (purocean/yn) as our interactive Markdown editor kernel. Documentation supports runnable in-note code blocks for 1-click test/benchmark execution, embedded HTML5 telemetry widgets (ws://127.0.0.1:3000/telemetry) and cloud cost calculators with dark-mode styling (color-scheme: dark), client-side AES-GCM encrypted notes (.c.md), and a drop-in editor plugin (docs/wiki/scripts/yn-nexus-plugin.js).
   3) **Workspace Agent Guidelines (AGENTS.md)**: Enforced mandatory invariants across the repository:
-     - Strict Mermaid diagram rendering compatibility (prohibiting quadrantChart and experimental headers; permitting lowchart TD, xychart-beta, etc.).
+     - Strict Mermaid diagram rendering compatibility (prohibiting quadrantChart and experimental headers; permitting flowchart TD, xychart-beta, etc.).
      - The Native C++ Marshalling Trap Invariant: No per-property N-API object traversal (obj.Get()) on hot paths; contiguous SharedArrayBuffer / TypedArray pointer crossings only.
-     - Local feature branches only (eat/*); no unapproved merges to main.
-     - Universal SI metric standard (.0	ext{ unit} = 1.0	ext{ meter}$).
+     - Local feature branches only (feat/*); no unapproved merges to main.
+     - Universal SI metric standard (1.0 unit = 1.0 meter).
+
+- **2026-10-27 — C++ Main Tick Migration Phase 2: Production Data-Plane Wiring & Security Perimeter.**
+  Implemented and verified Phase 2 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md`):
+  1) **Production Boot Flag (`MMO_DATA_PLANE=1`)**:
+     - Wires the uWebSockets.js Gateway to the 3-thread SharedArrayBuffer topology: Gateway (uWS with Argon2id auth, Zod validation, rate limiting) -> AtomicSPSCQueue -> 30Hz SimWorker -> persist ring -> PersistWorker.
+     - Rollback path remains instant and fully supported: omitting or setting `MMO_DATA_PLANE=0` keeps the legacy in-process simulation loop active with zero overhead.
+  2) **Strict Gateway Security Perimeter**:
+     - Enforces that memory-unsafe C++ worker threads and native kernels are never exposed to raw untrusted network frames.
+     - Inbound player intents are validated by the Gateway: unauthenticated intents, foreign entity intents, non-finite vectors, and out-of-order packets are rejected (code 4003) and never reach the SPSC ring.
+     - Validated intents are bit-packed into 32-bit tokens (`packCommandToken(slot, actionCode)`) with zero garbage-collection allocations.
+  3) **Crash Containment & Verification**:
+     - Worker failures are isolated from the Gateway process: background worker crashes do not drop client WebSocket connections or corrupt the master event loop.
+     - All 7 tests in `packages/engine-core/test/data-plane-production-boot.test.ts` pass cleanly along with the full protocol and hybrid data-plane test suites.
