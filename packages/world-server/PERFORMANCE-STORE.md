@@ -126,3 +126,19 @@ floor already sits, with items 1–4 as the headroom. If a single lane
 ever truly needs 100k-class appends, the WorldStore interface is the
 seam that lets the Tier-1 ledger alone move to a log-optimized store
 while SurrealDB keeps world state.
+
+## Addendum 2 (2026-10-27): external SurrealDB 2.7.0 server, same box
+
+The production soak's server (2.7.0, memory backend, loopback
+WebSocket, root auth) driven by the same store code
+(`bench-external.mjs`): sequential put 928 ops/s (1.08 ms/op);
+concurrency W=8 peaks at 2,739 ops/s, W=32 degrades to 1,690.
+
+Read honestly: on this 2-vCPU sandbox the client and server share
+the same cores, so every configuration converges to ~2.7k writes/s —
+that is the *box's* ceiling, not evidence about the engine's.
+Loopback RPC also makes sequential latency slightly worse than
+in-process embedded. The deployment-shape question (dedicated cores
+per tier) cannot be settled from inside this sandbox; it needs a
+second host or a core-isolated run. What the sandbox numbers do
+prove: our call pattern is no longer the binding constraint — CPU is.
