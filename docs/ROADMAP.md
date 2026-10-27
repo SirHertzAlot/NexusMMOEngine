@@ -838,3 +838,9 @@ Newest first. One line per merged PR or decision.
   - Implemented strict Gateway security perimeter: unauthenticated intents (before hello), foreign entity intents, non-finite vectors, and stale/out-of-order packets are rejected (code 4003) and never reach the SPSC ring.
   - Provided instant rollback path (`MMO_DATA_PLANE=0` or unset) falling back to in-process simulation loop with zero overhead.
   - Verified crash containment (worker shutdowns leave Gateway sockets alive) and 100% pass on all 7 test cases in `packages/engine-core/test/data-plane-production-boot.test.ts`.
+- **2026-10-27**: C++ Main Tick Migration — Phase 3 System-by-System Migration & Parity Verification (docs/CPP-MAIN-TICK-PHASE3-REPORT.md):
+  - Completed system-by-system migration following measured tick share against Phase 3 Rule 4 hurdle rates.
+  - Ported Movement Integration to native C++ AVX2 kernel (`NativeIntegrateSystem`), demonstrating an **18.2×** speedup (27.1µs vs 494.1µs at 50k entities) with sub-millimetre physical accuracy ($\le 0.37\text{mm}$ over 50 ticks).
+  - Ported Spatial Indexing to packed 32-bit integer coordinate grid (`FastSpatialGrid`), eliminating 100% of per-tick string allocations and delivering a **1.98×** speedup.
+  - Maintained branchy behavior tree systems (creatures, combat, residents) in TypeScript on top of the shared memory data plane, validating the mixed-tick SAB contract.
+  - Golden parity test suite passed 6/6 tests (`packages/engine-core/test/native-systems-parity.test.ts`).

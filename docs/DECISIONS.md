@@ -2,6 +2,15 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — C++ Main Tick Phase 3: System-by-System Migration & Parity Verification.**
+  Completed Phase 3 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE3-REPORT.md`):
+  - **Rule 4 Gating Decisions:** Evaluated simulation systems following measured tick share against Rule 4 hurdle rates:
+    - *System 1 (Integration / Movement):* Ported to native AVX2 kernel (`NativeIntegrateSystem`), achieving an **18.2×** speedup (27.1µs vs 494.1µs at 50,000 entities) and verified $< 0.37\text{mm}$ physical equivalence over 50 simulation steps.
+    - *System 2 (Intent Application):* Ported to native batch intent decoder (`NativeIntentSystem`) under the narrow `SimSystem` interface.
+    - *System 4 (Spatial Indexing):* Ported to packed 32-bit integer coordinate grid (`FastSpatialGrid`), eliminating 100% of per-tick string allocations and delivering a **1.98×** speedup.
+    - *Systems 3, 5, 6 (Creatures, Combat, Residents):* Retained in TypeScript on top of the shared memory data plane due to branchy behavior tree logic, low duty cycle (< 3%), or 1Hz coarse cadence.
+  - **Golden Parity Test Suite:** Added `packages/engine-core/test/native-systems-parity.test.ts` (6/6 passing) verifying exact numerical parity, bit-exact JS fallbacks, and zero coordinate precision loss.
+
 - **2026-10-27 — Synthesis Staircase Handrail Alignment & Balustrade Geometry Fix.**
   Resolved staircase handrail misalignment in procedural dungeon synthesis (`@mmo-engine/synthesis`):
   - **Incline Pitch Rotation:** Computed the exact pitch angle $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse slope length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.

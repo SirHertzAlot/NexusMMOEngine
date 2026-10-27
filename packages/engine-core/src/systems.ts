@@ -83,7 +83,7 @@ export function moveSpeedFactor(sim: SimWorld, e: number): number {
 }
 
 /** Horizontal speed for an entity's locomotion mode (walking without one). */
-function modeSpeed(sim: SimWorld, e: number): number {
+export function modeSpeed(sim: SimWorld, e: number): number {
   const m = sim.movement;
   if (!hasComponent(sim.ecs, Locomotion, e)) return m.walkSpeed;
   const mode = Locomotion.mode[e];
