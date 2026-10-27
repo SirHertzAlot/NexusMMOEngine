@@ -690,3 +690,13 @@ Every entry: date, decision, rationale. Newest first.
   Node single-threaded so counts don't depend on scheduling; the counts
   are committed as a baseline (`perf/callgrind-baseline.json`) that
   changes, the gateway split first, are measured against.
+
+- **2026-10-26 — Continuous Model Synthesis follows architectural principles (PR #437).**
+  Per `MODEL-SYNTHESIS-MAP.md`, unguided spatial growth is replaced with
+  a multi-phase architectural synthesis pipeline: 1) Continuous Foundation
+  Floorplate covering the room footprint; 2) Inward-facing perimeter enclosure
+  walls and framed entryways; 3) Tectonic colonnades along nave bay lines;
+  4) Multi-tier circulation stairways and safety railings; 5) Contextual
+  focal dressing (altars, sarcophagi, braziers, corner rubble). Rotations
+  are strictly upright yaw-only (`[0, 1, 0]`), eliminating floating or
+  incoherent parts and producing authentic Romanesque/Gothic dungeon chambers.
