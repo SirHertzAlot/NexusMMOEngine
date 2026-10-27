@@ -144,9 +144,9 @@ async function main() {
     blueLight.position.set(-20, 15, -20);
     scene.add(blueLight);
 
-    // Warm torch light near staircase
-    const stairTorch = new THREE.PointLight(0xff9e00, 1.2, 18);
-    stairTorch.position.set(0, 4.0, -2.5);
+    // Warm torch focal illumination for staircase
+    const stairTorch = new THREE.PointLight(0xff9900, 2.8, 25);
+    stairTorch.position.set(0, 6.0, -2.5);
     scene.add(stairTorch);
 
     // Grid Floor on world base
@@ -239,12 +239,15 @@ async function main() {
       } else if (p.partId.toLowerCase().includes("banner")) {
         col = 0xf77f00;
         sx = 1.5; sy = 2.4; sz = 0.2;
+      } else if (p.partId.toLowerCase().includes("torch") || p.partId.toLowerCase().includes("brazier")) {
+        col = 0xffaa00;
+        sx = 0.8; sy = 1.4; sz = 0.8;
       } else if (cat === "floor") { sx = 5.0; sy = 0.2; sz = 5.0; }
       else if (cat === "wall") { sx = 5.0; sy = 4.0; sz = 0.5; }
       else if (cat === "pillar") { sx = 1.4; sy = 3.5; sz = 1.4; }
       else if (cat === "ceiling") { sx = 5.0; sy = 0.4; sz = 5.0; }
-      else if (cat === "stairs") { sx = 3.0; sy = 3.5; sz = 5.0; }
-      else if (cat === "railing") { sx = 5.0; sy = 1.2; sz = 0.3; }
+      else if (cat === "stairs") { sx = 3.8; sy = 3.5; sz = 5.0; }
+      else if (cat === "railing") { sx = 4.0; sy = 1.2; sz = 0.3; }
       else if (cat === "trap") { sx = 2.5; sy = 0.25; sz = 2.5; }
       else if (cat === "puzzle") { sx = 1.0; sy = 2.2; sz = 1.0; }
       else { sx = 1.0; sy = 1.0; sz = 1.0; }
@@ -253,9 +256,10 @@ async function main() {
         ? createStairOrRampGeometry(sx, sy, sz, 14)
         : new THREE.BoxGeometry(sx, sy, sz);
       const mat = new THREE.MeshStandardMaterial({
-        color: col,
-        roughness: 0.5,
-        metalness: 0.1,
+        color: cat === "stairs" ? 0xff6600 : col,
+        roughness: cat === "stairs" ? 0.35 : 0.5,
+        metalness: cat === "stairs" ? 0.15 : 0.1,
+        emissive: cat === "stairs" ? 0x331400 : (p.partId.toLowerCase().includes("torch") || p.partId.toLowerCase().includes("brazier") ? 0x663300 : 0x000000),
       });
 
       const mesh = new THREE.Mesh(geom, mat);
@@ -268,7 +272,11 @@ async function main() {
       }
 
       const wireGeom = new THREE.EdgesGeometry(geom);
-      const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+      const wireMat = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: cat === "stairs" ? 0.85 : 0.25
+      });
       const wire = new THREE.LineSegments(wireGeom, wireMat);
       mesh.add(wire);
 

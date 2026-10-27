@@ -888,11 +888,34 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         addPlacement(stairDef, new THREE.Vector3(0, lowerY + 1.75, -2.5), yawQuat(0));
       }
 
-      // Phase 5: Loft Balcony Railings along open drop overlooking main hall
+      // Visual Affordance Markers: Twin illuminated torch braziers at foot of stairs
+      // Guides player navigation and visual gaze directly to the vertical ascent entrypoint
+      for (const bx of [-2.4, 2.4]) {
+        const brazier = pickCatPart("prop", "torch") || pickCatPart("prop", "brazier") || pickCatPart("prop");
+        if (brazier) {
+          addPlacement(brazier, new THREE.Vector3(bx, lowerY + 0.6, 0.5), yawQuat(0));
+        }
+      }
+
+      // Flanking staircase balustrades / handrails rising along stair flanks
+      for (const sx of [-2.1, 2.1]) {
+        const stairRail = pickCatPart("railing");
+        if (stairRail) {
+          addPlacement(stairRail, new THREE.Vector3(sx, lowerY + 2.2, -2.5), yawQuat(0));
+        }
+      }
+
+      // Phase 5: Loft Balcony Railings & Landing Torch Markers along open drop overlooking main hall
       for (const rx of [-5.0, 5.0]) {
         const rail = pickCatPart("railing");
         if (rail) {
           addPlacement(rail, new THREE.Vector3(rx, upperY + 0.8, -5.0), yawQuat(0));
+        }
+      }
+      for (const tx of [-2.4, 2.4]) {
+        const topTorch = pickCatPart("prop", "torch") || pickCatPart("prop");
+        if (topTorch) {
+          addPlacement(topTorch, new THREE.Vector3(tx, upperY + 0.6, -5.0), yawQuat(0));
         }
       }
 

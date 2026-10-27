@@ -731,6 +731,18 @@ Every entry: date, decision, rationale. Newest first.
      - Physics mass scaling cubically with scale ($M \propto s^3$).
      - Acoustic resonance pitch shifting inversely with cube-root scale ($f \propto \frac{1}{\sqrt[3]{s}}$), ensuring larger objects produce deeper, resonant thuds and smaller objects produce crisp clatters.
 
+- **2026-10-27 — Staircase Scene Visibility & Navigational Affordances (PR #437).**
+  In interior multi-level dungeon spaces, stairs must be immediately visually recognizable so players intuitively perceive how to access elevated lofts without relying on accidental collider bumps:
+  1) **Navigational Affordances (Lighting & Markers)**:
+     - **Twin Guiding Torch Braziers**: Positioned at the foot of the staircase ($X = \pm 2.4\text{m}, Z = 0.5\text{m}$) casting warm focal illumination ($24\text{m}$ radius) directly across the entry steps. In game level design, light is the primary visual magnet indicating vertical progression.
+     - **Staircase Flank Handrails / Balustrades**: Angled guard rails placed along both flanks ($X = \pm 2.1\text{m}, Z = -2.5\text{m}$) providing clear diagonal silhouette cues from anywhere in the nave.
+     - **Loft Portal Lanterns**: Flanking torches at the top landing threshold ($X = \pm 2.4\text{m}, Z = -5.0\text{m}$) framing the entry into the upper mezzanine.
+  2) **Geometry, Scale & Shading**:
+     - Enlarged circulation staircase footprint to a $3.8\text{m}$ wide grand profile spanning 14 discrete steps with highlighted step risers and treads.
+     - Shaded with radiant warm stone amber material and bright white edge line segments to eliminate blending against dark ground floor slabs.
+  3) **Isometric & Overview Scene Visibility**:
+     - Applied camera-facing wall cutaways in architectural overview renders (`render-examples.mjs`), preventing solid exterior perimeter walls from occluding the interior chamber and ensuring the grand staircase, under-loft pillars, and loft deck remain 100% visible.
+
 - **2026-10-27 — Two-Floor Connectivity & Load-Bearing Invariant for Stairs and Pillars (PR #437).**
   In classical architectural design, stairs and pillars exist strictly to bridge or support vertical circulation or load-bearing structures. Freestanding pillars sitting on a floor with empty air above them (random pillars out in the middle of a room), and stairs leading into empty air, look unnatural and sloppy:
   1) **Structural Support Enforcement (`isConnectingTwoFloors`)**:

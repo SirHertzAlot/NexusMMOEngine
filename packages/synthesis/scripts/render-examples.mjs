@@ -39,14 +39,16 @@ const archetypes = [
   {
     name: "Multi-Level Staircase Descent & Loft",
     filename: "example_3_multi_level_descent.png",
-    subtitle: "Second-level loft structure supported by structural pillars underneath, with triangular ramp/staircase access and balustrades",
+    subtitle: "Second-level loft structure supported by structural pillars underneath, with prominent staircase access, flanking balustrades, and twin guiding torch braziers",
+    camera: { pos: [16, 15, 20], lookAt: [0, 2.8, -4] },
+    cutawayNearWalls: true,
     problem: {
       ruleSet,
       seed: 9913,
       site: {
         bounds: { min: [-22, 0, -22], max: [22, 14, 22] },
       },
-      budget: { maxParts: 85, maxGrowthAttempts: 1200 },
+      budget: { maxParts: 95, maxGrowthAttempts: 1200 },
     },
   },
 ];
@@ -237,8 +239,10 @@ async function main() {
     scene.background = new THREE.Color(0x0e131b);
 
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000);
-    camera.position.set(28, 24, 32);
-    camera.lookAt(0, 2, 0);
+    const camPos = ${JSON.stringify(arch.camera?.pos || [28, 24, 32])};
+    const lookAtPos = ${JSON.stringify(arch.camera?.lookAt || [0, 2, 0])};
+    camera.position.set(camPos[0], camPos[1], camPos[2]);
+    camera.lookAt(lookAtPos[0], lookAtPos[1], lookAtPos[2]);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
@@ -262,14 +266,19 @@ async function main() {
     blueLight.position.set(-20, 15, -20);
     scene.add(blueLight);
 
+    // Warm focal illumination for staircase and central circulation axis
+    const stairFocalLight = new THREE.PointLight(0xff9900, 2.5, 24);
+    stairFocalLight.position.set(0, 6.0, -2.5);
+    scene.add(stairFocalLight);
+
     // Color map by category
     const catColors = {
       floor: 0x264478,
       wall: 0x2e6f40,
       pillar: 0xb58900,
       ceiling: 0x6f42c1,
-      stairs: 0xd15700,
-      railing: 0x008080,
+      stairs: 0xff6600, // Vibrant radiant architectural orange
+      railing: 0x009988,
       prop: 0xc93b2b,
       rubble: 0x8b572a,
       structure: 0x4a5568,
@@ -277,7 +286,7 @@ async function main() {
       puzzle: 0x00f5d4,
     };
 
-    function createStairOrRampGeometry(sx, sy, sz, numSteps = 7) {
+    function createStairOrRampGeometry(sx, sy, sz, numSteps = 14) {
       const stepH = sy / numSteps;
       const stepL = sz / numSteps;
       const hw = sx / 2;
@@ -338,6 +347,16 @@ async function main() {
     // Render placed parts as shaded boxes matching real bounds
     for (const p of placements) {
       const cat = p.category || "structure";
+      const [px, py, pz] = p.transform.pos;
+
+      // Architectural Cutaway: if enabled, omit camera-facing near perimeter walls so the interior,
+      // stairs, under-loft load-bearing pillars, and mezzanine deck are 100% visible
+      if (${Boolean(arch.cutawayNearWalls)} && cat === "wall") {
+        if (pz > 3.0 || (px > 7.0 && pz > -2.0)) {
+          continue;
+        }
+      }
+
       let col = catColors[cat] || 0x4a5568;
 
       let sx = 5.0, sy = 0.2, sz = 5.0;
@@ -347,27 +366,30 @@ async function main() {
       } else if (p.partId.toLowerCase().includes("banner")) {
         col = 0xf77f00;
         sx = 1.5; sy = 2.4; sz = 0.2;
+      } else if (p.partId.toLowerCase().includes("torch") || p.partId.toLowerCase().includes("brazier")) {
+        col = 0xffaa00;
+        sx = 0.8; sy = 1.4; sz = 0.8;
       } else if (cat === "floor") { sx = 5.0; sy = 0.2; sz = 5.0; }
       else if (cat === "wall") { sx = 5.0; sy = 4.0; sz = 0.5; }
-      else if (cat === "pillar") { sx = 1.4; sy = 4.0; sz = 1.4; }
+      else if (cat === "pillar") { sx = 1.4; sy = 3.5; sz = 1.4; }
       else if (cat === "ceiling") { sx = 5.0; sy = 0.4; sz = 5.0; }
-      else if (cat === "stairs") { sx = 3.0; sy = 3.5; sz = 5.0; }
-      else if (cat === "railing") { sx = 5.0; sy = 1.2; sz = 0.3; }
+      else if (cat === "stairs") { sx = 3.8; sy = 3.5; sz = 5.0; }
+      else if (cat === "railing") { sx = 4.0; sy = 1.2; sz = 0.3; }
       else if (cat === "trap") { sx = 2.5; sy = 0.25; sz = 2.5; }
       else if (cat === "puzzle") { sx = 1.0; sy = 2.2; sz = 1.0; }
       else { sx = 1.0; sy = 1.0; sz = 1.0; }
 
       const geom = cat === "stairs"
-        ? createStairOrRampGeometry(sx, sy, sz, 7)
+        ? createStairOrRampGeometry(sx, sy, sz, 14)
         : new THREE.BoxGeometry(sx, sy, sz);
       const mat = new THREE.MeshStandardMaterial({
-        color: col,
-        roughness: 0.5,
-        metalness: 0.1,
+        color: cat === "stairs" ? 0xff6600 : col,
+        roughness: cat === "stairs" ? 0.35 : 0.5,
+        metalness: cat === "stairs" ? 0.15 : 0.1,
+        emissive: cat === "stairs" ? 0x331400 : (p.partId.toLowerCase().includes("torch") || p.partId.toLowerCase().includes("brazier") ? 0x663300 : 0x000000),
       });
 
       const mesh = new THREE.Mesh(geom, mat);
-      const [px, py, pz] = p.transform.pos;
       const [qx, qy, qz, qw] = p.transform.rot;
       mesh.position.set(px, py, pz);
       mesh.quaternion.set(qx, qy, qz, qw);
@@ -377,7 +399,11 @@ async function main() {
 
       // Add edge highlight wireframe
       const wireGeom = new THREE.EdgesGeometry(geom);
-      const wireMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+      const wireMat = new THREE.LineBasicMaterial({
+        color: cat === "stairs" ? 0xffffff : 0xffffff,
+        transparent: true,
+        opacity: cat === "stairs" ? 0.85 : 0.25
+      });
       const wire = new THREE.LineSegments(wireGeom, wireMat);
       mesh.add(wire);
 
@@ -526,7 +552,7 @@ async function main() {
       <div class="card-body">
         <div>
           <div class="card-title">3. Multi-Level Descent & Loft</div>
-          <div class="card-sub">Two-level mezzanine connectivity with triangular stepped ramp/stairs and under-loft pillars directly connecting ground to upper deck.</div>
+          <div class="card-sub">Two-level mezzanine connectivity with prominent grand staircase, twin guiding torch braziers, flanking handrails, and under-loft pillars directly connecting ground to upper deck.</div>
         </div>
         <div class="card-stats">
           <span>85 Parts</span>
