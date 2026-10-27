@@ -1,5 +1,16 @@
 # 07. Procedural Generation & Spatial Synthesis
 
+
+---
+
+## 5. Architectural Synthesis: Staircase Handrail & Balustrade Alignment
+
+Procedural dungeon synthesis (`@mmo-engine/synthesis`) incorporates continuous circulation geometry:
+- **Incline Pitch Rotation**: Handrails align to exact slope pitch $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.
+- **Flank Alignment**: Rails flank stairwells at $X = \pm 2.00\text{m}$, centered at $Z = -2.50\text{m}, Y = \text{lowerY} + 2.20\text{m}$.
+- **Flush Balcony Thresholds**: Loft balcony railings connect flush with stair handrail tops, eliminating horizontal traversal obstructions.
+- **Architectural Balustrades**: Built via `createStairHandrailGeometry` featuring top rails, bottom runners, and vertical balusters.
+
 [← Previous: Multi-Region World Coordination](06-multi-region-world.md) | [Back to Wiki Index](README.md) | [Next: Client & Viewport Mirror →](08-client-and-rendering.md)
 
 ---

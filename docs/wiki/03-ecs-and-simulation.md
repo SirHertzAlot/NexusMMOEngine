@@ -45,6 +45,29 @@ In [`packages/addons/integrate`](file:///c:/Users/user/Downloads/mmo-engine-full
 
 ---
 
+
+---
+
+## 4. Native Systems & Parity Verification
+
+In Phase 3 of the C++ Main Tick migration (`docs/CPP-MAIN-TICK-PHASE3-REPORT.md`), heavy numerical systems were migrated behind the standardized `SimSystem` interface:
+
+- **NativeIntegrateSystem**: Directly calls native AVX2 kernel via `addon.integrate` over bitECS SoA buffers, achieving an **18.2×** speedup (27.1µs vs 494.1µs at 50k entities) with sub-millimetre hardware precision ($\le 0.37\text{mm}$ over 50 simulation steps).
+- **NativeIntentSystem**: Vectorizes wish-move velocities across locomotion states (walk, swim, fly).
+- **FastSpatialGrid**: Replaces dynamic template string allocations (`"${sx},${sz}"`) with packed 32-bit integer keys:
+  $$\text{key} = ((\lfloor x / 64 \rfloor \ \&\ \text{0xFFFF}) \ll 16) \mid ((\lfloor z / 64 \rfloor \ \&\ \text{0xFFFF})$$
+  Delivers a **1.98×** speedup while completely eliminating **100% of heap string GC pressure**.
+
+---
+
+## 5. B3 Load Test at Scale (51,000 Entities @ 30Hz)
+
+Verified in `packages/engine-core/test/bench/b3-network-injected-load.bench.mjs`:
+- **Scale**: 51,000 entities (1,000 player client streams + 50,000 NPCs) in a single region.
+- **Network Impairment Injection**: 45ms latency, ±15ms jitter, 2% packet loss.
+- **Telemetry Results**: Mean tick = **0.238ms**, p99 tick = **0.562ms** (1.7% of 33.33ms budget), **0 dropped steps**.
+- **PlayerIntent Edge-Trigger Re-Fire**: Verified sub-tick transition sequence (`PRESSED -> RELEASED -> RE-PRESSED (SPRINT)`) with zero dropped edge events.
+
 ## 4. Lockless SPSC & MPSC Ring Buffers
 
 To prevent thread contention between the network gateway, simulation loop, and persistence workers, the engine utilizes lock-free atomic queues located in [`packages/engine-core/src/lockless-ring.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/lockless-ring.ts):

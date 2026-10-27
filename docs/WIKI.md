@@ -431,3 +431,10 @@ For proprietary game balance calculations, deployment credentials, or secret que
 ## 11. Private Repository Intelligence & Strategy
 
 For executive comparisons, competitor dissections (vs. Unreal Engine 5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical telemetry (100k integration, 64k req/s ingress), strategic SWOT positioning, and cloud infrastructure unit economics, consult the **[Business Analysis & Competitive Intelligence Suite](business-analysis/README.md)**.
+
+
+### 11. SAB Logging Layer Architecture (docs/SAB-LOGGING-LAYER-SPEC.md)
+- **Ring Ingress**: Fixed 128-byte binary log records written to `AtomicMPSCQueue` in tens of nanoseconds with zero allocations and zero locks.
+- **Log Worker**: Dedicated background worker thread drains ring, formats batches, and flushes to independent sinks.
+- **Live Edge Sink (uWebSockets.js)**: Live log streams published to admin topic `logs` for real-time editor telemetry.
+- **World-Tier Fan-In**: Collector process streaming regional logs to Redis Streams for persistent GraphQL live-ops queries.

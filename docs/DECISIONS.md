@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — SAB Logging Layer Commissioning, Architecture & Roadmap.**
+  Commissioned by Joey: implement a performant logging layer extending the SharedArrayBuffer (`docs/SAB-LOGGING-LAYER-SPEC.md`):
+  - **Sacred Producer Path:** Fixed 128-byte binary record format written directly to `AtomicMPSCQueue` in tens of nanoseconds with zero locks, zero formatting, and zero heap allocations.
+  - **Disposable Sinks & Log Worker:** Background worker thread batches drain, formats entries once, and flushes to independent sinks (batched file sink, atomic metrics counters, and live edge pub/sub topic `logs` via uWebSockets.js for editor telemetry).
+  - **World-Tier Fan-In:** Multi-region deployments stream batches to an independent Go collector process backed by Redis Streams for durable storage and GraphQL live-ops queries.
+  - **Phased Implementation Roadmap:** Phase 0 (Ring + dictionary + TS producers), Phase 1 (Log worker + file/metrics sinks), Phase 2 (Native C++ producers), Phase 3 (Live edge uWS pub/sub + editor stream), and Phase 4 (World-tier fan-in).
+
 - **2026-10-27 — C++ Main Tick Phase 4: Native Tick Loop, Determinism Audit & Hardening.**
   Completed Phase 4 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE4-REPORT.md`):
   - **Native Fixed-Step Loop & Spiral Guard:** Integrated accumulator stepping into `SimWorkerRuntime` with 250ms frame gap clamping, a 5-step catch-up cap, and lockless atomic drop telemetry (`TELEMETRY_SLOTS.SPIRAL_EVENTS` and `DROPPED_MS`).

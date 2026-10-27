@@ -1,5 +1,17 @@
 # 05. Networking & Distributed Scaling
 
+
+---
+
+## 5. Gateway Security Perimeter Boundary
+
+To ensure memory safety and protect worker threads from untrusted input:
+1. **Authentication Enforcement**: Intents arriving before `hello` handshake are rejected with code `4003` and never reach the SPSC ring.
+2. **Authority & Entity Ownership**: Verifies `msg.entity === s.playerEntity`; foreign entity manipulation triggers error `4003`.
+3. **Floating-Point Sanitization**: Input vectors are scrubbed for non-finite values (`NaN`, `Infinity`) and clamped to unit speed ($1.0\text{ m/s}$).
+4. **Out-of-Order Packet Dropping**: Stale packets (`clientTick <= s.lastIntentTick`) are dropped silently.
+5. **Fast 32-bit Action Packing**: Validated intents convert to bitwise masks and pack into a single 32-bit integer via `packCommandToken(slot, actionCode)`.
+
 [← Previous: Native C++ Addons](04-native-addons.md) | [Back to Wiki Index](README.md) | [Next: Multi-Region World Coordination →](06-multi-region-world.md)
 
 ---

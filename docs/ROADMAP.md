@@ -849,3 +849,9 @@ Newest first. One line per merged PR or decision.
   - Established determinism audit: verified bit-for-bit replay hash equality across 500 ticks on 100 entities under dynamic input streams; inventoried IEEE-754 single-precision Math.* equivalents and compiler contract (/fp:precise, -ffp-contract=off).
   - Executed SimWorker crash drill: proved gateway WebSocket session survivability (zero client disconnects) and hot worker reattachment to the master SAB memory arena.
   - Passed owed B3 Load Test at target scale: 51,000 entities (1k players + 50k NPCs) under 1,000-client fan-out with network impairment injection (45ms latency, ±15ms jitter, 2% loss), achieving 0.562ms p99 tick latency (1.7% of 33.33ms budget, beating the 25% threshold) with 0 dropped steps. Verified PlayerIntent edge-trigger re-fire.
+- **2026-10-27**: SAB Logging Layer Specification & Roadmap (docs/SAB-LOGGING-LAYER-SPEC.md):
+  - Commissioned by Joey: ultra-low latency, allocation-free logging layer extending the SharedArrayBuffer.
+  - Sacred producer path: 128-byte binary records written to AtomicMPSCQueue in tens of nanoseconds with zero locks, formatting, or I/O on the simulation tick.
+  - Disposable sinks: dedicated background log worker flushes batched 64KB writes to file, atomic metrics to edge counters, and formatted batches to uWS live edge topic `logs` for editor live-ops streaming (deleting snapshot timer polling).
+  - World-tier fan-in: multi-region collector process lands streams into Redis Streams for persistent GraphQL live-ops queries.
+  - Gated 5-phase execution roadmap: Phase 0 (Ring + dictionary + TS producers), Phase 1 (Log worker + file/metrics sinks), Phase 2 (Native C++ producers), Phase 3 (Live edge uWS pub/sub + editor stream), and Phase 4 (World-tier fan-in).
