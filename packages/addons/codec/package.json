@@ -1,0 +1,19 @@
+{
+  "name": "@mmo-engine/addon-codec",
+  "version": "0.1.0",
+  "description": "N-API native C++ fast-path delta serialization codec and AVX2/SIMD packer (C++ Main Tick Phase 1 pilot)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "gypfile": true,
+  "private": true,
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^12.0.0"
+  }
+}
