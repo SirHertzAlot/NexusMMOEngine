@@ -369,13 +369,13 @@ export class SurrealWorldStore implements WorldStore {
       );
     }
     const meta = singleRow<Record<string, unknown>>(
-      await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
+      await this.db.query("SELECT * FROM ONLY meta:registry"),
     );
     if (meta === null) {
       await this.db.query("CREATE meta:registry CONTENT { version: 0 }");
     }
     const atomicMeta = singleRow<Record<string, unknown>>(
-      await this.db.query("SELECT * FROM ONLY atomic_meta WHERE id = atomic_meta:ledger"),
+      await this.db.query("SELECT * FROM ONLY atomic_meta:ledger"),
     );
     if (atomicMeta === null) {
       await this.db.query("CREATE atomic_meta:ledger CONTENT { seq: 0 }");
@@ -538,14 +538,14 @@ export class SurrealWorldStore implements WorldStore {
 
   async getRegistryVersion(): Promise<number> {
     const row = singleRow<Record<string, unknown>>(
-      await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
+      await this.db.query("SELECT * FROM ONLY meta:registry"),
     );
     return row === null ? 0 : Number(row["version"] ?? 0);
   }
 
   async bumpRegistryVersion(): Promise<void> {
     await this.db.query(
-      "UPDATE ONLY meta SET version = version + 1 WHERE id = meta:registry",
+      "UPDATE ONLY meta:registry SET version = version + 1",
     );
   }
 
@@ -1003,7 +1003,7 @@ export class SurrealWorldStore implements WorldStore {
       readStmts.push(`SELECT * FROM ONLY character_state WHERE characterId = $c${i} LIMIT 1`);
       readStmts.push(`SELECT * FROM ONLY character_lock WHERE characterId = $c${i} LIMIT 1`);
     });
-    readStmts.push("SELECT seq FROM ONLY atomic_meta WHERE id = atomic_meta:ledger");
+    readStmts.push("SELECT seq FROM ONLY atomic_meta:ledger");
     // The dedup read rides the same round trip (the fold): a prior
     // outcome for this opId — committed by the v2 function's own
     // in-transaction insert, or recorded for a rejection — answers
