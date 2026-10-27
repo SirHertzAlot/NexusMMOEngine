@@ -9,7 +9,7 @@ Every entry: date, decision, rationale. Newest first.
   - **World-Tier Fan-In:** Multi-region deployments stream batches to an independent Go collector process backed by Redis Streams for durable storage and GraphQL live-ops queries.
   - **Phased Implementation Roadmap:** Phase 0 (Ring + dictionary + TS producers), Phase 1 (Log worker + file/metrics sinks), Phase 2 (Native C++ producers), Phase 3 (Live edge uWS pub/sub + editor stream), and Phase 4 (World-tier fan-in).
 
-- **2026-10-27 — C++ Main Tick Phase 4: Native Tick Loop, Determinism Audit & Hardening.**
+- **2026-10-27 — C++ Main Tick Phase 4: Native Tick Loop, Determinism Audit & Hardening (PR #438).**
   Completed Phase 4 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE4-REPORT.md`):
   - **Native Fixed-Step Loop & Spiral Guard:** Integrated accumulator stepping into `SimWorkerRuntime` with 250ms frame gap clamping, a 5-step catch-up cap, and lockless atomic drop telemetry (`TELEMETRY_SLOTS.SPIRAL_EVENTS` and `DROPPED_MS`).
   - **Determinism Audit:** Verified bit-for-bit replay determinism across 500 ticks on 100 entities under chaotic input streams (FNV-1a checksum matched with 0 ulp deviation). Audited and established floating-point compiler contract (`/fp:precise`, `-ffp-contract=off`) and `Math.*` single-precision inventory.
