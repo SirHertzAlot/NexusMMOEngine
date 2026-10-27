@@ -54,6 +54,12 @@ Welcome to the **Nexus MMO Engine Technical Wiki**. This document is the primary
   - [9.2 Authoring a Custom Gameplay Module](#92-authoring-a-custom-gameplay-module)
   - [9.3 Authoring a Native C++ Addon](#93-authoring-a-native-c-addon)
   - [9.4 Running Automated Verification & Playtests](#94-running-automated-verification--playtests)
+- [10. Developer Tooling & Interactive Documentation (Yank Note Ecosystem)](#10-developer-tooling--interactive-documentation-yank-note-ecosystem)
+  - [10.1 Motivation & Modern Markdown Tooling](#101-motivation--modern-markdown-tooling)
+  - [10.2 In-Note Executable REPL & Benchmarking](#102-in-note-executable-repl--benchmarking)
+  - [10.3 Interactive Telemetry & Data Apps](#103-interactive-telemetry--data-apps)
+  - [10.4 Client-Side Encrypted Notes (.c.md)](#104-client-side-encrypted-notes-cmd)
+- [11. Private Repository Intelligence & Strategy](#11-private-repository-intelligence--strategy)
 
 ---
 
@@ -398,3 +404,30 @@ node packages/synthesis/scripts/render-examples.mjs
 # Run automated in-engine locomotion playtest
 node packages/synthesis/scripts/playtest-loft-access.mjs
 ```
+
+---
+
+## 10. Developer Tooling & Interactive Documentation (Yank Note Ecosystem)
+
+### 10.1 Motivation & Modern Markdown Tooling
+The Nexus MMO Engine standardizes on **Yank Note** ([purocean/yn](https://github.com/purocean/yn)) as our official programmer-oriented documentation environment. It provides a local-first Monaco editor kernel with zero cloud lock-in, operating directly over the repository's .md files.
+
+### 10.2 In-Note Executable REPL & Benchmarking
+Developers can execute build steps, test suites, and performance benchmarks directly inside documentation code blocks:
+`sh
+# Run protocol fast-path parity and AVX2 benchmark directly from docs
+npm test -w @mmo-engine/protocol
+node packages/protocol/test/bench/fast-path-pilot.bench.mjs
+`
+
+### 10.3 Interactive Telemetry & Data Apps
+Using the /building-data-apps framework, documentation files can host embedded HTML5/React data applets that connect directly to live local engine instances (ws://localhost:3000/telemetry) to monitor tick budgets, queue depth, and memory allocations in real time. Full setup and sample applets live in [docs/wiki/10-developer-tooling-and-yank-note.md](wiki/10-developer-tooling-and-yank-note.md).
+
+### 10.4 Client-Side Encrypted Notes (.c.md)
+For proprietary game balance calculations, deployment credentials, or secret quest parameters, Yank Note supports .c.md files encrypted client-side with AES-GCM before writing to disk.
+
+---
+
+## 11. Private Repository Intelligence & Strategy
+
+For executive comparisons, competitor dissections (vs. Unreal Engine 5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical telemetry (100k integration, 64k req/s ingress), strategic SWOT positioning, and cloud infrastructure unit economics, consult the **[Business Analysis & Competitive Intelligence Suite](business-analysis/README.md)**.
