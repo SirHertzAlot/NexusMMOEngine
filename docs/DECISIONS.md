@@ -2,6 +2,11 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/).**
+  To provide an authoritative, hierarchical technical knowledge base for engine developers and content creators strictly focused on our engine without external comparisons or competitive commentary, deployed the Nexus MMO Engine Wiki:
+  - Master single-page manual (docs/WIKI.md) and 9-chapter modular hub (docs/wiki/) covering architecture, engine/game decoupling, bitECS SoA, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
+  - Linked directly from repository root README.md and docs/README.md.
+
 - **2026-10-27 — Joey commissions C++ Main Tick specification and roadmap (docs/CPP-MAIN-TICK-SPEC.md).**
   Authoritative main tick moves from TypeScript (engine-core) to C++; Node reduces to the networking/session layer on uWebSockets.js; persistence tier (world-server + SurrealDB atomic ops) remains unchanged. Target scale: 1,000 CCU + 50,000 entities/NPCs in ONE region (30 Hz, 33.33ms budget). Phased gated execution (Phase 0: Baselines & transport guarantee; Phase 1: Transpiler pilot fast-path.ts; Phase 2: Production wiring of SAB data-plane topology; Phase 3: System-by-system migration, densest first; Phase 4: Native tick loop and hardening).
 

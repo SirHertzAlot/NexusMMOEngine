@@ -823,3 +823,6 @@ Newest first. One line per merged PR or decision.
   - Commissioned by Joey: migrate authoritative 30Hz main tick from TypeScript to C++, reducing Node.js to the networking/session tier on uWebSockets.js, while keeping the persistence tier (world-server + SurrealDB atomic ops) unchanged.
   - Target scale: 1,000 CCU + 50,000 entities/NPCs in ONE region under shared resources (no sharding escape hatch, 33.33ms budget).
   - Phased gated execution plan: Phase 0 (Baselines & transport guarantee), Phase 1 (typescript2cxx transpiler pilot on fast-path.ts), Phase 2 (Production wiring of PR #430 SAB data-plane topology), Phase 3 (System-by-system migration, densest first), and Phase 4 (Native tick loop, determinism audit, and crash drills).
+- **2026-10-27**: Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/, README.md):
+  - Authoritative, hierarchical technical wiki guiding users through the entire engine: architecture blueprint, engine/game split, bitECS SoA data plane, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
+  - Strictly engine-focused documentation without external comparisons or competitive commentary, integrated directly into root README.md and docs/README.md.
