@@ -2,6 +2,38 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/).**
+  To provide an authoritative, hierarchical technical knowledge base for engine developers and content creators strictly focused on our engine without external comparisons or competitive commentary, deployed the Nexus MMO Engine Wiki:
+  - Master single-page manual (docs/WIKI.md) and 9-chapter modular hub (docs/wiki/) covering architecture, engine/game decoupling, bitECS SoA, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
+  - Linked directly from repository root README.md and docs/README.md.
+
+- **2026-10-27 — Joey commissions C++ Main Tick specification and roadmap (docs/CPP-MAIN-TICK-SPEC.md).**
+  Authoritative main tick moves from TypeScript (engine-core) to C++; Node reduces to the networking/session layer on uWebSockets.js; persistence tier (world-server + SurrealDB atomic ops) remains unchanged. Target scale: 1,000 CCU + 50,000 entities/NPCs in ONE region (30 Hz, 33.33ms budget). Phased gated execution (Phase 0: Baselines & transport guarantee; Phase 1: Transpiler pilot fast-path.ts; Phase 2: Production wiring of SAB data-plane topology; Phase 3: System-by-system migration, densest first; Phase 4: Native tick loop and hardening).
+
+- **2026-10-27 — Native Performance & Serialization Roadmap: C++ AVX2 Codec, Native Spatial Grid, and Jolt Multi-Threading.**
+  To cure the B4 delta bandwidth p99 tail miss (spiking to 11.7ms–12.8ms at 5k–10k entities due to V8 DataView loops and GC churn) and interest management string allocations:
+  - **Native AVX2/SIMD Delta Serialization (addon-codec):** Build a dedicated C++ N-API addon reading directly from SharedArrayBuffer memory pointers to pack 32-byte wire frames in under 0.05ms for 10k entities with 0 bytes of V8 heap garbage, flattening p99 to < 0.1ms.
+  - **Native Spatial Grid (addon-spatial):** Replace dynamic template string keys ("${sx},${sz}") and Set<string> allocations in packages/engine-core/src/net/interest.ts with a dense 2D integer spatial hash in C++.
+  - **Jolt Multi-Threaded Job System:** Enable JPH::JobSystemThreadPool in packages/addons/physics to scale collision and rigid body simulation across hardware CPU cores without blocking the 30Hz Node.js event loop.
+  - **Bulk Native Raycasting & mimalloc:** Expose CastRaysBulk for parallel combat/LOS checks in under 0.2ms, and link native addons against mimalloc to prevent heap lock contention and memory fragmentation. Full details in docs/ENGINE-COMPARISON-AND-PERFORMANCE.md.
+
+- **2026-10-27 — Client Modernization Architecture: WebGPU + WGSL Compute Migration over Legacy WebGL2.**
+  Addressing graphics modernization and technical inquiries regarding OpenGL vs. WebGL:
+  - **API Clarification:** Confirmed that native desktop OpenGL and browser WebGL operate in disjoint execution environments; WebGL is a sandboxed JavaScript binding of OpenGL ES (translated to DirectX/Metal/Vulkan via ANGLE) and cannot extend native OpenGL. Both legacy APIs suffer from single-threaded state machine overhead and lack compute shaders.
+  - **WebGPU Adoption:** Formally selected WebGPU (WGSL) as the next-generation rendering standard. Using Three.js WebGPURenderer on the client and C++ Dawn/wgpu-native on desktop/server, WebGPU provides GPU-driven indirect multi-draws (bypassing the browser's 3k–5k draw call ceiling) and general-purpose GPU compute (100k GPU particles, weather, and crowd skinning).
+
+- **2026-10-27 — Unconstrained Engine Substrate & Strict Engine/Game Decoupling.**
+  To ensure the engine remains an unconstrained, high-performance substrate without forcing developers to accept or remove unwanted pre-built gameplay:
+  - **Zero-Content Engine Boot:** The core engine (packages/engine-core) owns generic systems only (30Hz tick loop, bitECS data plane, spatial indexing, persistence, and network gateways) and boots cleanly with zero gameplay rules, item catalogs, or species.
+  - **Pluggable Modular Systems (modules/ via content/modules.json):** Gameplay mechanics (combat, crafting, dungeons, quests, residents) are fully isolated modules. Non-RPG developers (e.g. flight sims, racing, sandboxes) simply omit unused modules from content/modules.json; omitted modules are never compiled, allocated, or ticked.
+  - **Data-Driven Rule Contracts (packages/rules):** Rules are data packs loaded via environment seams (MMO_*) and validated at boot with Zod schemas.
+
+- **2026-10-26 — Continuous Model Synthesis, Inverse Procedural Modeling, and Learned Unity Scene Grammar (@mmo-engine/synthesis).**
+  To solve the combinatorial assembly challenges and visual tiling artifacts of discrete 3D grid generators, @mmo-engine/synthesis (MODEL-SYNTHESIS-MAP.md) implements tileless continuous model synthesis, automatic scene decomposition, and learned architectural grammar:
+  - **Unity Demo Scene Decomposition (extractor.ts, cli.ts):** decomposeScene() analyzes Unity demo scenes (POLYGON_Dungeons_Demo_Scene.fbx, 3,376 child objects across 598 unique parts), normalizes centimeter coordinate units into engine metric standards (5.0m x 5.0m modules), auto-generates continuous directional sockets with outward surface normals (+/-X, +/-Y, +/-Z), and partitions whole-level structures into 10 cohesive room assemblies via 35m spatial radius clustering.
+  - **Learned Spatial Adjacency Grammar (extractLearnedRuleSet):** Discovers 10,181 continuous spatial adjacency rules across parts, compiling frequency weights, relative yaw degree orientations, and 3D mean and spread translation offset distributions into content/synthesis/dungeon-rules.json.
+  - **Tileless Spatial Growth Synthesizer (synthesizer.ts):** synthesizeAssembly() executes continuous spatial growth using seeded 32-bit PRNG (DeterministicRng Mulberry32), entropy-guided socket queue selection, 3D quaternion alignment, and AABB interpenetration culling with a 0.20m margin, producing quantized transforms (1mm position, 0.0001 quaternion) in under 8ms for 120 parts (30x faster than discrete 3D grid WFC with 96% lower peak memory footprint).
+  - **Hybrid WFC Bridge (wfc-bridge.ts):** compileRuleSetToWfcModules() compiles learned continuous rules into discrete 6-face sockets for @mmo-engine/wfc/modules3d.ts, while decorateWfcDungeonWithSynthesis() pins macro-layout WFC modules and continuously synthesizes fine architectural micro-details, props, and rubble.
 - **2026-10-26 — Character Foundation: Data-Driven Archetypes, Pure Deterministic Profile Resolution, High-Throughput Profession Rescoring, and Reactive Bark Personalization.**
   To support resident identities, profession matching, psychological profiles, and reactive dialogue lines without simulation tick overhead or per-character branching logic (packages/settlement/src/character/, content/settlements/character.json):
   - **Data Schemas & Catalogs (character.json, schemas.ts, catalogs.ts):** Authored in content/settlements/character.json with 18 archetypes, 10 temperaments, 10 interests, 28 descriptors across 4 disjoint functional slots (demeanor, moral, drive, social), 38 descriptor rules with cross-reference validations, 18 backstory fragment templates, defaults, and tuning parameters (aseWeights, jitterBand = 0.15, clamp = [0.25, 2.5]). Validated strictly with Zod in schemas.ts and checkCharacterCatalogs().
@@ -690,6 +722,67 @@ Every entry: date, decision, rationale. Newest first.
   Node single-threaded so counts don't depend on scheduling; the counts
   are committed as a baseline (`perf/callgrind-baseline.json`) that
   changes, the gateway split first, are measured against.
+
+- **2026-10-26 — Continuous Model Synthesis follows architectural principles (PR #437).**
+  Per `MODEL-SYNTHESIS-MAP.md`, unguided spatial growth is replaced with
+  a multi-phase architectural synthesis pipeline: 1) Continuous Foundation
+  Floorplate covering the room footprint; 2) Inward-facing perimeter enclosure
+  walls and framed entryways; 3) Tectonic colonnades along nave bay lines;
+  4) Multi-tier circulation stairways and safety railings; 5) Contextual
+  focal dressing (altars, sarcophagi, braziers, corner rubble). Rotations
+  are strictly upright yaw-only (`[0, 1, 0]`), eliminating floating or
+  incoherent parts and producing authentic Romanesque/Gothic dungeon chambers.
+
+- **2026-10-26 — Combination-style puzzles & collision-triggered hidden traps in architectural synthesis (PR #437).**
+  Dungeon puzzle and hazard mechanics follow core architectural principles:
+  1) **Combination-Style Puzzles (`CombinationPuzzleDefinition`)**:
+     - Locks a critical progression door (`SM_Env_Door_Bars_01`) or reward chest (`SM_Prop_Chest_01`).
+     - Places an interactive combination entrypoint directly before the locked target consisting of 3 rotating rune pillars, statue dials, or levers.
+     - Constrains each slot to a limited discrete set of choices (e.g. 3-4 options: Hawk, Serpent, Wolf, Dragon or Solar, Lunar, Eclipse) yielding bounded combination spaces ($4^3 = 64$ or $3^3 = 27$).
+     - Places plainly displayed clues (wall banners, inscribed statue tablets, and carved ledger books) throughout earlier bays and corridors *before* the player reaches the combination entrypoint, revealing the exact sequence.
+     - Unlocking event fires when the submitted sequence matches the solution, triggering the opening animation and granting chamber/quest progression.
+  2) **Hidden Collision-Triggered Traps (`CollisionTrapDefinition`)**:
+     - Traps (flush floor spear grates, circular saw rails, overhead pendulum blades) carry hidden bounding trigger volumes (`triggerVolume: { shape: "box", hidden: true }`) flush with floor tiles along natural corridors and chokepoints.
+     - When an entity collider overlaps the trigger volume, a collision event invocation fires: transitions state to `triggered`, executes the trap animation (e.g. `spears_thrust_up`, `saw_blade_spin_traverse`), delivers physical/bleed damage (35–50 HP), applies vertical/directional knockback, and enters a cooldown cycle before rearming.
+
+- **2026-10-27 — Universal Measurement System (UMS) for scale, perspective, and size variance (PR #437).**
+  To anchor human perception, ergonomic gameplay, and visual immersion across procedural synthesis and scene management (`@mmo-engine/scene`, `@mmo-engine/synthesis`):
+  1) **Authoritative Reference Anchors**: Canonical SI meter scale ($1.0 = 1\text{m}$) anchored by standardized human proportions (standing height $1.80\text{m}$, eye horizon $1.62\text{m}$, crouch $1.05\text{m}$, capsule radius $0.35\text{m}$, step-over clearance $0.30\text{m}$, vault threshold $1.20\text{m}$, forward reach $2.20\text{m}$).
+  2) **Perspective & Spatial Immersion Classification**: Optical visual angle calculation ($\theta = 2 \arctan\frac{h}{2d}$) and proportion analysis classifying chambers into 5 immersion tiers:
+     - `claustrophobic` (height $< 2.4\text{m}$, clearance $< 0.8\text{m}$): cramped tunnels, tight crawlspaces.
+     - `intimate` (height $2.4\text{m} - 3.8\text{m}$): crypt burial chambers, residential alcoves.
+     - `expansive` (height $3.8\text{m} - 9.0\text{m}$): standard dungeon halls, nave colonnades.
+     - `monumental` (height $9.0\text{m} - 18.0\text{m}$ or span $> 20\text{m}$): cathedral boss arenas, great keeps.
+     - `abyssal` (height $> 18.0\text{m}$ or volume $> 50,000\text{m}^3$): subterranean chasms, titan vaults.
+  3) **Controlled Size Variance with Invariant Preservation**:
+     - Strict $5.0\text{m}$ grid snap ($s=1.0$) for structural load-bearing elements (walls, floors, stairs, portals) preventing seam cracks and ensuring doorway width $\ge 1.0\text{m}$ and step risers $\le 0.30\text{m}$.
+     - Controlled scale variation for organic clutter (rubble $\pm 30\%$, flora $\pm 20\%$) and dressing props (chests $\pm 10\%$, altars $\pm 15\%$) driven deterministically by Mulberry32 hashing.
+  4) **Gameplay & Physical Interactivity Scaling**:
+     - Reach scaling ($R_{\text{eff}} = R_{\text{base}}\sqrt{s}$): larger objects can be interacted with from further away.
+     - Traversal obstacle classification: `step-over` ($\le 0.30\text{m}$), `low-cover` ($0.30 - 1.20\text{m}$, vaultable), `high-cover` ($1.20 - 2.00\text{m}$), `full-obstacle` ($> 2.00\text{m}$).
+     - Physics mass scaling cubically with scale ($M \propto s^3$).
+     - Acoustic resonance pitch shifting inversely with cube-root scale ($f \propto \frac{1}{\sqrt[3]{s}}$), ensuring larger objects produce deeper, resonant thuds and smaller objects produce crisp clatters.
+
+- **2026-10-27 — Staircase Scene Visibility & Navigational Affordances (PR #437).**
+  In interior multi-level dungeon spaces, stairs must be immediately visually recognizable so players intuitively perceive how to access elevated lofts without relying on accidental collider bumps:
+  1) **Navigational Affordances (Lighting & Markers)**:
+     - **Twin Guiding Torch Braziers**: Positioned at the foot of the staircase ($X = \pm 2.4\text{m}, Z = 0.5\text{m}$) casting warm focal illumination ($24\text{m}$ radius) directly across the entry steps. In game level design, light is the primary visual magnet indicating vertical progression.
+     - **Staircase Flank Handrails / Balustrades**: Angled guard rails placed along both flanks ($X = \pm 2.1\text{m}, Z = -2.5\text{m}$) providing clear diagonal silhouette cues from anywhere in the nave.
+     - **Loft Portal Lanterns**: Flanking torches at the top landing threshold ($X = \pm 2.4\text{m}, Z = -5.0\text{m}$) framing the entry into the upper mezzanine.
+  2) **Geometry, Scale & Shading**:
+     - Enlarged circulation staircase footprint to a $3.8\text{m}$ wide grand profile spanning 14 discrete steps with highlighted step risers and treads.
+     - Shaded with radiant warm stone amber material and bright white edge line segments to eliminate blending against dark ground floor slabs.
+  3) **Isometric & Overview Scene Visibility**:
+     - Applied camera-facing wall cutaways in architectural overview renders (`render-examples.mjs`), preventing solid exterior perimeter walls from occluding the interior chamber and ensuring the grand staircase, under-loft pillars, and loft deck remain 100% visible.
+
+- **2026-10-27 — Two-Floor Connectivity & Load-Bearing Invariant for Stairs and Pillars (PR #437).**
+  In classical architectural design, stairs and pillars exist strictly to bridge or support vertical circulation or load-bearing structures. Freestanding pillars sitting on a floor with empty air above them (random pillars out in the middle of a room), and stairs leading into empty air, look unnatural and sloppy:
+  1) **Structural Support Enforcement (`isConnectingTwoFloors`)**:
+     - **Stairs**: A stair/ramp is valid IF AND ONLY IF its bottom landing rests on a lower floor slab and its top landing connects with an upper floor slab elevated by at least $1.5\text{m}$ above the lower floor.
+     - **Pillars**: A pillar is valid IF AND ONLY IF its base rests on a lower floor slab and its top directly supports a load-bearing structure above it: either an upper floor deck/loft ($\Delta Y \ge 1.5\text{m}$, as in `multi-level-descent`), OR an overhead ceiling/roof/vault arch (as in `crypt-hall` where nave colonnades hold up the vaulted stone roof).
+  2) **Synthesis Pruning & Socket Gate**:
+     - Both during socket expansion and in a post-synthesis verification pass, any stair or pillar lacking overhead support or floor connectivity is rejected and pruned.
+     - In intact dungeon spaces, random freestanding pillar stumps in the middle of a single-level court (such as `boss-arena`) are omitted, while vaulted crypt halls preserve their colonnades supporting the stone roof arches above, preventing floating ceilings.
 - **2026-10-26 — Universal Procedural Multi-Rig Engine, Bone Ontology & Creature Catalog.**
   The animation pipeline was constrained by quadruped-only segmentation and hardcoded humanoid sword attacks.
   We established:

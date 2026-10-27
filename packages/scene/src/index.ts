@@ -457,3 +457,4 @@ export * from "./place.js";
 export * from "./strings.js";
 export * from "./prefab.js";
 export * from "./scale.js";
+export * from "./measurement.js";

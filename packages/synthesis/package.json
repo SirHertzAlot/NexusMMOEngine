@@ -1,0 +1,27 @@
+{
+  "name": "@mmo-engine/synthesis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Continuous model synthesis: inverse procedural modeling, learned structural grammar and adjacency from 3D assemblies, and seeded growth over continuous space. Bake-time only.",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/scatter && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/scene && tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "extract": "node dist/src/cli.js"
+  },
+  "dependencies": {
+    "@mmo-engine/art": "workspace:*",
+    "@mmo-engine/scatter": "workspace:*",
+    "@mmo-engine/scene": "workspace:*",
+    "@mmo-engine/wfc": "workspace:*",
+    "three": "^0.180.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/three": "^0.180.0",
+    "typescript": "^5.6.3"
+  }
+}

@@ -6,6 +6,8 @@ regional state; the edge/core split and world server support client ingress
 and region coordination. The React Three Fiber client mirrors authoritative
 state and is never the source of truth.
 
+**Engine Wiki:** the complete hierarchical technical manual and guides live in [`docs/WIKI.md`](docs/WIKI.md) and the [`docs/wiki/`](docs/wiki/README.md) hub.
+
 **Documentation:** the full index is [`docs/README.md`](docs/README.md);
 start with [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md). Full
 engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).

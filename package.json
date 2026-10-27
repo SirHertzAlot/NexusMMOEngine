@@ -96,7 +96,8 @@
     "packages/addons/geometry",
     "packages/addons/perf-probe",
     "packages/build",
-    "packages/playtest"
+    "packages/playtest",
+    "packages/synthesis"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.0.3",
