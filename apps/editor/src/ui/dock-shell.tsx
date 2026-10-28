@@ -6,11 +6,13 @@ import * as React from "react";
 import { WorkspacePicker } from "./workspace-picker.js";
 import { LayoutProvider } from "./layout-provider.js";
 import { AdminConsole } from "./AdminConsole.js";
+import { EntityInspector } from "./EntityInspector.js";
 import { DockPanel } from "./components.js";
 
 export function DockShell({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [activeTab, setActiveTab] = React.useState<string>("admin");
-  const [leftVisible, setLeftVisible] = React.useState<boolean>(true);
+  const [activeTab, setActiveTab] = React.useState<string>("entity-inspector");
+  const [leftVisible, setLeftVisible] = React.useState<boolean>(false);
+  const [rightVisible, setRightVisible] = React.useState<boolean>(true);
 
   return (
     <LayoutProvider>
@@ -21,11 +23,19 @@ export function DockShell({ children }: { children: React.ReactNode }): React.JS
           <WorkspacePicker />
           <button
             onClick={() => setLeftVisible((v) => !v)}
-            className="ml-auto rounded px-2 py-1 text-xs font-medium"
+            className="rounded px-2 py-1 text-xs font-medium"
             style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
             title="Toggle Admin Console Sidebar"
           >
             ⚙️ Admin
+          </button>
+          <button
+            onClick={() => setRightVisible((v) => !v)}
+            className="rounded px-2 py-1 text-xs font-medium ml-2"
+            style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
+            title="Toggle Entity Inspector Sidebar"
+          >
+            🔎 Entity Inspector
           </button>
         </header>
         {/* Main work area */}
@@ -46,6 +56,19 @@ export function DockShell({ children }: { children: React.ReactNode }): React.JS
           <main className="flex-1 overflow-auto" aria-label="Editor workspace">
             {children}
           </main>
+          {rightVisible && (
+            <aside className="w-96 flex-none border-l border-outline-variant" aria-label="Entity Inspector Dock">
+              <DockPanel
+                tabs={[
+                  { id: "entity-inspector", label: "Entity Inspector", icon: "search" },
+                ]}
+                active={activeTab}
+                onTab={setActiveTab}
+              >
+                <EntityInspector />
+              </DockPanel>
+            </aside>
+          )}
         </div>
       </div>
     </LayoutProvider>
