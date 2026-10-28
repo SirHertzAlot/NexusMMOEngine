@@ -135,6 +135,106 @@
       "sound": {
         "start": "sword-swing"
       }
+    },
+    {
+      "id": 20,
+      "name": "bite",
+      "clip": "Creature_Bite",
+      "kind": "attack",
+      "duration": 0.6,
+      "hitAt": 0.25,
+      "moveScale": 0.2
+    },
+    {
+      "id": 21,
+      "name": "claw",
+      "clip": "Creature_Claw",
+      "kind": "attack",
+      "duration": 0.5,
+      "hitAt": 0.2,
+      "moveScale": 0.3
+    },
+    {
+      "id": 22,
+      "name": "pounce",
+      "clip": "Creature_Pounce",
+      "kind": "attack",
+      "duration": 0.8,
+      "advance": {
+        "distance": 1.2,
+        "from": 0.1,
+        "to": 0.5
+      },
+      "hitAt": 0.35,
+      "moveScale": 0
+    },
+    {
+      "id": 23,
+      "name": "roar",
+      "clip": "Creature_Roar",
+      "kind": "attack",
+      "duration": 1.0,
+      "hitAt": 0.4,
+      "moveScale": 0
+    },
+    {
+      "id": 24,
+      "name": "breath",
+      "clip": "Creature_Breath",
+      "kind": "attack",
+      "duration": 1.2,
+      "hitAt": 0.5,
+      "moveScale": 0
+    },
+    {
+      "id": 25,
+      "name": "tail whip",
+      "clip": "Creature_TailWhip",
+      "kind": "attack",
+      "duration": 0.7,
+      "hitAt": 0.3,
+      "moveScale": 0.1
+    },
+    {
+      "id": 26,
+      "name": "stomp",
+      "clip": "Creature_Stomp",
+      "kind": "attack",
+      "duration": 0.9,
+      "hitAt": 0.4,
+      "moveScale": 0
+    },
+    {
+      "id": 27,
+      "name": "wing buffet",
+      "clip": "Creature_WingBuffet",
+      "kind": "attack",
+      "duration": 0.6,
+      "hitAt": 0.25,
+      "moveScale": 0
+    },
+    {
+      "id": 28,
+      "name": "sting",
+      "clip": "Creature_Sting",
+      "kind": "attack",
+      "duration": 0.5,
+      "hitAt": 0.2,
+      "moveScale": 0.2
+    },
+    {
+      "id": 29,
+      "name": "cleave",
+      "clip": "Creature_Cleave",
+      "kind": "attack",
+      "duration": 0.8,
+      "advance": {
+        "distance": 0.5,
+        "from": 0.1,
+        "to": 0.4
+      },
+      "hitAt": 0.35,
+      "moveScale": 0
     }
   ]
 }

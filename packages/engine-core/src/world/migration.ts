@@ -18,6 +18,14 @@
  * The host owns the ECS side (serialize, instantiate, drop, redirect).
  */
 import type { ChunkRange, HeartbeatAck, MigrationOutcome, MigrationRecord, RegionInfo } from "@mmo-engine/world-server";
+import {
+  LogProducerClient,
+  logWorldMigrationAbortFailed,
+  logWorldMigrationBeginFailed,
+  logWorldMigrationCommitUnconfirmed,
+  logWorldMigrationReadFailed,
+  stdioWarn,
+} from "../logging/index.js";
 import { WorldTransportError } from "./client.js";
 
 /** What the coordinator needs from the world (WorldClient provides it). */
@@ -54,6 +62,8 @@ export interface MigrationCoordinatorOptions {
   retryAfterMs?: number;
   now?: () => number;
   log?: (line: string) => void;
+  /** Log-ring producer: the failure diagnostics become typed records (0x0409-0x040C). */
+  logProducer?: LogProducerClient;
 }
 
 /** A position the coordinator checks, in world units. */
@@ -94,6 +104,9 @@ export class MigrationCoordinator {
 
   /** Open outgoing migrations, for stats and tests. */
   get pendingOutgoing(): ReadonlyMap<string, { migrationId: string; toRegion: string }> { return this.outgoing; }
+
+  /** The registry as last read (cross-region view, IM8). */
+  get knownRegions(): readonly RegionInfo[] { return this.regions; }
 
   async refreshRegistry(): Promise<void> {
     this.regions = await this.opts.world.listRegions();
@@ -146,7 +159,10 @@ export class MigrationCoordinator {
       // Target not live, entity already migrating, world unreachable:
       // the entity stays here; try again later.
       this.retryAt.set(entityId, this.now() + (this.opts.retryAfterMs ?? 5000));
-      this.log(`[migration] begin ${entityId} -> ${target.regionId} failed: ${(err as Error).message}`);
+      this.log(
+        `[migration] begin ${entityId} -> ${target.regionId} failed: ${(err as Error).message}`,
+        (p) => logWorldMigrationBeginFailed(p, entityId, target.regionId, (err as Error).message),
+      );
     } finally {
       this.beginning.delete(entityId);
     }
@@ -159,7 +175,10 @@ export class MigrationCoordinator {
       this.emit({ kind: "walked_back", entityId, migrationId });
     } catch (err) {
       // 409: the target committed first. The ack will hand the entity off.
-      this.log(`[migration] abort ${migrationId} failed: ${(err as Error).message}`);
+      this.log(
+        `[migration] abort ${migrationId} failed: ${(err as Error).message}`,
+        (p) => logWorldMigrationAbortFailed(p, migrationId, (err as Error).message),
+      );
     }
   }
 
@@ -219,7 +238,10 @@ export class MigrationCoordinator {
     try {
       m = await this.opts.world.getMigration(migrationId);
     } catch (err) {
-      this.log(`[migration] read ${migrationId} failed: ${(err as Error).message}`);
+      this.log(
+        `[migration] read ${migrationId} failed: ${(err as Error).message}`,
+        (p) => logWorldMigrationReadFailed(p, migrationId, (err as Error).message),
+      );
       return false;
     }
     if (m.toRegion !== this.opts.world.regionId) return false;
@@ -251,7 +273,10 @@ export class MigrationCoordinator {
       }
       // Unknown outcome (world unreachable): keep the copy; the next ack
       // retries the commit (still begun), confirms it, or drops the copy.
-      this.log(`[migration] commit ${migrationId} unconfirmed: ${(err as Error).message}`);
+      this.log(
+        `[migration] commit ${migrationId} unconfirmed: ${(err as Error).message}`,
+        (p) => logWorldMigrationCommitUnconfirmed(p, migrationId, (err as Error).message),
+      );
       return false;
     }
     if (!taken.committed) {
@@ -268,5 +293,12 @@ export class MigrationCoordinator {
   }
 
   private emit(e: MigrationEvent): void { for (const l of this.listeners) l(e); }
-  private log(line: string): void { (this.opts.log ?? ((l: string) => console.warn(l)))(line); }
+  /**
+   * Failure diagnostic: a typed record when a log-ring producer is attached
+   * (docs/SAB-LOGGING-LAYER-SPEC.md §2.4), else the seam line as before.
+   */
+  private log(line: string, emit?: (p: LogProducerClient) => void): void {
+    if (emit && this.opts.logProducer) emit(this.opts.logProducer);
+    else (this.opts.log ?? stdioWarn)(line);
+  }
 }

@@ -23,9 +23,16 @@ import type { TerrainRenderer } from './terrain-renderer.js';
 
 /** A ChunkSource backed by a live mirror Client connection. */
 export class MirrorTileSource implements ChunkSource {
+  private lastFetch = 0;
   constructor(private readonly client: MirrorClient) {}
 
   async fetchTiles(keys: string[]): Promise<TerrainTile[]> {
+    const now = performance.now();
+    const wait = Math.max(0, 120 - (now - this.lastFetch));
+    if (wait > 0) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    this.lastFetch = performance.now();
     return this.client.requestTiles(keys);
   }
 }

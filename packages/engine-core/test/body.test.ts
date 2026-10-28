@@ -11,7 +11,7 @@ import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { blowRng, Body, BodySystem, BLEEDING_BIT, Injury, NO_JUMP, restoreBody, Wound, type BodySkills } from "../src/body.js";
 import { treatmentSeconds } from "@mmo-engine/rules";
-import { CombatSystem, type Weapon } from "../src/combat.js";
+import { aimFromLookPitch, CombatSystem, type Weapon } from "../src/combat.js";
 import { DeathSystem } from "../src/death.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
 import { loadGameRules } from "../src/rules/boot.js";
@@ -282,9 +282,9 @@ describe("body in combat", () => {
     const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => SWORD, body: w.body, techniques: () => Object.keys(rules.combat.techniques), skills });
     const systems = [new IntentSystem(), combat, w.body, new IntegrateSystem()];
     let tick = 0;
-    const run = (ticks: number, buttons = 0): void => {
+    const run = (ticks: number, buttons = 0, lookPitch = 0): void => {
       for (let i = 0; i < ticks; i++) {
-        w.sim.queueIntent(e, { mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons });
+        w.sim.queueIntent(e, { mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch, jump: false, buttons });
         w.sim.beginTick(++tick);
         for (const s of systems) s.step(w.sim, DT);
         w.sim.endTick();
@@ -344,6 +344,31 @@ describe("body in combat", () => {
     assert.equal(f.combat.setStance(f.e, null, null), null);
     assert.deepEqual(f.combat.stanceOf(f.e), {});
   });
+
+  it("derives aim from lookPitch when no explicit stance.aim is locked", () => {
+    const f = fight();
+    const parts = f.body.parts;
+    assert.equal(aimFromLookPitch(0, parts, "torso"), "torso");
+    assert.equal(aimFromLookPitch(-0.35, parts, "torso"), "head");
+    assert.equal(aimFromLookPitch(0.45, parts, "torso", -0.2), "legLeft");
+    assert.equal(aimFromLookPitch(0.45, parts, "torso", 0.2), "legRight");
+    assert.equal(aimFromLookPitch(0.24, parts, "torso", -0.2), "armUpperLeft");
+    assert.equal(aimFromLookPitch(0.24, parts, "torso", 0.2), "armUpperRight");
+
+    skill = rules.skills.max;
+    let onHead = 0;
+    for (let i = 0; i < 12; i++) {
+      C.Health.current[f.t] = 100;
+      C.Transform.pz[f.e] = 0;
+      f.body.respawned(f.sim, f.t, { clearInjuries: true, restoreParts: true });
+      f.run(60, IntentButton.Attack, -0.35);
+      f.run(40, 0, -0.35);
+      for (const h of f.combat.drainHits()) {
+        if (h.part === "head") onHead++;
+      }
+    }
+    assert.ok(onHead >= 8, `pitch-aimed at head, landed ${onHead}/12 times`);
+  });
 });
 
 describe("medicine (M4)", () => {
@@ -363,10 +388,10 @@ describe("medicine (M4)", () => {
     ...hooks,
     resolveTreatment: (i: Parameters<typeof hooks.resolveTreatment>[0]) => ({ ...hooks.resolveTreatment(i), success }),
   });
-  const world = (success: boolean, medicine: Record<number, number> = {}) => {
+  const world = (success: boolean, medicine: Record<number, number> = {}, bodyRules = rules.body) => {
     const book = skillbook(medicine);
     const w = setup(book.skills);
-    const body = new BodySystem(rules.body, sure(success), undefined, book.skills);
+    const body = new BodySystem(bodyRules, sure(success), undefined, book.skills);
     const run = (seconds: number): void => {
       const n = Math.round(seconds * 30);
       for (let i = 0; i < n; i++) {
@@ -408,6 +433,27 @@ describe("medicine (M4)", () => {
     assert.deepEqual(w.body.needs(e), { part: "handLeft", kind: "stump" });
     assert.deepEqual(w.body.needs(e, "legRight"), { part: "legRight", kind: "set" });
     assert.equal(w.body.needs(e, "head"), null);
+  });
+
+  it("the treatment order and Medicine training come from the rules (EG8)", () => {
+    const t = rules.body.treatment;
+    const custom = { ...rules.body, treatment: { ...t, trainsAbove: 0.5, failedTeaches: 0.2, priority: { ...t.priority, set: 10 } } };
+    const w = world(true, {}, custom);
+    const e = w.make();
+    w.body.ensure(w.sim, e);
+    w.body.applyBlow(w.sim, e, "legRight", "blunt", 10); // maims
+    w.body.applyBlow(w.sim, e, "handLeft", "cut", 50); // severs
+    assert.deepEqual(w.body.needs(e), { part: "legRight", kind: "set" }, "setting ranks first here");
+    w.body.treat(w.sim, e, e);
+    w.run(t.set.seconds + 0.1);
+    assert.ok(near(w.trained[0].difficulty, t.set.difficulty + 0.5));
+    const bad = world(false, {}, custom);
+    const b = bad.make();
+    bad.body.ensure(bad.sim, b);
+    bad.body.applyBlow(bad.sim, b, "torso", "thrust", 2);
+    bad.body.treat(bad.sim, b, b);
+    bad.run(t.bandage.seconds + 0.1);
+    assert.ok(near(bad.trained[0].difficulty, t.bandage.difficulty + 0.5 + 0.2));
   });
 
   it("setting a maimed leg makes it harmed again, so it heals and walks", () => {

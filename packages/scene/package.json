@@ -1,7 +1,7 @@
 {
   "description": "Scene documents: the versioned scene schema, the node and component registry, validation with per-path errors, and pure edit operations with an undo/redo history",
   "devDependencies": {
-    "@types/node": "^25.0.0",
+    "@types/node": "^25.9.9",
     "typescript": "^5.6.3"
   },
   "main": "dist/src/index.js",
@@ -13,5 +13,6 @@
   },
   "type": "module",
   "types": "dist/src/index.d.ts",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "sideEffects": false
 }

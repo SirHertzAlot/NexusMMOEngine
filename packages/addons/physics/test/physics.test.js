@@ -51,14 +51,30 @@ function addFloorAndSphere(w, sphereY = 5) {
   });
 }
 
-function readOne(w, id) {
-  const ids = new BigUint64Array([id]);
-  const pos = new Float32Array(3);
-  const quat = new Float32Array(4);
-  const lin = new Float32Array(3);
-  const ang = new Float32Array(3);
-  w.copyResults(1, ids, pos, quat, lin, ang);
-  return { pos, quat, lin, ang };
+// Phase 2 (zero-copy): component arrays indexed by eid, mirroring the
+// bitECS Transform + Velocity stores. Tests use small arrays with
+// explicit eid assignment (floor -> eid 0, sphere -> eid 1).
+function compArrays(n) {
+  return {
+    px: new Float32Array(n), py: new Float32Array(n), pz: new Float32Array(n),
+    qx: new Float32Array(n), qy: new Float32Array(n), qz: new Float32Array(n),
+    qw: new Float32Array(n),
+    lx: new Float32Array(n), ly: new Float32Array(n), lz: new Float32Array(n),
+    ax: new Float32Array(n), ay: new Float32Array(n), az: new Float32Array(n),
+  };
+}
+
+function readOne(w, id, eid = 0) {
+  const c = compArrays(eid + 1);
+  w.copyResults(1, new BigUint64Array([id]), new Int32Array([eid]),
+    c.px, c.py, c.pz, c.qx, c.qy, c.qz, c.qw,
+    c.lx, c.ly, c.lz, c.ax, c.ay, c.az);
+  return {
+    pos: new Float32Array([c.px[eid], c.py[eid], c.pz[eid]]),
+    quat: new Float32Array([c.qx[eid], c.qy[eid], c.qz[eid], c.qw[eid]]),
+    lin: new Float32Array([c.lx[eid], c.ly[eid], c.lz[eid]]),
+    ang: new Float32Array([c.ax[eid], c.ay[eid], c.az[eid]]),
+  };
 }
 
 test('lifetime: create, bodyCount, explicit destroy is idempotent', (t) => {
@@ -118,7 +134,7 @@ test('sphere dropped onto static floor settles at rest height', (t) => {
   t.after(() => w.destroy());
   addFloorAndSphere(w, 5);
   for (let i = 0; i < 180; i++) w.step(1 / 60, 2);
-  const { pos, lin } = readOne(w, 2n);
+  const { pos, lin } = readOne(w, 2n, 1);
   // Radius 0.5 resting on a floor whose top is y=0 => y ~= 0.5.
   // Jolt's contact solver leaves a small penetration slop; the
   // acceptance bound is |y - 0.5| < 0.05 with ~zero velocity.
@@ -141,16 +157,17 @@ test('kinematic body follows syncBodies targets', (t) => {
     }),
   );
   const ids = new BigUint64Array([4n]);
-  const pos = new Float32Array(3);
-  const quat = new Float32Array([0, 0, 0, 1]);
-  const zero = new Float32Array(3);
+  const eids = new Int32Array([0]);
+  const c = compArrays(1);
+  c.qw[0] = 1;
   const flags = new Uint8Array([SyncFlags.None]);
   for (let i = 1; i <= 60; i++) {
-    pos[0] = i / 10; // drive +x at 6 u/s
-    w.syncBodies(1, ids, pos, quat, zero, zero, flags, 1 / 60);
+    c.px[0] = i / 10; // drive +x at 6 u/s
+    w.syncBodies(1, ids, eids,
+      c.px, c.py, c.pz, c.qx, c.qy, c.qz, c.qw, flags, 1 / 60);
     w.step(1 / 60, 1);
   }
-  const got = readOne(w, 4n);
+  const got = readOne(w, 4n, 0);
   assert.ok(Math.abs(got.pos[0] - 6) < 0.01, `kinematic x=${got.pos[0]}`);
 });
 
@@ -160,20 +177,21 @@ test('dynamic teleport via syncBodies flag repositions the body', (t) => {
   addFloorAndSphere(w, 5);
   for (let i = 0; i < 180; i++) w.step(1 / 60, 2);
   const ids = new BigUint64Array([2n]);
+  const eids = new Int32Array([1]);
+  const c = compArrays(2);
+  c.px[1] = 10; c.py[1] = 8; c.pz[1] = -3; c.qw[1] = 1;
   w.syncBodies(
-    1, ids,
-    new Float32Array([10, 8, -3]),
-    new Float32Array([0, 0, 0, 1]),
-    new Float32Array(3), new Float32Array(3),
+    1, ids, eids,
+    c.px, c.py, c.pz, c.qx, c.qy, c.qz, c.qw,
     new Uint8Array([SyncFlags.Teleport]),
     1 / 60,
   );
-  const got = readOne(w, 2n);
+  const got = readOne(w, 2n, 1);
   assert.ok(Math.abs(got.pos[0] - 10) < 1e-6, `teleport x=${got.pos[0]}`);
   assert.ok(Math.abs(got.pos[1] - 8) < 1e-6, `teleport y=${got.pos[1]}`);
   // ...and it keeps simulating afterwards (falls from the new height).
   for (let i = 0; i < 30; i++) w.step(1 / 60, 2);
-  const after = readOne(w, 2n);
+  const after = readOne(w, 2n, 1);
   assert.ok(after.pos[1] < 8, `still falling: y=${after.pos[1]}`);
 });
 
@@ -182,18 +200,19 @@ test('syncBodies without teleport leaves a dynamic body alone', (t) => {
   t.after(() => w.destroy());
   addFloorAndSphere(w, 5);
   for (let i = 0; i < 180; i++) w.step(1 / 60, 2);
-  const before = readOne(w, 2n).pos[1];
+  const before = readOne(w, 2n, 1).pos[1];
   const ids = new BigUint64Array([2n]);
+  const eids = new Int32Array([1]);
+  const c = compArrays(2);
+  c.px[1] = 99; c.py[1] = 99; c.pz[1] = 99; c.qw[1] = 1; // must be ignored: no teleport flag
   w.syncBodies(
-    1, ids,
-    new Float32Array([99, 99, 99]), // must be ignored: no teleport flag
-    new Float32Array([0, 0, 0, 1]),
-    new Float32Array(3), new Float32Array(3),
+    1, ids, eids,
+    c.px, c.py, c.pz, c.qx, c.qy, c.qz, c.qw,
     new Uint8Array([SyncFlags.None]),
     1 / 60,
   );
   w.step(1 / 60, 1);
-  const after = readOne(w, 2n).pos[1];
+  const after = readOne(w, 2n, 1).pos[1];
   assert.ok(Math.abs(after - before) < 0.01, `dynamic untouched: ${before} -> ${after}`);
 });
 

@@ -114,9 +114,8 @@ Channel packets the core answers:
 
 Pushes to every connected edge, every tick: `tick.events`
 (`{ tick, events }`, that tick's hit and life messages, sent even when
-empty) and `tick.delta` (`{ tick, delta }`, the same FlatBuffers delta the
-clients get, base64). On ticks where `isSnapshotTick(n)` (`n % 300 === 0`)
-also `snapshot` (`{ tick, snapshot }`, base64).
+empty). Players' deltas and snapshots travel as their own relayed `wire.*`
+frames (E3b), so there is no separate base64 mirror stream.
 
 Sessions: tokens live in `world.db`'s `sessions` table
 (`token, playerId, createdAt, expiresAt`), so a core restart keeps them.

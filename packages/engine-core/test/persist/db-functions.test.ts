@@ -14,6 +14,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { PersistenceCore, PersistenceError } from "../../src/persist/persistence-core.js";
 import {
+  checkQueryPlan,
   extractParams,
   loadDbCaches,
   loadDbFunctions,
@@ -263,6 +264,61 @@ LIMIT 100;
       await rejects(bare.createDbFunction({ name: "f", db: "characters", sql: "SELECT 1" }), "bad-request");
     } finally {
       bare.close();
+    }
+  });
+});
+
+describe("checkQueryPlan (EA17)", () => {
+  const def = (sql: string, params: string[] = []) => ({ name: "f", db: "world", sql, params });
+  const plan = (details: string[]) => details.map((detail, i) => ({ id: i, parent: 0, notused: 0, detail }));
+
+  it("returns no warnings for indexed searches", () => {
+    const explain = () => plan(["SEARCH t USING INDEX i (x=?)"]);
+    assert.deepEqual(checkQueryPlan(def("SELECT * FROM t WHERE x = :x", ["x"]), explain), []);
+  });
+
+  it("warns on full table scans", () => {
+    const explain = () => plan(["SCAN t"]);
+    const warnings = checkQueryPlan(def("SELECT * FROM t"), explain);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /full table scan on "t"/);
+    assert.match(warnings[0], /consider an index/);
+  });
+
+  it("does not warn on SCAN USING INDEX", () => {
+    const explain = () => plan(["SCAN t USING INDEX i"]);
+    assert.deepEqual(checkQueryPlan(def("SELECT * FROM t WHERE y > 5"), explain), []);
+  });
+
+  it("reports EXPLAIN failures", () => {
+    const explain = () => { throw new Error("no such table: t"); };
+    const warnings = checkQueryPlan(def("SELECT * FROM t"), explain);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /cannot explain query plan/);
+  });
+
+  it("checks against a real SQLite database", () => {
+    const db = new Database(":memory:");
+    try {
+      db.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)");
+      db.exec("CREATE INDEX idx_name ON items(name)");
+      const explain = (sql: string, params: Record<string, null>) => {
+        // Bind NULL for each parameter.
+        const stmt = db.prepare(sql);
+        return stmt.all(params) as { id: number; parent: number; notused: number; detail: string }[];
+      };
+      // Indexed: no warning.
+      assert.deepEqual(
+        checkQueryPlan(def("SELECT * FROM items WHERE name = :n", ["n"]), explain),
+        [],
+      );
+      // Unindexed expression: warning.
+      db.exec("CREATE TABLE t2 (a INTEGER, b INTEGER)");
+      const w2 = checkQueryPlan(def("SELECT * FROM t2 WHERE a + b > 10"), (s, p) => db.prepare(s).all(p) as never);
+      assert.ok(w2.length > 0, "expression without index should warn");
+      assert.match(w2[0], /full table scan/);
+    } finally {
+      db.close();
     }
   });
 });

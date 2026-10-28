@@ -36,18 +36,27 @@ export interface PcgService {
 }
 
 /**
+ * Serve `library` over the Pcg webrpc service on any gateway, authenticated by
+ * its session tokens (the region's, or a dungeon instance's). Composes with
+ * whatever handler is already mounted (e.g. /health): the first handler to
+ * claim the request wins. Call before gw.listen().
+ */
+export function mountPcgService(gw: Gateway, library: PcgAssetLibrary): RpcServer {
+  const rpc = new RpcServer({ authenticate: (token) => gw.sessionUser(token), logger: gw.logger });
+  registerPcgRpc(rpc, library);
+  const prev = gw.getHttpHandler();
+  gw.setHttpHandler((req, res) => (prev ? prev(req, res) : false) || rpc.handle(req, res));
+  return rpc;
+}
+
+/**
  * Mount the Pcg service on the gateway (call before gw.listen()). Null when
  * there is no library at `dir` — PCG assets are optional.
  */
 export function startPcgService(gw: Gateway, dir = DEFAULT_PCG_ASSETS, cooker = loadNativeCooker()): PcgService | null {
   if (!existsSync(path.join(dir, "index.json"))) return null;
   const library = PcgAssetLibrary.load(dir, cooker.cooker);
-  const rpc = new RpcServer({ authenticate: (token) => gw.sessionUser(token) });
-  registerPcgRpc(rpc, library);
-  // Compose with whatever handler is already mounted (e.g. /health):
-  // the first handler to claim the request wins.
-  const prev = gw.getHttpHandler();
-  gw.setHttpHandler((req, res) => (prev ? prev(req, res) : false) || rpc.handle(req, res));
+  const rpc = mountPcgService(gw, library);
   const assets = library.list();
   const summary =
     `${assets.length} PCG asset(s) (${assets.map((a) => a.id).join(", ")}) from ${dir}; ` +

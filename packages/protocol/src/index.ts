@@ -19,6 +19,8 @@ export type {
   GuildRank,
   GuildState,
   ByeMessage,
+  BorderMessage,
+  BorderTicket,
   ChatBroadcast,
   ChatChannel,
   ChatMessage,
@@ -45,26 +47,55 @@ export {
   decodeIntentMessage,
   decodeSnapshot,
   encodeDelta,
+  encodeDeltaSoA,
   encodeIntentMessage,
   encodeSnapshot,
+  encodeSnapshotSoA,
 } from "./codec.js";
+export {
+  decodeFastDelta,
+  encodeFastDelta,
+  encodeFastDeltaFromSoA,
+  tryDecodeFastDelta,
+  FAST_PATH_HEADER_BYTES,
+  FAST_PATH_MAGIC,
+  FAST_PATH_RECORD_BYTES,
+  FAST_PATH_VERSION,
+  FastPathError,
+} from "./fast-path.js";
+export type { FastPathDecodeResult, FastPathEntry, FastPathTransformColumns, FastPathVelocityColumns } from "./fast-path.js";
 export type {
+  ActionSoA,
+  AnimationSoA,
+  AppearanceSoA,
   AssetRefRow,
+  AssetSoA,
   BodyConfigRow,
+  BodySoA,
   CharacterRefRow,
+  CharacterRefSoA,
   ChunkRow,
+  ChunkSoA,
   CollectedState,
+  CollectedStateSoA,
   DecodedIntentMessage,
   HealthRow,
+  HealthSoA,
   IntentFields,
   IntentRow,
+  IntentSoA,
   LocomotionRow,
+  LocomotionSoA,
   AppearanceRow,
   ActionRow,
   AnimationRow,
+  SoAColumns,
   StaminaRow,
+  StaminaSoA,
   TransformRow,
+  TransformSoA,
   VelocityRow,
+  VelocitySoA,
 } from "./codec.js";
 export {
   applyBrush,
@@ -83,9 +114,13 @@ export type { ChunkRange, WorldInfo, WorldMap, WorldMapWire } from "./world-info
 export { Ability, IntentButton, LocomotionMode } from "./locomotion.js";
 export { COMBAT_MOVES, DEFAULT_COMBAT_MOVES, Move, combatMove, moveTravel, setCombatMoves, validateCombatMoves, type CombatIssue } from "./combat.js";
 export type { CombatMove, MoveKind } from "./combat.js";
-export { ARMOUR_SLOT_NAMES, GROUND_ITEM_VARIANT } from "./items.js";
+export { ARMOUR_SLOT_NAMES, BROKEN_VARIANT, GROUND_ITEM_VARIANT } from "./items.js";
+export type { ChestsMessage, ChestView, InteractAction } from "./interact.js";
+export type { PouchMaterial, PouchMessage, ResourceNodeView, ResourcesMessage } from "./gathering.js";
 export type { ArmourSlotName, BodyMessage, PartStateName, StanceMessage, TreatMessage, TreatmentMessage, TreatmentName, SkillsMessage, DisciplineRequirement, CastMessage, ManaMessage, SpellMessage, LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView, AbilityTrigger, AbilityMessage, TelegraphShapeView, TelegraphMessage, StatusMessage, DuelAction, DuelMessage, TradeAction, TradeMessage, WalletMessage, VendorAction, VendorMessage, AuctionAction, AuctionMessage } from "./items.js";
 export type { DialogMessage, NpcView, NpcsMessage, QuestLogMessage, QuestOp, QuestStepView, QuestView } from "./quests.js";
-export type { DungeonEntranceView, DungeonMessage, DungeonOp } from "./dungeons.js";
+export type { DungeonEntranceView, DungeonLook, DungeonMessage, DungeonOp } from "./dungeons.js";
 export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";
 export { ClipId, CLIP_NAMES } from "./animation.js";
+export { decodeDeltaSet, DeltaSetKind, encodeDeltaSet, GLOBAL_SECTOR } from "./deltaset.js";
+export type { DeltaSet, DeltaSetEntry } from "./deltaset.js";

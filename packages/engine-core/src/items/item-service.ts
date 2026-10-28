@@ -29,6 +29,23 @@ import { ARMOUR_SLOTS, ArmourSlot, HandSlot, ItemStore, ItemWhere, type ArmourSl
 /** Height above the ground a lying item rests at, metres. */
 const REST_HEIGHT = 0.06;
 
+/**
+ * The fleet-mode grant executor (slice A2): routes one grant's commit
+ * through the world-tier `lootGrant` operation. Supplied by the
+ * server's fleet wiring (a WorldAtomicOps over the region's
+ * WorldClient); absent in standalone mode, when grants are local.
+ * Returns the settled outcome: a rejection is a value, an outage
+ * throws — the grant path fails closed on both.
+ */
+export interface AtomicGrantExecutor {
+  loot(
+    character: number,
+    sourceId: string,
+    instanceId: string,
+    def: number,
+  ): Promise<{ ok: true } | { ok: false; message: string }>;
+}
+
 export interface ItemServiceOptions {
   defs: ItemDefs;
   loot: LootRules;
@@ -37,8 +54,13 @@ export interface ItemServiceOptions {
   groundHeightAt?: (x: number, z: number) => number;
   /** Rank ids lowest first (the loot ladder), for the starter weapon. Default: none (any rank). */
   rankOrder?: readonly string[];
-  /** The item base a new character starts holding (M3b). Default "sword"; null: none. */
+  /** The item base a new character starts holding (M3b). Default null (none); the game pack opts in by naming a base. */
   starterBase?: string | null;
+  /**
+   * Slice A2 (fleet mode): the world-tier grant executor used by
+   * `giveGranted`. Absent: `giveGranted` is exactly `give`.
+   */
+  atomicGrant?: AtomicGrantExecutor;
 }
 
 export type ItemResult = { ok: true; message: string } | { ok: false; error: string };
@@ -58,6 +80,7 @@ export class ItemService implements SimSystem {
   private readonly groundOrder: number[] = [];
   private readonly rankOrder: readonly string[];
   private readonly starterBase: string | null;
+  private readonly atomicGrant: AtomicGrantExecutor | null;
   /** Characters already given their starter weapon this run. */
   private readonly outfitted = new Set<number>();
 
@@ -68,7 +91,8 @@ export class ItemService implements SimSystem {
     this.groundHeightAt = o.groundHeightAt ?? (() => 0);
     this.store = new ItemStore(o.loot.bagSlots);
     this.rankOrder = o.rankOrder ?? [];
-    this.starterBase = o.starterBase === undefined ? "sword" : o.starterBase;
+    this.starterBase = o.starterBase ?? null;
+    this.atomicGrant = o.atomicGrant ?? null;
   }
 
   /**
@@ -292,6 +316,125 @@ export class ItemService implements SimSystem {
     const item = this.store.create(def, this.defs.durability[def]);
     this.store.putInBag(character, item);
     return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
+  }
+
+  /**
+   * The grant path (slice A2): like `give`, but in fleet mode the
+   * grant's commit routes through the world-tier `lootGrant`
+   * operation and the settled outcome is applied to the local bag
+   * (the coordinator's reconciliation materialises the item under
+   * its world identity). Standalone (no executor wired) this is
+   * exactly `give`. Fail closed: a world rejection or an outage
+   * grants nothing — the pre-allocated local item is destroyed and
+   * the refusal surfaces as the result's error.
+   */
+  async giveGranted(character: number, def: number): Promise<ItemResult> {
+    if (!this.atomicGrant) return this.give(character, def);
+    if (def < 0 || def >= this.defs.count) return { ok: false, error: "no such item" };
+    if (!this.store.hasRoom(character)) return { ok: false, error: "the bag is full" };
+    // Allocate the item's identity locally first (it exists nowhere
+    // yet: created in the Free state, in no bag) so the world grant
+    // and the local item share one instance id.
+    const item = this.store.create(def, this.defs.durability[def]);
+    try {
+      const settled = await this.atomicGrant.loot(
+        character,
+        "system:grant",
+        `item-${item}`,
+        def,
+      );
+      if (!settled.ok) {
+        this.store.destroy(item);
+        return { ok: false, error: settled.message };
+      }
+    } catch (err) {
+      this.store.destroy(item);
+      return {
+        ok: false,
+        error: `grant refused: the world tier is unreachable (${(err as Error).message})`,
+      };
+    }
+    // The settled outcome reconciled the item into the bag; confirm
+    // it landed before reporting success.
+    if (!this.store.inBagOf(character, item)) {
+      return { ok: false, error: "grant refused: the settled outcome did not land" };
+    }
+    return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
+  }
+
+  /**
+   * Give a new item straight into a bag (quest rewards, dungeon loot,
+   * admin `give`): one grant shape everywhere. False for an unknown
+   * definition or a full bag.
+   */
+  grantItem(character: number, def: number): boolean {
+    return this.give(character, def).ok;
+  }
+
+  /** Definition of an item wherever it lives, or -1 when it is not a live item. */
+  defOf(item: number): number {
+    const slot = this.store.slot(item);
+    return slot < 0 ? -1 : this.store.defs[slot];
+  }
+
+  /**
+   * Move an item from one character's bag to another's (trade and auction
+   * settlement). False when the item is not in `from`'s bag or `to`'s
+   * bag is full (the item is left where it was).
+   */
+  moveItem(item: number, from: number, to: number): boolean {
+    if (!this.store.inBagOf(from, item)) return false;
+    return this.store.putInBag(to, item) >= 0;
+  }
+
+  /**
+   * Take an item out of a character's bag and destroy it (vendor sales,
+   * quest hand-ins). False when the item is not in the character's bag.
+   */
+  take(character: number, item: number): boolean {
+    if (!this.store.inBagOf(character, item)) return false;
+    this.store.destroy(item);
+    return true;
+  }
+
+  /**
+   * Eat or drink an item from the bag: its `nourish` and `quench` stats are the
+   * hunger and thirst it restores. The item is only used up when `apply` took
+   * some (it returns false when both meters were already full). `dryRun`
+   * only checks: `apply` is told not to take anything and the item stays.
+   */
+  consume(character: number, item: number, apply: (nourish: number, quench: number, dryRun: boolean) => boolean, dryRun = false): ItemResult {
+    if (!this.store.inBagOf(character, item)) return { ok: false, error: "you don't have that" };
+    const def = this.store.defs[this.store.slot(item)];
+    const stats = this.defs.stats[def];
+    const nourish = stats.nourish ?? 0;
+    const quench = stats.quench ?? 0;
+    if (nourish <= 0 && quench <= 0) return { ok: false, error: "you can't eat or drink that" };
+    if (!apply(nourish, quench, dryRun)) return { ok: false, error: nourish > 0 ? "you're not hungry" : "you're not thirsty" };
+    if (!dryRun) this.store.destroy(item);
+    return { ok: true, message: `${nourish > 0 ? "ate" : "drank"} ${this.defs.names[def]}` };
+  }
+
+  /** Use one item of an item base up from a character's bag (a key). False when they carry none. */
+  takeBase(character: number, base: string): boolean {
+    for (const item of this.store.bag(character)) {
+      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) return this.take(character, item);
+    }
+    return false;
+  }
+
+  /** How many items of an item base a character carries in their bag (quest checks). */
+  countBase(character: number, base: string): number {
+    let n = 0;
+    for (const item of this.store.bag(character)) {
+      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) n++;
+    }
+    return n;
+  }
+
+  /** The lowest-ranked definition of an item base (quest rewards grant the starter). */
+  resolveBase(base: string): number {
+    return this.defs.starter(base, this.rankOrder);
   }
 
   /** Expire ground items whose time is up. */

@@ -123,3 +123,103 @@ Proposed follow-up slices (not done in E5, which only measures):
 - **Heartbeat (B5, no change made):** a hung core is caught in about 19 s
   at the defaults (5 s × 3, plus the partial first interval). Tightening
   is a config change, `heartbeatMs` and `maxMissed`, for Joey to decide.
+
+## B3: Tick overhead of pushes (2026-10-20)
+
+Machine: AMD EPYC 9D25 126-Core Processor x2, 7.7 GiB, Linux 7.0.0-39-generic, Node v24.20.0. Commit `8a578f2`.
+
+1000 moving entities, 1000 measured ticks after 100 warm-up, same seed, ticks driven back to back. Tick time, ms:
+
+| Pushes | mean | p50 | p99 | max |
+|---|---|---|---|---|
+| disabled | 0.632 | 0.5471 | 1.1088 | 17.3995 |
+| enabled (1 edge connected) | 0.9842 | 0.7473 | 3.6071 | 16.5956 |
+
+Added mean per tick: **0.3522 ms** (budget < 0.5 ms): **PASS**. The edge received 920 `tick.delta` pushes.
+
+## B4: Delta bandwidth at scale (2026-10-20)
+
+Machine: AMD EPYC 9D25 126-Core Processor x2, 7.7 GiB, Linux 7.0.0-39-generic, Node v24.20.0. Commit `8a578f2`.
+
+Every entity moves every tick, so every delta carries all of them (the worst case). 300 ticks per row. Encode = FlatBuffers bytes to base64, JSON, and the length-prefixed frame.
+
+| Entities | delta frame (mean) | at 30 Hz | encode p50 ms | encode p99 ms | snapshot frame | snapshot encode ms |
+|---|---|---|---|---|---|---|
+| 1000 | 73.8 KiB | 2215 KiB/s | 0.1554 | 2.0839 | 125.7 KiB | 2.4978 |
+| 5000 | 366.3 KiB | 10989.9 KiB/s | 0.9321 | 11.738 | 625.7 KiB | 6.679 |
+| 10000 | 732.0 KiB | 21958.8 KiB/s | 1.7661 | 12.8834 | 1250.7 KiB | 16.1394 |
+
+Encode p99 budget < 5 ms: **BREACH** (worst 12.8834 ms).
+
+## B7: Interest bandwidth (2026-10-23)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `3922c955`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 |
+|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.3 KiB | 55.2 KiB | 9.84 | 19.23 | 3547.0 KiB | 3534.5 KiB |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 64.06 | 91.5 | 17583.7 KiB | 17534.5 KiB |
+| global | towns | 1000 | 55.3 KiB | 55.2 KiB | 7.86 | 22.14 | 2739.7 KiB | 2724.5 KiB |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 47.81 | 73.27 | 13578.8 KiB | 13516.2 KiB |
+
+## B7: Interest bandwidth (2026-10-23)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `76046301`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 |
+|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.3 KiB | 55.2 KiB | 2 | 4.36 | 97.7 KiB | 73.6 KiB |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 8.21 | 22.86 | 471.7 KiB | 365.3 KiB |
+| global | towns | 1000 | 55.3 KiB | 55.2 KiB | 2.61 | 8.02 | 97.7 KiB | 73.6 KiB |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 8.94 | 24.23 | 471.7 KiB | 365.3 KiB |
+
+## B7: Interest bandwidth (2026-10-24)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `52f604f4`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 |
+|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.4 KiB | 55.2 KiB | 1.18 | 3.1 | 97.7 KiB | 73.7 KiB |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 5.3 | 16.11 | 471.8 KiB | 365.3 KiB |
+| global | towns | 1000 | 55.4 KiB | 55.2 KiB | 1.23 | 3.5 | 97.7 KiB | 73.7 KiB |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 5.55 | 22.09 | 471.8 KiB | 365.3 KiB |
+| interest | spread | 1000 | 4.9 KiB | 8.2 KiB | 6.21 | 10.41 | 332.7 KiB | 335.5 KiB |
+| interest | spread | 5000 | 10.5 KiB | 12.2 KiB | 13 | 21.26 | 706.4 KiB | 707.6 KiB |
+| interest | towns | 1000 | 9.8 KiB | 15.5 KiB | 5.78 | 10.29 | 657.9 KiB | 663.6 KiB |
+| interest | towns | 5000 | 32.0 KiB | 48.1 KiB | 16.2 | 37.77 | 2134.2 KiB | 2137.3 KiB |
+
+## B7: Interest bandwidth (2026-10-24)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `658dc349`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 | edge assembly ms mean |
+|---|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.4 KiB | 55.2 KiB | 1.73 | 5.43 | 97.7 KiB | 73.7 KiB | 0 |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 5.66 | 18.81 | 471.8 KiB | 365.3 KiB | 0 |
+| global | towns | 1000 | 55.4 KiB | 55.2 KiB | 1.58 | 4.23 | 97.7 KiB | 73.7 KiB | 0 |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 6.41 | 23.12 | 471.8 KiB | 365.3 KiB | 0 |
+| interest | spread | 1000 | 4.9 KiB | 8.2 KiB | 9.42 | 22.77 | 228.2 KiB | 230.3 KiB | 1.22 |
+| interest | spread | 5000 | 10.5 KiB | 12.2 KiB | 14.46 | 22.77 | 495.6 KiB | 496.4 KiB | 1.335 |
+| interest | towns | 1000 | 9.8 KiB | 15.5 KiB | 5.42 | 10.75 | 149.9 KiB | 152.5 KiB | 0.742 |
+| interest | towns | 5000 | 32.0 KiB | 48.1 KiB | 17.45 | 63.63 | 450.8 KiB | 454.8 KiB | 1.597 |
+
+## B7: Interest bandwidth (2026-10-24)
+
+Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0.26200, Node v25.9.0. Commit `0b2614ad`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta).
+
+| Mode | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 | edge assembly ms mean |
+|---|---|---|---|---|---|---|---|---|---|
+| global | spread | 1000 | 55.4 KiB | 55.2 KiB | 1.18 | 2.8 | 97.7 KiB | 73.7 KiB | 0 |
+| global | spread | 5000 | 274.6 KiB | 273.9 KiB | 4.3 | 14.1 | 471.8 KiB | 365.3 KiB | 0 |
+| global | towns | 1000 | 55.4 KiB | 55.2 KiB | 1.08 | 3.13 | 97.7 KiB | 73.7 KiB | 0 |
+| global | towns | 5000 | 274.6 KiB | 273.9 KiB | 4.35 | 16.93 | 471.8 KiB | 365.3 KiB | 0 |

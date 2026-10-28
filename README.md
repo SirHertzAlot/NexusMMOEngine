@@ -6,6 +6,12 @@ regional state; the edge/core split and world server support client ingress
 and region coordination. The React Three Fiber client mirrors authoritative
 state and is never the source of truth.
 
+**Engine Wiki:** the complete hierarchical technical manual and guides live in [`docs/WIKI.md`](docs/WIKI.md) and the [`docs/wiki/`](docs/wiki/README.md) hub.
+
+**Developer Tooling & Interactive REPL:** modern Markdown editing with Yank Note (purocean/yn), in-note test execution, and live telemetry data apps live in [docs/wiki/10-developer-tooling-and-yank-note.md](docs/wiki/10-developer-tooling-and-yank-note.md).
+
+**Business Analysis & Strategy:** comprehensive competitive engine evaluations (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical benchmarks, strategic SWOT, and cloud hosting unit economics live in [docs/business-analysis/README.md](docs/business-analysis/README.md).
+
 **Documentation:** the full index is [`docs/README.md`](docs/README.md);
 start with [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md). Full
 engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
@@ -127,6 +133,89 @@ Server env: `MMO_PORT` (7777), `MMO_DATA_DIR` (packages/engine-core/data),
 `MMO_WORLD_SEED` (1234), `MMO_CHUNK_SIZE` (16). The client mirrors authoritative snapshots/deltas with interpolation and
 sends WASD/mouse-look intents upstream — no client prediction yet.
 Details: [`apps/client/README.md`](apps/client/README.md).
+
+## Baking everything: `npm run bake:all`
+
+One command bakes what a playable world needs, in dependency order. Steps
+whose outputs exist are skipped, so it is safe to run again.
+
+| # | Step | Reads | Writes |
+|---|---|---|---|
+| 1 | `build` | sources | `dist/` of engine-core, settlement, dungeon |
+| 2 | `world` | world spec | `<data>/world.db` (terrain tiles, surveys, spawn area) |
+| 3 | `loot` | rank ladder | `<data>/loot/pool.jsonl` |
+| 4 | `dungeons` | themes, species | `<data>/dungeons/*.dungeon.json` |
+| 5 | `settlement` | world spec (survey, site selection), scale, catalog | `<settlements>/<id>.settlement.json`, `<scenes>/settlement-<id>.scene.json` |
+| 6 | `places` | world spec, the towns' scenes | `<settlements>/places.json` (routes between the towns; guard outposts, inns, shacks, camp sites along them; homesteads between) |
+| 7 | `scale-fit` | catalog, scale | `<scale-out>` (`scale.local.json`) |
+| 8 | `wildlife-plan` | catalog, ecology plan | `<content>/ecology/wildlife.local.ecology.json` |
+| 9 | `wildlife-models` | catalog, wildlife table | `<content>/wildlife/models.local.json` |
+| 10 | `env` | the above | prints the `MMO_*` block, writes `<content>/bake-env.local.txt` |
+
+Steps 7 to 9 need the art catalog (`assets/catalog.json`, built by
+`convert:packs` / `import:glb` from the licensed packs, which this command
+does not run). Without it they are skipped with a warning and the town is
+stand-in boxes. Everything that names a licensed model is gitignored.
+
+```sh
+npm run bake:all                                   # everything, as many towns of 600 as the world supports
+npm run bake:all -- --dry-run                      # the plan and the commands, nothing run
+npm run bake:all -- --sites 3 --auto-size          # three towns, best sites first; 600, else 300, else 100 people
+npm run bake:all -- --sites max                    # the default: counts the sites (one survey), then bakes them all
+npm run bake:all -- --only settlement,scale-fit    # just those (the build comes along)
+npm run bake:all -- --skip dungeons,loot --force   # rebuild the rest (the world too: stop the server first)
+```
+
+Options: `--force`, `--only a,b`, `--skip a,b`, `--dry-run`, `--sites N|max` (default `max`: every site the world supports with all the constraints, up to 200),
+`--population N` (600), `--auto-size`, `--seed N` (1234, +1 per extra town),
+`--settlement-id ID` (`0001`, then `0002`, ...). It stops at the first failure,
+names the step and prints the command to rerun.
+
+### Path variables
+
+Resolved once and handed to every step. A flag beats the variable, which
+beats the default; relative values resolve from where you ran npm. Nothing
+the bake writes may be inside the assets folder (the bake refuses), and it
+never reads `users.csv`.
+
+| Variable | Flag | Default | Is |
+|---|---|---|---|
+| `MMO_REPO` | `--repo` | this checkout | the repo root |
+| `MMO_DATA_DIR` | `--data-dir` | `packages/engine-core/data` | world.db, loot, dungeons (the server's data folder) |
+| `MMO_CONTENT_DIR` | `--content-dir` | `content` | where bakes write scenes, settlements, scale, wildlife files |
+| `MMO_ASSETS_DIR` | `--assets-dir` | `assets` | the licensed art folder, read only |
+| `MMO_CATALOG` | `--catalog` | `<assets>/catalog.json` | the art catalog |
+| `MMO_WORLD_SPEC` | `--world-spec` | `packages/engine-core/worlds/default.world.json` | the world to bake and to site towns in |
+| `MMO_SETTLEMENT_OUT` | `--settlement-out` | `<content>/settlements` | settlement manifests |
+| `MMO_SCENES_DIR` | `--scenes-dir` | `<content>/scenes` | town scenes (the server's `MMO_SCENES` is an alias) |
+| `MMO_SCALE_OUT` | `--scale-out` | `<content>/scale.local.json` | the per-model scale fit |
+
+The same names work on the settlement CLIs (`settlement:bake`,
+`settlement:scale-fit`, `settlement:scale-report`; their own flags still win,
+`settlement:bake` also takes `--scenes <dir>`) and the server reads
+`MMO_SCENES_DIR`, `MMO_CATALOG` and `MMO_ASSETS_DIR`. The other content the
+server loads (rules, quests, prefabs, ...) stays the repo's.
+
+PowerShell:
+
+```powershell
+$env:MMO_DATA_DIR = "D:\bake\data"; $env:MMO_CONTENT_DIR = "D:\bake\content"
+$env:MMO_ASSETS_DIR = "C:\src\mmo-engine-full\assets"
+npm run bake:all -- --sites 2 --auto-size
+```
+
+Git Bash:
+
+```sh
+MMO_DATA_DIR=/d/bake/data MMO_CONTENT_DIR=/d/bake/content npm run bake:all -- --sites 2 --auto-size
+```
+
+When it ends it prints the block that starts the server on what it baked
+(`MMO_DATA_DIR`, `MMO_SCENES`, `MMO_SCENE=world`: every baked town plus the
+places between them, `MMO_SPAWN_OVERRIDE` at the best town's centre, `MMO_SCALE`, `MMO_ECOLOGY`), for PowerShell and for
+Git Bash, and writes it to `<content>/bake-env.local.txt`. `MMO_SCENE` also takes a
+comma-separated list (`settlement-0001,places`), and `npm start` sets
+`MMO_SCENE=world` itself when the scenes folder has baked towns.
 
 ## Memory and performance checks (valgrind)
 

@@ -10,9 +10,10 @@
     "mmo-dungeon-bake": "dist/src/cli.js"
   },
   "scripts": {
-    "build": "npm run build --workspace=@mmo-engine/wfc && npm run build --workspace=@mmo-engine/placement && npm run build --workspace=@mmo-engine/species && npm run build --workspace=@mmo-engine/picg && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/placement && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/picg && tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
-    "dungeon:bake": "npm run build && node dist/src/cli.js"
+    "dungeon:bake": "npm run build && node dist/src/cli.js",
+    "dungeon:art": "npm run build && node dist/src/art-cli.js"
   },
   "dependencies": {
     "zod": "^4.6.5",

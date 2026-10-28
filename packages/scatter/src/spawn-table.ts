@@ -29,17 +29,54 @@ const CollisionSchema = z.object({
   shape: z.enum(["box", "sphere", "none"]),
   halfExtents: z.tuple([z.number(), z.number(), z.number()]).optional(),
   radius: z.number().positive().optional(),
+  /**
+   * Without halfExtents/radius the shape comes from the model's bounds: this
+   * share of its footprint (a trunk inside a canopy), default all of it.
+   */
+  fit: z.number().positive().max(1).optional(),
   motion: z.enum(["static", "kinematic", "dynamic"]).default("static"),
 });
+
+/**
+ * Breakable (IX4): health and what happens at zero. "remove" takes the entity away; "variant" leaves it
+ * standing broken (no collider, nothing to use); "debris" swaps it for the `debris` archetype (walk-through).
+ * `loot` is a loot table rolled at the spot, owned by whoever dealt the last blow. `respawnS` (null: stays broken)
+ * is the world's (IX5); runs ignore it.
+ */
+export const BreakableSchema = z.object({
+  health: z.number().positive(),
+  into: z.enum(["remove", "variant", "debris"]).default("remove"),
+  debris: z.string().min(1).optional(),
+  loot: z.string().min(1).optional(),
+  respawnS: z.number().positive().nullable().default(null),
+  /** Strength (the `strength` stat) a player needs for a blow to hurt it; bodies with no stats (creatures) are not held to it. */
+  minStrength: z.number().min(0).optional(),
+  /** Multipliers by the kind of damage a blow does (a barrel is weak to "blunt", a tree to "slash"); a kind not named counts 1. */
+  damageMultipliers: z.record(z.string(), z.number().min(0)).optional(),
+  /** What mending it takes once it stands broken (`into: "variant"`): `count` of a pouch `material`, over `castSeconds`. Without it a broken prop stays broken. */
+  repair: z.object({ material: z.string().min(1), count: z.number().int().min(1), castSeconds: z.number().min(0).default(4) }).optional(),
+}).refine((b) => b.into !== "debris" || b.debris !== undefined, { message: "into debris needs a debris archetype", path: ["debris"] });
+export type Breakable = z.infer<typeof BreakableSchema>;
 
 export const SpawnArchetypeSchema = z.object({
   /** Manifest model id (mirrors the record key; kept for readability). */
   asset: z.string().min(1),
   /** Optional rigid-body config → BodyConfig component at spawn. */
   collision: CollisionSchema.optional(),
+  /** Kind of object for the global scale (content/scale.json); none means "prop". */
+  category: z.enum(["building", "tree", "rock", "plant", "prop"]).optional(),
+  /** Breakable from data (IX4): health, what it breaks into, loot. Takes the place of `health`. */
+  breakable: BreakableSchema.optional(),
   /** Optional health → Health component at spawn. */
   health: z.object({ max: z.number().positive() }).optional(),
-});
+  /**
+   * Where it may stand against the water: "land" (default) stays above the sea and lakes; "water" (coral,
+   * kelp) is the only kind placed below them, on the floor within `depthM`.
+   */
+  habitat: z.enum(["land", "water"]).optional(),
+  /** habitat "water": the depths it grows at, [shallowest, deepest] metres below the surface. */
+  depthM: z.tuple([z.number().min(0), z.number().positive()]).optional(),
+}).refine((a) => a.habitat !== "water" || a.depthM !== undefined, { message: "habitat water needs depthM (the depths it grows at)", path: ["depthM"] });
 export type SpawnArchetype = z.infer<typeof SpawnArchetypeSchema>;
 
 export const SpawnTableSchema = z.object({

@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "name": "places",
+  "kind": "world",
+  "nodes": [
+    {
+      "id": "places",
+      "name": "Places between the towns",
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      "children": [
+        {
+          "id": "P0001",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -816,
+              0,
+              -352
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0001-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -816,
+              0,
+              -316
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0002",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -352,
+              0,
+              576
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0002-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -316,
+              0,
+              576
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0003",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -1048,
+              0,
+              1040
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0003-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -1048,
+              0,
+              1004
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0004",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -1048,
+              0,
+              -1048
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0004-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -1084,
+              0,
+              -1048
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

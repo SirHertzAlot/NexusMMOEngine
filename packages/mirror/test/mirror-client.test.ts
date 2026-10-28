@@ -151,6 +151,13 @@ describe("MirrorClient handshake", () => {
     assert.equal(welcome.session_token, "ab".repeat(32));
   });
 
+  it("reports the gateway it joined (where its Pcg service is), not yet joined: null", async () => {
+    const client = new MirrorClient(() => new FakeSocket(), { onWelcome() {}, onState() {}, onError() {}, onClose() {} });
+    assert.equal(client.endpoint, null);
+    const joined = await connectClient({ token: "tok".padEnd(64, "0") });
+    assert.equal(joined.client.endpoint, "ws://localhost:7777");
+  });
+
   it("sends a token hello for reconnects", async () => {
     const { socket } = await connectClient({ token: "tok".padEnd(64, "0") });
     const hello = decodeControl<HelloMessage>(
@@ -613,10 +620,23 @@ describe("MirrorClient items (0x13-0x15)", () => {
     assert.deepEqual(inv, bag);
   });
 
+  it("keeps the wallet balance and ignores other 0x21 messages", async () => {
+    let seen: unknown = null;
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    (client as unknown as { events: { onWallet?: (w: unknown) => void } }).events.onWallet = (w) => (seen = w);
+    assert.equal(client.wallet, null);
+    const w = { kind: "wallet", tick: 3, balance: 125 };
+    socket.receive(encodeEnvelope(MessageType.Trade, encodeControl(w)));
+    assert.equal(client.wallet, 125);
+    assert.deepEqual(seen, w);
+    socket.receive(encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", tick: 4, vendor: "1", state: "listed" })));
+    assert.equal(client.wallet, 125);
+  });
+
   it("sends pickups and drops as item actions", async () => {
     const { client, socket } = await connectClient({ username: "u", password: "p" });
-    client.pickup(12n);
-    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Item)).payload), { kind: "item", action: "pickup", entity: "12" });
+    client.interact(12n);
+    assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Interact)).payload), { kind: "interact", entity: "12" });
     client.dropItem(3);
     assert.deepEqual(decodeControl(decodeEnvelope(socket.lastOf(MessageType.Item)).payload), { kind: "item", action: "drop", item: 3 });
   });
@@ -634,6 +654,15 @@ describe("MirrorClient combat events (0x16-0x17)", () => {
     socket.receive(encodeEnvelope(MessageType.Hit, encodeControl(hit)));
     socket.receive(encodeEnvelope(MessageType.Life, encodeControl(life)));
     assert.deepEqual(seen, [hit, life]);
+  });
+
+  it("passes telegraphs to onTelegraph", async () => {
+    const seen: unknown[] = [];
+    const { client, socket } = await connectClient({ username: "u", password: "p" });
+    (client as unknown as { events: { onTelegraph?: (m: unknown) => void } }).events.onTelegraph = (m) => seen.push(m);
+    const warned = { kind: "telegraph", tick: 5, id: 1, source: "7", shape: { kind: "cone", x: 1, z: 2, yaw: 0.5, range: 6, halfAngle: 0.7 }, state: "warned", ticksUntilHit: 30 };
+    socket.receive(encodeEnvelope(MessageType.Telegraph, encodeControl(warned)));
+    assert.deepEqual(seen, [warned]);
   });
 });
 

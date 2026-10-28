@@ -3,6 +3,7 @@
   "devDependencies": {
     "@gltf-transform/cli": "^4.5.1",
     "@types/node": "^25.0.0",
+    "playwright": "^1.64.1",
     "typescript": "^5.6.3"
   },
   "engines": {
@@ -12,12 +13,14 @@
   "private": true,
   "scripts": {
     "bench": "npm run bench --workspace=@mmo-engine/bench",
+    "bench:transport": "node packages/engine-core/dist/src/net/transport-bench.js",
     "bench:e5": "node scripts/bench-e5.mjs",
     "build": "node scripts/build.mjs",
     "client": "npm run dev --workspace=@mmo-engine/client",
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
     "codegen": "node scripts/codegen.mjs",
+    "lint": "node scripts/lint-no-console.mjs",
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",
     "editor:test": "npm test --workspace=@mmo-engine/editor",
@@ -31,7 +34,8 @@
     "bake:world:force": "npm run bake:world:force --workspace=@mmo-engine/engine-core",
     "preview:world": "npm run preview:world --workspace=@mmo-engine/engine-core --",
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:scripts",
+    "test:scripts": "node --test \"scripts/test/*.test.mjs\"",
     "test:addon-geometry": "npm run test --workspace=@mmo-engine/addon-geometry",
     "test:addon-navigation": "npm run test --workspace=@mmo-engine/addon-navigation",
     "valgrind:memcheck": "node scripts/valgrind/memcheck.mjs",
@@ -40,6 +44,7 @@
     "valgrind:check": "node scripts/valgrind/check.mjs",
     "valgrind:build-debug": "node scripts/valgrind/build-debug.mjs",
     "valgrind:perf": "npm run build --workspace=@mmo-engine/engine-core && node scripts/valgrind/perf.mjs",
+    "valgrind:helgrind": "node scripts/valgrind/helgrind.mjs",
     "test:addon-physics": "npm run test --workspace=@mmo-engine/addon-physics",
     "test:addon-picg": "npm run test --workspace=@mmo-engine/addon-picg",
     "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
@@ -51,12 +56,16 @@
     "deploy:local": "node scripts/deploy-local.mjs",
     "playtest": "node scripts/playtest.mjs --all",
     "build:native": "node scripts/build-native.mjs",
-    "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --"
+    "bake:all": "node scripts/bake-all.mjs",
+    "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --",
+    "settlement:region": "npm run settlement:region --workspace=@mmo-engine/settlement --",
+    "crawler:improvements": "node scripts/improvement-crawler.mjs"
   },
   "version": "0.1.0",
   "workspaces": [
     "packages/schema",
     "packages/protocol",
+    "packages/logging",
     "packages/mirror",
     "packages/art",
     "packages/rules",
@@ -67,6 +76,7 @@
     "packages/addons/template",
     "packages/addons/integrate",
     "packages/addons/procgen",
+    "packages/addons/terrain-kernel",
     "packages/addons/physics",
     "packages/addons/navigation",
     "apps/client",
@@ -77,6 +87,7 @@
     "packages/world-server",
     "packages/scatter",
     "packages/wfc",
+    "packages/fortify",
     "packages/dungeon",
     "packages/placement",
     "packages/species",
@@ -89,9 +100,17 @@
     "packages/addons/geometry",
     "packages/addons/perf-probe",
     "packages/build",
-    "packages/playtest"
+    "packages/playtest",
+    "packages/synthesis"
   ],
   "dependencies": {
-    "@surrealdb/node": "^3.0.3"
+    "@surrealdb/node": "^3.0.3",
+    "argon2": "^0.45.1"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true,
+    "esbuild@0.25.12": true,
+    "sharp@0.33.5": true,
+    "better-sqlite3@13.0.3": true
   }
 }

@@ -5,6 +5,7 @@
  */
 
 import type { Demographics } from "./demographics.js";
+import { NO_MASTERY, type TownMastery } from "./mastery.js";
 import type { SettlementRules } from "./rules.js";
 
 export interface Demand {
@@ -20,14 +21,76 @@ export interface Demand {
   max: Record<string, number>;
 }
 
-export function solveDemand(d: Demographics, rules: SettlementRules): Demand {
+export function solveDemand(d: Demographics, rules: SettlementRules, mastery: TownMastery = NO_MASTERY): Demand {
   const required: Record<string, number> = {};
   const max: Record<string, number> = {};
-  for (const [id, r] of Object.entries(rules.required)) {
-    const scaled = r.perPopulation ? Math.ceil(d.population / r.perPopulation) : 0;
-    const want = Math.max(r.min ?? 0, scaled);
-    required[id] = r.max !== undefined ? Math.min(want, r.max) : want;
-    if (r.max !== undefined) max[id] = r.max;
+  for (const [id, r] of Object.entries(requiredCounts(d.population, rules, mastery))) {
+    required[id] = r.required;
+    if (r.max !== Infinity) max[id] = r.max;
   }
   return { foodDemand: d.population, housingDemand: d.households, laborPool: d.laborPool, required, max };
+}
+
+/**
+ * How many of each required archetype a settlement of `population` must have, and at most may have. With its
+ * masters (`mastery`): a master workplace stands for each master and does the work of `yield` ordinary ones, so
+ * the ordinary archetype's count drops by that much (to none, if the masters cover it); and a kind that serves
+ * visitors (`visitors`) is counted on the residents plus the visitors the masters draw. A grand master's pupils
+ * add a workplace of the discipline's ordinary archetype for every `pupilsPerWorkplace` of them.
+ */
+export function requiredCounts(population: number, rules: SettlementRules, mastery: TownMastery = NO_MASTERY): Record<string, { required: number; max: number }> {
+  const out: Record<string, { required: number; max: number }> = {};
+  const m = rules.mastery;
+  // The work the masters do, in ordinary workplaces, per ordinary archetype.
+  const covered = new Map<string, number>();
+  for (const [name, p] of Object.entries(m?.professions ?? {})) covered.set(p.archetype, (covered.get(p.archetype) ?? 0) + (mastery.masters[name] ?? 0) * m!.yield);
+  for (const [id, r] of Object.entries(rules.required)) {
+    const people = r.visitors ? population + mastery.visitors : population;
+    if (r.minPopulation && people < r.minPopulation) {
+      out[id] = { required: 0, max: 0 };
+      continue;
+    }
+    const scaled = r.perPopulation ? Math.ceil(people / r.perPopulation) : 0;
+    // An export's workplaces stand whatever the masters do: their work is for the town, the export is besides.
+    const cover = r.export ? 0 : (covered.get(id) ?? 0);
+    const min = cover > 0 ? 0 : (r.min ?? 0);
+    const want = Math.max(min, scaled - cover);
+    const ceiling = Math.min(r.max ?? Infinity, r.maxPerPopulation ? Math.max(r.min ?? 0, Math.ceil(people / r.maxPerPopulation)) : Infinity);
+    // The masters' work also lowers the ceiling: a town of master smiths has fewer smithies, not as many.
+    const capped = cover > 0 ? Math.max(Math.min(want, ceiling), ceiling - cover) : ceiling;
+    out[id] = { required: Math.min(want, ceiling), max: capped };
+  }
+  // A grand master's pupils learn in the discipline's ordinary workplaces: one more for every `pupilsPerWorkplace`.
+  for (const [name, p] of Object.entries(m?.professions ?? {})) {
+    const g = m!.grandMaster;
+    const pupils = (mastery.grandMasters?.[name] ?? 0) * (g?.pupils ?? 0);
+    // Farm pupils learn on the grand master's own land: the town's food, not its plots, grows with them.
+    if (!pupils || !g || rules.archetypes[p.archetype]?.kinds.includes("agriculture")) continue;
+    const extra = Math.ceil(pupils / g.pupilsPerWorkplace);
+    const o = out[p.archetype] ?? { required: 0, max: Infinity };
+    out[p.archetype] = { required: o.required + extra, max: o.max + extra };
+  }
+  // Each master has their workplace: exactly as many as there are masters.
+  for (const [name, p] of Object.entries(m?.professions ?? {})) out[p.master] = { required: mastery.masters[name] ?? 0, max: mastery.masters[name] ?? 0 };
+  return out;
+}
+
+/**
+ * The demand the kept parcels can meet: when dry green land leaves too few farm plots, the farms required and the food the
+ * town grows are capped to what its plots can hold (the rest of its food is imported, the trade between towns), rather than
+ * the whole town failing. An archetype of one district kind is capped to the plots of that kind; food to the most the plots
+ * could feed.
+ */
+export function capDemand(demand: Demand, parcels: readonly { kind: string }[], rules: SettlementRules): { demand: Demand; importedFood: number } {
+  const plots = (kinds: readonly string[]): number => parcels.filter((p) => kinds.includes(p.kind)).length;
+  const required = Object.fromEntries(
+    Object.entries(demand.required).map(([id, min]) => {
+      const a = rules.archetypes[id];
+      return [id, a && a.kinds.every((k) => k === "agriculture") ? Math.min(min, plots(a.kinds)) : min];
+    }),
+  );
+  const archetypes = Object.values(rules.archetypes);
+  const mostFed = parcels.reduce((sum, p) => sum + Math.max(0, ...archetypes.filter((a) => a.kinds.includes(p.kind as never)).map((a) => a.feeds)), 0);
+  const foodDemand = Math.min(demand.foodDemand, mostFed);
+  return { demand: { ...demand, required, foodDemand }, importedFood: demand.foodDemand - foodDemand };
 }

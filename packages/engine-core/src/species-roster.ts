@@ -1,22 +1,23 @@
 /**
- * The species roster the server runs with: the engine's built-in roster with
- * the game's overlay file merged over it (`content/species/species.json`,
- * what the editor's Species grid writes; `MMO_SPECIES` names another).
+ * The species roster the server runs with: the sample pack
+ * (`content/species/species.json`, what the editor's Species grid writes;
+ * `MMO_SPECIES` names another) with the game's overlay file merged over it.
  *
  * Where it reaches the game:
  *  - scenes: a node's `Spawner.species` spawns a pack of that species' creature,
  *    sized by the species' `pack` (scene-spawn.ts);
  *  - the open world: a species the overlay edits sets the pack size of its
- *    creature when a biome table doesn't (the shipped roster leaves creature
+ *    creature when a biome table doesn't (the shipped pack leaves creature
  *    rules in charge, so playing with no overlay is unchanged);
  *  - boot checks: biome tables must name a creature or a species.
  *
  * A malformed overlay refuses the boot, listing every problem, like rules.
+ * No species rows live in engine source; the sample pack is data.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { BUILTIN_SPECIES, loadSpecies, type Roster } from "@mmo-engine/species";
+import { loadSpecies, type Roster } from "@mmo-engine/species";
 
 /** The repo's content/species/species.json (this file is dist/src/species-roster.js). */
 export const DEFAULT_SPECIES_FILE = fileURLToPath(new URL("../../../../content/species/species.json", import.meta.url));
@@ -32,7 +33,8 @@ export interface ServerRoster {
 export function loadServerRoster(file: string = process.env.MMO_SPECIES || DEFAULT_SPECIES_FILE): ServerRoster {
   if (!existsSync(file)) {
     if (process.env.MMO_SPECIES) throw new Error(`MMO_SPECIES: no file ${file}`);
-    return { roster: BUILTIN_SPECIES, edited: new Set(), summary: `species: ${Object.keys(BUILTIN_SPECIES).length} built in (no ${file})` };
+    const roster = loadSpecies();
+    return { roster, edited: new Set(), summary: `species: ${Object.keys(roster).length} from the sample pack (no ${file})` };
   }
   const roster = loadSpecies(file);
   const edited = new Set(Object.keys(JSON.parse(readFileSync(file, "utf8")) as object));

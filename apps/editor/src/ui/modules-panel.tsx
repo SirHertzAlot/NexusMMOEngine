@@ -12,9 +12,17 @@ import {
   ModuleRegistry,
   ModulesError,
   applyModules,
+  buildNative,
+  checkNative,
   fetchModules,
+  fetchSidecarDump,
+  fetchSidecars,
+  parkSidecar,
+  replaceSidecar,
+  type SidecarState,
   loadersFromGlob,
   saveEnabled,
+  type ModuleInfo,
   type ModuleProblem,
 } from "../modules-client.js";
 import { Button, MIcon, SectionTitle, Switch, notify } from "./components.js";
@@ -36,6 +44,150 @@ export function useModuleRegistry(): ModuleRegistry {
 }
 
 const sameOrder = (a: string[] | null, b: string[] | null): boolean => a !== null && b !== null && a.join(" ") === b.join(" ");
+
+/**
+ * EA10: Build/Check buttons for a module's native addon.
+ * Check reports whether the .node file exists; Build runs node-gyp.
+ */
+function NativeButtons({ module }: { module: ModuleInfo }): React.JSX.Element {
+  const [built, setBuilt] = React.useState<boolean | null>(null);
+  const [building, setBuilding] = React.useState(false);
+  const [log, setLog] = React.useState<string | null>(null);
+
+  async function check(): Promise<void> {
+    try {
+      const r = await checkNative(module.name);
+      setBuilt(r.built);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function build(): Promise<void> {
+    setBuilding(true);
+    setLog(null);
+    try {
+      const r = await buildNative(module.name);
+      setBuilt(r.built);
+      if (!r.built) setLog(`Build finished but ${module.native?.entry} not found.\n${r.stderr}`);
+      else setLog(null);
+    } catch (e) {
+      setLog(e instanceof Error ? e.message : String(e));
+      setBuilt(false);
+    } finally {
+      setBuilding(false);
+    }
+  }
+
+  // Check on mount.
+  React.useEffect(() => {
+    void check();
+  }, [module.name]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-xs">
+        <Tag>{`native · ${module.native?.systems.length ?? 0} system${(module.native?.systems.length ?? 0) === 1 ? "" : "s"}`}</Tag>
+        {built === null ? (
+          <span style={{ color: "var(--m3-on-surface-variant)" }}>checking…</span>
+        ) : built ? (
+          <span style={{ color: "var(--m3-primary)" }}>built ✓</span>
+        ) : (
+          <span style={{ color: "var(--m3-error)" }}>not built</span>
+        )}
+        <span className="ml-auto flex gap-1">
+          <Button size="sm" onClick={() => void check()} disabled={building}>
+            Check
+          </Button>
+          <Button size="sm" onClick={() => void build()} disabled={building}>
+            {building ? "Building…" : "Build"}
+          </Button>
+        </span>
+      </div>
+      {log && (
+        <pre className="max-h-32 overflow-auto rounded p-2 text-[11px]" style={{ background: "var(--m3-surface-2)" }}>
+          {log}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/**
+ * EA11: a module's sidecar. Shows its state while the play server runs, parks it (stop for
+ * good, leaving a debugging dump), replaces it with a fresh instance and shows the dump.
+ */
+function SidecarControls({ module }: { module: ModuleInfo }): React.JSX.Element {
+  const [status, setStatus] = React.useState<SidecarState | "not running">("not running");
+  const [hasDump, setHasDump] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [dump, setDump] = React.useState<string | null>(null);
+
+  async function refresh(): Promise<void> {
+    try {
+      const r = await fetchSidecars();
+      const mine = r.sidecars.find((s) => s.name === module.name);
+      setStatus(mine ? mine.status : "not running");
+      setHasDump(mine?.dump ?? false);
+    } catch {
+      setStatus("not running");
+    }
+  }
+  React.useEffect(() => {
+    void refresh();
+    const t = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(t);
+  }, [module.name]);
+
+  async function act(run: () => Promise<unknown>, done: string): Promise<void> {
+    setBusy(true);
+    try {
+      await run();
+      notify(done);
+      setDump(null);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    } finally {
+      await refresh();
+      setBusy(false);
+    }
+  }
+
+  async function showDump(): Promise<void> {
+    try {
+      setDump(JSON.stringify((await fetchSidecarDump(module.name)).dump, null, 2));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const running = status === "healthy" || status === "starting";
+  const colour = status === "healthy" ? "var(--m3-primary)" : status === "unhealthy" ? "var(--m3-error)" : "var(--m3-on-surface-variant)";
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-xs">
+        <Tag>sidecar</Tag>
+        <span style={{ color: colour }}>{status}</span>
+        <span className="ml-auto flex gap-1">
+          <Button size="sm" disabled={busy || !running} onClick={() => void act(() => parkSidecar(module.name, "parked from the editor"), `Parked ${module.name}. Its dump is ready.`)}>
+            Park
+          </Button>
+          <Button size="sm" disabled={busy || status === "not running"} onClick={() => void act(() => replaceSidecar(module.name), `Started a fresh ${module.name}.`)}>
+            Replace
+          </Button>
+          <Button size="sm" disabled={!hasDump} onClick={() => void showDump()}>
+            Dump
+          </Button>
+        </span>
+      </div>
+      {dump && (
+        <pre className="max-h-64 overflow-auto rounded p-2 text-[11px]" style={{ background: "var(--m3-surface-2)" }} aria-label={`${module.name} sidecar dump`}>
+          {dump}
+        </pre>
+      )}
+    </div>
+  );
+}
 
 export function ModulesPanel(): React.JSX.Element {
   const reg = useModuleRegistry();
@@ -134,6 +286,8 @@ export function ModulesPanel(): React.JSX.Element {
               ))}
               {m.editor && reg.errors[m.name] && <Tag>{`editor entry failed: ${reg.errors[m.name]}`}</Tag>}
             </div>
+            {m.native && <NativeButtons module={m} />}
+            {m.sidecar && m.enabled && <SidecarControls module={m} />}
           </div>
         ))}
         {state.invalid.map((m) => (

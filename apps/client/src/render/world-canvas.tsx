@@ -33,19 +33,30 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Effect } from "postprocessing";
 import { PerformanceMonitor } from "@react-three/drei";
-import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type WorldMap } from "@mmo-engine/protocol";
+import { decodeWorldMap, formatTimeOfDay, LocomotionMode, timeOfDayAt, type DungeonLook, type WorldMap } from "@mmo-engine/protocol";
 import type { MirrorClient } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { InputState, bindInput } from "../input/input.js";
+import { ResourceNodes } from "./resource-nodes.js";
 import { DropLabels } from "./drop-labels.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
+import { Telegraphs } from "./telegraphs.js";
+import { DungeonAmbience } from "./dungeon-look.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import type { CombatFeedback } from "./combat-feedback.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
-import { EYE_HEIGHT, firstPersonCamera } from "./first-person-camera.js";
+import {
+  EYE_HEIGHT,
+  firstPersonCamera,
+  createFirstPersonCameraState,
+  stepFirstPersonMotion,
+  type FirstPersonMotionSample,
+} from "./first-person-camera.js";
+import { FirstPersonRig } from "./first-person-rig.js";
+import { pitchToAimPart, type CombatReticleTelemetry } from "../ui/combat-hud.js";
 import { underwaterAmount } from "./effects/underwater-effect.js";
 import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
@@ -53,8 +64,14 @@ import { installBvh } from "./bvh.js";
 import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
 import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
-import { ParticleFx, WEATHER_RULES, budgetMultiplierForTier } from "./fx/particle-fx.js";
-import { biomeAt, weatherAt } from "./fx/weather.js";
+import { ParticleFx, budgetMultiplierForTier } from "./fx/particle-fx.js";
+import { biomeAt } from "./fx/weather.js";
+import { FieldService, type ClimateParams } from "./weather/field-service.js";
+import { overcastFromSample, type OvercastParams } from "./weather/sky-overcast.js";
+import { CloudVolume } from "./weather/cloud-volume.js";
+import { RainCurtain } from "./weather/rain-curtain.js";
+import { WeatherFeel } from "./weather/weather-feel.js";
+import type { AudioEngine } from "../audio/engine.js";
 import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
@@ -73,10 +90,16 @@ const FIXED_TIME = 0.42;
 const FOG_NEAR = 200;
 const FOG_FAR = 3200;
 /** Camera range: the far plane sits just past the haze. */
-const CAMERA_NEAR = 0.5;
+const CAMERA_NEAR = 0.08;
 const CAMERA_FAR = FOG_FAR + 800;
 
 const splashAt = new THREE.Vector3();
+/** Scratch overcast params (no per-frame allocation). */
+const overcastScratch: OvercastParams = { coverage: 0, sunDim: 1, fogPull: 1, skyDarken: 1 };
+/** Scratch weather object for ParticleFx.update (no per-frame allocation). */
+const weatherScratch = { kind: null as "rain" | "snow" | "ash" | null, intensity: 0, windX: 0, windZ: 0 };
+/** Grey colour the fog lerps toward under overcast. */
+const OVERCAST_GREY = new THREE.Color(0.45, 0.45, 0.5);
 
 /** Once-a-second numbers for the HUD. */
 export interface HudData {
@@ -108,6 +131,8 @@ const earDir = new THREE.Vector3();
 export interface WorldCanvasProps {
   /** A joined mirror client (welcome received). */
   client: MirrorClient;
+  /** Cross-region view (IM8): read-only mirrors of neighbouring regions, drawn beside the client's own. */
+  observers?: () => Iterable<MirrorClient>;
   assets: AssetProvider;
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
@@ -137,14 +162,22 @@ export interface WorldCanvasProps {
   onTreat?: () => void;
   /** G: cast Mend on yourself. */
   onMend?: () => void;
+  /** E with nothing in reach: eat or drink the hotkey item, if any. */
+  onUseHotkey?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** The resource node in gathering range changed (its wire id; null: none in range). */
+  onNearResource?: (node: bigint | null) => void;
+  /** The world chest E would open (its wire id; null: none in reach). */
+  onNearChest?: (chest: bigint | null) => void;
   /** The quest log key (P1/U11). */
   onQuests?: () => void;
   /** The npc in talk range changed (an npc id; null: none in range). */
   onNearNpc?: (npc: string | null) => void;
-  /** Inside a dungeon instance (D4): draw a stand-in floor, since the walls aren't on the wire yet. Read on mount. */
+  /** Inside a dungeon instance (D4): a stand-in floor under the shell, and the run's look applies. Read on mount. */
   instance?: boolean;
+  /** The run's look (the server's `look`, sent on entering; null: none yet): dark fantasy lighting and matte stone. Read each frame. */
+  getLook?: () => DungeonLook | null;
   /** The dungeon entrance the player stands in changed (an entrance id; null: none). */
   onNearEntrance?: (entrance: string | null) => void;
   /** Hit feedback (U12a): the mirror's combat events write it, the frame loop reads it. */
@@ -155,8 +188,15 @@ export interface WorldCanvasProps {
   onViewChange?: (view: "third" | "first") => void;
   /** The player's health or the target changed (called on change, not every frame). */
   onCombat?: (view: CombatView) => void;
+  stance?: { technique: string | null; aim: string | null };
+  equippedMain?: string | null;
+  equippedOff?: string | null;
+  equippedMainColor?: string;
+  onReticle?: (telemetry: CombatReticleTelemetry) => void;
   /** Optional ref to receive the streaming coordinator for region-change notifications. */
   streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
+  /** The audio engine for weather sound (rain bed). */
+  audio?: AudioEngine | null;
 }
 
 /** The player's health and the target, as the frames show them (U12a). */
@@ -175,6 +215,40 @@ export interface NearDrop {
 
 /** How near a drop must be for the prompt: a little inside the server's range (rules loot.pickupRange, 2.5 m). */
 const PICKUP_PROMPT_RANGE = 2.3;
+/** How near a resource node's edge must be for the prompt: inside the server's reach (2.5 m). */
+const GATHER_PROMPT_RANGE = 2.3;
+/** How close to a dungeon chest E opens it (the server's chestOpenRadiusM is 3 by default and decides). */
+const CHEST_PROMPT_RANGE = 3;
+
+/** How close E talks to a person (a resident) under the cursor or targeted. */
+const TALK_RANGE = 4;
+
+/** The person to talk to: the hovered or targeted body that wears a look, has no player name and stands within reach (a resident). */
+function personInReach(client: MirrorClient, wids: ReadonlyArray<bigint | null>, p: { x: number; z: number } | null): bigint | null {
+  if (!p) return null;
+  for (const wid of wids) {
+    if (wid === null || wid === client.playerEntity || client.names.has(wid)) continue;
+    const e = client.state.entities.get(wid);
+    if (!e?.appearance || !e.transform) continue;
+    if ((e.transform.px - p.x) ** 2 + (e.transform.pz - p.z) ** 2 <= TALK_RANGE ** 2) return wid;
+  }
+  return null;
+}
+
+/** The nearest unopened world chest within reach of the player (its wire id), or null. */
+function nearestChest(chests: ReadonlyMap<bigint, { x: number; z: number; open: boolean; kind?: "door" | "ruin" | "vendor" }>, p: { x: number; z: number } | null): bigint | null {
+  if (!p) return null;
+  let best: bigint | null = null;
+  let bestD2 = CHEST_PROMPT_RANGE ** 2;
+  for (const [id, c] of chests) {
+    const d2 = (c.x - p.x) ** 2 + (c.z - p.z) ** 2;
+    if ((c.kind === "door" || !c.open) && d2 <= bestD2) {
+      best = id;
+      bestD2 = d2;
+    }
+  }
+  return best;
+}
 
 installBvh();
 
@@ -216,7 +290,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       // Plain three.js colour output (no tone mapping), as before R3F.
       flat
       dpr={dpr}
-      gl={{ antialias: true, preserveDrawingBuffer: props.captureFrames === true }}
+      gl={{ antialias: true, preserveDrawingBuffer: true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
       onCreated={({ gl }) => {
         const gpu = detectGpu(gl);
@@ -280,22 +354,34 @@ function PhysicalSkyHost({
 }
 
 interface Runtime {
+  /** IM8: one entity layer per neighbouring region's observer mirror. */
+  observerLayers: Map<MirrorClient, EntityLayer>;
   sky: DaySky;
   particles: ParticleFx;
   map: WorldMap | null;
   terrain: TerrainRenderer;
   water: WaterRenderer;
   layer: EntityLayer;
+  fpsRig: FirstPersonRig;
   input: InputState;
   drops: DropLabels;
+  resources: ResourceNodes;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
+  telegraphs: Telegraphs;
   streaming: StreamingCoordinator;
+  weather: FieldService;
+  clouds: CloudVolume;
+  rain: RainCurtain;
+  weatherFeel: WeatherFeel;
+  /** Inside a dungeon run: its look (lights, fog, matte stone). */
+  ambience: DungeonAmbience | null;
 }
 
 /** The world's content and frame loop (inside the Canvas). */
 function MirrorWorld({
   client,
+  observers,
   assets,
   pcg,
   lastStateAt,
@@ -309,27 +395,59 @@ function MirrorWorld({
   onStance,
   onTreat,
   onMend,
+  onUseHotkey,
   onNearDrop,
+  onNearResource,
+  onNearChest,
   onQuests,
   onNearNpc,
   onNearEntrance,
   instance,
+  getLook,
   combat,
   onCombat,
+  stance,
+  equippedMain,
+  equippedOff,
+  equippedMainColor,
+  onReticle,
   view: viewProp,
   onViewChange,
   settings,
   screen,
   physicalSky,
   streamingRef,
+  audio,
 }: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
-  const latest = useRef({ listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings });
-  latest.current = { listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onNearDrop, onQuests, onNearNpc, onNearEntrance, combat, onCombat, lastStateAt, settings };
+  // Latest ref includes stance, equipped items, and reticle callback.
+  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings });
+  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings };
+  const fpsCamState = useRef(createFirstPersonCameraState());
+  const fpsMotion = useRef<FirstPersonMotionSample>({
+    right: 0,
+    up: 0,
+    forward: 0,
+    pitch: 0,
+    yaw: 0,
+    roll: 0,
+    stridePhase: 0,
+    bobWeight: 0,
+    breathPhase: 0,
+  });
+  const reticlePrev = useRef({
+    hoveredEntity: null as bigint | null,
+    hoveredPart: null as string | null,
+    hoveredDistanceQ: -1,
+    pitchAimPart: "torso",
+    activeMove: 0,
+    inChain: false,
+    pointerLocked: false,
+  });
   const footsteps = useRef(new Footsteps());
   const camDistance = useRef(DEFAULT_CAM_DISTANCE);
   // Camera view: third-person follow or first-person. Controlled by the
@@ -342,6 +460,8 @@ function MirrorWorld({
   const loop = useRef({
     pointerMoved: false,
     nearDrop: null as bigint | null,
+    nearResource: null as bigint | null,
+    nearChest: null as bigint | null,
     nearNpc: null as string | null,
     nearEntrance: null as string | null,
     hp: NaN,
@@ -378,7 +498,10 @@ function MirrorWorld({
     const terrain = new TerrainRenderer(client.world?.chunkWorldSize ?? 16, workers);
     // The water reflects this sky (same uniform objects).
     const water = new WaterRenderer(sky.uniforms);
-    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers });
+    // A dungeon run's look: hides what a run has no use for, and colours the shell's material slots (matte stone).
+    const ambience = instance ? new DungeonAmbience(scene) : null;
+    const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers, ...(ambience ? { materialFor: ambience.materialFor } : {}) });
+    if (ambience) layer.matte();
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -386,11 +509,25 @@ function MirrorWorld({
     terrain.setWireframe(latest.current.wireframe);
     water.setWireframe(latest.current.wireframe);
     const drops = new DropLabels();
+    const resources = new ResourceNodes();
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
-    scene.add(sky.group, terrain.group, water.group, layer.group, particles.group, drops.group, npcs.group, entrances.group);
-    // A dungeon instance (D4) has no terrain: a stone floor at y = 0 where the server keeps
-    // bodies, so the run isn't drawn in a void. The dungeon's walls aren't on the wire yet.
+    const telegraphs = new Telegraphs();
+    // Weather: the field service (worker-advanced), cloud volumes, and rain curtain.
+    const weatherMap = map ?? { cell: 8, width: 1, depth: 1, originX: 0, originZ: 0, heights: new Float32Array([0]), biome: new Uint8Array([0]), biomes: ["plains"], river: new Uint8Array([0]) };
+    // The server sends a `climate` block in the welcome's WorldInfo; fall back to defaults.
+    const worldClimate = (world as { climate?: ClimateParams } | undefined)?.climate ?? null;
+    const weather = new FieldService(weatherMap, workers ?? null, 1234, worldClimate);
+    const clouds = new CloudVolume(10);
+    const rain = new RainCurtain();
+    const weatherFeel = new WeatherFeel();
+    weatherFeel.setAudio(audio ?? null);
+    const fpsRig = new FirstPersonRig(layer.syntyProps);
+    scene.add(sky.group, terrain.group, water.group, layer.group, fpsRig.root, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh);
+    ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
+    // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
+    // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
+    // floors, ceilings) arrives as an ordinary asset entity and draws over it.
     const floor = instance ? makeFloor() : null;
     if (floor) scene.add(floor);
 
@@ -408,9 +545,13 @@ function MirrorWorld({
         else if (action === "treat") latest.current.onTreat?.();
         else if (action === "mend") latest.current.onMend?.();
         else if (action === "quests") latest.current.onQuests?.();
-        else if (drops.nearest !== null) client.pickup(drops.nearest);
-        else if (npcs.nearest !== null) client.quest({ kind: "quest", op: "talk", npc: npcs.nearest });
-        else if (entrances.nearest !== null) client.dungeon({ kind: "dungeon", op: "enter", entrance: entrances.nearest });
+        else if (drops.nearest !== null) client.interact(drops.nearest);
+        else if (resources.nearest !== null) client.interact(resources.nearest);
+        else if (nearestChest(client.chests, rt.current?.layer.player ?? null) !== null) client.interact(nearestChest(client.chests, rt.current?.layer.player ?? null)!);
+        else if (npcs.nearest !== null) client.interact({ npc: npcs.nearest });
+        else if (entrances.nearest !== null) client.interact({ entrance: entrances.nearest });
+        else if (personInReach(client, [layer.hovered, latest.current.combat?.target ?? null], rt.current?.layer.player ?? null) !== null) client.interact(personInReach(client, [layer.hovered, latest.current.combat?.target ?? null], rt.current?.layer.player ?? null)!);
+        else latest.current.onUseHotkey?.();
       },
     });
     // Chunk streaming: request tiles around the camera from the region server.
@@ -460,12 +601,18 @@ function MirrorWorld({
       })
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
-    rt.current = { sky, particles, map, terrain, water, layer, input, drops, npcs, entrances, streaming };
+    const observerLayers = new Map<MirrorClient, EntityLayer>();
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
-    // Dev builds: a handle for probes (layer stats, scenery, input, client).
+    // Dev builds: a handle for probes (layer stats, scenery, input, client, capture).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
-      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { layer, input, client };
+      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { gl, scene, camera, layer, fpsRig, input, client };
+      (window as unknown as { __mmoCapture?: () => Promise<string> }).__mmoCapture = () => {
+        return new Promise<string>((resolve) => {
+          (window as unknown as { __mmoCapturePending?: ((dataUrl: string) => void) | null }).__mmoCapturePending = resolve;
+        });
+      };
     }
     if (latest.current.showcase) layer.setShowcaseVisible(true, camera.position);
     return () => {
@@ -482,7 +629,8 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       layer.dispose();
-      scene.remove(drops.group, npcs.group, entrances.group);
+      for (const ol of observerLayers.values()) ol.dispose();
+      scene.remove(drops.group, npcs.group, entrances.group, telegraphs.group);
       if (floor) {
         scene.remove(floor);
         floor.traverse((o) => {
@@ -495,10 +643,15 @@ function MirrorWorld({
       drops.dispose();
       npcs.dispose();
       entrances.dispose();
+      telegraphs.dispose();
       streaming?.streamManager.dispose();
       terrain.dispose();
       workers?.dispose();
       water.dispose();
+      clouds.dispose();
+      rain.dispose();
+      ambience?.dispose();
+      fpsRig.root.removeFromParent();
     };
   }, [client, assets, pcg, scene, camera, gl]);
 
@@ -519,13 +672,14 @@ function MirrorWorld({
   // V toggles first/third person (uncontrolled mode only; a controlled
   // `view` prop owns the state instead).
   useEffect(() => {
-    if (viewProp !== undefined) return;
+
     const onKey = (e: KeyboardEvent): void => {
       if (e.code !== "KeyV" || e.repeat) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       setViewState((v) => {
-        const next = v === "third" ? "first" : "third";
+        const current = viewProp ?? v;
+        const next = current === "third" ? "first" : "third";
         onViewChange?.(next);
         return next;
       });
@@ -564,11 +718,41 @@ function MirrorWorld({
     if (combat) {
       combat.prune(hasEntity, now / 1000);
       r.layer.setFlashes(combat.flashUntil);
+      // Attack telegraphs (M5): new warnings in, fills and fades advanced.
+      for (const tg of combat.telegraphs) r.telegraphs.apply(tg, client.tickHz, (x, z) => r.terrain.heightAt(x, z), now / 1000);
+      combat.telegraphs.length = 0;
+    }
+    r.telegraphs.update(now / 1000);
+    // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
+    r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
+    r.layer.setDepleted(r.resources.depleted);
+    const chest = nearestChest(client.chests, r.layer.player);
+    if (chest !== l.nearChest) {
+      l.nearChest = chest;
+      latest.current.onNearChest?.(chest);
+    }
+    if (r.resources.nearest !== l.nearResource) {
+      l.nearResource = r.resources.nearest;
+      latest.current.onNearResource?.(l.nearResource);
     }
     r.layer.sync(client.state, client.interpolator, alpha, client.playerEntity, {
       tick: client.serverTick,
       tickHz: client.tickHz || 30,
     }, client.names);
+    // Neighbouring regions near the border (IM8): each in its own layer, so their wire ids never mix
+    // with this region's; their terrain chunks go to a renderer that is never drawn (ours covers it).
+    const seen = new Set<MirrorClient>();
+    for (const o of latest.current.observers?.() ?? []) {
+      seen.add(o);
+      let ol = r.observerLayers.get(o);
+      if (!ol) r.observerLayers.set(o, (ol = new EntityLayer(scene, camera, assets, new TerrainRenderer(16), pcg ? { pcg } : {})));
+      ol.sync(o.state, o.interpolator, alpha, null, { tick: o.serverTick, tickHz: o.tickHz || 30 }, o.names);
+    }
+    for (const [o, ol] of r.observerLayers) {
+      if (seen.has(o)) continue;
+      ol.dispose();
+      r.observerLayers.delete(o);
+    }
     // Ground items: names, beams, and which one the pick-up key would take.
     r.drops.sync(client.state, client.drops, camera, r.layer.player, PICKUP_PROMPT_RANGE);
     if (r.drops.nearest !== l.nearDrop) {
@@ -625,10 +809,95 @@ function MirrorWorld({
       r.layer.setPlayerHidden(true);
       eyePos.current.copy(r.layer.player);
       eyePos.current.y += EYE_HEIGHT;
-      firstPersonCamera(camera, eyePos.current, r.input.lookYaw, r.input.lookPitch);
+      const ps = r.layer.playerSample;
+      const motion = stepFirstPersonMotion(
+        fpsCamState.current,
+        {
+          dt: delta,
+          vx: ps.vx,
+          vy: ps.vy,
+          vz: ps.vz,
+          mode: ps.mode,
+          grounded: ps.grounded,
+          move: ps.move,
+          moveElapsed: ps.moveElapsed,
+          headBoneOffset: ps.headBoneOffset,
+        },
+        fpsMotion.current,
+      );
+      firstPersonCamera(camera, eyePos.current, r.input.lookYaw, r.input.lookPitch, motion);
+      r.fpsRig.setVisible(true);
+      r.fpsRig.setColors({
+        skin: ps.skinColor ?? undefined,
+        sleeve: ps.sleeveColor ?? undefined,
+        cuff: ps.cuffColor ?? undefined,
+      });
+      r.fpsRig.setEquipment(
+        latest.current.equippedMain ?? ps.mainHeld,
+        latest.current.equippedOff ?? ps.offHeld,
+        latest.current.equippedMainColor,
+      );
+      const pitchAim = pitchToAimPart(r.input.lookPitch);
+      const effAim = latest.current.stance?.aim ?? r.layer.hoveredPart ?? pitchAim;
+      r.fpsRig.update({
+        dt: delta,
+        camera,
+        lookYaw: r.input.lookYaw,
+        lookPitch: r.input.lookPitch,
+        motion,
+        move: ps.move,
+        moveElapsed: ps.moveElapsed,
+        technique: latest.current.stance?.technique ?? null,
+        aimPart: effAim,
+      });
     } else {
       r.layer.setPlayerHidden(false);
+      r.fpsRig.setVisible(false);
       followCamera(camera, r.layer.player, r.input.lookYaw, r.input.lookPitch, camDistance.current);
+    }
+    const isPointerLocked = typeof document !== "undefined" && document.pointerLockElement === gl.domElement;
+    if (isPointerLocked || viewRef.current === "first") {
+      pointer.current.set(0, 0);
+      l.pointerMoved = false;
+      raycaster.current.setFromCamera(pointer.current, camera);
+      r.layer.hover(raycaster.current);
+    } else if (l.pointerMoved) {
+      l.pointerMoved = false;
+      raycaster.current.setFromCamera(pointer.current, camera);
+      r.layer.hover(raycaster.current);
+    }
+    if (latest.current.onReticle) {
+      const ps = r.layer.playerSample;
+      const pitchAim = pitchToAimPart(r.input.lookPitch);
+      const distQ = Number.isFinite(r.layer.hoveredDistance) ? Math.round(r.layer.hoveredDistance * 10) : -1;
+      const elapsedQ = Math.round(ps.moveElapsed * 20);
+      const rp = reticlePrev.current;
+      if (
+        rp.hoveredEntity !== r.layer.hovered ||
+        rp.hoveredPart !== r.layer.hoveredPart ||
+        rp.hoveredDistanceQ !== distQ ||
+        rp.pitchAimPart !== pitchAim ||
+        rp.activeMove !== ps.move ||
+        (ps.move !== 0 && rp.inChain !== (elapsedQ % 2 === 0)) ||
+        rp.pointerLocked !== isPointerLocked
+      ) {
+        rp.hoveredEntity = r.layer.hovered;
+        rp.hoveredPart = r.layer.hoveredPart;
+        rp.hoveredDistanceQ = distQ;
+        rp.pitchAimPart = pitchAim;
+        rp.activeMove = ps.move;
+        rp.inChain = elapsedQ % 2 === 0;
+        rp.pointerLocked = isPointerLocked;
+        latest.current.onReticle({
+          hoveredEntity: r.layer.hovered,
+          hoveredPart: r.layer.hoveredPart,
+          hoveredDistance: r.layer.hoveredDistance,
+          pitchAimPart: pitchAim,
+          activeMove: ps.move,
+          moveElapsed: ps.moveElapsed,
+          pointerLocked: isPointerLocked,
+        });
+      }
     }
     // Chunk streaming: track camera position and velocity for demand + handoff prediction.
     const me = client.playerEntity !== null ? client.state.get(client.playerEntity) : undefined;
@@ -654,12 +923,33 @@ function MirrorWorld({
     }
     r.sky.stars.setFrame(state.size.width, state.size.height, state.viewport.dpr, state.clock.elapsedTime);
 
-    // Weather where the camera is, the same on every client (biome + tick),
-    // unless the server forces the sky (`weather`).
-    const tick = client.serverTick;
-    const hz = client.tickHz || 30;
-    const biome = r.map ? biomeAt(r.map, camera.position.x, camera.position.z) : null;
-    const weather = weatherAt(WEATHER_RULES, biome, tick, hz, client.weatherOverride);
+    const seconds = now / 1000;
+    // Weather from the field service (worker-advanced simulation).
+    r.weather.setOverride(client.weatherOverride === "auto" ? null : client.weatherOverride);
+    const wxSample = r.weather.sample(camera.position.x, camera.position.z);
+    // Overcast blend from the weather sample.
+    const overcast = overcastFromSample(wxSample, overcastScratch);
+    if (fog) {
+      fog.near = FOG_NEAR * overcast.fogPull;
+      fog.far = FOG_FAR * overcast.fogPull;
+      fog.color.lerp(OVERCAST_GREY, overcast.coverage * 0.5);
+    }
+    // Dim the sun and sky lights under overcast.
+    r.sky.sunLight.intensity *= overcast.sunDim;
+    r.sky.skyLight.intensity *= overcast.skyDarken;
+    // Cloud volumes follow the camera, driven by the field's moisture.
+    const moisture = r.weather.moistureAt(camera.position.x, camera.position.z);
+    r.clouds.update(camera.position, moisture, overcast.coverage, wxSample.windX, wxSample.windZ, delta, camera.quaternion);
+    // Rain curtain: visible only when raining.
+    const rainIntensity = wxSample.kind === "rain" ? wxSample.intensity : 0;
+    r.rain.update(seconds, wxSample.windX, wxSample.windZ, rainIntensity, camera.position);
+    // A dungeon run's look wins over the sky: hidden sky and weather, near-black fog, torchlight on the nearest torches.
+    if (r.ambience) {
+      r.ambience.apply(getLook?.() ?? null);
+      r.ambience.update(camera.position, r.layer.emitterPositions(r.ambience.emitterHashes), seconds);
+    }
+    // WX1 couplings: wet look, water ripples, and rain audio.
+    r.weatherFeel.update(wxSample, delta, r.water, r.terrain);
     // Splashes where the player swims and moves.
     const swimming = me?.locomotion?.mode === LocomotionMode.Swim;
     const v = me?.velocity;
@@ -667,7 +957,12 @@ function MirrorWorld({
       const surface = r.water.surfaceAt(r.layer.player.x, r.layer.player.z);
       if (surface !== null) r.particles.splash(splashAt.set(r.layer.player.x, surface, r.layer.player.z));
     }
-    r.particles.update(Math.min(delta, 0.25), camera.position, weather);
+    // Pass the weather (with wind vector) to the particle system.
+    weatherScratch.kind = wxSample.kind === "clear" ? null : wxSample.kind;
+    weatherScratch.intensity = wxSample.intensity;
+    weatherScratch.windX = wxSample.windX;
+    weatherScratch.windZ = wxSample.windZ;
+    r.particles.update(Math.min(delta, 0.25), camera.position, weatherScratch);
 
     // A step sounds each stride on the ground, on the surface of the biome underfoot (content/materials).
     const onStep = latest.current.onFootstep;
@@ -680,7 +975,6 @@ function MirrorWorld({
       }
     }
 
-    const seconds = now / 1000;
     r.terrain.update(camera.position);
     r.water.update(seconds);
     updateTerrainFx(seconds);
@@ -716,7 +1010,7 @@ function MirrorWorld({
         mode: me?.locomotion?.mode ?? null,
         breath: me?.locomotion?.breath ?? 1,
         time: client.day ? formatTimeOfDay(timeOfDay) : null,
-        weather: weather.intensity > 0 ? weather.kind : null,
+        weather: wxSample.intensity > 0 ? wxSample.kind : null,
         hp: me?.health?.current ?? null,
         maxHp: me?.health?.max ?? null,
         sp: me?.stamina?.current ?? null,
@@ -724,15 +1018,27 @@ function MirrorWorld({
         perf: perf.current.history(),
       });
     }
+
+    const captureReq = (window as unknown as { __mmoCapturePending?: ((dataUrl: string) => void) | null }).__mmoCapturePending;
+    if (captureReq) {
+      (window as unknown as { __mmoCapturePending?: null }).__mmoCapturePending = null;
+      try {
+        const url = gl.domElement.toDataURL("image/png");
+        captureReq(url);
+      } catch (err) {
+        console.error("[capture] error:", err);
+      }
+    }
   });
 
   return null;
 }
 
-/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across. */
+/** A stand-in dungeon floor: dark flagstones with a faint grid, 400 m across, 6 cm under the shell's own floor (no z-fighting). */
 function makeFloor(): THREE.Group {
   const g = new THREE.Group();
   g.name = "instance-floor";
+  g.position.y = -0.06;
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 }));
   plane.rotation.x = -Math.PI / 2;
   const grid = new THREE.GridHelper(400, 200, 0x4a4038, 0x3a332c);

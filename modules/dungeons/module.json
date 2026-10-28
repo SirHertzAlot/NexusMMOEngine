@@ -1,1 +1,16 @@
-{"description":"Dungeon instances (D1): pool, content, InstanceManager as a gateway extension. Runs are isolated sims; results commit back to the region.","name":"dungeons","server":{"entry":"server.js","extensions":["dungeons"],"systems":[]},"version":"0.1.0"}
+{
+  "description": "Dungeon instances (D1): pool, content, InstanceManager as a gateway extension. Runs are isolated sims; results commit back to the region.",
+  "name": "dungeons",
+  "dependsOn": ["character"],
+  "server": {
+    "entry": "server.js",
+    "extensions": [
+      "dungeons"
+    ],
+    "systems": []
+  },
+  "version": "0.1.0",
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

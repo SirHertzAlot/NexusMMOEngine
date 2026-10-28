@@ -23,7 +23,7 @@
 
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
-import { FIGHT_DIFFICULTY, type Weapon } from "../combat.js";
+import type { Weapon } from "../combat.js";
 import type { GameRules } from "../rules/boot.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
@@ -147,6 +147,10 @@ export class InstanceManager implements GatewayExtension {
         entrance: entranceId,
         layout,
         rules,
+        props: content.props,
+        ...(content.looks ? { looks: content.looks } : {}),
+        artAssets: content.artAssets,
+        artScales: content.artScales,
         game: this.opts.game(),
         members,
         credentialStore: this.opts.credentialStore,
@@ -195,9 +199,13 @@ export class InstanceManager implements GatewayExtension {
   private commit(result: InstanceResult): void {
     let granted = 0;
     let lost = 0;
-    for (const l of result.loot) {
-      if (this.opts.grant(l.characterId, l.def)) granted++;
-      else lost++;
+    if (result.outcome !== "died") {
+      for (const l of result.loot) {
+        if (this.opts.grant(l.characterId, l.def)) granted++;
+        else lost++;
+      }
+    } else {
+      lost = result.loot.length;
     }
     // Skill gains: one use of the killer's weapon skill per kill, at the
     // same difficulty as an open-world landed hit, keyed by victim kind
@@ -205,12 +213,12 @@ export class InstanceManager implements GatewayExtension {
     // never enter the batch.
     const train = this.opts.train;
     if (train) {
-      const techniques = this.opts.game().rules.combat.techniques;
+      const { techniques, resolution } = this.opts.game().rules.combat;
       for (const k of result.kills) {
         const skill = techniques[this.opts.weaponOf?.(k.characterId)?.technique ?? ""]?.skill;
         if (!skill) continue;
         const key = hashId(k.kind);
-        for (let i = 0; i < k.count; i++) train(k.characterId, skill, FIGHT_DIFFICULTY, key);
+        for (let i = 0; i < k.count; i++) train(k.characterId, skill, resolution.fightDifficulty, key);
       }
     }
     this.opts.results.record(result, granted, lost);
@@ -222,7 +230,7 @@ export class InstanceManager implements GatewayExtension {
     const run = this.running.get(result.instance);
     this.running.delete(result.instance);
     // Let the "ended" messages reach the clients before the port closes.
-    if (run) setTimeout(() => void run.instance.close(), 2000).unref();
+    if (run) setTimeout(() => void run.instance.close(), 30_000).unref();
   }
 
   private notice(p: ExtensionPlayer, text: string): void {

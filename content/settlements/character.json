@@ -1,0 +1,2879 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "script": "character-foundation",
+    "author": "Joey / Antigravity"
+  },
+  "defaults": {
+    "aggression": 1,
+    "caution": 1,
+    "sociability": 1,
+    "diligence": 1,
+    "curiosity": 1,
+    "empathy": 1,
+    "ambition": 1,
+    "composure": 1
+  },
+  "tuning": {
+    "fleeAggressionCoeff": -0.1,
+    "fleeCautionCoeff": 0.1,
+    "trustEmpathyCoeff": 0.1,
+    "gossipSociabilityCoeff": 0.1
+  },
+  "archetypes": {
+    "veteran": {
+      "id": "veteran",
+      "schemaVersion": 1,
+      "weight": 1,
+      "classAffinity": {
+        "peasant": 800,
+        "artisan": 900,
+        "merchant": 700,
+        "clergy": 600,
+        "guard": 1600,
+        "noble": 1100
+      },
+      "traitMods": {
+        "aggression": 1.3,
+        "composure": 1.2
+      },
+      "interestWeights": {
+        "combat": 3,
+        "leadership": 2,
+        "hearth": 1.5,
+        "craft": 1
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 0,
+          "spread": 35
+        },
+        "order": {
+          "mean": 20,
+          "spread": 30
+        }
+      },
+      "temperamentPool": {
+        "calm": 1,
+        "hot-headed": 1.5,
+        "bold": 1.2,
+        "patient": 1
+      },
+      "professionAffinity": {
+        "guard": 1.8,
+        "soldier": 1.8,
+        "guard_captain": 1.5
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "devout": {
+      "id": "devout",
+      "schemaVersion": 1,
+      "weight": 1,
+      "classAffinity": {
+        "peasant": 1000,
+        "artisan": 900,
+        "merchant": 800,
+        "clergy": 1800,
+        "guard": 1100,
+        "noble": 900
+      },
+      "traitMods": {
+        "empathy": 1.3,
+        "diligence": 1.2
+      },
+      "interestWeights": {
+        "faith": 3,
+        "hearth": 1.5,
+        "lore": 1.5,
+        "combat": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 40,
+          "spread": 25
+        },
+        "order": {
+          "mean": 15,
+          "spread": 35
+        }
+      },
+      "temperamentPool": {
+        "calm": 1.2,
+        "patient": 1.2,
+        "bold": 1,
+        "cheerful": 1
+      },
+      "professionAffinity": {
+        "priest": 1.8,
+        "cleric": 1.8,
+        "monk": 1.8,
+        "guard": 1.2
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "penitent": {
+      "id": "penitent",
+      "schemaVersion": 1,
+      "weight": 0.8,
+      "classAffinity": {
+        "peasant": 1100,
+        "artisan": 900,
+        "merchant": 700,
+        "clergy": 1400,
+        "guard": 800,
+        "noble": 800
+      },
+      "traitMods": {
+        "composure": 1.2,
+        "empathy": 1.2,
+        "aggression": 0.7
+      },
+      "interestWeights": {
+        "faith": 2.5,
+        "hearth": 2,
+        "lore": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 25,
+          "spread": 25
+        },
+        "order": {
+          "mean": 10,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "calm": 1.2,
+        "patient": 1.5,
+        "sullen": 1,
+        "brooding": 1.2
+      },
+      "professionAffinity": {
+        "monk": 1.6,
+        "herbalist": 1.4
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "zealot": {
+      "id": "zealot",
+      "schemaVersion": 1,
+      "weight": 0.7,
+      "classAffinity": {
+        "peasant": 900,
+        "artisan": 800,
+        "merchant": 700,
+        "clergy": 1600,
+        "guard": 1300,
+        "noble": 800
+      },
+      "traitMods": {
+        "aggression": 1.3,
+        "diligence": 1.3,
+        "empathy": 0.7
+      },
+      "interestWeights": {
+        "faith": 3,
+        "combat": 2,
+        "leadership": 1.5
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": -10,
+          "spread": 35
+        },
+        "order": {
+          "mean": 35,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "hot-headed": 1.5,
+        "bold": 1.2,
+        "proud": 1.2
+      },
+      "professionAffinity": {
+        "guard": 1.5,
+        "priest": 1.4
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "drifter": {
+      "id": "drifter",
+      "schemaVersion": 1,
+      "weight": 1,
+      "classAffinity": {
+        "peasant": 1200,
+        "artisan": 800,
+        "merchant": 900,
+        "clergy": 600,
+        "guard": 700,
+        "noble": 500
+      },
+      "traitMods": {
+        "curiosity": 1.3,
+        "diligence": 0.7
+      },
+      "interestWeights": {
+        "wandering": 3,
+        "nature": 2,
+        "hearth": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 0,
+          "spread": 35
+        },
+        "order": {
+          "mean": -25,
+          "spread": 35
+        }
+      },
+      "temperamentPool": {
+        "restless": 1.8,
+        "cheerful": 1,
+        "calm": 1
+      },
+      "professionAffinity": {
+        "scout": 1.7,
+        "messenger": 1.6
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "bully": {
+      "id": "bully",
+      "schemaVersion": 1,
+      "weight": 0.6,
+      "classAffinity": {
+        "peasant": 1100,
+        "artisan": 800,
+        "merchant": 700,
+        "clergy": 400,
+        "guard": 1200,
+        "noble": 900
+      },
+      "traitMods": {
+        "aggression": 1.4,
+        "empathy": 0.6,
+        "composure": 0.7
+      },
+      "interestWeights": {
+        "combat": 2.5,
+        "leadership": 1.5,
+        "trade": 1
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": -45,
+          "spread": 25
+        },
+        "order": {
+          "mean": -10,
+          "spread": 35
+        }
+      },
+      "temperamentPool": {
+        "hot-headed": 1.8,
+        "proud": 1.2,
+        "sullen": 1
+      },
+      "professionAffinity": {
+        "guard": 1.3
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "coward": {
+      "id": "coward",
+      "schemaVersion": 1,
+      "weight": 0.6,
+      "classAffinity": {
+        "peasant": 1200,
+        "artisan": 1000,
+        "merchant": 900,
+        "clergy": 800,
+        "guard": 300,
+        "noble": 800
+      },
+      "traitMods": {
+        "caution": 1.5,
+        "aggression": 0.6
+      },
+      "interestWeights": {
+        "hearth": 2,
+        "craft": 1.8,
+        "lore": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 0,
+          "spread": 30
+        },
+        "order": {
+          "mean": 10,
+          "spread": 30
+        }
+      },
+      "temperamentPool": {
+        "anxious": 2,
+        "sullen": 1,
+        "patient": 1
+      },
+      "professionAffinity": {
+        "tailor": 1.3,
+        "scribe": 1.3
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "trickster": {
+      "id": "trickster",
+      "schemaVersion": 1,
+      "weight": 0.8,
+      "classAffinity": {
+        "peasant": 900,
+        "artisan": 1000,
+        "merchant": 1400,
+        "clergy": 500,
+        "guard": 600,
+        "noble": 1000
+      },
+      "traitMods": {
+        "curiosity": 1.3,
+        "sociability": 1.3,
+        "diligence": 0.7
+      },
+      "interestWeights": {
+        "trade": 2.5,
+        "art": 2.5,
+        "wandering": 1.5
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 0,
+          "spread": 35
+        },
+        "order": {
+          "mean": -40,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "cheerful": 1.5,
+        "restless": 1.5,
+        "bold": 1
+      },
+      "professionAffinity": {
+        "merchant": 1.5,
+        "bard": 1.7
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "hearthkeeper": {
+      "id": "hearthkeeper",
+      "schemaVersion": 1,
+      "weight": 1.2,
+      "classAffinity": {
+        "peasant": 1200,
+        "artisan": 1100,
+        "merchant": 900,
+        "clergy": 1000,
+        "guard": 800,
+        "noble": 700
+      },
+      "traitMods": {
+        "empathy": 1.3,
+        "sociability": 1.2
+      },
+      "interestWeights": {
+        "hearth": 3,
+        "nature": 2,
+        "craft": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 35,
+          "spread": 25
+        },
+        "order": {
+          "mean": 15,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "calm": 1.5,
+        "cheerful": 1.5,
+        "patient": 1.2
+      },
+      "professionAffinity": {
+        "cook": 1.8,
+        "baker": 1.8,
+        "innkeeper": 1.6
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "scholar": {
+      "id": "scholar",
+      "schemaVersion": 1,
+      "weight": 0.8,
+      "classAffinity": {
+        "peasant": 400,
+        "artisan": 1000,
+        "merchant": 1200,
+        "clergy": 1500,
+        "guard": 400,
+        "noble": 1400
+      },
+      "traitMods": {
+        "curiosity": 1.5,
+        "aggression": 0.6
+      },
+      "interestWeights": {
+        "lore": 3,
+        "nature": 1.5,
+        "art": 1.5
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 10,
+          "spread": 30
+        },
+        "order": {
+          "mean": 15,
+          "spread": 30
+        }
+      },
+      "temperamentPool": {
+        "calm": 1.3,
+        "brooding": 1.3,
+        "patient": 1.3
+      },
+      "professionAffinity": {
+        "scholar": 2,
+        "scribe": 1.8,
+        "alchemist": 1.7
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "artisan": {
+      "id": "artisan",
+      "schemaVersion": 1,
+      "weight": 1.2,
+      "classAffinity": {
+        "peasant": 800,
+        "artisan": 1700,
+        "merchant": 1000,
+        "clergy": 700,
+        "guard": 700,
+        "noble": 700
+      },
+      "traitMods": {
+        "diligence": 1.3,
+        "ambition": 1.2
+      },
+      "interestWeights": {
+        "craft": 3,
+        "art": 1.8,
+        "trade": 1.5
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 10,
+          "spread": 30
+        },
+        "order": {
+          "mean": 20,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "patient": 1.5,
+        "calm": 1.2,
+        "proud": 1
+      },
+      "professionAffinity": {
+        "blacksmith": 1.9,
+        "carpenter": 1.8,
+        "mason": 1.8,
+        "tailor": 1.7
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "merchant": {
+      "id": "merchant",
+      "schemaVersion": 1,
+      "weight": 1.1,
+      "classAffinity": {
+        "peasant": 600,
+        "artisan": 900,
+        "merchant": 1800,
+        "clergy": 700,
+        "guard": 600,
+        "noble": 1200
+      },
+      "traitMods": {
+        "ambition": 1.3,
+        "sociability": 1.3
+      },
+      "interestWeights": {
+        "trade": 3,
+        "leadership": 1.5,
+        "wandering": 1.5
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 0,
+          "spread": 35
+        },
+        "order": {
+          "mean": 10,
+          "spread": 30
+        }
+      },
+      "temperamentPool": {
+        "cheerful": 1.4,
+        "proud": 1.2,
+        "restless": 1
+      },
+      "professionAffinity": {
+        "merchant": 2,
+        "shopkeeper": 1.8,
+        "innkeeper": 1.5
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "hunter": {
+      "id": "hunter",
+      "schemaVersion": 1,
+      "weight": 1,
+      "classAffinity": {
+        "peasant": 1300,
+        "artisan": 800,
+        "merchant": 800,
+        "clergy": 400,
+        "guard": 1100,
+        "noble": 700
+      },
+      "traitMods": {
+        "caution": 1.3,
+        "aggression": 1.2
+      },
+      "interestWeights": {
+        "nature": 2.5,
+        "combat": 2,
+        "wandering": 1.8
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 0,
+          "spread": 35
+        },
+        "order": {
+          "mean": -10,
+          "spread": 35
+        }
+      },
+      "temperamentPool": {
+        "calm": 1.2,
+        "bold": 1.2,
+        "patient": 1.3
+      },
+      "professionAffinity": {
+        "hunter": 2,
+        "scout": 1.7
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "healer": {
+      "id": "healer",
+      "schemaVersion": 1,
+      "weight": 0.9,
+      "classAffinity": {
+        "peasant": 1000,
+        "artisan": 1000,
+        "merchant": 800,
+        "clergy": 1400,
+        "guard": 700,
+        "noble": 800
+      },
+      "traitMods": {
+        "empathy": 1.5
+      },
+      "interestWeights": {
+        "lore": 2,
+        "nature": 2,
+        "faith": 1.8
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 50,
+          "spread": 20
+        },
+        "order": {
+          "mean": 15,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "calm": 1.5,
+        "patient": 1.5,
+        "cheerful": 1
+      },
+      "professionAffinity": {
+        "herbalist": 1.9,
+        "priest": 1.5
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "outlaw": {
+      "id": "outlaw",
+      "schemaVersion": 1,
+      "weight": 0.6,
+      "classAffinity": {
+        "peasant": 1100,
+        "artisan": 800,
+        "merchant": 900,
+        "clergy": 300,
+        "guard": 400,
+        "noble": 800
+      },
+      "traitMods": {
+        "aggression": 1.3
+      },
+      "interestWeights": {
+        "combat": 2.5,
+        "wandering": 2,
+        "trade": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": -25,
+          "spread": 35
+        },
+        "order": {
+          "mean": -50,
+          "spread": 25
+        }
+      },
+      "temperamentPool": {
+        "bold": 1.5,
+        "hot-headed": 1.3,
+        "restless": 1.2
+      },
+      "professionAffinity": {
+        "soldier": 1.3
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "heir": {
+      "id": "heir",
+      "schemaVersion": 1,
+      "weight": 0.6,
+      "classAffinity": {
+        "peasant": 300,
+        "artisan": 700,
+        "merchant": 1200,
+        "clergy": 800,
+        "guard": 800,
+        "noble": 2200
+      },
+      "traitMods": {
+        "ambition": 1.5
+      },
+      "interestWeights": {
+        "leadership": 3,
+        "trade": 2,
+        "art": 1.5
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 5,
+          "spread": 35
+        },
+        "order": {
+          "mean": 20,
+          "spread": 30
+        }
+      },
+      "temperamentPool": {
+        "proud": 2,
+        "bold": 1.2,
+        "cheerful": 1
+      },
+      "professionAffinity": {
+        "mayor": 1.8,
+        "guildmaster": 1.6
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "gossip": {
+      "id": "gossip",
+      "schemaVersion": 1,
+      "weight": 0.9,
+      "classAffinity": {
+        "peasant": 1100,
+        "artisan": 1000,
+        "merchant": 1200,
+        "clergy": 800,
+        "guard": 700,
+        "noble": 1000
+      },
+      "traitMods": {
+        "sociability": 1.5,
+        "curiosity": 1.3
+      },
+      "interestWeights": {
+        "trade": 2,
+        "art": 2,
+        "hearth": 1.8
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 5,
+          "spread": 35
+        },
+        "order": {
+          "mean": -10,
+          "spread": 35
+        }
+      },
+      "temperamentPool": {
+        "cheerful": 1.8,
+        "restless": 1.3,
+        "sullen": 0.5
+      },
+      "professionAffinity": {
+        "innkeeper": 1.6,
+        "shopkeeper": 1.4
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "hermit": {
+      "id": "hermit",
+      "schemaVersion": 1,
+      "weight": 0.6,
+      "classAffinity": {
+        "peasant": 1200,
+        "artisan": 700,
+        "merchant": 400,
+        "clergy": 900,
+        "guard": 400,
+        "noble": 500
+      },
+      "traitMods": {
+        "sociability": 0.5,
+        "caution": 1.3
+      },
+      "interestWeights": {
+        "nature": 3,
+        "lore": 2,
+        "craft": 1.2
+      },
+      "alignmentBias": {
+        "benevolence": {
+          "mean": 10,
+          "spread": 35
+        },
+        "order": {
+          "mean": -10,
+          "spread": 35
+        }
+      },
+      "temperamentPool": {
+        "brooding": 1.8,
+        "calm": 1.2,
+        "patient": 1.2
+      },
+      "professionAffinity": {
+        "herbalist": 1.7,
+        "forester": 1.7
+      },
+      "fragmentPools": {
+        "origin": [
+          "origin:veteran",
+          "origin:devout",
+          "origin:coastal",
+          "origin:artisan",
+          "origin:hearth",
+          "origin:drifter"
+        ],
+        "event": [
+          "event:skirmish",
+          "event:miracle",
+          "event:fire",
+          "event:discovery"
+        ],
+        "want": [
+          "want:glory",
+          "want:peace",
+          "want:mastery",
+          "want:wealth"
+        ],
+        "flaw": [
+          "flaw:wrath",
+          "flaw:distrust",
+          "flaw:pride",
+          "flaw:fear"
+        ]
+      },
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    }
+  },
+  "temperaments": {
+    "calm": {
+      "id": "calm",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "composure": 1.3
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.05,
+        "gossipMod": -0.05
+      },
+      "barkTone": "calm",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "cheerful": {
+      "id": "cheerful",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "sociability": 1.3
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.1,
+        "gossipMod": 0.1
+      },
+      "barkTone": "cheerful",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "sullen": {
+      "id": "sullen",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "sociability": 0.7
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": -0.1,
+        "gossipMod": -0.1
+      },
+      "barkTone": "sullen",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "hot-headed": {
+      "id": "hot-headed",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "composure": 0.6,
+        "aggression": 1.2
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.05,
+        "gossipMod": 0
+      },
+      "barkTone": "short-tempered",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "anxious": {
+      "id": "anxious",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "caution": 1.4,
+        "composure": 0.7
+      },
+      "reactionMods": {
+        "fleeMod": 0.15,
+        "trustMod": -0.05,
+        "gossipMod": 0.05
+      },
+      "barkTone": "anxious",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "bold": {
+      "id": "bold",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "caution": 0.7,
+        "aggression": 1.2
+      },
+      "reactionMods": {
+        "fleeMod": -0.15,
+        "trustMod": 0.05,
+        "gossipMod": 0
+      },
+      "barkTone": "bold",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "brooding": {
+      "id": "brooding",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "curiosity": 1.2,
+        "sociability": 0.7
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": -0.05,
+        "gossipMod": -0.1
+      },
+      "barkTone": "grim",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "patient": {
+      "id": "patient",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "composure": 1.3,
+        "diligence": 1.2
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": 0.05,
+        "gossipMod": -0.05
+      },
+      "barkTone": "even-keeled",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "restless": {
+      "id": "restless",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "diligence": 0.7,
+        "curiosity": 1.3
+      },
+      "reactionMods": {
+        "fleeMod": 0.05,
+        "trustMod": 0,
+        "gossipMod": 0.1
+      },
+      "barkTone": "restless",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "proud": {
+      "id": "proud",
+      "schemaVersion": 1,
+      "weight": 1,
+      "traitMods": {
+        "ambition": 1.3,
+        "empathy": 0.8
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.05,
+        "gossipMod": 0
+      },
+      "barkTone": "proud",
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    }
+  },
+  "interests": {
+    "combat": {
+      "id": "combat",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "guard": 2,
+        "soldier": 2,
+        "hunter": 1.5
+      },
+      "activityTags": [
+        "training_ground",
+        "armory",
+        "barracks"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "craft": {
+      "id": "craft",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "blacksmith": 2,
+        "carpenter": 2,
+        "tailor": 2,
+        "mason": 2,
+        "artisan": 2
+      },
+      "activityTags": [
+        "forge",
+        "workshop",
+        "mill"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "trade": {
+      "id": "trade",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "merchant": 2,
+        "shopkeeper": 2,
+        "innkeeper": 1.5
+      },
+      "activityTags": [
+        "market",
+        "shop",
+        "docks"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "lore": {
+      "id": "lore",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "scholar": 2,
+        "alchemist": 2,
+        "scribe": 2,
+        "teacher": 1.5
+      },
+      "activityTags": [
+        "library",
+        "academy",
+        "laboratory"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "faith": {
+      "id": "faith",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "priest": 2,
+        "cleric": 2,
+        "monk": 2
+      },
+      "activityTags": [
+        "shrine",
+        "temple",
+        "chapel",
+        "monastery"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "nature": {
+      "id": "nature",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "farmer": 1.8,
+        "herbalist": 2,
+        "hunter": 1.8,
+        "forester": 2
+      },
+      "activityTags": [
+        "farm",
+        "woods",
+        "garden",
+        "orchard"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "art": {
+      "id": "art",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "bard": 2,
+        "painter": 2,
+        "jeweler": 1.8
+      },
+      "activityTags": [
+        "theater",
+        "plaza",
+        "tavern"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "leadership": {
+      "id": "leadership",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "guard_captain": 2,
+        "mayor": 2,
+        "noble": 1.8,
+        "guildmaster": 2
+      },
+      "activityTags": [
+        "town_hall",
+        "keep",
+        "guild_hall"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "hearth": {
+      "id": "hearth",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "cook": 2,
+        "baker": 2,
+        "innkeeper": 1.8,
+        "brewer": 1.8
+      },
+      "activityTags": [
+        "tavern",
+        "bakery",
+        "kitchen",
+        "inn"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "wandering": {
+      "id": "wandering",
+      "schemaVersion": 1,
+      "professionLinks": {
+        "scout": 2,
+        "messenger": 2,
+        "cartographer": 1.8
+      },
+      "activityTags": [
+        "road",
+        "gates",
+        "crossroads",
+        "stables"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    }
+  },
+  "descriptors": {
+    "mean": {
+      "id": "mean",
+      "schemaVersion": 1,
+      "slot": "demeanor",
+      "traitMods": {
+        "empathy": 0.9,
+        "sociability": 0.9
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": -0.1,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "demeanor_mean"
+      ],
+      "conflicts": [
+        "kind-hearted",
+        "warm",
+        "even-keeled"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "kind-hearted": {
+      "id": "kind-hearted",
+      "schemaVersion": 1,
+      "slot": "demeanor",
+      "traitMods": {
+        "empathy": 1.15,
+        "sociability": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.15,
+        "gossipMod": 0.05
+      },
+      "barkPools": [
+        "demeanor_kind"
+      ],
+      "conflicts": [
+        "mean",
+        "grim"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "short-tempered": {
+      "id": "short-tempered",
+      "schemaVersion": 1,
+      "slot": "demeanor",
+      "traitMods": {
+        "composure": 0.85,
+        "aggression": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.05,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "demeanor_short_tempered"
+      ],
+      "conflicts": [
+        "even-keeled"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "even-keeled": {
+      "id": "even-keeled",
+      "schemaVersion": 1,
+      "slot": "demeanor",
+      "traitMods": {
+        "composure": 1.2
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": 0.05,
+        "gossipMod": -0.05
+      },
+      "barkPools": [
+        "demeanor_even_keeled"
+      ],
+      "conflicts": [
+        "short-tempered",
+        "mean"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "grim": {
+      "id": "grim",
+      "schemaVersion": 1,
+      "slot": "demeanor",
+      "traitMods": {
+        "sociability": 0.85,
+        "caution": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": -0.05,
+        "gossipMod": -0.1
+      },
+      "barkPools": [
+        "demeanor_grim"
+      ],
+      "conflicts": [
+        "warm",
+        "kind-hearted"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "warm": {
+      "id": "warm",
+      "schemaVersion": 1,
+      "slot": "demeanor",
+      "traitMods": {
+        "sociability": 1.2,
+        "empathy": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.1,
+        "gossipMod": 0.1
+      },
+      "barkPools": [
+        "demeanor_warm"
+      ],
+      "conflicts": [
+        "grim",
+        "mean"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "gossip": {
+      "id": "gossip",
+      "schemaVersion": 1,
+      "slot": "social",
+      "traitMods": {
+        "sociability": 1.2,
+        "curiosity": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": -0.05,
+        "gossipMod": 0.2
+      },
+      "barkPools": [
+        "social_gossip"
+      ],
+      "conflicts": [
+        "taciturn"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "taciturn": {
+      "id": "taciturn",
+      "schemaVersion": 1,
+      "slot": "social",
+      "traitMods": {
+        "sociability": 0.8
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0,
+        "gossipMod": -0.2
+      },
+      "barkPools": [
+        "social_taciturn"
+      ],
+      "conflicts": [
+        "gossip"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "generous": {
+      "id": "generous",
+      "schemaVersion": 1,
+      "slot": "social",
+      "traitMods": {
+        "empathy": 1.15,
+        "ambition": 0.9
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.15,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "social_generous"
+      ],
+      "conflicts": [
+        "miserly"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "miserly": {
+      "id": "miserly",
+      "schemaVersion": 1,
+      "slot": "social",
+      "traitMods": {
+        "empathy": 0.85,
+        "ambition": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": -0.15,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "social_miserly"
+      ],
+      "conflicts": [
+        "generous"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "loyal": {
+      "id": "loyal",
+      "schemaVersion": 1,
+      "slot": "social",
+      "traitMods": {
+        "diligence": 1.15,
+        "empathy": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": 0.15,
+        "gossipMod": -0.05
+      },
+      "barkPools": [
+        "social_loyal"
+      ],
+      "conflicts": [
+        "fickle"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "fickle": {
+      "id": "fickle",
+      "schemaVersion": 1,
+      "slot": "social",
+      "traitMods": {
+        "diligence": 0.85,
+        "curiosity": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0.05,
+        "trustMod": -0.1,
+        "gossipMod": 0.1
+      },
+      "barkPools": [
+        "social_fickle"
+      ],
+      "conflicts": [
+        "loyal"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "cruel": {
+      "id": "cruel",
+      "schemaVersion": 1,
+      "slot": "moral",
+      "traitMods": {
+        "empathy": 0.75,
+        "aggression": 1.2
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.2,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "moral_cruel"
+      ],
+      "conflicts": [
+        "forgiving",
+        "dutiful"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "forgiving": {
+      "id": "forgiving",
+      "schemaVersion": 1,
+      "slot": "moral",
+      "traitMods": {
+        "empathy": 1.2,
+        "composure": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.15,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "moral_forgiving"
+      ],
+      "conflicts": [
+        "cruel",
+        "vengeful"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "vengeful": {
+      "id": "vengeful",
+      "schemaVersion": 1,
+      "slot": "moral",
+      "traitMods": {
+        "composure": 0.85,
+        "aggression": 1.2
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.1,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "moral_vengeful"
+      ],
+      "conflicts": [
+        "forgiving"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "dutiful": {
+      "id": "dutiful",
+      "schemaVersion": 1,
+      "slot": "moral",
+      "traitMods": {
+        "diligence": 1.2,
+        "composure": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": -0.1,
+        "trustMod": 0.1,
+        "gossipMod": -0.05
+      },
+      "barkPools": [
+        "moral_dutiful"
+      ],
+      "conflicts": [
+        "cynical"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "devout": {
+      "id": "devout",
+      "schemaVersion": 1,
+      "slot": "moral",
+      "traitMods": {
+        "diligence": 1.15,
+        "empathy": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": 0.1,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "moral_devout"
+      ],
+      "conflicts": [
+        "cynical"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "cynical": {
+      "id": "cynical",
+      "schemaVersion": 1,
+      "slot": "moral",
+      "traitMods": {
+        "empathy": 0.85,
+        "caution": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0.05,
+        "trustMod": -0.15,
+        "gossipMod": 0.05
+      },
+      "barkPools": [
+        "moral_cynical"
+      ],
+      "conflicts": [
+        "devout",
+        "dutiful"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "loves-a-fight": {
+      "id": "loves-a-fight",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "aggression": 1.25,
+        "caution": 0.85
+      },
+      "reactionMods": {
+        "fleeMod": -0.2,
+        "trustMod": 0,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "drive_loves_a_fight"
+      ],
+      "conflicts": [
+        "peaceable",
+        "cowardly"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "peaceable": {
+      "id": "peaceable",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "aggression": 0.8,
+        "empathy": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0.1,
+        "trustMod": 0.1,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "drive_peaceable"
+      ],
+      "conflicts": [
+        "loves-a-fight",
+        "reckless"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "reckless": {
+      "id": "reckless",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "caution": 0.75,
+        "aggression": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": -0.15,
+        "trustMod": 0,
+        "gossipMod": 0.05
+      },
+      "barkPools": [
+        "drive_reckless"
+      ],
+      "conflicts": [
+        "cowardly",
+        "peaceable"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "ambitious": {
+      "id": "ambitious",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "ambition": 1.25,
+        "diligence": 1.1
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.05,
+        "gossipMod": 0.05
+      },
+      "barkPools": [
+        "drive_ambitious"
+      ],
+      "conflicts": [
+        "content"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "content": {
+      "id": "content",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "ambition": 0.8,
+        "composure": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.05,
+        "gossipMod": -0.05
+      },
+      "barkPools": [
+        "drive_content"
+      ],
+      "conflicts": [
+        "ambitious"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "curious-mind": {
+      "id": "curious-mind",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "curiosity": 1.25
+      },
+      "reactionMods": {
+        "fleeMod": 0.05,
+        "trustMod": 0.05,
+        "gossipMod": 0.1
+      },
+      "barkPools": [
+        "drive_curious"
+      ],
+      "conflicts": [],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "proud-heart": {
+      "id": "proud-heart",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "ambition": 1.15,
+        "composure": 0.9
+      },
+      "reactionMods": {
+        "fleeMod": -0.05,
+        "trustMod": -0.05,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "drive_proud"
+      ],
+      "conflicts": [
+        "humble"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "humble": {
+      "id": "humble",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "ambition": 0.85,
+        "empathy": 1.15
+      },
+      "reactionMods": {
+        "fleeMod": 0,
+        "trustMod": 0.1,
+        "gossipMod": -0.05
+      },
+      "barkPools": [
+        "drive_humble"
+      ],
+      "conflicts": [
+        "proud-heart"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "brave": {
+      "id": "brave",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "composure": 1.2,
+        "caution": 0.85
+      },
+      "reactionMods": {
+        "fleeMod": -0.15,
+        "trustMod": 0.05,
+        "gossipMod": 0
+      },
+      "barkPools": [
+        "drive_brave"
+      ],
+      "conflicts": [
+        "cowardly"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "cowardly": {
+      "id": "cowardly",
+      "schemaVersion": 1,
+      "slot": "drive",
+      "traitMods": {
+        "caution": 1.3,
+        "aggression": 0.7
+      },
+      "reactionMods": {
+        "fleeMod": 0.25,
+        "trustMod": -0.05,
+        "gossipMod": 0.05
+      },
+      "barkPools": [
+        "drive_cowardly"
+      ],
+      "conflicts": [
+        "brave",
+        "loves-a-fight",
+        "reckless"
+      ],
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    }
+  },
+  "rules": [
+    {
+      "when": {
+        "benevolenceBand": "leaning-negative"
+      },
+      "gives": "mean"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-negative"
+      },
+      "gives": "grim"
+    },
+    {
+      "when": {
+        "benevolenceBand": "leaning-positive"
+      },
+      "gives": "warm"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-positive"
+      },
+      "gives": "kind-hearted"
+    },
+    {
+      "when": {
+        "temperament": "hot-headed"
+      },
+      "gives": "short-tempered"
+    },
+    {
+      "when": {
+        "temperament": "calm"
+      },
+      "gives": "even-keeled"
+    },
+    {
+      "when": {
+        "temperament": "patient"
+      },
+      "gives": "even-keeled"
+    },
+    {
+      "when": {
+        "topInterest": "trade",
+        "temperament": "cheerful"
+      },
+      "gives": "gossip"
+    },
+    {
+      "when": {
+        "topInterest": "art",
+        "temperament": "cheerful"
+      },
+      "gives": "gossip"
+    },
+    {
+      "when": {
+        "temperament": "sullen"
+      },
+      "gives": "taciturn"
+    },
+    {
+      "when": {
+        "temperament": "brooding"
+      },
+      "gives": "taciturn"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-positive"
+      },
+      "gives": "generous"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-negative"
+      },
+      "gives": "miserly"
+    },
+    {
+      "when": {
+        "orderBand": "strong-positive"
+      },
+      "gives": "loyal"
+    },
+    {
+      "when": {
+        "orderBand": "leaning-positive"
+      },
+      "gives": "loyal"
+    },
+    {
+      "when": {
+        "orderBand": "strong-negative"
+      },
+      "gives": "fickle"
+    },
+    {
+      "when": {
+        "temperament": "hot-headed",
+        "benevolenceBand": "strong-negative"
+      },
+      "gives": "cruel"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-positive"
+      },
+      "gives": "forgiving"
+    },
+    {
+      "when": {
+        "orderBand": "leaning-positive",
+        "role": "guard"
+      },
+      "gives": "dutiful"
+    },
+    {
+      "when": {
+        "orderBand": "strong-positive",
+        "role": "guard"
+      },
+      "gives": "dutiful"
+    },
+    {
+      "when": {
+        "orderBand": "strong-positive"
+      },
+      "gives": "dutiful"
+    },
+    {
+      "when": {
+        "archetype": "devout"
+      },
+      "gives": "devout"
+    },
+    {
+      "when": {
+        "topInterest": "faith"
+      },
+      "gives": "devout"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-negative"
+      },
+      "gives": "cynical"
+    },
+    {
+      "when": {
+        "orderBand": "strong-negative",
+        "temperament": "brooding"
+      },
+      "gives": "cynical"
+    },
+    {
+      "when": {
+        "orderBand": "strong-negative",
+        "benevolenceBand": "strong-positive",
+        "topInterest": "combat"
+      },
+      "gives": "loves-a-fight"
+    },
+    {
+      "when": {
+        "orderBand": "leaning-negative",
+        "benevolenceBand": "strong-positive",
+        "topInterest": "combat"
+      },
+      "gives": "loves-a-fight"
+    },
+    {
+      "when": {
+        "archetype": "veteran",
+        "topInterest": "combat"
+      },
+      "gives": "brave"
+    },
+    {
+      "when": {
+        "temperament": "bold",
+        "topInterest": "combat"
+      },
+      "gives": "loves-a-fight"
+    },
+    {
+      "when": {
+        "orderBand": "strong-negative"
+      },
+      "gives": "reckless"
+    },
+    {
+      "when": {
+        "benevolenceBand": "strong-positive",
+        "topInterest": "hearth"
+      },
+      "gives": "peaceable"
+    },
+    {
+      "when": {
+        "archetype": "coward"
+      },
+      "gives": "cowardly"
+    },
+    {
+      "when": {
+        "temperament": "anxious"
+      },
+      "gives": "cowardly"
+    },
+    {
+      "when": {
+        "temperament": "proud"
+      },
+      "gives": "proud-heart"
+    },
+    {
+      "when": {
+        "archetype": "heir"
+      },
+      "gives": "ambitious"
+    },
+    {
+      "when": {
+        "topInterest": "lore"
+      },
+      "gives": "curious-mind"
+    },
+    {
+      "when": {
+        "temperament": "calm"
+      },
+      "gives": "content"
+    },
+    {
+      "when": {
+        "temperament": "bold"
+      },
+      "gives": "brave"
+    }
+  ],
+  "fragments": {
+    "origin:veteran": {
+      "id": "origin:veteran",
+      "pool": "origin",
+      "schemaVersion": 1,
+      "text": "Served many hard campaigns on the northern borders before arriving in {town}.",
+      "conditions": {
+        "archetypes": [
+          "veteran"
+        ]
+      },
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "origin:devout": {
+      "id": "origin:devout",
+      "pool": "origin",
+      "schemaVersion": 1,
+      "text": "Raised within the cloistered walls of the sanctuary, dedicated early to faith.",
+      "conditions": {
+        "archetypes": [
+          "devout"
+        ]
+      },
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "origin:coastal": {
+      "id": "origin:coastal",
+      "pool": "origin",
+      "schemaVersion": 1,
+      "text": "Born to fisherfolk on salt-sprayed shores, drifting inland until settling in {town}.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "origin:artisan": {
+      "id": "origin:artisan",
+      "pool": "origin",
+      "schemaVersion": 1,
+      "text": "Apprenticed from childhood to the trade, mastering materials and form.",
+      "conditions": {
+        "archetypes": [
+          "artisan"
+        ]
+      },
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "origin:hearth": {
+      "id": "origin:hearth",
+      "pool": "origin",
+      "schemaVersion": 1,
+      "text": "Grew up in a crowded homestead where bread was shared and hearthfires never died.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "origin:drifter": {
+      "id": "origin:drifter",
+      "pool": "origin",
+      "schemaVersion": 1,
+      "text": "Walked roads without end across the kingdoms before pausing in {town}.",
+      "conditions": {
+        "archetypes": [
+          "drifter",
+          "hermit"
+        ]
+      },
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "event:skirmish": {
+      "id": "event:skirmish",
+      "pool": "event",
+      "schemaVersion": 1,
+      "text": "Stood firm during the brutal winter raid on {place}, earning scars and solemn silence.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "event:miracle": {
+      "id": "event:miracle",
+      "pool": "event",
+      "schemaVersion": 1,
+      "text": "Witnessed what elders called a divine sign during the great famine, cementing lifelong conviction.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "event:fire": {
+      "id": "event:fire",
+      "pool": "event",
+      "schemaVersion": 1,
+      "text": "Survived the great fire that consumed the lower quarter, salvaging only a handful of tools.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "event:discovery": {
+      "id": "event:discovery",
+      "pool": "event",
+      "schemaVersion": 1,
+      "text": "Uncovered ancient ruins in the deep woods, glimpsing secrets not meant for mortal eyes.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "want:glory": {
+      "id": "want:glory",
+      "pool": "want",
+      "schemaVersion": 1,
+      "text": "Yearns to perform a deed sung of across the realms.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "want:peace": {
+      "id": "want:peace",
+      "pool": "want",
+      "schemaVersion": 1,
+      "text": "Desires nothing more than an undisturbed garden and an end to bloodshed.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "want:mastery": {
+      "id": "want:mastery",
+      "pool": "want",
+      "schemaVersion": 1,
+      "text": "Strives day and night to perfect their craft beyond any living peer.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "want:wealth": {
+      "id": "want:wealth",
+      "pool": "want",
+      "schemaVersion": 1,
+      "text": "Seeks enough coin to buy total freedom and comfort for their kin.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "flaw:wrath": {
+      "id": "flaw:wrath",
+      "pool": "flaw",
+      "schemaVersion": 1,
+      "text": "Slow to forget slights and quick to strike when pride is bruised.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "flaw:distrust": {
+      "id": "flaw:distrust",
+      "pool": "flaw",
+      "schemaVersion": 1,
+      "text": "Sees betrayal behind every friendly smile and hides true thoughts.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "flaw:pride": {
+      "id": "flaw:pride",
+      "pool": "flaw",
+      "schemaVersion": 1,
+      "text": "Cannot bear being contradicted or corrected, even when plainly mistaken.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    },
+    "flaw:fear": {
+      "id": "flaw:fear",
+      "pool": "flaw",
+      "schemaVersion": 1,
+      "text": "Haunted by nightmares of violence, flinching at shadows in the dark.",
+      "weight": 1,
+      "provenance": {
+        "script": "character-foundation",
+        "author": "Joey / Antigravity"
+      }
+    }
+  }
+}

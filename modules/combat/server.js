@@ -45,6 +45,8 @@ export function createSystems(ctx) {
     skills: config.combatSkills,
     body,
     techniques: () => Object.keys(rules.combat.techniques),
+    // Blow resolution (EG6): combat.json's resolution and items.json's unarmed, live across reloads.
+    tuning: config.getCombatTuning,
   };
 
   const abilities = new AbilitySystem(30);
@@ -66,13 +68,15 @@ export function createSystems(ctx) {
   // effects: the attacker's power buffs and the defender's armour buffs
   // scale the landed blow.
   combatDamage.canHit = (a, b) =>
-    hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true;
+    (hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true) && (config.canBreak?.(a, b) ?? true);
+  combatDamage.kindScale = (t, kind) => config.kindScale?.(t, kind) ?? 1;
   combatDamage.damageScale = (a, b) => status.modifier(a, "power").mul * status.modifier(b, "armour").mul;
 
   const combat = new CombatSystem(30, stamina, combatDamage);
 
   // Death: players respawn at the gateway's spawn grid, bots rise where
-  // they fell. Drops and quest kills route through lazy module refs.
+  // they fell. Drops and quest kills route through lazy module refs. A
+  // duelist felled by their opponent loses the duel instead of dying.
   const death = new DeathSystem(
     config.hooks,
     30,
@@ -83,7 +87,8 @@ export function createSystems(ctx) {
       config.getDropper()?.onDeath(s, ev);
       config.getQuests()?.onDeath(s, ev, (e) => config.getKindOf(e));
     },
-    body
+    body,
+    duels
   );
 
   return { stamina, body, magic, abilities, status, telegraphs, duels, combat, death };

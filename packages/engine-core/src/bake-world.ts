@@ -20,6 +20,19 @@
  *   MMO_TERRAIN_AMPLITUDE / MMO_TERRAIN_FREQUENCY  terrain shape; the
  *                   server must run with the same values (it warns on a
  *                   mismatch, recorded as meta "terrain_version")
+ *   MMO_BAKE_REGION=rx,rz  re-bake only this region's tiles (incremental)
+ *   MMO_BAKE_SURVEY_ONLY=1  re-run the survey and invalidate the tile cache,
+ *                   without regenerating tiles
+ *
+ * Flags:
+ *   --force          overwrite an existing world.db (same as MMO_BAKE_FORCE=1)
+ *   --region rx,rz   re-bake only this region's tiles (incremental)
+ *   --survey-only    re-run the survey and invalidate the tile cache
+ *   --shape=island|peninsula|continents|pangaea
+ *                    the landmass shape (same as MMO_BAKE_SHAPE); continents
+ *                    and pangaea need room, so the world grows to at least
+ *                    CONTINENT_MIN_CHUNKS (500 chunks = 8 km) per side
+ *   --size-chunks=N  the world's side in chunks (same as MMO_BAKE_SIZE_CHUNKS)
  *
  * With a world spec, the WHOLE world's terrain is baked once (survey,
  * erosion, rivers, biomes -> 16x16-sample chunk tiles + survey maps in
@@ -56,7 +69,9 @@ import {
 } from "./index.js";
 import { closeWorldCatalogs } from "./persist/world-catalog.js";
 import { bakeWorldTerrain } from "./terrain/world-bake.js";
-import { loadWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
+import { bakeSettlementFortifications } from "./terrain/fortify-settlements.js";
+import type { SettlementBake } from "@mmo-engine/fortify";
+import { loadWorldSpec, parseWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
 
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
@@ -64,6 +79,37 @@ const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 const RADIUS = Number(process.env.MMO_BAKE_RADIUS ?? 1);
 const FORCE =
   process.env.MMO_BAKE_FORCE === "1" || process.argv.includes("--force");
+const SURVEY_ONLY =
+  process.env.MMO_BAKE_SURVEY_ONLY === "1" || process.argv.includes("--survey-only");
+
+const SHAPES = ["peninsula", "island", "continents", "pangaea"] as const;
+type Shape = (typeof SHAPES)[number];
+/** Continents and pangaea worlds are at least this many chunks a side: smaller ones would only hold tiny landmasses with little to do on them. */
+const CONTINENT_MIN_CHUNKS = 500;
+/** `--name=value` on the command line; through `npm run ... -- --name=value` npm keeps the flag for itself and passes it on as npm_config_<name>. */
+const flag = (name: string): string | undefined =>
+  process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? process.env[`npm_config_${name.replace(/-/g, "_")}`];
+
+function parseShape(arg: string | undefined): Shape | undefined {
+  if (!arg) return undefined;
+  if (!(SHAPES as readonly string[]).includes(arg)) throw new Error(`shape must be one of ${SHAPES.join(", ")} (got "${arg}")`);
+  return arg as Shape;
+}
+function parseSizeChunks(arg: string | undefined): number | undefined {
+  if (!arg) return undefined;
+  const n = Number(arg);
+  if (!Number.isInteger(n) || n < 2 || n > 4096) throw new Error(`size-chunks must be an integer from 2 to 4096 (got "${arg}")`);
+  return n;
+}
+
+function parseRegion(arg: string | undefined): [number, number] | undefined {
+  if (!arg) return undefined;
+  const m = arg.match(/^(\d+),(\d+)$/);
+  if (!m) throw new Error(`region must be "rx,rz" (got "${arg}")`);
+  return [Number(m[1]), Number(m[2])];
+}
+
+const REGION = parseRegion(process.env.MMO_BAKE_REGION ?? process.argv.find((a) => a.startsWith("--region="))?.slice("--region=".length));
 
 async function main(): Promise<void> {
   if (!Number.isInteger(RADIUS) || RADIUS < 0) {
@@ -74,16 +120,22 @@ async function main(): Promise<void> {
 
   const probe = new SnapshotStore({ dbPath });
   const existing = probe.snapshotCount();
+  const existingSurveyHash = probe.getMeta("survey_hash");
   probe.close();
-  if (existing > 0 && !FORCE) {
+
+  // Incremental mode (--region or --survey-only) works on an existing world.
+  // Full bake still refuses to overwrite without --force.
+  const incremental = REGION !== undefined || SURVEY_ONLY;
+  if (existing > 0 && !incremental && !FORCE) {
     throw new Error(
       `refusing to overwrite ${dbPath} (${existing} snapshot(s) present). ` +
         `To replace it, stop the server and run: npm run bake:world:force`,
     );
   }
-  if (existing > 0) {
-    // Remove the WAL sidecars too: a stale world.db-wal next to a fresh
-    // world.db could replay old pages into the new world.
+  // A forced FULL bake starts clean: drop the db and its WAL sidecars so a
+  // stale world.db-wal can't replay old pages into the new world. Incremental
+  // mode keeps the existing db — it updates the world in place.
+  if (existing > 0 && !incremental && FORCE) {
     for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
       try {
         fs.rmSync(f, { force: true });
@@ -114,11 +166,27 @@ async function main(): Promise<void> {
   let tiles: TerrainTileStore | null = null;
   let spawn = { x: 0, z: 0 };
   let bounds: ChunkBounds | null = null;
+  let report: Awaited<ReturnType<typeof bakeWorldTerrain>> | null = null;
+  let fortifiedSettlements: SettlementBake[] = [];
   if (spec) {
-    const report = await bakeWorldTerrain(spec, {
+    report = await bakeWorldTerrain(spec, {
       dbPath,
       catalogDir: process.env.MMO_WORLD_CATALOG === "0" ? null : path.join(DATA_DIR, "surreal"),
       log: (l) => console.log(l),
+      terrainVersion: procgen.terrainVersion,
+      region: REGION,
+      surveyOnly: SURVEY_ONLY,
+      existingSurveyHash,
+      // Settlement fortification rides the terrain survey (see
+      // terrain/fortify-settlements.ts); results persist as world meta
+      // below, next to the spawn point. (When the survey is skipped as
+      // unchanged, onSurvey never fires and the stored settlements
+      // from the previous bake stand.)
+      onSurvey: (survey) => {
+        fortifiedSettlements = bakeSettlementFortifications(survey, {
+          log: (l) => console.log(l),
+        });
+      },
     });
     // The bake is the catalog's only user here; an open connection would
     // keep this process alive.
@@ -130,6 +198,12 @@ async function main(): Promise<void> {
         `erosion mean ${report.erosion.meanM.toFixed(2)} m (deepest river cut ${report.erosion.deepestCutM.toFixed(1)} m), ` +
         `peak memory ${report.peakRssMb} MB`,
     );
+    if (report.surveySkipped) {
+      console.log(`[bake] survey skipped (spec unchanged)`);
+    }
+    if (report.tilesSkipped > 0) {
+      console.log(`[bake] tiles: ${report.tilesGenerated} regenerated, ${report.tilesSkipped} unchanged (skipped)`);
+    }
     spawn = report.spawn;
     console.log(`[bake] spawn point (${spawn.x}, ${spawn.z})${report.spawn.biome ? ` in ${report.spawn.biome}` : ""}`);
     const { minChunk, maxChunk } = worldBounds(spec);
@@ -152,7 +226,7 @@ async function main(): Promise<void> {
   // What grows (see world-populator): on a spec world by biome and water.
   const biomeMap = tiles?.getMap("biome") ?? null;
   const formationTiles = new FormationTileStore(dbPath);
-  const populator = makeWorldPopulator({
+  const populator = await makeWorldPopulator({
     worldSeed,
     chunkWorldSize: chunkSize,
     seaLevel: spec?.land.seaLevel,
@@ -209,9 +283,19 @@ async function main(): Promise<void> {
     const { minChunk, maxChunk } = worldBounds(spec);
     store.setMeta("world_bounds", JSON.stringify({ minChunk, maxChunk }));
     store.setMeta("spawn_point", JSON.stringify({ x: spawn.x, z: spawn.z }));
+    // Fortified settlements baked from the survey (terrain/fortify-
+    // settlements.ts): structure placements in world coordinates, with
+    // build logs — the town spawner / editor read them from here.
+    if (fortifiedSettlements.length > 0) {
+      store.setMeta("fortified_settlements", JSON.stringify(fortifiedSettlements));
+      console.log(`[bake] fortified settlements: ${fortifiedSettlements.length} stored in world meta`);
+    }
     store.setMeta("sea_level", String(spec.land.seaLevel));
     // Biome map values index this list (clients colour the ground by it).
     store.setMeta("world_biomes", JSON.stringify(spec.biomes.map((b) => b.id)));
+    // Content-address the survey: an equal hash on re-bake means the survey
+    // (maps + catalog) is already in the db and can be skipped.
+    store.setMeta("survey_hash", report!.surveyHash);
   }
   store.close();
   if (!spec) {
@@ -250,7 +334,37 @@ function resolveWorldSpec(): WorldSpec | null {
     return null;
   }
   console.log(`[bake] world spec ${path.relative(process.cwd(), file)}`);
-  return loadWorldSpec(file);
+  const shape = parseShape(process.env.MMO_BAKE_SHAPE ?? flag("shape"));
+  const size = parseSizeChunks(process.env.MMO_BAKE_SIZE_CHUNKS ?? flag("size-chunks"));
+  if (shape === undefined && size === undefined) return loadWorldSpec(file);
+  const spec = loadWorldSpec(file);
+  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  const coast: Record<string, unknown> = { ...((raw.land as { coast?: Record<string, unknown> } | undefined)?.coast ?? {}), ...(shape ? { shape } : {}) };
+  // A pangaea reaches the 70% land target with a smaller cover than the continents' bridged landmasses need.
+  if (shape === "pangaea" && coast.continentCover === undefined) coast.continentCover = 0.76;
+  raw.land = { ...(raw.land as object), coast };
+  if (shape === "continents" || shape === "pangaea") {
+    // The default spec pins its one range where the 4 km island's land is; continents get a chain on each, placed on the land they have.
+    const { center: _pinned, ...ranges } = (raw.ranges ?? {}) as Record<string, unknown>;
+    // Wide landmasses have dry interiors; more rain keeps them green.
+    const climate = (raw.climate ?? {}) as Record<string, unknown>;
+    raw.climate = { ...climate, humidity: Math.max(Number(climate.humidity ?? 1), 1.4) };
+    raw.ranges = { ...ranges, count: Math.max(Number(ranges.count ?? 1), shape === "pangaea" ? 3 : parseWorldSpec({ ...raw, land: raw.land }).land.coast.continents) };
+  }
+  const want = size ?? (shape === "continents" || shape === "pangaea" ? Math.max(spec.sizeChunks, CONTINENT_MIN_CHUNKS) : spec.sizeChunks);
+  if (want !== spec.sizeChunks) {
+    // Keep the region grid dividing the world evenly.
+    raw.sizeChunks = want;
+    raw.regionsPerSide = [spec.regionsPerSide, 2, 1].find((r) => want % r === 0) ?? 1;
+  }
+  const out = parseWorldSpec(raw);
+  const km = (out.sizeChunks * out.chunkWorldSize) / 1000;
+  console.log(`[bake] shape ${out.land.coast.shape}${want !== spec.sizeChunks ? `, world grown to ${out.sizeChunks} chunks (${km} km a side)` : ""}`);
+  // Other tools (terrain-tool, the editor) read the spec themselves: leave the one this world was baked from beside it.
+  const derived = path.join(DATA_DIR, "world.spec.json");
+  fs.writeFileSync(derived, JSON.stringify(raw, null, 2));
+  console.log(`[bake] spec used saved to ${derived} (MMO_WORLD_SPEC=${derived} for tools that read the spec)`);
+  return out;
 }
 
 main().catch((err) => {

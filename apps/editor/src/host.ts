@@ -47,6 +47,10 @@
  *                                    checks) then write back pretty-printed;
  *                                    400 with per-path issues when invalid
  *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
+ *   GET/PUT /api/editor/scale      → the global scale document content/scale.json (scale-host.ts)
+ *   GET/PUT /api/editor/docs/<n>   → designer settings documents under content/ (content-docs-host.ts)
+ *   GET/PUT /api/editor/settlements/rules, POST /settlements/preview → the town generator's
+ *                                    rules content/settlements/rules.json and a town built from them (settlement-host.ts)
  *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
  *   GET  /api/editor/story         → the quest and dialog documents (EA20)
  *   GET  /api/editor/story/:name   → one document and the rules references
@@ -117,6 +121,9 @@ import { handleProblemsRoute } from "./problems-host.js";
 import { handleFilesRoute } from "./files-host.js";
 import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
+import { handleScaleRoute } from "./scale-host.js";
+import { handleContentDocsRoute } from "./content-docs-host.js";
+import { handleSettlementRoute } from "./settlement-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
@@ -703,6 +710,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
     // disables only its module (logged + reported below); the server
     // still boots.
     const sidecarManager = new SidecarManager({
+      dumpDir: join(dataDir, "sidecar-dumps"),
       log: (line) => {
         if (serverLog.current(logEpoch)) serverLog.append(`${line}\n`, "editor");
       },
@@ -989,6 +997,43 @@ export function editorHost(options: EditorHostOptions): Plugin {
             // Fresh/keep: restore the backup unless keeping play changes.
             playSnapshot.end();
             sendJson(res, 200, { ok: true, stopped });
+            return;
+          }
+          if (url === "/api/editor/sidecars/park" || url === "/api/editor/sidecars/replace") {
+            if (req.method !== "POST") {
+              sendJson(res, 405, { ok: false, error: "POST only" });
+              return;
+            }
+            let body: { name?: unknown; reason?: unknown } = {};
+            try {
+              body = JSON.parse((await readBody(req)) || "{}") as typeof body;
+            } catch {
+              sendJson(res, 400, { ok: false, error: "body must be JSON" });
+              return;
+            }
+            if (!owned || typeof body.name !== "string") {
+              sendJson(res, 409, { ok: false, error: owned ? 'need {"name": "<module>"}' : "the play server isn't running" });
+              return;
+            }
+            const report =
+              url.endsWith("/park")
+                ? await owned.sidecars.park(body.name, typeof body.reason === "string" ? body.reason : undefined)
+                : await owned.sidecars.replace(body.name);
+            sendJson(res, 200, { ok: true, report, dump: owned.sidecars.dumpOf(body.name) ?? null });
+            return;
+          }
+          if (url === "/api/editor/sidecars" && req.method === "GET") {
+            sendJson(res, 200, { ok: true, sidecars: owned?.sidecars.list() ?? [] });
+            return;
+          }
+          if (url.startsWith("/api/editor/sidecars/dump") && req.method === "GET") {
+            const name = new URL(url, "http://localhost").searchParams.get("name") ?? "";
+            const dump = owned?.sidecars.dumpOf(name);
+            if (!dump) {
+              sendJson(res, 404, { ok: false, error: `no dump for "${name}"` });
+              return;
+            }
+            sendJson(res, 200, { ok: true, dump });
             return;
           }
           if (url.startsWith("/api/editor/server/log") && req.method === "GET") {
@@ -1417,6 +1462,39 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, stringsReply.status, stringsReply.body);
             return;
           }
+          // The global scale document (content/scale.json, scale-host.ts).
+          const scaleReply = handleScaleRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/scale" ? await readBody(req) : undefined,
+          );
+          if (scaleReply) {
+            sendJson(res, scaleReply.status, scaleReply.body);
+            return;
+          }
+          // Designer settings documents as forms (content-docs-host.ts).
+          const docsReply = await handleContentDocsRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname.startsWith("/api/editor/docs/") ? await readBody(req) : undefined,
+          );
+          if (docsReply) {
+            sendJson(res, docsReply.status, docsReply.body);
+            return;
+          }
+          // The town generator's rules and the town preview (content/settlements/rules.json, settlement-host.ts).
+          const settlementReply = await handleSettlementRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            (req.method === "PUT" || req.method === "POST") && scenesUrl.pathname.startsWith("/api/editor/settlements/") ? await readBody(req) : undefined,
+          );
+          if (settlementReply) {
+            sendJson(res, settlementReply.status, settlementReply.body);
+            return;
+          }
           // Playtests (EA26) and the Network workspace's routes file.
           const needsBody = req.method === "PUT" || req.method === "POST";
           const playtestReply = scenesUrl.pathname.startsWith("/api/editor/playtest")
@@ -1459,7 +1537,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, problemsReply.status, problemsReply.body);
             return;
           }
-          // Rename / duplicate / delete for the documents the editor owns (files-host.ts).
+          // Create / rename / duplicate / delete for the documents the editor owns (files-host.ts).
           const filesReply = await handleFilesRoute(repoRoot, req.method ?? "GET", scenesUrl.pathname, req.method === "POST" ? await readBody(req) : undefined);
           if (filesReply) {
             sendJson(res, filesReply.status, filesReply.body);

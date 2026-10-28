@@ -152,6 +152,27 @@ describe("gateway: M5 combat abilities", () => {
     assert.equal(duels.canHit(aEid, bEid), false, "hostility ends with the duel");
   });
 
+  it("a duelist disconnecting ends the duel, and the opponent is told", async () => {
+    const url = await startGateway();
+    const a = await join(url, "alice");
+    const b = await join(url, "user-b");
+    const aEid = place(a.entity, 0, 0);
+    const bEid = place(b.entity, 5, 0);
+    duels.challenge(aEid, bEid, 0);
+    duels.accept(bEid, 0);
+    await frames(2);
+    assert.ok(duels.inDuel(aEid));
+
+    const endP = a.client.waitFor(MessageType.Duel, 1);
+    await b.client.close();
+    await frames(3);
+    const msg = decodeControl<DuelMessage>((await endP)[0]);
+    assert.equal(msg.state, "ended");
+    assert.equal(msg.reason, "cancelled");
+    assert.equal(duels.inDuel(aEid), false);
+    assert.equal(duels.canHit(aEid, bEid), false, "the parked avatar is safe");
+  });
+
   it("a telegraph warns, then resolves against whoever is inside", async () => {
     const url = await startGateway();
     const a = await join(url, "alice");

@@ -11,7 +11,7 @@ import * as THREE from "three";
 import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
 import { Interpolator, MirrorState } from "@mmo-engine/mirror";
 import { PlaceholderAssets } from "../src/render/assets.js";
-import { EntityLayer } from "../src/render/entity-layer.js";
+import { classifyAimedBodyPart, EntityLayer } from "../src/render/entity-layer.js";
 import { clampCamDistance, followCamera, MAX_CAM_DISTANCE, MIN_CAM_DISTANCE } from "../src/render/follow-camera.js";
 import { TerrainRenderer } from "../src/render/terrain/terrain-renderer.js";
 
@@ -126,6 +126,45 @@ describe("EntityLayer", () => {
     layer.hover(new THREE.Raycaster(new THREE.Vector3(50, 50, 50), new THREE.Vector3(0, -1, 0)));
     layer.sync(state, interp, 1, null);
     assert.equal(emissive(), 0, "nothing under the ray: plain");
+    layer.dispose();
+  });
+
+  it("classifies aimed body parts from 3D raycast hits and exposes playerSample", () => {
+    assert.equal(classifyAimedBodyPart(0, 1.65, 1, 0, 0, 1, 0, 0, 1.8), "head");
+    assert.equal(classifyAimedBodyPart(0, 1.05, 1, 0, 0, 1, 0, 0, 1.8), "torso");
+    assert.equal(classifyAimedBodyPart(0.3, 1.05, 1, 0, 0, 1, 0, 0, 1.8), "armUpperLeft");
+    assert.equal(classifyAimedBodyPart(-0.3, 1.05, 1, 0, 0, 1, 0, 0, 1.8), "armUpperRight");
+    assert.equal(classifyAimedBodyPart(0.15, 0.4, 1, 0, 0, 1, 0, 0, 1.8), "legLeft");
+    assert.equal(classifyAimedBodyPart(-0.15, 0.4, 1, 0, 0, 1, 0, 0, 1.8), "legRight");
+
+    const { layer, state, interp } = setup();
+    state.entities.set(1n, {
+      wireId: 1n,
+      transform: transform(1n, 0, 0),
+      body: body(1n, DYNAMIC),
+      velocity: { wireId: 1n, lx: 3, ly: 0, lz: 4, ax: 0, ay: 0, az: 0 },
+      action: { wireId: 1n, move: 1, started: 10, seq: 1, yaw: 0.5 },
+    });
+    state.entities.set(7n, { wireId: 7n, transform: transform(7n, 0, 5), body: body(7n, DYNAMIC) });
+    layer.sync(state, interp, 1, 1n, { tick: 16, tickHz: 30 });
+    assert.equal(layer.playerSample.vx, 3);
+    assert.equal(layer.playerSample.vz, 4);
+    assert.equal(layer.playerSample.move, 1);
+    assert.ok(Math.abs(layer.playerSample.moveElapsed - 0.2) < 1e-6);
+
+    const mesh = ownMeshes(layer).find((m) => m.position.z === 5)!;
+    mesh.updateMatrixWorld();
+    // Ray hitting top of entity 7 (y = 1.45 on box [0.5..1.5]) -> head
+    layer.hover(new THREE.Raycaster(new THREE.Vector3(0, 1.45, 0), new THREE.Vector3(0, 0, 1)));
+    assert.equal(layer.hovered, 7n);
+    assert.equal(layer.hoveredPart, "head");
+    assert.ok(layer.hoveredDistance > 4 && layer.hoveredDistance < 5);
+
+    // Ray hitting center of entity 7 (y = 1.0) -> torso
+    layer.hover(new THREE.Raycaster(new THREE.Vector3(0, 1.0, 0), new THREE.Vector3(0, 0, 1)));
+    assert.equal(layer.hovered, 7n);
+    assert.equal(layer.hoveredPart, "torso");
+    layer.dispose();
     layer.dispose();
   });
 });

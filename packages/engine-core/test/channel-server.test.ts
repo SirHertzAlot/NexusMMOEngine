@@ -10,7 +10,7 @@ import * as path from "node:path";
 import { MessageType } from "@mmo-engine/protocol";
 import { ChannelClient } from "@mmo-engine/channel";
 import { Gateway } from "../src/net/gateway.js";
-import { CORE_METRIC_NAMES, coreChannelPort, isSnapshotTick, pushTick, startCoreChannel, type CoreChannel } from "../src/channel-server.js";
+import { CORE_METRIC_NAMES, coreChannelPort, pushTick, startCoreChannel, type CoreChannel } from "../src/channel-server.js";
 import { SessionManager } from "../src/auth/sessions.js";
 import { SqliteSessionStore } from "../src/auth/sqlite-session-store.js";
 import { HeadlessClient } from "./net/headless-client.js";
@@ -102,34 +102,20 @@ describe("core channel server (E3)", () => {
     assert.match(text, /^mmo_core_tick \d+$/m);
   });
 
-  it("pushes tick.events and tick.delta every tick, in order", async () => {
+  it("pushes tick.events every tick, in order", async () => {
     const { client } = await start();
     const events: number[] = [];
-    const deltas: number[] = [];
     client.onPush("tick.events", (p) => events.push((p as { tick: number }).tick));
-    client.onPush("tick.delta", (p) => {
-      const d = p as { tick: number; delta: string };
-      assert.ok(Buffer.from(d.delta, "base64").length > 0);
-      deltas.push(d.tick);
-    });
     await sleep(20);
     tick(3);
-    await until(() => events.length >= 3 && deltas.length >= 3);
+    await until(() => events.length >= 3);
     assert.equal(events.length, 3);
     assert.ok(events[1] === events[0] + 1 && events[2] === events[1] + 1);
-    assert.deepEqual(deltas, events);
   });
 });
 
-describe("snapshot cadence", () => {
-  it("isSnapshotTick: 0 and multiples of 300", () => {
-    assert.equal(isSnapshotTick(0), true);
-    assert.equal(isSnapshotTick(1), false);
-    assert.equal(isSnapshotTick(299), false);
-    assert.equal(isSnapshotTick(300), true);
-  });
-
-  it("pushes a snapshot only on snapshot ticks", () => {
+describe("tick pushes", () => {
+  it("pushes only tick.events, and never builds a snapshot (the mirror stream is gone)", () => {
     for (const t of [299, 300, 301]) {
       const types: string[] = [];
       let built = 0;
@@ -137,8 +123,8 @@ describe("snapshot cadence", () => {
         tick: t, delta: new Uint8Array([1]), events: [],
         fullState: () => { built++; return new Uint8Array([2]); },
       });
-      assert.deepEqual(types, t === 300 ? ["tick.events", "tick.delta", "snapshot"] : ["tick.events", "tick.delta"]);
-      assert.equal(built, t === 300 ? 1 : 0);
+      assert.deepEqual(types, ["tick.events"]);
+      assert.equal(built, 0);
     }
   });
 
@@ -191,7 +177,7 @@ describe("core metrics (E6)", () => {
     assert.match(text, /^mmo_core_tick_duration_ms_bucket\{le="33\.3"\} \d+$/m);
     // The request being answered is counted once it is in flight.
     assert.match(text, /^mmo_channel_requests_total\{side="core"\} 2$/m);
-    assert.match(text, /^mmo_channel_pushes_total\{side="core",type="tick\.delta"\} \d+$/m);
+    assert.match(text, /^mmo_channel_pushes_total\{side="core",type="tick\.events"\} \d+$/m);
     assert.match(text, /^mmo_core_tick \d+$/m);
   });
 });

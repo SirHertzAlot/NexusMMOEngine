@@ -7,12 +7,27 @@
  * WebrpcWorldTransport (webrpc JSON over HTTP) now; queue or embedded
  * stub later — the client doesn't care.
  */
-import type {
-  ChunkRange,
-  HeartbeatAck,
-  MigrationRecord,
-  RegionInfo,
-  RegionLease,
+import {
+  rangeKeyFor,
+  type AtomicOpResult,
+  type AuctionSettleInput,
+  type CharacterSessionLock,
+  type CharacterStateRecord,
+  type ChunkRange,
+  type CraftExecuteInput,
+  type HeartbeatAck,
+  type InventoryMutateInput,
+  type LedgerEvent,
+  type LootGrantInput,
+  type MigrationRecord,
+  type RegionInfo,
+  type RegionLease,
+  type ShardSnapshotRecord,
+  type SocialKind,
+  type SocialRecord,
+  type StoredLedgerEvent,
+  type TradeCommitInput,
+  type VendorTransactInput,
 } from "@mmo-engine/world-server";
 import type { InstanceResult } from "../dungeons/instance.js";
 
@@ -38,10 +53,35 @@ export class WorldTransportError extends Error {
   }
 }
 
+/**
+ * A region-side atomic-operation request (slice A2): the A1 wire input
+ * without `regionId` (the client always sends its own — a caller naming
+ * another region is a bug, not a choice) and with `opId` optional (the
+ * client mints one when the caller does not supply its own idempotency
+ * key).
+ */
+export type TradeCommitRequest = Omit<TradeCommitInput, "regionId" | "opId"> & { opId?: string };
+export type VendorTransactRequest = Omit<VendorTransactInput, "regionId" | "opId"> & { opId?: string };
+export type AuctionSettleRequest = Omit<AuctionSettleInput, "regionId" | "opId"> & { opId?: string };
+export type CraftExecuteRequest = Omit<CraftExecuteInput, "regionId" | "opId"> & { opId?: string };
+export type LootGrantRequest = Omit<LootGrantInput, "regionId" | "opId"> & { opId?: string };
+export type InventoryMutateRequest = Omit<InventoryMutateInput, "regionId" | "opId"> & { opId?: string };
+
 export interface WorldClientOptions {
   transport: WorldTransport;
   regionId: string;
-  chunkRange: ChunkRange;
+  /**
+   * The region's chunk range (explicit mode). Omit for assignment
+   * mode (persistence P5): the client registers with `hostId`
+   * instead, and the range arrives in the lease the world grants.
+   */
+  chunkRange?: ChunkRange;
+  /**
+   * Assignment mode (P5): the host this region runs on, whose
+   * reported resources size the range the world assigns. Required
+   * when `chunkRange` is omitted; ignored otherwise.
+   */
+  hostId?: string;
   /** Where this region's game gateway listens. */
   endpoint: string;
   capacity: number;
@@ -63,6 +103,12 @@ function newOpId(): string {
 export class WorldClient {
   private readonly transport: WorldTransport;
   private readonly opts: WorldClientOptions;
+  /**
+   * The region's effective chunk range: the configured range in
+   * explicit mode; in assignment mode, the range from the granted
+   * lease (null until the first registration lands).
+   */
+  private effectiveRange: ChunkRange | null;
   private lease: RegionLease | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -70,10 +116,45 @@ export class WorldClient {
   constructor(opts: WorldClientOptions) {
     this.transport = opts.transport;
     this.opts = opts;
+    this.effectiveRange = opts.chunkRange ?? null;
   }
 
   get currentLease(): RegionLease | null {
     return this.lease;
+  }
+
+  /**
+   * The chunk range this region owns: the explicit range, or the
+   * world-assigned range once registered (P5). Null only for an
+   * unassigned client that has not (yet) registered.
+   */
+  get chunkRange(): ChunkRange | null {
+    return this.effectiveRange;
+  }
+
+  /**
+   * The fencing epoch from the current lease (persistence P1); null
+   * while unregistered. Every state-plane write carries it, and the
+   * world rejects writes from a stale epoch — a re-register rotates it.
+   */
+  get epoch(): number | null {
+    return this.lease?.epoch ?? null;
+  }
+
+  /**
+   * The state-plane key (`rangeKeyFor(chunkRange)`) for this region.
+   * In assignment mode it exists only after registration granted a
+   * range; every state-plane caller runs post-registration, so a
+   * throw here is a boot-ordering bug, never a runtime condition.
+   */
+  get rangeKey(): string {
+    if (this.effectiveRange === null) {
+      throw new WorldTransportError(
+        0,
+        "no chunk range yet: the world has not granted a lease (assignment mode)",
+      );
+    }
+    return rangeKeyFor(this.effectiveRange);
   }
 
   get registered(): boolean {
@@ -106,17 +187,27 @@ export class WorldClient {
 
   private async register(): Promise<void> {
     try {
-      const res = await this.transport.call("RegisterRegion", {
-        input: {
-          regionId: this.opts.regionId,
-          chunkRange: this.opts.chunkRange,
-          endpoint: this.opts.endpoint,
-          capacity: this.opts.capacity,
-          apiKey: this.opts.apiKey,
-          opId: newOpId(),
-        },
-      });
+      // Explicit mode sends the fixed range; assignment mode (P5)
+      // sends the hostId instead and adopts the range the world
+      // grants in the lease — from here on the shipper, recall, and
+      // character sync all key off that range through this client.
+      const input: Record<string, unknown> = {
+        regionId: this.opts.regionId,
+        endpoint: this.opts.endpoint,
+        capacity: this.opts.capacity,
+        apiKey: this.opts.apiKey,
+        opId: newOpId(),
+      };
+      if (this.opts.chunkRange !== undefined) {
+        input["chunkRange"] = this.opts.chunkRange;
+      } else {
+        input["hostId"] = this.opts.hostId;
+      }
+      const res = await this.transport.call("RegisterRegion", { input });
       this.lease = res["lease"] as RegionLease;
+      if (this.lease?.chunkRange) {
+        this.effectiveRange = this.lease.chunkRange;
+      }
     } catch (err) {
       this.fail(err, "register");
     }
@@ -184,6 +275,123 @@ export class WorldClient {
     } catch (err) {
       this.fail(err, "reportSnapshot");
     }
+  }
+
+  // -------------------------------------------- persistence P2: state plane
+  // Tier 1 + Tier 2 uploads (PERSISTENCE-LAYER-SPEC). Like reportSnapshot
+  // these are best-effort and never throw into the save cycle: a failure
+  // surfaces through onError and the caller retries on its next cycle —
+  // a dead world degrades durability, never simulation.
+
+  /**
+   * Stream one batch of ledger events uphill (Tier 1). Returns the
+   * world's contiguous acked head seq, or null when the batch was not
+   * acked (unregistered, stopped, empty, or the call failed) — the
+   * caller keeps the events unshipped and retries them next cycle.
+   * The world dedups on (rangeKey, seq), so a retried batch is safe.
+   */
+  async appendLedgerEvents(
+    events: readonly LedgerEvent[],
+  ): Promise<number | null> {
+    if (this.stopped || !this.lease || events.length === 0) return null;
+    try {
+      const res = await this.transport.call(
+        "AppendLedgerEvents",
+        {
+          input: {
+            regionId: this.opts.regionId,
+            rangeKey: this.rangeKey,
+            epoch: this.lease.epoch,
+            opId: newOpId(),
+            events: [...events],
+          },
+        },
+        this.lease.token,
+      );
+      return res["ackedSeq"] as number;
+    } catch (err) {
+      this.fail(err, "appendLedgerEvents");
+      return null;
+    }
+  }
+
+  /**
+   * Upload one shard checkpoint (Tier 2): the snapshot payload under
+   * {rangeKey, tick, epoch, digest}. Returns whether the world stored
+   * it; false means retry on a later cycle (or drop it when a fresher
+   * checkpoint has superseded it — the shipper decides).
+   */
+  async putShardSnapshot(snapshot: {
+    tick: number;
+    digest: string;
+    payload: unknown;
+  }): Promise<boolean> {
+    if (this.stopped || !this.lease) return false;
+    try {
+      await this.transport.call(
+        "PutShardSnapshot",
+        {
+          input: {
+            regionId: this.opts.regionId,
+            rangeKey: this.rangeKey,
+            tick: snapshot.tick,
+            epoch: this.lease.epoch,
+            digest: snapshot.digest,
+            payload: snapshot.payload,
+            opId: newOpId(),
+          },
+        },
+        this.lease.token,
+      );
+      return true;
+    } catch (err) {
+      this.fail(err, "putShardSnapshot");
+      return false;
+    }
+  }
+
+  // -------------------------------------------- persistence P3: recall reads
+  // Boot-recall reads (PERSISTENCE-LAYER-SPEC, Recovery). The world
+  // core leaves reads unfenced, but they still require an authenticated
+  // known region — which is why fleet boot registers BEFORE recalling
+  // (see state-recall.ts). Like the migration ops below these throw on
+  // transport failure: the recall path decides what a failure means
+  // (fall back to the local working cache, never block the boot).
+
+  /** The range's latest world-tier checkpoint, payload included; null when the world holds none. */
+  async getShardSnapshot(): Promise<ShardSnapshotRecord | null> {
+    const res = await this.transport.call(
+      "GetShardSnapshot",
+      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKey } },
+      this.token(),
+    );
+    return (res["snapshot"] as ShardSnapshotRecord | null) ?? null;
+  }
+
+  /** Stored ledger events for this range with seq > afterSeq, in seq order. */
+  async getLedgerEvents(afterSeq: number): Promise<StoredLedgerEvent[]> {
+    const res = await this.transport.call(
+      "GetLedgerEvents",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          rangeKey: this.rangeKey,
+          afterSeq,
+        },
+      },
+      this.token(),
+    );
+    return res["events"] as StoredLedgerEvent[];
+  }
+
+  /** The world's contiguous acked ledger head seq for this range. */
+  async getLedgerHead(): Promise<number> {
+    const res = await this.transport.call(
+      "GetLedgerHead",
+      { input: { regionId: this.opts.regionId, rangeKey: this.rangeKey } },
+      this.token(),
+    );
+    return res["ackedSeq"] as number;
   }
 
   // ---------------------------------------------------------- slice B
@@ -269,6 +477,181 @@ export class WorldClient {
       this.token(),
     );
     return res["online"] as Record<string, string | null>;
+  }
+
+  // ------------------------------------- persistence P4 contract (world tier)
+  // Thin mirrors of the P1 character ops; slice P4 wires their gateway
+  // usage. Like the migration ops these throw on transport failure:
+  // the caller (login/save path) decides what a failure means.
+
+  /** A character's world-tier record, or null when none exists yet. */
+  async getCharacterState(
+    characterId: number,
+  ): Promise<CharacterStateRecord | null> {
+    const res = await this.transport.call(
+      "GetCharacterState",
+      { input: { regionId: this.opts.regionId, characterId } },
+      this.token(),
+    );
+    return (res["character"] as CharacterStateRecord | null) ?? null;
+  }
+
+  /** PL3c: write a guild, party, friends or blocks record; a stale `expectedVersion` throws (409). */
+  async putSocialRecord(kind: SocialKind, key: string, doc: unknown, expectedVersion: number): Promise<SocialRecord> {
+    const res = await this.transport.call(
+      "PutSocialRecord",
+      { input: { regionId: this.opts.regionId, kind, key, doc, expectedVersion, opId: newOpId() } },
+      this.token(),
+    );
+    return res["record"] as SocialRecord;
+  }
+
+  /** PL3c: every record of a kind, tombstones included. */
+  async getSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
+    const res = await this.transport.call("GetSocialRecords", { input: { regionId: this.opts.regionId, kind } }, this.token());
+    return (res["records"] as SocialRecord[] | undefined) ?? [];
+  }
+
+  /** PL3c: world-wide fresh guild or party ids. */
+  async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {
+    const res = await this.transport.call(
+      "AllocateSocialIds",
+      { input: { regionId: this.opts.regionId, kind, count, opId: newOpId() } },
+      this.token(),
+    );
+    return res["ids"] as number[];
+  }
+
+  /**
+   * Write a character's state at the world tier. Fenced by the session
+   * lock: `epoch` must be the epoch of the lock this region holds for
+   * the character (see acquireCharacterLock).
+   */
+  async putCharacterState(
+    characterId: number,
+    epoch: number,
+    state: unknown,
+  ): Promise<CharacterStateRecord> {
+    const res = await this.transport.call(
+      "PutCharacterState",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          characterId,
+          epoch,
+          state,
+          opId: newOpId(),
+        },
+      },
+      this.token(),
+    );
+    return res["character"] as CharacterStateRecord;
+  }
+
+  /**
+   * Acquire a character's session lock (refused while another region
+   * holds it unexpired; an expired lock is stolen with an epoch bump).
+   */
+  async acquireCharacterLock(
+    characterId: number,
+    ttlMs: number,
+  ): Promise<CharacterSessionLock> {
+    const res = await this.transport.call(
+      "AcquireCharacterLock",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          characterId,
+          ttlMs,
+          opId: newOpId(),
+        },
+      },
+      this.token(),
+    );
+    return res["lock"] as CharacterSessionLock;
+  }
+
+  /** Release a character's session lock; `epoch` must match the held lock. */
+  async releaseCharacterLock(characterId: number, epoch: number): Promise<void> {
+    await this.transport.call(
+      "ReleaseCharacterLock",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          characterId,
+          epoch,
+          opId: newOpId(),
+        },
+      },
+      this.token(),
+    );
+  }
+
+  /** A character's current session lock; null when unheld. */
+  async getCharacterLock(
+    characterId: number,
+  ): Promise<CharacterSessionLock | null> {
+    const res = await this.transport.call(
+      "GetCharacterLock",
+      { input: { regionId: this.opts.regionId, characterId } },
+      this.token(),
+    );
+    return (res["lock"] as CharacterSessionLock | null) ?? null;
+  }
+
+  // -------------------------------------------- atomic operations (slice A2)
+  // The six value-moving operations (ATOMIC-OPERATIONS-SPEC). Like the
+  // migration and character ops above these THROW WorldTransportError
+  // on transport failure — an outage at the commit step is not an
+  // outcome, and the caller must be able to tell it apart from a
+  // settled rejection. A settled outcome — success OR a typed business
+  // rejection — is returned as a value (AtomicOpResult): on success the
+  // caller applies `characters` (the new world records) to its live
+  // session state; on rejection nothing applied anywhere. Each method
+  // is exactly one transport call: one operation = one WorldStore
+  // call = one DB transaction at the world tier.
+
+  async tradeCommit(input: TradeCommitRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("TradeCommit", input);
+  }
+
+  async vendorTransact(input: VendorTransactRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("VendorTransact", input);
+  }
+
+  async auctionSettle(input: AuctionSettleRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("AuctionSettle", input);
+  }
+
+  async craftExecute(input: CraftExecuteRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("CraftExecute", input);
+  }
+
+  async lootGrant(input: LootGrantRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("LootGrant", input);
+  }
+
+  async inventoryMutate(input: InventoryMutateRequest): Promise<AtomicOpResult> {
+    return this.atomicCall("InventoryMutate", input);
+  }
+
+  private async atomicCall(
+    method: string,
+    input: { opId?: string },
+  ): Promise<AtomicOpResult> {
+    const { opId, ...rest } = input;
+    const res = await this.transport.call(
+      method,
+      {
+        input: {
+          regionId: this.opts.regionId,
+          opId: opId ?? newOpId(),
+          ...rest,
+        },
+      },
+      this.token(),
+    );
+    return res["result"] as AtomicOpResult;
   }
 
   /** Stop heartbeats and best-effort deregister. Never throws. */

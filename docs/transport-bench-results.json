@@ -1,0 +1,103 @@
+{
+  "tickHz": 30,
+  "deltaBytes": 1200,
+  "intentBytes": 48,
+  "results": [
+    {
+      "transport": "uws",
+      "clients": 250,
+      "seconds": 6,
+      "cpuPercent": 20.8,
+      "tickP50Ms": 5.113,
+      "tickP99Ms": 9.415,
+      "rssMb": 49,
+      "sentPerSec": 6573,
+      "deliveredPerSec": 6573,
+      "intentsPerSec": 6531
+    },
+    {
+      "transport": "ws",
+      "clients": 250,
+      "seconds": 6,
+      "cpuPercent": 26,
+      "tickP50Ms": 6.052,
+      "tickP99Ms": 10.152,
+      "rssMb": 57,
+      "sentPerSec": 6415,
+      "deliveredPerSec": 6415,
+      "intentsPerSec": 6415
+    },
+    {
+      "transport": "uws",
+      "clients": 500,
+      "seconds": 6,
+      "cpuPercent": 45.8,
+      "tickP50Ms": 11.422,
+      "tickP99Ms": 29.806,
+      "rssMb": 59,
+      "sentPerSec": 13151,
+      "deliveredPerSec": 13151,
+      "intentsPerSec": 13151
+    },
+    {
+      "transport": "ws",
+      "clients": 500,
+      "seconds": 6,
+      "cpuPercent": 49.7,
+      "tickP50Ms": 12.581,
+      "tickP99Ms": 19.629,
+      "rssMb": 68,
+      "sentPerSec": 13000,
+      "deliveredPerSec": 13000,
+      "intentsPerSec": 13021
+    },
+    {
+      "transport": "uws",
+      "clients": 1000,
+      "seconds": 6,
+      "cpuPercent": 90.3,
+      "tickP50Ms": 20.502,
+      "tickP99Ms": 31.298,
+      "rssMb": 73,
+      "sentPerSec": 29569,
+      "deliveredPerSec": 29335,
+      "intentsPerSec": 29673
+    },
+    {
+      "transport": "ws",
+      "clients": 1000,
+      "seconds": 6,
+      "cpuPercent": 99.5,
+      "tickP50Ms": 24.64,
+      "tickP99Ms": 36.318,
+      "rssMb": 90,
+      "sentPerSec": 29768,
+      "deliveredPerSec": 29742,
+      "intentsPerSec": 29799
+    },
+    {
+      "transport": "uws",
+      "clients": 2000,
+      "seconds": 6,
+      "cpuPercent": 100.7,
+      "tickP50Ms": 42.246,
+      "tickP99Ms": 62.991,
+      "rssMb": 95,
+      "sentPerSec": 38756,
+      "deliveredPerSec": 38990,
+      "intentsPerSec": 35007
+    },
+    {
+      "transport": "ws",
+      "clients": 2000,
+      "seconds": 6.2,
+      "cpuPercent": 97,
+      "tickP50Ms": 77.982,
+      "tickP99Ms": 161.574,
+      "rssMb": 110,
+      "sentPerSec": 21544,
+      "deliveredPerSec": 21517,
+      "intentsPerSec": 21222
+    }
+  ]
+}

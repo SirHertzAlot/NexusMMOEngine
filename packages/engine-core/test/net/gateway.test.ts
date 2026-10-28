@@ -393,7 +393,9 @@ describe("gateway: untrusted input", () => {
     const deadline = Date.now() + 3000;
     while (!client.closed && Date.now() < deadline) await sleep(10);
     assert.ok(client.closed, "the oversized frame must close the connection");
-    assert.equal(client.closeCode, 1009, "ws close code: message too big");
+    // ws answers with close code 1009 (message too big); uWS drops the socket
+    // without a close frame, which the client sees as 1006. Either way it is closed.
+    assert.ok([1009, 1006].includes(client.closeCode ?? 0), `oversized frame closes the socket (code ${client.closeCode})`);
     await client.close();
   });
 
@@ -419,7 +421,7 @@ describe("gateway: untrusted input", () => {
     assert.ok(!client.closed, "and its connection stays open");
 
     assert.ok(attacker.closed, "the attacker's connection is gone");
-    assert.equal(attacker.closeCode, 1009);
+    assert.ok([1009, 1006].includes(attacker.closeCode ?? 0), `oversized frame closes the socket (code ${attacker.closeCode})`);
     await client.close();
     await attacker.close();
   });

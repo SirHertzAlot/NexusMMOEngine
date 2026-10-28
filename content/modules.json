@@ -14,8 +14,22 @@
     "quests",
     "combat",
     "creatures",
+    "residents",
     "character",
     "physics",
-    "intent"
+    "intent",
+    "terrain",
+    "ecs",
+    "gameplay",
+    "liveops",
+    "network",
+    "debug",
+    "changes",
+    "database",
+    "art",
+    "release",
+    "economy",
+    "social",
+    "authoring"
   ]
 }

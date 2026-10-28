@@ -13,7 +13,8 @@ export interface ChannelServer {
 
 const SIDE = { side: "core" } as const;
 
-export function serveChannel(port: number, handler: (p: ChannelPacket) => Promise<unknown>, host = "127.0.0.1", obs: ChannelObservers = {}): Promise<ChannelServer> {
+/** `onEdgeClosed` runs when an edge's connection goes away (the core ends what that edge held). */
+export function serveChannel(port: number, handler: (p: ChannelPacket) => Promise<unknown>, host = "127.0.0.1", obs: ChannelObservers = {}, onEdgeClosed?: () => void): Promise<ChannelServer> {
   const sockets = new Set<Socket>();
   let counter = 0;
   const m = obs.metrics;
@@ -82,7 +83,10 @@ export function serveChannel(port: number, handler: (p: ChannelPacket) => Promis
       }
     });
     socket.on("error", () => {});
-    socket.on("close", () => sockets.delete(socket));
+    socket.on("close", () => {
+      sockets.delete(socket);
+      onEdgeClosed?.();
+    });
   });
 
   return new Promise((resolve, reject) => {

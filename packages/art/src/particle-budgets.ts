@@ -52,9 +52,9 @@ export function budgetForTier(budgets: ParticleBudgets, tier: QualityTier): Tier
 }
 
 /**
- * The shipped default budgets (mirrors content/vfx/budgets.json).
- * The client imports this (browser-safe); the JSON file is the
- * validated source of truth for tooling. A test asserts they match.
+ * The built-in budgets (the same numbers as content/vfx/budgets.json).
+ * The game client and the editor read the file (EG10) and fall back to
+ * these when it is missing or fails its checks.
  */
 export const DEFAULT_PARTICLE_BUDGETS: ParticleBudgets = loadParticleBudgets({
   version: 1,

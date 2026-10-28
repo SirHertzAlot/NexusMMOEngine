@@ -9,19 +9,21 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addComponent } from "bitecs";
+import { addComponent, defineQuery } from "bitecs";
+import { encodePcgMesh, fnv1a32 } from "@mmo-engine/picg";
 import { decodeControl, encodeControl, MessageType, PROTOCOL_VERSION } from "@mmo-engine/protocol";
 import * as C from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
 import { Gateway } from "../../src/net/gateway.js";
 import { MemoryCharacterStore } from "../../src/index.js";
 import { loadGameRules } from "../../src/rules/boot.js";
-import { loadDungeonContent, parseDungeonContent, type DungeonContent } from "../../src/dungeons/content.js";
+import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent, parseDungeonContent, type DungeonContent } from "../../src/dungeons/content.js";
 import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/pool.js";
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
+import { PROP_SLOTS } from "../../src/dungeons/prop-mesh.js";
 import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
 import type { Weapon } from "../../src/combat.js";
 import { InstanceManager } from "../../src/dungeons/manager.js";
@@ -30,7 +32,7 @@ import { HeadlessClient } from "../net/headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "../net/auth-harness.js";
 
 const game = loadGameRules();
-const content = loadDungeonContent();
+const content = loadDungeonContent(undefined, false);
 
 /** A 24 × 12 layout: an entrance room, a corridor, a boss room with two spawns, one spawn by the entrance. */
 function fixture(id = "grim-abc", theme = "grim", rank = 1): Record<string, unknown> {
@@ -70,6 +72,8 @@ afterEach(async () => {
 });
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** Every entity of `sim` that has component `c`. */
+const queryEntities = (sim: SimWorld, c: object): Iterable<number> => defineQuery([c])(sim.ecs);
 async function until(pred: () => boolean, ms = 3000): Promise<void> {
   const end = Date.now() + ms;
   while (!pred()) {
@@ -185,6 +189,293 @@ describe("dungeon instance", () => {
     assert.equal(results.length, 1, "reported once");
   });
 
+  it("serves its baked shell as an ordinary asset: an AssetRef entity and the Pcg service on its own port", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const shell = encodePcgMesh({ positions: new Float32Array([0, 0, 0, 8, 0, 0, 8, 0, 8]), indices: new Uint32Array([0, 1, 2]) });
+    const dir = mkdtempSync(join(tmpdir(), "shell-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "grim-abc.shell.pcgm"), shell);
+    // The SoA stores are process-wide and a recycled slot keeps its dead entity's data: poison them,
+    // so a shell entity that left any field unwritten (the position, the variant) shows up below.
+    for (const a of [C.Transform.px, C.Transform.py, C.Transform.pz, C.Transform.qx, C.Transform.sx, C.AssetRef.variant]) a.fill(77);
+    closers.push(async () => {
+      for (const a of [C.Transform.px, C.Transform.py, C.Transform.pz, C.Transform.qx, C.Transform.sx, C.AssetRef.variant]) a.fill(0);
+    });
+    const inst = new DungeonInstance({
+      id: "run-shell", entrance: "barrow-gate", layout: { ...readLayout(fixture()), shell: join(dir, "grim-abc.shell.pcgm") }, rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const hash = fnv1a32("dungeon:grim-abc");
+    const holders = [...queryEntities(inst.world, C.AssetRef)].filter((e) => C.AssetRef.assetHash[e] === hash);
+    assert.equal(holders.length, 1, "one static entity carries the shell's asset hash");
+    const [shellEid] = holders;
+    assert.deepEqual([C.Transform.px[shellEid], C.Transform.py[shellEid], C.Transform.pz[shellEid]], [0, 0, 0], "at the origin, where the shell's own coordinates start");
+    assert.equal(C.Transform.qx[shellEid], 0);
+    assert.equal(C.Transform.sx[shellEid], 1);
+    assert.equal(C.AssetRef.variant[shellEid], 0);
+    // A client in the run asks the instance's own Pcg service, with its session token, and gets the baked bytes.
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+    const base = `http://127.0.0.1:${port}`;
+    const ask = await fetch(`${base}/rpc/Pcg/GetAssetMesh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` },
+      body: JSON.stringify({ assetHash: hash, variant: 0 }),
+    });
+    assert.equal(ask.status, 200);
+    const { mesh } = (await ask.json()) as { mesh: { url: string; triangleCount: number; lods: unknown[] } };
+    assert.equal(mesh.triangleCount, 1);
+    assert.deepEqual(mesh.lods, []);
+    const bytes = new Uint8Array(await (await fetch(`${base}${mesh.url}`, { headers: { Authorization: `Bearer ${welcome.session_token}` } })).arrayBuffer());
+    assert.deepEqual(bytes, shell, "the client downloads exactly what was baked");
+  });
+
+  it("stands the baked props in the run as scatter entities, from props.json, and leaves them where the bake put them", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    // Grid cells are continuous: (x, y) stands at x * 2 m. The banner and torch are on the rock east of the last room.
+    const baked = {
+      ...fixture(),
+      props: [
+        { kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 },
+        { kind: "banner", x: 23.5, y: 5, dx: -1, dy: 0, rot: 0, scale: 1 },
+        { kind: "crack", x: 4, y: 4, dx: 1, dy: 0, rot: 0, scale: 1 },
+      ],
+      dressing: { rank: 1, props: [{ kind: "barrel", x: 5, y: 3, rot: 0.5, room: 0, radius: 0.25 }] },
+      torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }],
+      // A solid prop has its own baked collider: the wall system must not push the pillar out of it.
+      colliders: [{ x: 3, y: 5, r: 0.25 }],
+    };
+    const layout = readLayout(baked);
+    assert.deepEqual(layout.props.map((p) => [p.kind, p.x, p.z]), [["pillar", 6, 10], ["banner", 47, 10], ["crack", 8, 8], ["barrel", 10, 6], ["torch", 47, 12]], "cells to metres, in file order: props, dressing, torches");
+    assert.equal(layout.props[3].radius, 0.5, "the bake's footprint, in metres");
+    assert.ok(Math.abs(layout.props[1].yaw - -Math.PI / 2) < 1e-9, "a mounted kind faces out of its wall");
+    const inst = new DungeonInstance({
+      id: "run-props", entrance: "barrow-gate", layout, rules: content.rules, props: content.props, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+      onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    await inst.start();
+    closers.push(() => inst.close());
+    await sleep(300); // a few ticks: the wall system must not have touched a prop in the rock
+    const of = (kind: string): number => {
+      const hits = [...queryEntities(inst.world, C.AssetRef)].filter((e) => C.AssetRef.assetHash[e] === fnv1a32(`dungeon:${kind}`));
+      assert.equal(hits.length, 1, `one ${kind}`);
+      return hits[0];
+    };
+    const pillar = of("pillar");
+    assert.deepEqual([C.Transform.px[pillar], C.Transform.py[pillar], C.Transform.pz[pillar]], [6, 0, 10], "a standing prop rests on the floor");
+    assert.equal(C.BodyConfig.motionType[pillar], C.MotionType.Static);
+    assert.ok(Math.abs(C.BodyConfig.halfY[pillar] - 5.2) < 1e-6, "halfY is its full height (the world's convention)");
+    const banner = of("banner");
+    const at = (e: number): number[] => [C.Transform.px[e], C.Transform.py[e], C.Transform.pz[e]];
+    const near = (got: number[], want: number[], why: string): void => assert.ok(got.every((v, i) => Math.abs(v - want[i]) < 1e-5), `${why}: ${got} vs ${want}`); // float32 stores
+    near(at(banner), [47, 2.6, 10], "mounted: at its lift, still in the rock");
+    const torch = of("torch");
+    near(at(torch), [47, 2.2, 12], "the torch, at its lift");
+    assert.ok(Math.abs(C.Transform.qy[torch] - Math.sin(-Math.PI / 4)) < 1e-6, "turned to face out of the wall");
+    const barrel = of("barrel");
+    assert.ok(Math.abs(C.BodyConfig.halfX[barrel] - 0.5) < 1e-6, "its own footprint sizes the box");
+    assert.ok(Math.abs(C.BodyConfig.halfY[barrel] - 1) < 1e-6, "the table's height");
+    assert.deepEqual([...inst.unspawnedProps], [["crack", 1]], "a kind with no entry is counted, not spawned");
+  });
+
+  it("serves each prop kind's procedural mesh from the run's Pcg library, once per kind, beside the shell", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const dir = mkdtempSync(join(tmpdir(), "shell-props-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "grim-abc.shell.pcgm"), encodePcgMesh({ positions: new Float32Array([0, 0, 0, 8, 0, 0, 8, 0, 8]), indices: new Uint32Array([0, 1, 2]) }));
+    const baked = {
+      ...fixture(),
+      props: [
+        { kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 },
+        { kind: "pillar", x: 5, y: 5, rot: 0, scale: 1, room: 0 },
+        { kind: "crack", x: 4, y: 4, dx: 1, dy: 0, rot: 0, scale: 1 },
+      ],
+      dressing: { rank: 1, props: [{ kind: "barrel", x: 5, y: 3, rot: 0.5, room: 0, radius: 0.25 }, { kind: "sarcophagus", x: 6, y: 3, rot: 0, room: 0, radius: 0.6 }] },
+      torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }],
+    };
+    const inst = new DungeonInstance({
+      id: "run-meshes", entrance: "barrow-gate", layout: { ...readLayout(baked), shell: join(dir, "grim-abc.shell.pcgm") }, rules: content.rules, props: content.props, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+    const base = `http://127.0.0.1:${port}`;
+    const auth = { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` };
+    const { assets } = (await (await fetch(`${base}/rpc/Pcg/ListAssets`, { method: "POST", headers: auth, body: "{}" })).json()) as { assets: { id: string; assetHash: number }[] };
+    assert.deepEqual(assets.map((a) => a.id).sort(), ["dungeon:barrel", "dungeon:chest", "dungeon:chest-open", "dungeon:grim-abc", "dungeon:pillar", "dungeon:sarcophagus", "dungeon:torch", "dungeon:trap", "dungeon:trap-sprung"], "the shell and one mesh per kind in the run (and the chests and traps it stands, closed and open, armed and sprung); none for a kind with no table entry");
+    const barrel = assets.find((a) => a.id === "dungeon:barrel")!;
+    assert.equal(barrel.assetHash, fnv1a32("dungeon:barrel"), "listed under the hash its entities carry");
+    const ask = await fetch(`${base}/rpc/Pcg/GetAssetMesh`, { method: "POST", headers: auth, body: JSON.stringify({ assetHash: barrel.assetHash, variant: 0 }) });
+    const { mesh } = (await ask.json()) as { mesh: { triangleCount: number } };
+    assert.ok(mesh.triangleCount >= 12, `${mesh.triangleCount} triangles`);
+  });
+
+  it("serves the props' meshes even when the dungeon was baked without a shell, and nothing when it has no props", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const list = async (baked: Record<string, unknown>, props: typeof content.props | undefined): Promise<string[]> => {
+      const inst = new DungeonInstance({
+        id: "run-noshell", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, ...(props ? { props } : {}), game,
+        members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+        onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+      });
+      const port = await inst.start();
+      closers.push(() => inst.close());
+      const c = new HeadlessClient();
+      closers.push(() => c.close());
+      await c.connect(`ws://127.0.0.1:${port}`);
+      const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+      const res = await fetch(`http://127.0.0.1:${port}/rpc/Pcg/ListAssets`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${welcome.session_token}` }, body: "{}" });
+      return res.status === 200 ? ((await res.json()) as { assets: { id: string }[] }).assets.map((a) => a.id) : [];
+    };
+    assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, content.props), ["dungeon:pillar", "dungeon:chest", "dungeon:chest-open", "dungeon:trap", "dungeon:trap-sprung"]);
+    assert.deepEqual(await list(fixture(), content.props), ["dungeon:chest", "dungeon:chest-open", "dungeon:trap", "dungeon:trap-sprung"], "no baked props, no shell: only the chests and traps the run stands");
+    assert.deepEqual(await list({ ...fixture(), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }] }, undefined), [], "no table: nothing spawns, nothing to serve");
+  });
+
+  it("spawns no props without a table, and a bad props.json refuses the content", () => {
+    assert.equal(parseDungeonContent(content.rules, { version: 1, entrances: {} }).props.archetypes["dungeon:pillar"], undefined);
+    assert.ok(content.props.archetypes["dungeon:pillar"] && content.props.lift["banner"] === 2.6, "the shipped table loads");
+    assert.throws(() => parseDungeonContent(content.rules, { version: 1, entrances: {} }, { version: 1, archetypes: { "dungeon:pillar": { asset: "" } } }), /props\.json/);
+  });
+
+  it("sends the run's look when a member enters (the layout's theme), and nothing without looks.json", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const rec = await characters.create("alice", "Alice", "{}", 8);
+    const run = async (looks: typeof content.looks): Promise<Ctl[]> => {
+      const inst = new DungeonInstance({
+        id: "run-look", entrance: "barrow-gate", layout: readLayout(fixture("grim-look", "grim")), rules: content.rules, game,
+        ...(looks ? { looks } : {}),
+        members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+        onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+      });
+      const port = await inst.start();
+      closers.push(() => inst.close());
+      const c = new HeadlessClient();
+      closers.push(() => c.close());
+      await c.connect(`ws://127.0.0.1:${port}`);
+      await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+      await until(() => ctl(c).some((m) => m.kind === "dungeon" && m.op === "state"));
+      return ctl(c);
+    };
+    const withLooks = await run(content.looks);
+    const look = withLooks.find((m) => m.op === "look")?.look as { theme: string; palette: Record<string, string>; emitters: string[]; maxLights: number; label?: unknown } | undefined;
+    assert.ok(look, "a look arrived");
+    assert.equal(look.theme, "grim");
+    assert.deepEqual(Object.keys(look.palette).sort(), ["basin", "ceiling", "floor", "wall", ...PROP_SLOTS].sort(), "the shell's slots and the props'");
+    assert.ok(look.emitters.includes("dungeon:torch") && look.maxLights > 0);
+    assert.equal(look.label, undefined, "the label is for the editor, not the client");
+    assert.ok(withLooks.findIndex((m) => m.op === "look") < withLooks.findIndex((m) => m.op === "state"), "the look comes before the first state");
+    assert.equal((await run(null)).some((m) => m.op === "look"), false, "no looks.json: the client keeps the open world's look");
+  });
+
+  it("loads and validates looks.json: every theme a palette of colours, a bad colour refuses the content", () => {
+    assert.ok(content.looks && Object.keys(content.looks.themes).length >= 5, "the shipped looks load");
+    for (const [theme, l] of Object.entries(content.looks!.themes)) assert.ok(l.torch.range > 0 && /^#[0-9a-f]{6}$/i.test(l.palette.floor ?? ""), `${theme}: a floor colour`);
+    const bad = { version: 1, emitters: [], maxLights: 4, themes: { grim: { ...content.looks!.themes.grim, background: "black" } } };
+    assert.throws(() => parseDungeonContent(content.rules, { version: 1, entrances: {} }, undefined, bad), /looks\.json/);
+  });
+
+  it("gives every theme's palette a colour for every prop material slot", () => {
+    for (const [theme, l] of Object.entries(content.looks!.themes)) {
+      for (const slot of PROP_SLOTS) assert.match(l.palette[slot] ?? "", /^#[0-9a-f]{6}$/i, `${theme}: a ${slot} colour`);
+    }
+  });
+
+  describe("the local art overlay (props.local.json)", () => {
+    const rawProps = JSON.parse(readFileSync(join(DEFAULT_DUNGEON_CONTENT, "props.json"), "utf8")) as unknown;
+    const entrances = { version: 1, entrances: {} };
+
+    it("remaps the kinds it names to catalog models, and changes nothing else; no overlay changes nothing at all", () => {
+      const plain = parseDungeonContent(content.rules, entrances, rawProps);
+      assert.deepEqual(plain.artAssets, {});
+      const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "SomeCoffinModel" } });
+      assert.equal(art.props.archetypes["dungeon:coffin"].asset, "SomeCoffinModel");
+      assert.deepEqual(art.props.archetypes["dungeon:coffin"].collision, plain.props.archetypes["dungeon:coffin"].collision, "its collision box is unchanged");
+      assert.deepEqual({ ...art.props.archetypes, "dungeon:coffin": plain.props.archetypes["dungeon:coffin"] }, plain.props.archetypes, "the other kinds are untouched");
+      assert.deepEqual(art.artAssets, { coffin: "SomeCoffinModel" });
+      assert.deepEqual(art.artScales, {}, "no sizes unless the overlay gives them");
+      const sized = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "SomeCoffinModel" }, scales: { coffin: 2 } });
+      assert.deepEqual(sized.artScales, { coffin: 2 });
+    });
+
+    it("refuses a size for a kind with no model, or an absurd one", () => {
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: {}, scales: { coffin: 2 } }), /props\.local\.json.*scales\.coffin/);
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "X" }, scales: { coffin: 0 } }), /props\.local\.json/);
+    });
+
+    it("fails loud, naming the file, for a kind the table lacks or a wrong shape", () => {
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { nope: "X" } }), /props\.local\.json.*nope/);
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 2, assets: {} }), /props\.local\.json/);
+      assert.throws(() => parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { coffin: "" } }), /props\.local\.json/);
+    });
+
+    it("loadDungeonContent reads it from the content folder when it is there", () => {
+      const dir = mkdtempSync(join(tmpdir(), "art-overlay-"));
+      dirs.push(dir);
+      for (const f of ["instances.json", "entrances.json", "props.json", "looks.json"]) writeFileSync(join(dir, f), readFileSync(join(DEFAULT_DUNGEON_CONTENT, f)));
+      assert.deepEqual(loadDungeonContent(dir).artAssets, {});
+      writeFileSync(join(dir, "props.local.json"), JSON.stringify({ version: 1, assets: { barrel: "SomeBarrelModel" } }));
+      assert.equal(loadDungeonContent(dir).props.archetypes["dungeon:barrel"].asset, "SomeBarrelModel");
+    });
+
+    it("stands a remapped kind in the run under the model's hash, and keeps the run's torch lights lit", async () => {
+      SimWorld.resetEntityCursorForTesting();
+      const characters = new MemoryCharacterStore();
+      const rec = await characters.create("alice", "Alice", "{}", 8);
+      const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { pillar: "SomePillarModel", torch: "SomeTorchModel" }, scales: { pillar: 2 } });
+      const baked = { ...fixture("grim-art", "grim"), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }], torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }] };
+      const inst = new DungeonInstance({
+        id: "run-art", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, props: art.props, looks: content.looks!, artAssets: art.artAssets, artScales: art.artScales, game,
+        members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+        onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+      });
+      const port = await inst.start();
+      closers.push(() => inst.close());
+      const hashes = [...queryEntities(inst.world, C.AssetRef)].map((e) => C.AssetRef.assetHash[e]);
+      assert.ok(hashes.includes(fnv1a32("SomePillarModel")) && !hashes.includes(fnv1a32("dungeon:pillar")), "the pillar carries the model's hash");
+      const pillar = [...queryEntities(inst.world, C.AssetRef)].find((e) => C.AssetRef.assetHash[e] === fnv1a32("SomePillarModel"))!;
+      assert.equal(C.Transform.sx[pillar], 2, "drawn at the overlay's size factor");
+      const c = new HeadlessClient();
+      closers.push(() => c.close());
+      await c.connect(`ws://127.0.0.1:${port}`);
+      await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+      await until(() => ctl(c).some((m) => m.kind === "dungeon" && m.op === "look"));
+      const look = ctl(c).find((m) => m.op === "look")!.look as { emitters: string[] };
+      assert.ok(look.emitters.includes("dungeon:torch") && look.emitters.includes("SomeTorchModel"), "both ids give light");
+      assert.equal(new Set(look.emitters).size, look.emitters.length, "no duplicates");
+    });
+  });
+
+  it("runs as before when the dungeon was baked without a shell", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const inst = new DungeonInstance({
+      id: "run-bare", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+      onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    await inst.start();
+    closers.push(() => inst.close());
+    assert.equal([...queryEntities(inst.world, C.AssetRef)].length, 0, "no shell entity");
+  });
+
   it("places chests per run and opens the nearest one into the result loot", async () => {
     SimWorld.resetEntityCursorForTesting();
     const characters = new MemoryCharacterStore();
@@ -209,10 +500,10 @@ describe("dungeon instance", () => {
     // Stand on the chest and open it: its rolls join the result loot.
     C.Transform.px[avatar] = inst.chests[0].x;
     C.Transform.pz[avatar] = inst.chests[0].z;
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await until(() => inst.chests[0].opened);
     // Opening again finds it empty: still one opened chest, no run yet.
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await sleep(100);
     assert.equal(inst.chests.filter((ch) => ch.opened).length, 1);
     assert.equal(results.length, 0);
@@ -248,7 +539,7 @@ describe("dungeon instance", () => {
     const avatar = inst.world.resolveWireId(BigInt(w.player_entity));
     C.Transform.px[avatar] = inst.chests[0].x;
     C.Transform.pz[avatar] = inst.chests[0].z;
-    c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "open" }));
+    c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entity: String(inst.world.wireId(inst.chests[0].eid)) }));
     await until(() => ctl(c).filter((m) => m.op === "state").length >= 2);
     assert.deepEqual(
       ctl(c).filter((m) => m.op === "state").at(-1)!.chests,
@@ -334,6 +625,40 @@ describe("dungeon instance", () => {
       assert.equal(results[0].outcome, want);
     }
   });
+
+  it("ends with died outcome when a member is killed, drops all run loot, and tells the member", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characterStore = new MemoryCharacterStore();
+    const rec = await characterStore.create("alice", "Alice", "{}", 1);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-death-test", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [{ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }],
+      credentialStore: await makeCredentialStore(), characterStore,
+      lootPool: [100, 101],
+      onEnd: (r) => results.push(r),
+      clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+    const avatar = inst.world.resolveWireId(BigInt(welcome.player_entity));
+    (inst as unknown as { loot: { characterId: number; def: number }[] }).loot.push({ characterId: rec.id, def: 100 });
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    C.Health.current[avatar] = 0;
+    onDeath(inst.world, { tick: 1, target: avatar, state: "dead" });
+    await until(() => results.length === 1);
+    assert.equal(results[0].outcome, "died");
+    assert.equal(results[0].loot.length, 0);
+    await until(() => ctl(c).some((m) => m.op === "ended"));
+    const ended = ctl(c).find((m) => m.op === "ended");
+    assert.ok(ended, "ended message received");
+    assert.equal(ended.outcome, "died");
+    assert.equal(ended.items, 0);
+  });
 });
 
 describe("instance manager", () => {
@@ -387,7 +712,7 @@ describe("instance manager", () => {
     return { mgr, gw, results, granted, join };
   }
 
-  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Chat, encodeControl({ kind: "dungeon", op: "enter", entrance }));
+  const ask = (c: HeadlessClient, entrance = "barrow-gate"): void => c.sendRaw(MessageType.Interact, encodeControl({ kind: "interact", entrance }));
 
   it("starts a run at the entrance, transfers the member, lets them back in, and commits loot on report", async () => {
     const r = await region(content);
@@ -455,12 +780,17 @@ describe("instance manager", () => {
     }
     inst.end("cleared");
     assert.equal(trained.length, 3);
-    for (const [c, s, d, k] of trained) {
+    for (const [c, s, d] of trained) {
       assert.equal(c, trained[0][0]);
       assert.equal(s, "cutting");
       assert.equal(d, 0.5);
-      assert.equal(k, trained[0][3]);
     }
+    // The repeat-falloff key is the victim's kind: the instance spawns a
+    // skeleton and two goblins, so two keys, two uses sharing the goblin's.
+    const keys = new Map<number, number>();
+    for (const t of trained) keys.set(t[3], (keys.get(t[3]) ?? 0) + 1);
+    assert.equal(keys.size, 2, `one key per victim kind, got ${[...keys].join(", ")}`);
+    assert.deepEqual([...keys.values()].sort(), [1, 2]);
   });
 
   it("refuses a party outside its size", async () => {

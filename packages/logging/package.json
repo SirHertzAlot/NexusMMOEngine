@@ -1,0 +1,19 @@
+{
+  "dependencies": {},
+  "description": "SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): lockless SAB rings, the code dictionary + generated producers/formatters, and the dedicated log worker. A leaf package: every server process (engine-core, world-server, the C++ kernel) hosts its own ring on these primitives.",
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/logging",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "gen": "npm run build && node dist/src/logging/codegen.js"
+  },
+  "type": "module",
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0",
+  "sideEffects": false
+}

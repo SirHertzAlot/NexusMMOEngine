@@ -8,7 +8,7 @@
  * are dropped. Audio pauses while the tab is hidden.
  */
 
-import { startWind } from "./cues.js";
+import { startRain, startWind } from "./cues.js";
 import { playPlaceholder } from "./placeholders.js";
 import { type EventBus, type Listener, planPlay, type SoundBank, type Vec3, VoicePool, DEFAULT_BUS, type BusSettings } from "./sound-logic.js";
 import { AUDIO_BUSES, type AudioBus, masterGain, sliderGain, type Volumes } from "./volumes.js";
@@ -21,6 +21,8 @@ export class AudioEngine {
   private master: GainNode | null = null;
   private readonly buses = new Map<AudioBus, GainNode>();
   private stopWind: (() => void) | null = null;
+  private stopRain: (() => void) | null = null;
+  private rainGain: GainNode | null = null;
   private ambience = false;
   // Audio events (EA24): the bank from content/audio/events.json, the camera, and who is playing.
   private bank: SoundBank | null = null;
@@ -126,6 +128,33 @@ export class AudioEngine {
     if (!on && this.stopWind) {
       this.stopWind();
       this.stopWind = null;
+    }
+  }
+
+  /**
+   * Rain bed (WX1): looping noise whose level follows the weather field's
+   * rain intensity. Starts/stops on threshold crossings; volume glides
+   * smoothly while running. `intensity` is 0..1.
+   */
+  setRain(intensity: number): void {
+    const bus = this.buses.get("ambience");
+    if (!bus) return;
+    const level = Math.max(0, Math.min(1, intensity));
+    if (level > 0.01) {
+      if (!this.stopRain && this.ctx) {
+        this.rainGain = this.ctx.createGain();
+        this.rainGain.gain.value = 0;
+        this.rainGain.connect(bus);
+        this.stopRain = startRain(this.ctx, this.rainGain);
+      }
+      if (this.rainGain && this.ctx) {
+        this.rainGain.gain.setTargetAtTime(level * 0.35, this.ctx.currentTime, 0.1);
+      }
+    } else if (this.stopRain) {
+      this.stopRain();
+      this.stopRain = null;
+      this.rainGain?.disconnect();
+      this.rainGain = null;
     }
   }
 

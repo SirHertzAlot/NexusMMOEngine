@@ -10,23 +10,8 @@
  */
 
 import * as React from "react";
-import { EcsInspectorPanel } from "./ecs-inspector.js";
-import { PlayModePanel, getPlayController, playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
-import { AssetInspectorPanel } from "./asset-inspector.js";
-import { TerrainEditorPanel } from "./terrain-editor.js";
-import { ModulesPanel, moduleRegistry, useModuleRegistry } from "./modules-panel.js";
-import { GraphEditorPanel } from "./graph-editor.js";
-import { DungeonPanel } from "./dungeon-view.js";
-import { PipelineView } from "./pipeline-view.js";
-import { RulesPanel } from "./rules-editor.js";
-import { ValgrindPanel } from "./valgrind-panel.js";
-import { StringsPanel } from "./strings-panel.js";
-import { AnimationPanel } from "./animation-panel.js";
-import { MaterialsPanel } from "./materials-panel.js";
-import { ChangesPanel } from "./vcs-panel.js";
-import { RulesPanel as TablesPanel } from "./rules-panel.js";
-import { ContentBrowserPanel, GameplayGridsPanel } from "./gameplay-grids.js";
-import { DatabaseAuditPanel, DatabaseGridPanel, DatabaseQueryPanel } from "./database-workspace.js";
+import { getPlayController, playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, useLocalStorage } from "./components.js";
 import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
 import { flagBlocked, getViewportActions, screenshotBlocked, subscribeViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
@@ -38,7 +23,7 @@ import { catalogCommands, rankCommands, type PaletteCommand } from "../palette.j
 import { requestOpenAsset } from "./open-asset.js";
 import { loadCatalog } from "../gameplay-client.js";
 import { BakesPane, OutputPane, ProblemsPane, problemCount, useDiskProblems, useDocProblems, useServerOutput, type DiskProblems, type ServerOutput } from "./dock-panes.js";
-import { DatabaseNote, FlowNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
+import { DatabaseNote, FlowNote, ScaleNote, FlowScreens, ReleaseNote, ReleaseProfiles, WorldTree } from "./dock-details.js";
 import { OwnedFiles } from "./owned-files.js";
 import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
@@ -54,10 +39,10 @@ import { TOOL_SHORTCUT_BUTTON_LABELS, resolveEditorShortcut, shouldSkipShortcut 
 import { useDrag } from "./use-drag.js";
 import { SelectableList } from "./selectable-list.js";
 import { ViewList } from "./view-list.js";
-import { LiveOpsDetailsLive, LiveOpsViews } from "./liveops-live.js";
-import { ConnectionsPanel, EdgeRoutesPanel, NetworkDetailsLive } from "./network-live.js";
-import { PlaytestDetails, PlaytestsPanel } from "./playtests-live.js";
-import { QuestDetailsLive, QuestsPanel, QuestsTree } from "./quests-live.js";
+import { LiveOpsDetailsLive } from "./liveops-live.js";
+import { NetworkDetailsLive } from "./network-live.js";
+import { PlaytestDetails } from "./playtests-live.js";
+import { QuestDetailsLive, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
 import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
@@ -65,6 +50,7 @@ import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from ".
 // ---------------------------------------------------------------- config
 
 type WorkspaceId =
+  | "design"
   | "world"
   | "scene"
   | "scenes"
@@ -82,19 +68,6 @@ type WorkspaceId =
   | "release"
   | "modules";
 
-type Tab = "ecs" | "play" | "terrain" | "graphs" | "dungeons" | "assets" | "tables" | "rules" | "characters" | "valgrind";
-
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "ecs", label: "ECS Inspector" },
-  { id: "play", label: "Play Mode" },
-  { id: "terrain", label: "Terrain" },
-  { id: "graphs", label: "PICG Graphs" },
-  { id: "dungeons", label: "Dungeons" },
-  { id: "tables", label: "Gameplay Tables" },
-  { id: "assets", label: "Art Assets" },
-  { id: "rules", label: "Rules" },
-  { id: "characters", label: "Characters" },
-  { id: "valgrind", label: "Valgrind" },
 interface Workspace {
   id: WorkspaceId;
   label: string;
@@ -106,13 +79,20 @@ interface Workspace {
 
 const WORKSPACES: Workspace[] = [
   {
+    // The Designer surface (Phase B): view-centered, no-code authoring. Every other
+    // workspace below is the Developer surface — data/IDE tooling over the same pipeline.
+    id: "design", label: "Design", icon: "design_services",
+    views: [], // contributed by the authoring module (modules/authoring/editor)
+    leftTitle: "Hierarchy",
+  },
+  {
     id: "world", label: "World", icon: "public",
-    views: [{ id: "terrain", label: "Viewport", icon: "landscape", kind: "panel", panel: <TerrainEditorPanel /> }],
+    views: [], // contributed by the terrain module (modules/terrain/editor)
     leftTitle: "Outliner",
   },
   {
     id: "scene", label: "Scene", icon: "landscape",
-    views: [{ id: "ecs", label: "Viewport", icon: "view_in_ar", kind: "panel", panel: <EcsInspectorPanel /> }],
+    views: [], // contributed by the ecs module (modules/ecs/editor)
     leftTitle: "Outliner",
   },
   {
@@ -132,82 +112,57 @@ const WORKSPACES: Workspace[] = [
   },
   {
     id: "gameplay", label: "Gameplay", icon: "table_view",
-    views: [
-      { id: "grids", label: "Data grids", icon: "grid_on", kind: "panel", panel: <GameplayGridsPanel /> },
-      { id: "content", label: "Content browser", icon: "folder_open", kind: "panel", panel: <ContentBrowserPanel /> },
-      { id: "tables", label: "Tables", icon: "table_view", kind: "panel", panel: <TablesPanel /> },
-      { id: "rules", label: "Rules", icon: "tune", kind: "panel", panel: <RulesPanel /> },
-    ],
-    leftTitle: "Tables",
+    views: [], // contributed by the gameplay module (modules/gameplay/editor)
+    leftTitle: "Tables · Developer surface",
   },
   {
     id: "dungeons", label: "Dungeons & PCG", icon: "castle",
-    views: [
-      { id: "dungeons", label: "Dungeon", icon: "castle", kind: "panel", panel: <DungeonPanel /> },
-      { id: "graphs", label: "PICG Graphs", icon: "graph_3", kind: "panel", panel: <GraphEditorPanel /> },
-    ],
+    views: [], // contributed by the dungeons module (modules/dungeons/editor)
     leftTitle: "Library",
   },
   {
     id: "liveops", label: "Live ops", icon: "groups",
-    views: LiveOpsViews(),
+    views: [], // contributed by the liveops module (modules/liveops/editor)
     leftTitle: "Live ops",
   },
   {
     id: "network", label: "Network", icon: "lan",
-    views: [
-      { id: "routes", label: "Edge routes", icon: "lan", kind: "panel", panel: <EdgeRoutesPanel /> },
-      { id: "connections", label: "Connections", icon: "network_check", kind: "panel", panel: <ConnectionsPanel /> },
-    ],
+    views: [], // contributed by the network module (modules/network/editor)
     leftTitle: "Network",
   },
   {
     id: "debug", label: "Debug", icon: "monitoring",
-    views: [{ id: "play", label: "Play mode", icon: "play_arrow", kind: "panel", panel: <PlayModePanel /> }],
+    views: [], // contributed by the debug module (modules/debug/editor)
     leftTitle: "Sessions",
   },
   {
     id: "changes", label: "Changes", icon: "commit",
-    views: [{ id: "changes", label: "Changes", icon: "commit", kind: "panel", panel: <ChangesPanel /> }],
+    views: [], // contributed by the changes module (modules/changes/editor)
     leftTitle: "Changes",
   },
   {
     id: "database", label: "Database", icon: "database",
-    views: [
-      { id: "grid", label: "Data grid", icon: "table_view", kind: "panel", panel: <DatabaseGridPanel /> },
-      { id: "query", label: "Query", icon: "code", kind: "panel", panel: <DatabaseQueryPanel /> },
-      { id: "audit", label: "Audit log", icon: "history", kind: "panel", panel: <DatabaseAuditPanel /> },
-    ],
-    leftTitle: "Schema",
+    views: [], // contributed by the database module (modules/database/editor)
+    leftTitle: "Schema · Developer surface",
   },
   {
     id: "story", label: "Story", icon: "auto_stories",
-    views: [
-      { id: "quests", label: "Quests", icon: "flag", kind: "panel", panel: <QuestsPanel /> },
-      { id: "strings", label: "Strings", icon: "translate", kind: "panel", panel: <StringsPanel /> },
-    ], // quest & dialog editor contributed by the story module (modules/story/editor)
+    views: [], // quest & dialog editor, quest list and strings grid contributed by the story module (modules/story/editor)
     leftTitle: "Stories",
   },
   {
     id: "artaudio", label: "Art & audio", icon: "movie",
-    views: [
-      { id: "assets", label: "Art Assets", icon: "palette", kind: "panel", panel: <AssetInspectorPanel /> },
-      { id: "animation", label: "Animation", icon: "directions_run", kind: "panel", panel: <AnimationPanel /> },
-      { id: "materials", label: "Materials", icon: "texture", kind: "panel", panel: <MaterialsPanel /> },
-    ], // VFX and audio panels contributed by the vfx/audio modules
+    views: [], // assets/materials/scale contributed by the art module; animation by characters; VFX and audio by the vfx/audio modules
     leftTitle: "Library",
   },
   {
     id: "release", label: "Release", icon: "rocket_launch",
-    views: [
-      { id: "pipeline", label: "Pipeline", icon: "account_tree", kind: "panel", panel: <PipelineView /> },
-      { id: "playtests", label: "Playtests", icon: "science", kind: "panel", panel: <PlaytestsPanel /> },
-    ], // HUD layout editor contributed by the hud module (modules/hud/editor)
+    views: [], // pipeline/playtests/valgrind contributed by the release module; HUD layout editor by the hud module (modules/hud/editor)
     leftTitle: "Profiles",
   },
   {
     id: "modules", label: "Modules", icon: "extension",
-    views: [{ id: "modules", label: "Modules", icon: "extension", kind: "panel", panel: <ModulesPanel /> }],
+    views: [], // contributed by the core module (modules/core/editor)
     leftTitle: "Modules",
   },
 ];
@@ -228,6 +183,7 @@ moduleRegistry.subscribe(syncModuleViews);
 
 /** Words that find a view in Ctrl K beyond its label. */
 const VIEW_KEYWORDS: Record<string, string> = {
+  authoring: "authoring design designer viewport widgets hierarchy no-code verbs provenance",
   terrain: "terrain sculpt brush heightmap regenerate world map",
   ecs: "ecs inspector entities components live",
   scene: "scene document outliner nodes viewport place",
@@ -238,7 +194,10 @@ const VIEW_KEYWORDS: Record<string, string> = {
   content: "content browser catalog assets prefabs",
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
-  dungeons: "dungeon rooms layout instances",
+  dungeons: "dungeon rooms layout",
+  crafting: "crafting recipes units fittings rune stone reagent craft skill smithing",
+  runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
+  towns: "towns settlements generator rules industry guilds resources",
   graphs: "picg graph nodes procedural",
   play: "play mode debugger overlays navmesh waypoints server",
   changes: "git commit diff merge locks version control",
@@ -247,6 +206,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   audit: "database audit log undo",
   "story-editor": "quest dialog npc story graph",
   assets: "art assets models textures import",
+  scale: "scale size factor global buildings trees rocks height meters gauge",
   modules: "modules enable disable apply",
 };
 
@@ -637,7 +597,8 @@ export function App(): React.JSX.Element {
   }, []);
 
   return (
-    <div
+    
+        <div
       className="flex h-screen flex-col"
       style={{
         background: "var(--m3-surface)",
@@ -701,8 +662,10 @@ export function App(): React.JSX.Element {
         />
       )}
 
-      <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
+      
+        <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
         {/* left dock */}
+        
         <div
           ref={leftRef}
           className={`flex-none ${docks.left ? "hidden md:block" : "hidden"}`}
@@ -741,8 +704,10 @@ export function App(): React.JSX.Element {
         )}
 
         {/* center: viewport tabs + panel + bottom dock */}
+        
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <div
+          
+        <div
             className="flex h-9 flex-none items-center gap-0.5 rounded-xl px-1.5"
             role="tablist"
             aria-label="Views"
@@ -776,7 +741,8 @@ export function App(): React.JSX.Element {
             </span>
           </div>
 
-          <div
+          
+        <div
             className="m3-scroll relative min-h-0 flex-1 overflow-auto rounded-xl p-3"
             style={{
               background: "var(--m3-surface-1)",
@@ -797,7 +763,8 @@ export function App(): React.JSX.Element {
               onReset={() => setBottomH(144)}
             />
           )}
-          <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
+          
+        <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
             <DockPanel
               tabs={[
                 { id: "output", label: "Output", icon: "terminal" },
@@ -834,6 +801,7 @@ export function App(): React.JSX.Element {
           />
         )}
         {/* right dock */}
+        
         <div
           ref={rightRef}
           className={`flex-none ${docks.right ? "hidden lg:block" : "hidden"}`}
@@ -855,7 +823,8 @@ export function App(): React.JSX.Element {
             }
           >
             {playing ? (
-              <div className="flex flex-col gap-2">
+              
+        <div className="flex flex-col gap-2">
                 <p
                   className="rounded-xl px-3 py-2 text-xs font-medium"
                   style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
@@ -1079,7 +1048,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
 
   return (
     <>
-    <div
+    
+        <div
       className="flex h-12 flex-none items-center gap-1.5 px-3"
       style={{ background: "var(--m3-surface-0)" }}
     >
@@ -1228,7 +1198,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       </span>
       {dialog === "shortcuts" && (
         <ShellDialog title="Keyboard Shortcuts" onClose={() => setDialog(null)}>
-          <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13px]">
+          
+        <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13px]">
             {[
               ["Ctrl K", "Command search"],
               ["Ctrl Shift S", "Save layout as…"],
@@ -1258,7 +1229,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
         </ShellDialog>
       )}
     </div>
-    <div
+    
+        <div
       className="flex h-10 flex-none items-center px-3"
       style={{ background: "var(--m3-surface-0)", borderTop: "1px solid var(--m3-surface-2)" }}
     >
@@ -1382,7 +1354,8 @@ function Toolbar(props: {
   }, []);
 
   return (
-    <div
+    
+        <div
       className="relative flex h-[52px] flex-none items-center gap-1 px-3"
       style={{
         background: "var(--m3-surface)",
@@ -1391,7 +1364,8 @@ function Toolbar(props: {
           : "1px solid var(--m3-outline-variant)",
       }}
     >
-      <div
+      
+        <div
         className="absolute inset-0"
         onContextMenu={(e) => {
           if ((e.target as HTMLElement).closest("button, input")) return;
@@ -1444,7 +1418,9 @@ function Toolbar(props: {
 
       {/* play cluster — segmented mode + split Play, always centered.
           Tertiary so play state reads at a glance (§3.2, §3.5). */}
-      <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1.5 md:flex">
+      
+        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1.5 md:flex">
+        
         <div
           className="flex h-10 items-center overflow-hidden rounded-full text-sm font-medium"
           role="group"
@@ -1467,6 +1443,7 @@ function Toolbar(props: {
             );
           })}
         </div>
+        
         <div
           className="flex h-10 items-center overflow-hidden rounded-full text-sm font-semibold"
           style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
@@ -1531,7 +1508,8 @@ function Toolbar(props: {
         </span>}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      
+        <div className="ml-auto flex items-center gap-2">
         <StatusChip live={pmState === "running"}>{pmState === "running" ? "Playing" : pmState === "starting" ? "Starting…" : "Server idle"}</StatusChip>
         {show("modules") && <span
           className="hidden h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs lg:inline-flex"
@@ -1609,7 +1587,8 @@ function Toolbar(props: {
       {props.playMenu && (
         <>
           <span className="fixed inset-0 z-40" onClick={props.onClosePlayMenu} aria-hidden="true" />
-          <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
+          
+        <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
             <PlayMenu setup={props.playSetup} onChange={props.onPlaySetup} onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
           </div>
         </>
@@ -1769,12 +1748,14 @@ function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
   return (
     <>
       <span className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" style={{ background: "rgba(0,0,0,.4)" }} />
-      <div
+      
+        <div
         className="fixed left-1/2 top-24 z-50 w-[32rem] max-w-[90vw] overflow-hidden rounded-2xl"
         role="dialog"
         aria-label="Command search"
         style={{ background: "var(--m3-surface-3)", boxShadow: "0 6px 16px rgba(0,0,0,.5)" }}
       >
+        
         <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
           <MIcon name="search" size={20} />
           <input
@@ -1802,27 +1783,6 @@ function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
             Ctrl K
           </kbd>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        {tab === "ecs" && <EcsInspectorPanel />}
-        {tab === "play" && <PlayModePanel />}
-        {tab === "terrain" && <TerrainEditorPanel />}
-        {tab === "graphs" && <GraphEditorPanel />}
-        {tab === "dungeons" && <DungeonPanel />}
-        {tab === "tables" && <TablesPanel />}
-        {tab === "assets" && <AssetInspectorPanel />}
-        {tab === "rules" && <RulesPanel />}
-        {tab === "characters" && <CharacterRecordPanel />}
-        {tab === "valgrind" && <ValgrindPanel />}
-      </main>
-
-      <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-muted-foreground">
-        Server stays authoritative — the editor inspects live state and never
-        edits a running simulation; terrain edits apply to the stored world, and
-        saved gameplay tables are validated first, then picked up by a running server. Docs:{" "}
-        <span className="font-mono">docs/EDITOR.md</span>
-      </footer>
         <ul className="m3-scroll max-h-80 overflow-y-auto p-2">
           {hits.map((h, i) => (
             <li key={h.id}>
@@ -1894,7 +1854,8 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   }
   if (props.workspace === "scenes") {
     return (
-      <div className="flex flex-col gap-0.5">
+      
+        <div className="flex flex-col gap-0.5">
         <OwnedFiles
           kind="scene"
           onOpen={(name) => {
@@ -1912,7 +1873,8 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
 /** The workspace's views as a list, with a line on where its content lives. */
 function ViewListTree(props: { view: string; onView: (v: string) => void; views: Workspace["views"]; hint: string }): React.JSX.Element {
   return (
-    <div>
+    
+        <div>
       <SelectableList
         navigation
         size="lg"
@@ -1934,7 +1896,8 @@ function DebugTree(): React.JSX.Element {
   const t = useTree();
   const { entityId, autoRefresh, pmState } = playUiStore.use();
   return (
-    <div className="flex flex-col gap-0.5">
+    
+        <div className="flex flex-col gap-0.5">
       <TreeItem
         icon="dns" label="Owned server" trailing={pmState}
         hasKids expanded={t.open.includes("server")} onToggle={() => t.toggle("server")}
@@ -1945,7 +1908,8 @@ function DebugTree(): React.JSX.Element {
           Start and Stop live in the Play mode panel; this dock mirrors its state and overlays.
         </p>
       )}
-      <div className="flex items-center gap-2 py-1.5 pl-11 pr-1.5">
+      
+        <div className="flex items-center gap-2 py-1.5 pl-11 pr-1.5">
         <input
           value={entityId}
           onChange={(e) => setPlayEntityId(e.target.value)}
@@ -2026,7 +1990,8 @@ function TickTimingsPanel(): React.JSX.Element {
     );
   }
   return (
-    <div className="px-3">
+    
+        <div className="px-3">
       <p className="text-xs font-medium">Tick timings ({timings.ticks} ticks)</p>
       <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
         p50 {timings.p50.toFixed(1)}ms · p99 {timings.p99.toFixed(1)}ms
@@ -2053,9 +2018,10 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     requestOpenAsset("scene", name);
   };
   const t = useTree();
-  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "ingress", "items", "loot", "needs", "skills", "spells", "stats"];
+  const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "movement", "needs", "skills", "social", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
-    <div key={id}>
+    
+        <div key={id}>
       <TreeItem
         icon={icon} label={label} mono
         hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
@@ -2077,10 +2043,11 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     />
   );
   return (
-    <div className="flex flex-col gap-0.5">
+    
+        <div className="flex flex-col gap-0.5">
       {folder("rules", "content/rules", "folder", (
         <>
-          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", r === "creatures" || r === "items" ? "tables" : undefined]))}
+          {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement", "skills", "social"].includes(r) ? "tables" : undefined]))}
         </>
       ))}
       {folder("pcg", "content/pcg", "folder", (
@@ -2094,9 +2061,23 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
           {["quests.json", "steps.json", "npcs.json", "dialogs.json"].map((f) => file(`content/quests/${f}`, f, ["story", "quests"]))}
         </>
       ))}
+      {folder("settlements", "content/settlements", "folder", (
+        <>
+          {file("content/settlements/rules.json", "rules.json", ["dungeons", "towns"])}
+        </>
+      ))}
+      {folder("crafting", "content/crafting", "folder", (
+        <>{file("content/crafting/recipes.json", "recipes.json", ["gameplay", "crafting"])}</>
+      ))}
+      {folder("vfx", "content/vfx", "folder", (
+        <>{file("content/vfx/budgets.json", "budgets.json", ["artaudio", "vfx.budgets"])}</>
+      ))}
+      {folder("server", "content/server", "folder", (
+        <>{["persistence.json", "world.json"].map((f) => file(`content/server/${f}`, f, ["liveops", "settings"]))}</>
+      ))}
       {folder("dungeons", "content/dungeons", "folder", (
         <>
-          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "dungeons"]))}
+          {["instances.json", "entrances.json"].map((f) => file(`content/dungeons/${f}`, f, ["dungeons", "runs"]))}
         </>
       ))}
       {folder("edge", "content/edge", "folder", (
@@ -2129,8 +2110,10 @@ function GameplayDetails(): React.JSX.Element {
   const report = usePendingChanges();
   const icon = { edit: "edit", add: "add_circle", remove: "remove_circle", error: "error" } as const;
   return (
-    <div className="flex flex-col gap-3">
-      <div
+    
+        <div className="flex flex-col gap-3">
+      
+        <div
         className="rounded-xl p-2.5 text-[12.5px]"
         style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
       >
@@ -2168,11 +2151,14 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "flow") return <FlowNote />;
   if (workspace === "story" && view === "quests") return <QuestDetailsLive />;
   if (workspace === "artaudio" && view === "animation") return <AnimDetails />;
+  if (workspace === "artaudio" && view === "scale") return <ScaleNote />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
   function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
     return (
-      <div className="flex flex-col gap-3 text-xs">
+      
+        <div className="flex flex-col gap-3 text-xs">
+        
         <div>
           <p className="text-sm font-semibold">{selection.label}</p>
           <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>

@@ -50,6 +50,7 @@ import {
   Velocity,
 } from "./components.js";
 import type { SimWorld } from "./world.js";
+import { DEFAULT_MOVEMENT, type MovementRules } from "./movement.js";
 import { Injury, NO_JUMP } from "./body.js";
 import type { ChunkDataSource } from "./procgen/chunk-source.js";
 
@@ -59,14 +60,17 @@ export interface SimSystem {
   step(sim: SimWorld, dtSeconds: number): void;
 }
 
-/** Player movement speed in world units per second (walking). */
-export const PLAYER_SPEED = 6;
+// The speeds, jump, gravity, breath and flight ceiling below are the engine
+// defaults; a world moves by its rules (`sim.movement`, content/rules/movement.json).
+
+/** Player movement speed in world units per second (walking), by default. */
+export const PLAYER_SPEED = DEFAULT_MOVEMENT.walkSpeed;
 /** Horizontal speed swimming and flying, world units per second. */
-export const SWIM_SPEED = 3;
-export const FLY_SPEED = 12;
+export const SWIM_SPEED = DEFAULT_MOVEMENT.swimSpeed;
+export const FLY_SPEED = DEFAULT_MOVEMENT.flySpeed;
 /** Rising / diving speed in water and climbing / descending in flight. */
-export const SWIM_VERTICAL_SPEED = 2;
-export const FLY_VERTICAL_SPEED = 6;
+export const SWIM_VERTICAL_SPEED = DEFAULT_MOVEMENT.swimVerticalSpeed;
+export const FLY_VERTICAL_SPEED = DEFAULT_MOVEMENT.flyVerticalSpeed;
 
 /**
  * The entity's movement speed as a factor on every speed it moves itself
@@ -79,10 +83,11 @@ export function moveSpeedFactor(sim: SimWorld, e: number): number {
 }
 
 /** Horizontal speed for an entity's locomotion mode (walking without one). */
-function modeSpeed(sim: SimWorld, e: number): number {
-  if (!hasComponent(sim.ecs, Locomotion, e)) return PLAYER_SPEED;
+export function modeSpeed(sim: SimWorld, e: number): number {
+  const m = sim.movement;
+  if (!hasComponent(sim.ecs, Locomotion, e)) return m.walkSpeed;
   const mode = Locomotion.mode[e];
-  return mode === LocomotionMode.Swim ? SWIM_SPEED : mode === LocomotionMode.Fly ? FLY_SPEED : PLAYER_SPEED;
+  return mode === LocomotionMode.Swim ? m.swimSpeed : mode === LocomotionMode.Fly ? m.flySpeed : m.walkSpeed;
 }
 
 export class IntentSystem implements SimSystem {
@@ -104,9 +109,9 @@ export class IntentSystem implements SimSystem {
 }
 
 /** Initial upward velocity on jump, world units/second. */
-export const JUMP_SPEED = 8;
+export const JUMP_SPEED = DEFAULT_MOVEMENT.jumpSpeed;
 /** Downward acceleration while airborne, world units/second^2. */
-export const GRAVITY = 22;
+export const GRAVITY = DEFAULT_MOVEMENT.gravity;
 /** Distance under which an entity counts as grounded (step tolerance). */
 const GROUND_SNAP = 0.08;
 /** Water at least this deep (surface − ground) lifts you off your feet: swimming. */
@@ -116,12 +121,11 @@ export const FLOAT_DEPTH = 1.4;
 /** Head height above the feet: under the surface, the breath is held. */
 export const HEAD_HEIGHT = 1.7;
 /** Air in full lungs, seconds; it comes back three times as fast. */
-export const BREATH_SECONDS = 30;
-const BREATH_RECOVERY = 3;
+export const BREATH_SECONDS = DEFAULT_MOVEMENT.breathSeconds;
 /** Health lost per second underwater with no air left. */
-export const DROWN_DAMAGE_PER_SECOND = 10;
+export const DROWN_DAMAGE_PER_SECOND = DEFAULT_MOVEMENT.drownDamagePerSecond;
 /** Highest a flyer can climb above the ground, metres. */
-export const MAX_FLIGHT_HEIGHT = 250;
+export const MAX_FLIGHT_HEIGHT = DEFAULT_MOVEMENT.flightCeilingM;
 
 /** Water surface height at world (x, z), or null where there is no water. */
 export type WaterSurface = (x: number, z: number) => number | null;
@@ -276,7 +280,7 @@ export class CharacterSystem implements SimSystem {
       else this.jumpHeld.delete(e);
 
       if (!hasComponent(sim.ecs, Locomotion, e)) {
-        this.walk(e, ground, jumpPressed, dtSeconds);
+        this.walk(sim.movement, e, ground, jumpPressed, dtSeconds);
         continue;
       }
       const wantFlight = (PlayerIntent.buttons[e] & IntentButton.ToggleFlight) !== 0;
@@ -288,12 +292,12 @@ export class CharacterSystem implements SimSystem {
   }
 
   /** Ground mode: jump on the press, fall when airborne, stick to the terrain. */
-  private walk(e: number, ground: number, jumpPressed: boolean, dt: number): void {
+  private walk(m: Readonly<MovementRules>, e: number, ground: number, jumpPressed: boolean, dt: number): void {
     const grounded = Transform.py[e] <= ground + GROUND_SNAP;
     if (jumpPressed && grounded) {
-      Velocity.ly[e] = JUMP_SPEED;
+      Velocity.ly[e] = m.jumpSpeed;
     } else if (!grounded) {
-      Velocity.ly[e] -= GRAVITY * dt;
+      Velocity.ly[e] -= m.gravity * dt;
     } else {
       // Grounded: kill downward velocity and glue to the terrain so
       // landing never hovers inside the snap tolerance and walking
@@ -309,6 +313,7 @@ export class CharacterSystem implements SimSystem {
   /** Locomotion: pick the mode, move in it, and keep the breath. */
   private move(sim: SimWorld, e: number, ground: number, jumpPressed: boolean, flightPressed: boolean, dt: number): void {
     const L = Locomotion;
+    const m = sim.movement;
     const surface = this.water?.(Transform.px[e], Transform.pz[e]) ?? null;
     const depth = surface === null ? -Infinity : surface - ground;
     const canSwim = (L.abilities[e] & Ability.Swim) !== 0;
@@ -321,7 +326,7 @@ export class CharacterSystem implements SimSystem {
     // no gravity, no landing or diving transitions. The breath still runs.
     if (hasComponent(sim.ecs, Noclip, e)) {
       L.mode[e] = LocomotionMode.Fly;
-      Velocity.ly[e] = my * FLY_VERTICAL_SPEED * moveSpeedFactor(sim, e);
+      Velocity.ly[e] = my * m.flyVerticalSpeed * moveSpeedFactor(sim, e);
       return;
     }
 
@@ -349,9 +354,9 @@ export class CharacterSystem implements SimSystem {
       let rise: number;
       // Swimming up or down is the swimmer's own speed; out of air, the
       // rise to the surface is not slowed.
-      if (outOfAir) rise = SWIM_VERTICAL_SPEED;
-      else if (my > 0) rise = SWIM_VERTICAL_SPEED * moveSpeedFactor(sim, e);
-      else if (my < 0) rise = -SWIM_VERTICAL_SPEED * moveSpeedFactor(sim, e);
+      if (outOfAir) rise = m.swimVerticalSpeed;
+      else if (my > 0) rise = m.swimVerticalSpeed * moveSpeedFactor(sim, e);
+      else if (my < 0) rise = -m.swimVerticalSpeed * moveSpeedFactor(sim, e);
       else rise = Math.max(-1, Math.min(1, (floatLine - py) * 2)); // bob to the float line
       Velocity.ly[e] = rise;
       // Between the bottom and the float line (the bottom wins where the
@@ -361,19 +366,19 @@ export class CharacterSystem implements SimSystem {
       // No flying underwater: taking off from a swim climbs clear of it
       // first (diving back in is my < 0, handled above).
       const submerged = surface !== null && py < surface && my >= 0;
-      Velocity.ly[e] = submerged ? FLY_VERTICAL_SPEED : my * FLY_VERTICAL_SPEED * moveSpeedFactor(sim, e);
-      Transform.py[e] = Math.min(ground + MAX_FLIGHT_HEIGHT, Math.max(ground, py));
+      Velocity.ly[e] = submerged ? m.flyVerticalSpeed : my * m.flyVerticalSpeed * moveSpeedFactor(sim, e);
+      Transform.py[e] = Math.min(ground + m.flightCeilingM, Math.max(ground, py));
       if (Transform.py[e] <= ground && Velocity.ly[e] < 0) Velocity.ly[e] = 0;
     } else {
-      this.walk(e, ground, jumpPressed, dt);
+      this.walk(m, e, ground, jumpPressed, dt);
     }
 
     // Breath: held while the head is under the surface, back in the air.
     const under = surface !== null && Transform.py[e] + HEAD_HEIGHT < surface;
-    const change = under ? -dt / BREATH_SECONDS : (BREATH_RECOVERY * dt) / BREATH_SECONDS;
+    const change = under ? -dt / m.breathSeconds : (m.breathRecovery * dt) / m.breathSeconds;
     L.breath[e] = Math.min(1, Math.max(0, L.breath[e] + change));
     if (under && L.breath[e] <= 0 && hasComponent(sim.ecs, Health, e) && !hasComponent(sim.ecs, God, e)) {
-      Health.current[e] = Math.max(0, Health.current[e] - DROWN_DAMAGE_PER_SECOND * dt);
+      Health.current[e] = Math.max(0, Health.current[e] - m.drownDamagePerSecond * dt);
     }
   }
 }
@@ -502,24 +507,49 @@ export interface PhysicsBackend {
   readonly name: string;
   addBodies(batch: PhysicsAddBatch): void;
   removeBodies(entityIds: BigUint64Array): void;
+  /**
+   * Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
+   * component arrays, indexed by eids[i]. entityIds[i] is the wire id
+   * for the native body lookup. The backend reads kinematic/teleport
+   * targets directly from the component arrays — no scratch gather.
+   */
   syncBodies(
     count: number,
     entityIds: BigUint64Array,
-    pos: Float32Array,
-    quat: Float32Array,
-    linVel: Float32Array,
-    angVel: Float32Array,
+    eids: Int32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    qx: Float32Array,
+    qy: Float32Array,
+    qz: Float32Array,
+    qw: Float32Array,
     flags: Uint8Array,
     dtSeconds: number,
   ): void;
   step(dtSeconds: number, subSteps: number): void;
+  /**
+   * Phase 2 (zero-copy): px..az are the SAB-backed bitECS Transform +
+   * Velocity component arrays, indexed by eids[i]. The backend writes
+   * results directly into them — no dense scratch, no JS copy-back.
+   */
   copyResults(
     count: number,
     entityIds: BigUint64Array,
-    pos: Float32Array,
-    quat: Float32Array,
-    linVel: Float32Array,
-    angVel: Float32Array,
+    eids: Int32Array,
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    qx: Float32Array,
+    qy: Float32Array,
+    qz: Float32Array,
+    qw: Float32Array,
+    lx: Float32Array,
+    ly: Float32Array,
+    lz: Float32Array,
+    ax: Float32Array,
+    ay: Float32Array,
+    az: Float32Array,
   ): void;
   bodyCount(): number;
   destroy(): void;
@@ -607,16 +637,10 @@ export class PhysicsSystem implements SimSystem {
   };
   private remIds = new BigUint64Array(0);
   private syncIds = new BigUint64Array(0);
-  private syncPos = new Float32Array(0);
-  private syncQuat = new Float32Array(0);
-  private syncZero = new Float32Array(0);
+  private syncEids = new Int32Array(0);
   private syncFlags = new Uint8Array(0);
   private copyIds = new BigUint64Array(0);
   private copyEids = new Int32Array(0);
-  private copyPos = new Float32Array(0);
-  private copyQuat = new Float32Array(0);
-  private copyLin = new Float32Array(0);
-  private copyAng = new Float32Array(0);
 
   /**
    * @param backend injected physics backend (Jolt addon or mock).
@@ -745,6 +769,9 @@ export class PhysicsSystem implements SimSystem {
 
     // Sync: kinematic bodies follow the JS-side transform every tick;
     // dynamic bodies only when teleported. Static bodies are skipped.
+    // Phase 2 (zero-copy): only id/eid/flag lists are built here — the
+    // backend reads Transform directly from the SAB-backed component
+    // arrays, so there is no scratch gather.
     let syncN = 0;
     const teleports = this.teleports;
     for (let w = 0; w < nextIds.length; w++) {
@@ -753,13 +780,7 @@ export class PhysicsSystem implements SimSystem {
       const isTele = teleports.has(nextIds[w]);
       if (mt === MotionType.Kinematic || (mt === MotionType.Dynamic && isTele)) {
         this.syncIds[syncN] = nextIds[w];
-        this.syncPos[syncN * 3] = T.px[e];
-        this.syncPos[syncN * 3 + 1] = T.py[e];
-        this.syncPos[syncN * 3 + 2] = T.pz[e];
-        this.syncQuat[syncN * 4] = T.qx[e];
-        this.syncQuat[syncN * 4 + 1] = T.qy[e];
-        this.syncQuat[syncN * 4 + 2] = T.qz[e];
-        this.syncQuat[syncN * 4 + 3] = T.qw[e];
+        this.syncEids[syncN] = e;
         this.syncFlags[syncN] = isTele ? SYNC_FLAG_TELEPORT : 0;
         syncN++;
       }
@@ -769,10 +790,8 @@ export class PhysicsSystem implements SimSystem {
       this.backend.syncBodies(
         syncN,
         this.syncIds.subarray(0, syncN),
-        this.syncPos.subarray(0, syncN * 3),
-        this.syncQuat.subarray(0, syncN * 4),
-        this.syncZero.subarray(0, syncN * 3),
-        this.syncZero.subarray(0, syncN * 3),
+        this.syncEids.subarray(0, syncN),
+        T.px, T.py, T.pz, T.qx, T.qy, T.qz, T.qw,
         this.syncFlags.subarray(0, syncN),
         dtSeconds,
       );
@@ -792,30 +811,16 @@ export class PhysicsSystem implements SimSystem {
       copyN++;
     }
     if (copyN > 0) {
+      // Phase 2 (zero-copy): the backend writes results directly into
+      // the SAB-backed Transform + Velocity component arrays. No dense
+      // scratch, no JS copy-back loop.
       this.backend.copyResults(
         copyN,
         this.copyIds.subarray(0, copyN),
-        this.copyPos.subarray(0, copyN * 3),
-        this.copyQuat.subarray(0, copyN * 4),
-        this.copyLin.subarray(0, copyN * 3),
-        this.copyAng.subarray(0, copyN * 3),
+        this.copyEids.subarray(0, copyN),
+        T.px, T.py, T.pz, T.qx, T.qy, T.qz, T.qw,
+        V.lx, V.ly, V.lz, V.ax, V.ay, V.az,
       );
-      for (let k = 0; k < copyN; k++) {
-        const e = this.copyEids[k];
-        T.px[e] = this.copyPos[k * 3];
-        T.py[e] = this.copyPos[k * 3 + 1];
-        T.pz[e] = this.copyPos[k * 3 + 2];
-        T.qx[e] = this.copyQuat[k * 4];
-        T.qy[e] = this.copyQuat[k * 4 + 1];
-        T.qz[e] = this.copyQuat[k * 4 + 2];
-        T.qw[e] = this.copyQuat[k * 4 + 3];
-        V.lx[e] = this.copyLin[k * 3];
-        V.ly[e] = this.copyLin[k * 3 + 1];
-        V.lz[e] = this.copyLin[k * 3 + 2];
-        V.ax[e] = this.copyAng[k * 3];
-        V.ay[e] = this.copyAng[k * 3 + 1];
-        V.az[e] = this.copyAng[k * 3 + 2];
-      }
     }
   }
 
@@ -871,16 +876,10 @@ export class PhysicsSystem implements SimSystem {
     this.addAng = new Float32Array(cap * 3);
     this.remIds = new BigUint64Array(cap);
     this.syncIds = new BigUint64Array(cap);
-    this.syncPos = new Float32Array(cap * 3);
-    this.syncQuat = new Float32Array(cap * 4);
-    this.syncZero = new Float32Array(cap * 3);
+    this.syncEids = new Int32Array(cap);
     this.syncFlags = new Uint8Array(cap);
     this.copyIds = new BigUint64Array(cap);
     this.copyEids = new Int32Array(cap);
-    this.copyPos = new Float32Array(cap * 3);
-    this.copyQuat = new Float32Array(cap * 4);
-    this.copyLin = new Float32Array(cap * 3);
-    this.copyAng = new Float32Array(cap * 3);
     this.addDesc.entityIds = this.addIds;
     this.addDesc.shapeKind = this.addShape;
     this.addDesc.halfExtents = this.addHalf;
@@ -906,10 +905,14 @@ interface JoltAddonModule {
     syncBodies(
       count: number,
       entityIds: BigUint64Array,
-      pos: Float32Array,
-      quat: Float32Array,
-      linVel: Float32Array,
-      angVel: Float32Array,
+      eids: Int32Array,
+      px: Float32Array,
+      py: Float32Array,
+      pz: Float32Array,
+      qx: Float32Array,
+      qy: Float32Array,
+      qz: Float32Array,
+      qw: Float32Array,
       flags: Uint8Array,
       dt: number,
     ): void;
@@ -917,10 +920,20 @@ interface JoltAddonModule {
     copyResults(
       count: number,
       entityIds: BigUint64Array,
-      pos: Float32Array,
-      quat: Float32Array,
-      linVel: Float32Array,
-      angVel: Float32Array,
+      eids: Int32Array,
+      px: Float32Array,
+      py: Float32Array,
+      pz: Float32Array,
+      qx: Float32Array,
+      qy: Float32Array,
+      qz: Float32Array,
+      qw: Float32Array,
+      lx: Float32Array,
+      ly: Float32Array,
+      lz: Float32Array,
+      ax: Float32Array,
+      ay: Float32Array,
+      az: Float32Array,
     ): void;
     bodyCount(): number;
     destroy(): void;
@@ -949,11 +962,11 @@ export function createJoltBackend(): PhysicsBackend {
     name: "jolt",
     addBodies: (batch) => world.addBodies(batch),
     removeBodies: (entityIds) => world.removeBodies(entityIds),
-    syncBodies: (count, entityIds, pos, quat, linVel, angVel, flags, dt) =>
-      world.syncBodies(count, entityIds, pos, quat, linVel, angVel, flags, dt),
+    syncBodies: (count, entityIds, eids, px, py, pz, qx, qy, qz, qw, flags, dt) =>
+      world.syncBodies(count, entityIds, eids, px, py, pz, qx, qy, qz, qw, flags, dt),
     step: (dt, subSteps) => world.step(dt, subSteps),
-    copyResults: (count, entityIds, pos, quat, linVel, angVel) =>
-      world.copyResults(count, entityIds, pos, quat, linVel, angVel),
+    copyResults: (count, entityIds, eids, px, py, pz, qx, qy, qz, qw, lx, ly, lz, ax, ay, az) =>
+      world.copyResults(count, entityIds, eids, px, py, pz, qx, qy, qz, qw, lx, ly, lz, ax, ay, az),
     bodyCount: () => world.bodyCount(),
     destroy: () => world.destroy(),
     addTerrain: (key, originX, originZ, spacing, samples, friction) =>

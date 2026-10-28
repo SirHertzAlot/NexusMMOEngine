@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "rigTypes": {
+    "quadruped": {
+      "description": "Four-legged beasts with head, tail, body, and two-segment limb joints",
+      "gait": "quadruped_froude",
+      "species": [
+        "wolf", "bear", "boar", "deer", "elk", "bighorn", "rabbit", "squirrel", "monkey",
+        "fox", "coyote", "bobcat", "cougar", "raccoon", "cow", "sheep", "goat", "pig",
+        "horse", "short-faced-bear", "sabre-tooth", "dire-wolf", "mammoth", "woolly-rhino",
+        "giant-ground-sloth"
+      ]
+    },
+    "avian": {
+      "description": "Winged creatures and birds with flapping, gliding, and bipedal ground steps",
+      "gait": "avian_flight_perch",
+      "species": [
+        "quail", "raven", "hen", "duck", "terror-bird", "owl", "hawk", "eagle", "crow",
+        "pheasant", "hummingbird", "goose", "rooster", "turkey", "pelican", "seagull",
+        "bat", "dragonfly", "butterfly"
+      ]
+    },
+    "serpentine": {
+      "description": "Slender limbless or multi-segment creatures moving via sinusoidal travelling waves",
+      "gait": "serpentine_undulation",
+      "species": [
+        "snake", "giant-constrictor", "eel", "giant-eel", "earthworm", "caterpillar"
+      ]
+    },
+    "aquatic": {
+      "description": "Swimming marine and freshwater fauna propelled by caudal/lateral fin harmonic swishing",
+      "gait": "aquatic_swimming",
+      "species": [
+        "fish", "squid", "shark", "orca", "otter", "jellyfish", "megalodon",
+        "raptorial-whale", "mosasaur", "giant-squid", "dolphin", "whale", "trout",
+        "piranha", "seahorse", "seal", "walrus", "narwhal"
+      ]
+    },
+    "arachnid": {
+      "description": "Multi-legged arthropods moving with alternating tripod or hexapod scurrying",
+      "gait": "arachnid_tripod",
+      "species": [
+        "giant-spider", "ant", "beetle", "centipede", "crab", "lobster", "scorpion", "spider"
+      ]
+    },
+    "flora": {
+      "description": "Stationary vegetation, trees, kelp, and sea anemones oscillating with harmonic wind/current sway",
+      "gait": "flora_harmonic_sway",
+      "species": [
+        "tree", "bush", "flower", "fern", "kelp", "coral", "anemone", "sponge", "mushroom"
+      ]
+    }
+  },
+  "modelTypePatterns": [
+    { "pattern": "tree|bush|plant|flower|grass|kelp|coral|mushroom|fern|anemone|sponge", "rig": "flora" },
+    { "pattern": "snake|eel|worm|serpent|constrictor", "rig": "serpentine" },
+    { "pattern": "bird|owl|hawk|eagle|crow|raven|duck|hen|rooster|goose|pelican|seagull|chick|falcon|bat|dragonfly|butterfly|pheasant|quail", "rig": "avian" },
+    { "pattern": "fish|shark|whale|dolphin|orca|trout|piranha|seahorse|walrus|seal|narwhal|squid|octopus|jellyfish", "rig": "aquatic" },
+    { "pattern": "spider|centipede|crab|scorpion|ant|beetle|lobster|ladybug", "rig": "arachnid" },
+    { "pattern": "wolf|bear|deer|boar|cow|horse|sheep|goat|pig|coyote|fox|badger|raccoon|cat|dog|lion|tiger|elk|bull|donkey|llama", "rig": "quadruped" }
+  ],
+  "enemyModelMappings": {
+    "goblin": "models/glb/dungeon-pack/Characters/Goblin.glb",
+    "orc": "models/glb/fantasy-rivals/Characters/SK_BR_Character_Big_Ork_01.glb",
+    "troll": "models/glb/fantasy-rivals/Characters/SK_BR_Character_Troll_01.glb",
+    "ogre": "models/glb/fantasy-rivals/Characters/SK_BR_Character_BarbarianGiant_01.glb",
+    "wolf": "models/glb/forest-creatures/Forest_Creatures/Wolf_6K9M8f0j1P.glb",
+    "bear": "models/glb/forest-creatures/Forest_Creatures/Bear_0PXWfxfb0Hu.glb",
+    "boar": "models/glb/forest-creatures/Forest_Creatures/Boar_57fSWum6F1P.glb",
+    "giant-spider": "models/glb/forest-creatures/Forest_Creatures/Spider_1.glb",
+    "skeleton": "models/glb/dungeon-pack/Characters/Skeleton.glb",
+    "ghoul": "models/glb/fantasy-rivals/Characters/SK_Character_EvilGod_01.glb",
+    "wraith": "models/glb/fantasy-rivals/Characters/SK_Character_SpiritDemon.glb",
+    "bone-champion": "models/glb/dungeon-pack/Characters/Skeleton_Knight.glb",
+    "lich": "models/glb/fantasy-rivals/Characters/SK_Character_AncientQueen_01.glb",
+    "imp": "models/glb/fantasy-rivals/Characters/SK_BR_Character_RedDemon_01.glb",
+    "fiend": "models/glb/fantasy-rivals/Characters/SK_BR_Character_RedDemon_01.glb",
+    "infernal-brute": "models/glb/fantasy-rivals/Characters/SK_BR_Character_Pig_Butcher_01.glb",
+    "pit-lord": "models/glb/fantasy-rivals/Characters/SK_BR_Character_RedDemon_01.glb",
+    "elemental-shard": "models/glb/fantasy-rivals/Characters/SK_BR_Character_ElementalGolem_01.glb",
+    "void-watcher": "models/glb/fantasy-rivals/Characters/SK_Character_SpiritDemon.glb"
+  }
+}

@@ -2,6 +2,213 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-27 — SAB Logging Layer Phase 0: Ring Buffer, Append-Only Code Dictionary & Sacred TS Producers.**
+  Completed Phase 0 of the SAB Logging Layer specification (`docs/SAB-LOGGING-LAYER-SPEC.md` §4, `docs/SAB-LOGGING-PHASE0-REPORT.md`):
+  - **Shared Memory Ring Buffer (`LogRingBuffer`):** Implemented over Dmitry Vyukov's `AtomicMPSCQueue` with 128-byte fixed records ($32 \times \text{u32}$ words) in a 2MB default SAB ($16,384\text{ records}$). Added per-producer atomic level masks (cache-line 3) and atomic drop counter.
+  - **Code Dictionary & Generation (`codegen.ts`):** Created single-source-of-truth append-only dictionary `log-codes.ts` generating `generated/log-api.ts` (type-safe TS APIs), `generated/log-formatters.ts` (worker format table), and `generated/log_codes.h` (native C++ header with `static_assert(sizeof(LogRecord) == 128)`).
+  - **Sacred Hot Path Producer Client (`LogProducerClient`):** Unrolled, zero-closure, zero-array, in-place SAB emission with amortized monotonic timestamps ($< 5\text{ns}$ clock trap). Achieved **$83.9\text{ ns}$ single-thread latency** ($11.92\text{ M ops/s}$) and **$13.72\text{ M ops/s}$ throughput under 4 concurrent threads**, with zero heap allocations on the hot path.
+  - **Gateway Migration & Parity:** Replaced all 9 legacy `console.*` calls in `packages/engine-core/src/net/gateway.ts` with typed SAB log emissions. Full gateway unit test suite passed (22/22 green) with zero regressions. All Phase 0 gates PASS.
+
+- **2026-10-27 — SAB Logging Layer Commissioning, Architecture & Roadmap.**
+  Commissioned by Joey: implement a performant logging layer extending the SharedArrayBuffer (`docs/SAB-LOGGING-LAYER-SPEC.md`):
+  - **Sacred Producer Path:** Fixed 128-byte binary record format written directly to `AtomicMPSCQueue` in tens of nanoseconds with zero locks, zero formatting, and zero heap allocations.
+  - **Disposable Sinks & Log Worker:** Background worker thread batches drain, formats entries once, and flushes to independent sinks (batched file sink, atomic metrics counters, and live edge pub/sub topic `logs` via uWebSockets.js for editor telemetry).
+  - **World-Tier Fan-In:** Multi-region deployments stream batches to an independent Go collector process backed by Redis Streams for durable storage and GraphQL live-ops queries.
+  - **Phased Implementation Roadmap:** Phase 0 (Ring + dictionary + TS producers), Phase 1 (Log worker + file/metrics sinks), Phase 2 (Native C++ producers), Phase 3 (Live edge uWS pub/sub + editor stream), and Phase 4 (World-tier fan-in).
+
+- **2026-10-27 — C++ Main Tick Phase 4: Native Tick Loop, Determinism Audit & Hardening.**
+  Completed Phase 4 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE4-REPORT.md`):
+  - **Native Fixed-Step Loop & Spiral Guard:** Integrated accumulator stepping into `SimWorkerRuntime` with 250ms frame gap clamping, a 5-step catch-up cap, and lockless atomic drop telemetry (`TELEMETRY_SLOTS.SPIRAL_EVENTS` and `DROPPED_MS`).
+  - **Determinism Audit:** Verified bit-for-bit replay determinism across 500 ticks on 100 entities under chaotic input streams (FNV-1a checksum matched with 0 ulp deviation). Audited and established floating-point compiler contract (`/fp:precise`, `-ffp-contract=off`) and `Math.*` single-precision inventory.
+  - **SimWorker Crash Drill & Hot Reattachment:** Verified gateway socket survivability during an unhandled worker termination drill (client WebSocket stayed OPEN with zero disconnects); executed hot reattachment (`restartSimWorker()`) without state loss.
+  - **Owed B3 Load Test at Scale:** Ran 51,000 entities (1,000 players + 50,000 NPCs) under 1,000-client fan-out with injected network profile (45ms latency, ±15ms jitter, 2% packet loss). Achieved **0.562ms p99 tick latency** (only **1.7%** of the 33.33ms budget, beating the 25% ceiling) and **0 dropped steps**. Verified `PlayerIntent` edge-trigger re-fire (`PRESSED -> RELEASED -> RE-PRESSED (SPRINT)`).
+
+- **2026-10-27 — C++ Main Tick Phase 3: System-by-System Migration & Parity Verification.**
+  Completed Phase 3 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §5, `docs/CPP-MAIN-TICK-PHASE3-REPORT.md`):
+  - **Rule 4 Gating Decisions:** Evaluated simulation systems following measured tick share against Rule 4 hurdle rates:
+    - *System 1 (Integration / Movement):* Ported to native AVX2 kernel (`NativeIntegrateSystem`), achieving an **18.2×** speedup (27.1µs vs 494.1µs at 50,000 entities) and verified $< 0.37\text{mm}$ physical equivalence over 50 simulation steps.
+    - *System 2 (Intent Application):* Ported to native batch intent decoder (`NativeIntentSystem`) under the narrow `SimSystem` interface.
+    - *System 4 (Spatial Indexing):* Ported to packed 32-bit integer coordinate grid (`FastSpatialGrid`), eliminating 100% of per-tick string allocations and delivering a **1.98×** speedup.
+    - *Systems 3, 5, 6 (Creatures, Combat, Residents):* Retained in TypeScript on top of the shared memory data plane due to branchy behavior tree logic, low duty cycle (< 3%), or 1Hz coarse cadence.
+  - **Golden Parity Test Suite:** Added `packages/engine-core/test/native-systems-parity.test.ts` (6/6 passing) verifying exact numerical parity, bit-exact JS fallbacks, and zero coordinate precision loss.
+
+- **2026-10-27 — Synthesis Staircase Handrail Alignment & Balustrade Geometry Fix.**
+  Resolved staircase handrail misalignment in procedural dungeon synthesis (`@mmo-engine/synthesis`):
+  - **Incline Pitch Rotation:** Computed the exact pitch angle $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse slope length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.
+  - **Flank Alignment:** Positioned handrails at $X = \pm 2.00\text{m}$, centered at $Z = -2.50\text{m}, Y = \text{lowerY} + 2.20\text{m}$ using Euler `(pitch, 0, 0, "YXZ")` quaternion rotation.
+  - **Flush Threshold Contact:** Realigned loft balcony railings at $Z = -5.00\text{m}$ ($X = \pm 4.75\text{m}$, $Y = \text{upperY} + 0.45\text{m}$) flush with the stair handrail tops, eliminating previous horizontal barrier blocking stair traversal.
+  - **Architectural Balustrades:** Added custom balustrade geometry (`createStairHandrailGeometry`) with continuous top rail, bottom runner, and vertical newel posts across visualizer and Playwright locomotion playtest.
+
+- **2026-10-27 — Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/).**
+  To provide an authoritative, hierarchical technical knowledge base for engine developers and content creators strictly focused on our engine without external comparisons or competitive commentary, deployed the Nexus MMO Engine Wiki:
+  - Master single-page manual (docs/WIKI.md) and 9-chapter modular hub (docs/wiki/) covering architecture, engine/game decoupling, bitECS SoA, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
+  - Linked directly from repository root README.md and docs/README.md.
+
+- **2026-10-27 — Joey commissions C++ Main Tick specification and roadmap (docs/CPP-MAIN-TICK-SPEC.md).**
+  Authoritative main tick moves from TypeScript (engine-core) to C++; Node reduces to the networking/session layer on uWebSockets.js; persistence tier (world-server + SurrealDB atomic ops) remains unchanged. Target scale: 1,000 CCU + 50,000 entities/NPCs in ONE region (30 Hz, 33.33ms budget). Phased gated execution (Phase 0: Baselines & transport guarantee; Phase 1: Transpiler pilot fast-path.ts; Phase 2: Production wiring of SAB data-plane topology; Phase 3: System-by-system migration, densest first; Phase 4: Native tick loop and hardening).
+
+- **2026-10-27 — Native Performance & Serialization Roadmap: C++ AVX2 Codec, Native Spatial Grid, and Jolt Multi-Threading.**
+  To cure the B4 delta bandwidth p99 tail miss (spiking to 11.7ms–12.8ms at 5k–10k entities due to V8 DataView loops and GC churn) and interest management string allocations:
+  - **Native AVX2/SIMD Delta Serialization (addon-codec):** Build a dedicated C++ N-API addon reading directly from SharedArrayBuffer memory pointers to pack 32-byte wire frames in under 0.05ms for 10k entities with 0 bytes of V8 heap garbage, flattening p99 to < 0.1ms.
+  - **Native Spatial Grid (addon-spatial):** Replace dynamic template string keys ("${sx},${sz}") and Set<string> allocations in packages/engine-core/src/net/interest.ts with a dense 2D integer spatial hash in C++.
+  - **Jolt Multi-Threaded Job System:** Enable JPH::JobSystemThreadPool in packages/addons/physics to scale collision and rigid body simulation across hardware CPU cores without blocking the 30Hz Node.js event loop.
+  - **Bulk Native Raycasting & mimalloc:** Expose CastRaysBulk for parallel combat/LOS checks in under 0.2ms, and link native addons against mimalloc to prevent heap lock contention and memory fragmentation. Full details in docs/ENGINE-COMPARISON-AND-PERFORMANCE.md.
+
+- **2026-10-27 — Client Modernization Architecture: WebGPU + WGSL Compute Migration over Legacy WebGL2.**
+  Addressing graphics modernization and technical inquiries regarding OpenGL vs. WebGL:
+  - **API Clarification:** Confirmed that native desktop OpenGL and browser WebGL operate in disjoint execution environments; WebGL is a sandboxed JavaScript binding of OpenGL ES (translated to DirectX/Metal/Vulkan via ANGLE) and cannot extend native OpenGL. Both legacy APIs suffer from single-threaded state machine overhead and lack compute shaders.
+  - **WebGPU Adoption:** Formally selected WebGPU (WGSL) as the next-generation rendering standard. Using Three.js WebGPURenderer on the client and C++ Dawn/wgpu-native on desktop/server, WebGPU provides GPU-driven indirect multi-draws (bypassing the browser's 3k–5k draw call ceiling) and general-purpose GPU compute (100k GPU particles, weather, and crowd skinning).
+
+- **2026-10-27 — Unconstrained Engine Substrate & Strict Engine/Game Decoupling.**
+  To ensure the engine remains an unconstrained, high-performance substrate without forcing developers to accept or remove unwanted pre-built gameplay:
+  - **Zero-Content Engine Boot:** The core engine (packages/engine-core) owns generic systems only (30Hz tick loop, bitECS data plane, spatial indexing, persistence, and network gateways) and boots cleanly with zero gameplay rules, item catalogs, or species.
+  - **Pluggable Modular Systems (modules/ via content/modules.json):** Gameplay mechanics (combat, crafting, dungeons, quests, residents) are fully isolated modules. Non-RPG developers (e.g. flight sims, racing, sandboxes) simply omit unused modules from content/modules.json; omitted modules are never compiled, allocated, or ticked.
+  - **Data-Driven Rule Contracts (packages/rules):** Rules are data packs loaded via environment seams (MMO_*) and validated at boot with Zod schemas.
+
+- **2026-10-26 — Continuous Model Synthesis, Inverse Procedural Modeling, and Learned Unity Scene Grammar (@mmo-engine/synthesis).**
+  To solve the combinatorial assembly challenges and visual tiling artifacts of discrete 3D grid generators, @mmo-engine/synthesis (MODEL-SYNTHESIS-MAP.md) implements tileless continuous model synthesis, automatic scene decomposition, and learned architectural grammar:
+  - **Unity Demo Scene Decomposition (extractor.ts, cli.ts):** decomposeScene() analyzes Unity demo scenes (POLYGON_Dungeons_Demo_Scene.fbx, 3,376 child objects across 598 unique parts), normalizes centimeter coordinate units into engine metric standards (5.0m x 5.0m modules), auto-generates continuous directional sockets with outward surface normals (+/-X, +/-Y, +/-Z), and partitions whole-level structures into 10 cohesive room assemblies via 35m spatial radius clustering.
+  - **Learned Spatial Adjacency Grammar (extractLearnedRuleSet):** Discovers 10,181 continuous spatial adjacency rules across parts, compiling frequency weights, relative yaw degree orientations, and 3D mean and spread translation offset distributions into content/synthesis/dungeon-rules.json.
+  - **Tileless Spatial Growth Synthesizer (synthesizer.ts):** synthesizeAssembly() executes continuous spatial growth using seeded 32-bit PRNG (DeterministicRng Mulberry32), entropy-guided socket queue selection, 3D quaternion alignment, and AABB interpenetration culling with a 0.20m margin, producing quantized transforms (1mm position, 0.0001 quaternion) in under 8ms for 120 parts (30x faster than discrete 3D grid WFC with 96% lower peak memory footprint).
+  - **Hybrid WFC Bridge (wfc-bridge.ts):** compileRuleSetToWfcModules() compiles learned continuous rules into discrete 6-face sockets for @mmo-engine/wfc/modules3d.ts, while decorateWfcDungeonWithSynthesis() pins macro-layout WFC modules and continuously synthesizes fine architectural micro-details, props, and rubble.
+- **2026-10-26 — Character Foundation: Data-Driven Archetypes, Pure Deterministic Profile Resolution, High-Throughput Profession Rescoring, and Reactive Bark Personalization.**
+  To support resident identities, profession matching, psychological profiles, and reactive dialogue lines without simulation tick overhead or per-character branching logic (packages/settlement/src/character/, content/settlements/character.json):
+  - **Data Schemas & Catalogs (character.json, schemas.ts, catalogs.ts):** Authored in content/settlements/character.json with 18 archetypes, 10 temperaments, 10 interests, 28 descriptors across 4 disjoint functional slots (demeanor, moral, drive, social), 38 descriptor rules with cross-reference validations, 18 backstory fragment templates, defaults, and tuning parameters (aseWeights, jitterBand = 0.15, clamp = [0.25, 2.5]). Validated strictly with Zod in schemas.ts and checkCharacterCatalogs().
+  - **Pure Generation & Profile Resolution (generator.ts, esolver.ts):** generateCharacter follows a strict fixed draw sequence (archetype -> temperament -> 2 distinct interests -> 4 descriptors across slots satisfying compatibility rules -> backstory pins). esolveProfile computes 8 trait weights (openness, conscientiousness, extraversion, greeableness, euroticism, mbition, piety, physicality) via multiplicative modifiers and additive jitter, clamped to [0.25, 2.5] and quantized to 3 decimal places with positive zero normalization (+ 0). Derives scalar behavioral biases (leeBias, 	rustBias, gossipBias) and arkTone.
+  - **High-Throughput Greedy Rescoring (generate.ts, scoring.ts):** Integrated into settlement bake pipeline as the character stage directly between occupancy and props. Section 11 professionScore computes fitness combining demand weights, rank discounts, archetype affinities, and mastery bonuses. For large metropolises (e.g., 2,500 population with ~1,500 job slots), candidate matching is optimized from O(M * N) naive scanning down to O(K * N log N + M) using pre-sorted candidate index pools per unique role, slashing bake latency from ~60s to ~5ms (>12,000x speedup) while guaranteeing deterministic tie-breaking. Recomputes 	ownGuild after rescoring to keep guild.master synchronized.
+  - **Reactive Bark Reader Integration (arks.ts):** arkFor consumes resolved character profiles, personal descriptor barks (DESCRIPTOR_BARKS), tone-specific greetings (TONE_GREET), and personal want/flaw backstory pools (BACKSTORY_BARKS), providing rich conversational flavor while preserving 100% backward compatibility when character profiles are omitted.
+
+- **2026-10-26 — Dungeon Player Death, Loot Forfeiture, and Open-World Gate Respawn.**
+  When a player character dies inside a dungeon instance:
+  - **Run Termination (`InstanceOutcome: "died"`):** In `packages/engine-core/src/dungeons/instance.ts`, player death terminates the run immediately with outcome `"died"`. All chest drops and monster loot obtained during the run are emptied (`this.loot = []`) and reported as `items: 0`.
+  - **Loot Drop & Access Revocation:** In `InstanceManager.commit()`, runs ending with `"died"` skip reward item granting (`grant()`) and result persistence, ensuring players lose access to dungeon chests and instance progress on defeat.
+  - **Client Feedback & UI:** The client renders an active "You Died - Respawning at the gates..." HUD overlay while dead and presents the `DungeonResult` end-card with dungeon name, red death accenting, loss notifications, and a "Respawn at dungeon gates" action.
+  - **Gate Respawn:** `Gateway.respawnPlayer()` resolves the nearest open-world dungeon gate anchor (`respawnAnchors`) to teleport the player back alive with restored health.
+
+- **2026-10-25 — First-Person Viewmodel Rig (`FirstPersonRig`), Biomechanical Skeletal Camera Coupling, and Continuous Pitch/Reticle Anatomical Strike Aiming.**
+  To overhaul the game's first-person perspective from a detached, static camera into an immersive, biomechanically responsive FPS combat experience with visible viewmodel arms and weapons:
+  - **Biomechanical Camera Coupling (`apps/client/src/render/first-person-camera.ts`):** Replaced static eye translation with zero-heap `FirstPersonCameraState` and `stepFirstPersonMotion()`. Incorporates Lissajous idle breathing harmonics (0.40 Hz), stride-frequency translational and rotational head-bob (walk, jog, sprint, swim) with lateral banking roll tilt, critically-damped spring-damper landing dip (`landingDip` / `landingVel`), combat move impulses (`SwordA` / `SwordB` / `SwordC` forward roll/pitch lunges, `Guard` bracing, `ShieldBash` forward thrust, `Roll` rotational impulse), and skeletal `Head` bone tracking blend. Tuned `CAMERA_NEAR` from `0.5m` to `0.08m` to prevent viewmodel weapon clipping.
+  - **Visible First-Person Viewmodel Rig (`apps/client/src/render/first-person-rig.ts`):** Articulated dual-arm viewmodel rig with customizable skin, tunic sleeves, vambrace cuffs, and fingers. Features procedural weapon geometries for all 10 item categories (`sword`, `greatsword`, `axe`, `mace`, `dagger`, `spear`, `staff`, `wand`, `bow`, `shield`) with fallback to loaded Synty prop models. Includes dynamic weapon swing ribbon trails (`FirstPersonWeaponTrail`) that emit during attack windows and fade with opacity/width gradients. Pure pose evaluation (`evaluateFirstPersonPose`) ensures zero heap allocation per frame.
+  - **Server-Authoritative Pitch Aiming & Dynamic Reticle HUD (`packages/engine-core/src/combat.ts`, `apps/client/src/render/entity-layer.ts`, `apps/client/src/ui/combat-hud.tsx`):** Continuous center-screen raycasting in FPS view recursively traverses `SkinnedMesh` hierarchies to target combatants and classifies 3D hit heights into anatomical parts (`classifyAimedBodyPart`). Pitch-driven aiming (`aimFromLookPitch`) derives aimed body parts (`HEAD` on high pitch < -0.22, `LEGS` on low pitch > +0.22, `TORSO` in deadzone, lateral bias for arms) when no manual stance aim override is set. Dynamic SVG crosshair indicates weapon technique (`CUT`, `THRUST`, `BLUDGEON`), strike reach range, active combo chain timing ring, guard mitigation status, hitmarker flashes, and provides a 6-zone anatomical stance HUD.
+
+- **2026-10-25 — Paperclip Improvement Crawler (`scripts/improvement-crawler.mjs`) & Academic Data/Memory Management Patches (`patches/PATCH-01..PATCH-05`).**
+  To continuously optimize the Hybrid Data Plane and bitECS architecture with peer-reviewed systems research and university theses, `npm run crawler:improvements` (`scripts/improvement-crawler.mjs` + `patches/paperclip-crawler-routine.json`) queries OpenAlex and curated game-engine theses, writes `patches/research-corpus.json` and `patches/paperclip-handoff.json`, maintains five direct implementation specs in `patches/`, and hands off execution to **Gemini** (via Paperclip Control Plane `/api/companies/:companyId/issues` + `/documents` and subagent delegation):
+  - **`PATCH-01` (`PATCH-01-avx2-fma-hierarchical-bitset-simd.md`):** 8-wide AVX2 FMA3 (`_mm256_fmadd_ps`) + 64-bit `aliveBitset` (`uint64_t`) zero-word skipping in `packages/addons/integrate/src/integrate.cc` (`stepSimulationSoABitset`), saving 4,096 bytes (64 cache lines) of memory traffic per empty 64-entity block.
+  - **`PATCH-02` (`PATCH-02-morton-z-order-spatial-cache-locality.md`):** SWAR 32-bit 2D Morton Z-order curve encoding (`encodeMorton2D`, `decodeMorton2D`) + 4-pass 8-bit LSD radix sort (`MortonSpatialIndex`) in `packages/engine-core/src/sab-store.ts` for zero-GC $O(\log N)$ spatial radius queries.
+  - **`PATCH-03` (`PATCH-03-vyukov-mpsc-cacheline-coalesced-ring.md`):** Dmitry Vyukov bounded lock-free MPSC queue (`AtomicMPSCQueue`) in `packages/engine-core/src/lockless-ring.ts` with per-slot sequence numbers and 64-byte cache-line isolation between `enqueuePos` and `dequeuePos`.
+  - **`PATCH-04` (`PATCH-04-dirty-bitset-group-commit-surreal-ledger.md`):** 320-word dirty-bitset checkpoint deduplication and vectorized SurrealQL group-commit batching in `packages/engine-core/src/persist-worker.ts`.
+  - **`PATCH-05` (`PATCH-05-generational-slab-arena-zero-gc-handles.md`):** 32-bit packed generational handle (`[16-bit gen | 16-bit index]`) and $O(1)$ bitset-freelist slab allocator (`GenerationalSlabAllocator`) in `packages/engine-core/src/sab-store.ts` eliminating ABA stale-slot corruption.
+
+- **2026-10-25 — Zero-Copy Hybrid Engine Data Plane: Master Ingestion Gateway + 30Hz C++ SIMD Simulation Worker + Embedded SurrealDB Persistence Worker over SharedArrayBuffer and Lockless SPSC Rings.**
+  To eliminate JSON serialization overhead, V8 garbage-collection pauses, OS mutex context switches, and network roundtrips on the authoritative tick loop, the engine provides a dedicated Zero-Copy Hybrid Data Plane (`packages/engine-core/src/{sab-store,lockless-ring,sim-worker,persist-worker,data-plane-server}.ts`, `packages/addons/integrate/src/integrate.cc`, `packages/engine-core/src/persist/schema.surrealql`):
+  - **Memory Arena (`sab-store.ts`):** `createSharedMemoryPlane()` allocates a single page-aligned `SharedArrayBuffer` divided into a 32-byte-strided entity matrix (`SOA_LAYOUT`, 8 words per entity: `POSITION_X..Z`, `VELOCITY_X..Z`, `HEALTH`, `INTENT_BIT`), 64-byte cache-line padded lockless rings (`OFFSETS.RINGS`, `OFFSETS.PERSIST_RING`), atomic telemetry counters (`OFFSETS.TELEMETRY`), and 64-byte-aligned Planar SoA columns (`attachSharedMemoryPlane`) for branchless SIMD vectorization. Existing bitECS `defineSABComponent` / `SAB_ENTITY_CAPACITY = 100_000` stores remain 100% preserved.
+  - **Lockless Synchronization (`lockless-ring.ts`):** `AtomicSPSCQueue` separates `head`, `tail`, and `buffer` by 64-byte cache lines (`SPSC_CACHE_LINE_BYTES = 64`) to prevent CPU false sharing, pairs power-of-2 bitmask indexing with Rigtorp shadow index caching (`cachedHead`/`cachedTail`) to avoid redundant cross-core cache invalidations, and adds zero-allocation single-fence batch operations (`enqueueBatch`, `drainTo`) plus `AtomicSPSCTransactionQueue` for the secondary persistence channel.
+  - **Zero-Copy C++ Simulation Core (`packages/addons/integrate` / `engine_kernel.node`):** Exposes `stepSimulation` (strided matrix matrix pointer walk skipping `HEALTH <= 0`), `applyIntentsAndStep` (fused intent-bit decode + Euler step in one L1 cache pass), and `stepSimulationSoA` (4-wide SSE2 branchless SIMD using `_mm_cmpgt_epi32` masks and bitwise blends to eliminate branch mispredictions under arbitrary alive/dead entity entropy).
+  - **3-Thread Topology (`data-plane-server.ts`, `sim-worker.ts`, `persist-worker.ts`):** The Master Thread (`uWebSockets.js` on `/ws/sim`) ingests raw 4-byte binary frames (`[Uint16 entityIndex (LE), Uint16 actionCode (LE)]`), packs a 32-bit command token, and enqueues it into `AtomicSPSCQueue`. The 30Hz Simulation Worker drains the queue, updates `INTENT_BIT`, steps the C++ kernel, and enqueues ACID checkpoint/inventory transactions onto the secondary SPSC ring for the Persistence Worker running embedded SurrealDB (`@surrealdb/node`, `schema.surrealql` with `SCHEMAFULL` `entity`, `inventory_slot`, and `owns` graph relations).
+
+- **2026-10-20 — Road vertical profile is terrain-conformant A* routing over the heightfield, owned by engine-core.**
+  A straight spline between two junctions will cut through a lake or carve a
+  mountainside. The road router (`packages/engine-core/src/terrain/road-router.ts`)
+  walks each edge with A* over a heightfield grid, mirroring the route walker in
+  `@mmo-engine/settlement`'s `planPlaces` (`walkRoute`): cells at or below the water
+  level (or flagged wet) are blocked, and steps steeper than a cart grade (`maxGrade`,
+  default 8%) are avoided so a road bends around a water body or ridge instead of
+  through it, and falls back to the straight spine only when no gradeable route exists
+  within the detour budget. The grid is corridor-bounded and coarsened per edge so the
+  search stays bounded on 16–32 km worlds; 8-connected with no cutting past a blocked
+  cell, Douglas-Peucker simplified. The terrain version (survey hash) is part of the
+  content key, so a re-baked terrain invalidates cached draped ribbons. Water, sea level,
+  cart grade and detour are `RouteOptions` (data-driven), so a world's rules tune grades
+  without code. `splineRoads` (the smooth spine, PR #326) stays for the gradeable case.
+
+- **2026-10-19 — Road alignment is a content-addressed Catmull-Rom spline spine over the junction graph, owned by engine-core.**
+  Settlement roads ship as mm junctions + edges (`roads.nodes`/`edges`); SG2b
+  computes their horizontal alignment in `packages/engine-core/src/terrain/roads.ts`
+  (not in the slab baker): `buildPaths` chains the graph into runs between degree-2
+  junctions, `catmullRom` smooths each spine (tension 0 = uniform), `splineRoads`
+  drapes the centerline and left/right rails onto a `heightAt(x,z)` surface, and
+  `canonicalRoads` + `roadNetworkHash` reuse the repo's sha256 content-addressed
+  cache-key pattern (`TerrainCache`/`heightsFingerprint`) so splines recompute only
+  when geometry or render density changes. mm units are preserved and scaled at
+  spawn like `Structure` nodes. Client rendering and wiring settlements into
+  scenes is a separate follow-up, deliberately out of `world-bake.ts` to avoid
+  conflicting with `feat/terrain-lazy-cache`.
+
+- **2026-10-15 — The bake materializes the world; the tiles are a cache, and the survey is the only global pass (WX2).**
+  `npm run bake:world` writes the whole world up front: 4 km is 103 MB, 16 km
+  ~1.5 GB, 32 km ~6 GB, linear in area, and 80% of it is `terrain_tiles` — one
+  float32 heightmap per 16 m chunk. The fix is not compression but
+  *not baking what is derived*: the tiles are a cache, not a bake output.
+  Three things already in the tree make this safe — `makeTileChunkSource`
+  falls back to procgen when a tile is absent, so the server runs with no tiles;
+  navmesh tiles are already version-keyed, content-addressed blobs; and
+  `heightsFingerprint()` already hashes a heightfield. So: the survey is
+  content-addressed by a hash of the spec and skipped when the spec is
+  unchanged; tiles are keyed by `(seed, cx, cz, lod, terrainVersion,
+  surveyHash)` in a `terrain_tile_keys` table; `bake:world` gains `--region
+  rx,rz` and `--survey-only`; and the per-chunk tile loop — already independent
+  per chunk — runs across worker threads. `regionsPerSide` already partitions
+  the world square. What does NOT get cheaper is the survey: erosion is global
+  and iterative, so a spec change re-runs it. The win is that the tiles no
+  longer have to be rewritten for free — only the affected regions. Spec:
+  `docs/INCREMENTAL-BAKE.md`.
+
+- **2026-10-15 — Cell shading is a client-side component whose carrier is content, not a replicated ECS component.**
+  Cell shading was hardcoded per renderer: the character kit patched its own
+  material, and props, art-pack models and stand-in shapes each got an
+  `applyToon` call sprinkled where they were built. "Enabling it should be as
+  simple as adding a component" now holds: the client's `render/shading/`
+  holds named shading components (`toon`, the cel look; `standard`, three's own
+  PBR) and applies whichever one a *kind of thing* carries, and which kind
+  carries what is content (`content/materials/materials.json` -> `shading`,
+  validated in `packages/art`), so it is turned on and off from data and no
+  renderer knows about it. Kinds are render paths, not entity classes:
+  `model` (an art-pack or PICG model's own material), `placeholder` (a stand-in
+  shape), `prefab` (a composed entity). Not a replicated component and not a
+  wire field: the server has no business knowing how a surface is lit, and a
+  per-entity flag would ride every snapshot to say something the client alone
+  decides — the same reasoning that keeps the toon look itself in content. The
+  cost is granularity: shading is per kind, not per entity, because the shared
+  prop and atlas materials are what there is to patch (per-model shading would
+  mean splitting those materials, and waits until something needs it).
+  Modular characters are deliberately outside it: the character kit owns its
+  own style and outlines, and folding it in changes a public interface for no
+  behaviour change. `applyToon` also stopped assuming the material already has
+  an `onBeforeCompile` patch, so a plain `MeshStandardMaterial` can be shaded.
+
+- **2026-10-15 — Flat land is made by the terrain, not found by loosening the rules; a stranded flat is not a site.**
+  Site selection (3 m of relief over the whole town footprint) found no site
+  on the default world for 100, 300 or 600 people: erosion and the biome
+  surface left the low ground as one rolling ramp. We could have relaxed
+  `maxReliefM`, but the rule is the right one (a town on a slope is wrong), so
+  the terrain changed instead: an opt-in `plains` pass (`plains.ts`) cuts the
+  low ground into long flat treads between short risers (a strictly
+  increasing remap, so water still runs downhill), adds river and shore flats
+  and a few metres of rolling undulation, and fades out before the mountains,
+  which stay exactly as the erosion pass shaped them. It is switchable and
+  tunable in the world spec, off by default (old worlds bake byte-identically,
+  checked against the previous commit), and on in the default world (re-bake).
+  The second half is reachability: a flat ringed by cliffs is a stranded
+  object, so `selectSites` rejects a candidate that is not walkable (steps up
+  to `walkSlopeDeg`, water blocking) from the spawn, or the largest land. Not
+  done, by choice: terraces follow contours, so the risers are wide arcs
+  around the massif rather than walls; crazy placements (a keep on a crag)
+  can come later with their own constraints.
+- **2026-10-15 — New terrain relief passes are opt-in in the schema, on in the default world.**
+  The new passes (`ranges.crest`, `erosion.incision`, `erosion.rockTalusDeg`,
+  `volcano.gullies`) default to off, so any world file that does not name
+  them bakes byte-identical heights to before (checked: the default world
+  with the new keys removed hashes the same as the old code). The
+  checked-in `default.world.json` turns them on, because it is what the
+  user looked at: its mountains were rounded domes (a quartic cross-section
+  with a flat crown; the ridge noise only scaled their height), the river
+  cuts were capped near 24 m against ~300 m of relief, thermal erosion had
+  one angle for soil and rock, and the volcano was left a perfectly smooth
+  cone. The cost is that every baked default world must be re-baked and the
+  settlement site selection moves with the new slopes and water. Incision is
+  the implicit stream-power step (stable for any strength, no per-cell
+  objects), re-routed every three passes.
+
 - **2026-10-06 — Developer tooling mounts only in the editor's Play Mode
   (ROADMAP E5).** The player client no longer has a `devtools` mode or mounts
   the debugger panels. `npm run dev` starts the server and editor instead.
@@ -552,3 +759,107 @@ Every entry: date, decision, rationale. Newest first.
   Node single-threaded so counts don't depend on scheduling; the counts
   are committed as a baseline (`perf/callgrind-baseline.json`) that
   changes, the gateway split first, are measured against.
+
+- **2026-10-26 — Continuous Model Synthesis follows architectural principles (PR #437).**
+  Per `MODEL-SYNTHESIS-MAP.md`, unguided spatial growth is replaced with
+  a multi-phase architectural synthesis pipeline: 1) Continuous Foundation
+  Floorplate covering the room footprint; 2) Inward-facing perimeter enclosure
+  walls and framed entryways; 3) Tectonic colonnades along nave bay lines;
+  4) Multi-tier circulation stairways and safety railings; 5) Contextual
+  focal dressing (altars, sarcophagi, braziers, corner rubble). Rotations
+  are strictly upright yaw-only (`[0, 1, 0]`), eliminating floating or
+  incoherent parts and producing authentic Romanesque/Gothic dungeon chambers.
+
+- **2026-10-26 — Combination-style puzzles & collision-triggered hidden traps in architectural synthesis (PR #437).**
+  Dungeon puzzle and hazard mechanics follow core architectural principles:
+  1) **Combination-Style Puzzles (`CombinationPuzzleDefinition`)**:
+     - Locks a critical progression door (`SM_Env_Door_Bars_01`) or reward chest (`SM_Prop_Chest_01`).
+     - Places an interactive combination entrypoint directly before the locked target consisting of 3 rotating rune pillars, statue dials, or levers.
+     - Constrains each slot to a limited discrete set of choices (e.g. 3-4 options: Hawk, Serpent, Wolf, Dragon or Solar, Lunar, Eclipse) yielding bounded combination spaces ($4^3 = 64$ or $3^3 = 27$).
+     - Places plainly displayed clues (wall banners, inscribed statue tablets, and carved ledger books) throughout earlier bays and corridors *before* the player reaches the combination entrypoint, revealing the exact sequence.
+     - Unlocking event fires when the submitted sequence matches the solution, triggering the opening animation and granting chamber/quest progression.
+  2) **Hidden Collision-Triggered Traps (`CollisionTrapDefinition`)**:
+     - Traps (flush floor spear grates, circular saw rails, overhead pendulum blades) carry hidden bounding trigger volumes (`triggerVolume: { shape: "box", hidden: true }`) flush with floor tiles along natural corridors and chokepoints.
+     - When an entity collider overlaps the trigger volume, a collision event invocation fires: transitions state to `triggered`, executes the trap animation (e.g. `spears_thrust_up`, `saw_blade_spin_traverse`), delivers physical/bleed damage (35–50 HP), applies vertical/directional knockback, and enters a cooldown cycle before rearming.
+
+- **2026-10-27 — Universal Measurement System (UMS) for scale, perspective, and size variance (PR #437).**
+  To anchor human perception, ergonomic gameplay, and visual immersion across procedural synthesis and scene management (`@mmo-engine/scene`, `@mmo-engine/synthesis`):
+  1) **Authoritative Reference Anchors**: Canonical SI meter scale ($1.0 = 1\text{m}$) anchored by standardized human proportions (standing height $1.80\text{m}$, eye horizon $1.62\text{m}$, crouch $1.05\text{m}$, capsule radius $0.35\text{m}$, step-over clearance $0.30\text{m}$, vault threshold $1.20\text{m}$, forward reach $2.20\text{m}$).
+  2) **Perspective & Spatial Immersion Classification**: Optical visual angle calculation ($\theta = 2 \arctan\frac{h}{2d}$) and proportion analysis classifying chambers into 5 immersion tiers:
+     - `claustrophobic` (height $< 2.4\text{m}$, clearance $< 0.8\text{m}$): cramped tunnels, tight crawlspaces.
+     - `intimate` (height $2.4\text{m} - 3.8\text{m}$): crypt burial chambers, residential alcoves.
+     - `expansive` (height $3.8\text{m} - 9.0\text{m}$): standard dungeon halls, nave colonnades.
+     - `monumental` (height $9.0\text{m} - 18.0\text{m}$ or span $> 20\text{m}$): cathedral boss arenas, great keeps.
+     - `abyssal` (height $> 18.0\text{m}$ or volume $> 50,000\text{m}^3$): subterranean chasms, titan vaults.
+  3) **Controlled Size Variance with Invariant Preservation**:
+     - Strict $5.0\text{m}$ grid snap ($s=1.0$) for structural load-bearing elements (walls, floors, stairs, portals) preventing seam cracks and ensuring doorway width $\ge 1.0\text{m}$ and step risers $\le 0.30\text{m}$.
+     - Controlled scale variation for organic clutter (rubble $\pm 30\%$, flora $\pm 20\%$) and dressing props (chests $\pm 10\%$, altars $\pm 15\%$) driven deterministically by Mulberry32 hashing.
+  4) **Gameplay & Physical Interactivity Scaling**:
+     - Reach scaling ($R_{\text{eff}} = R_{\text{base}}\sqrt{s}$): larger objects can be interacted with from further away.
+     - Traversal obstacle classification: `step-over` ($\le 0.30\text{m}$), `low-cover` ($0.30 - 1.20\text{m}$, vaultable), `high-cover` ($1.20 - 2.00\text{m}$), `full-obstacle` ($> 2.00\text{m}$).
+     - Physics mass scaling cubically with scale ($M \propto s^3$).
+     - Acoustic resonance pitch shifting inversely with cube-root scale ($f \propto \frac{1}{\sqrt[3]{s}}$), ensuring larger objects produce deeper, resonant thuds and smaller objects produce crisp clatters.
+
+- **2026-10-27 — Staircase Scene Visibility & Navigational Affordances (PR #437).**
+  In interior multi-level dungeon spaces, stairs must be immediately visually recognizable so players intuitively perceive how to access elevated lofts without relying on accidental collider bumps:
+  1) **Navigational Affordances (Lighting & Markers)**:
+     - **Twin Guiding Torch Braziers**: Positioned at the foot of the staircase ($X = \pm 2.4\text{m}, Z = 0.5\text{m}$) casting warm focal illumination ($24\text{m}$ radius) directly across the entry steps. In game level design, light is the primary visual magnet indicating vertical progression.
+     - **Staircase Flank Handrails / Balustrades**: Angled guard rails placed along both flanks ($X = \pm 2.1\text{m}, Z = -2.5\text{m}$) providing clear diagonal silhouette cues from anywhere in the nave.
+     - **Loft Portal Lanterns**: Flanking torches at the top landing threshold ($X = \pm 2.4\text{m}, Z = -5.0\text{m}$) framing the entry into the upper mezzanine.
+  2) **Geometry, Scale & Shading**:
+     - Enlarged circulation staircase footprint to a $3.8\text{m}$ wide grand profile spanning 14 discrete steps with highlighted step risers and treads.
+     - Shaded with radiant warm stone amber material and bright white edge line segments to eliminate blending against dark ground floor slabs.
+  3) **Isometric & Overview Scene Visibility**:
+     - Applied camera-facing wall cutaways in architectural overview renders (`render-examples.mjs`), preventing solid exterior perimeter walls from occluding the interior chamber and ensuring the grand staircase, under-loft pillars, and loft deck remain 100% visible.
+
+- **2026-10-27 — Two-Floor Connectivity & Load-Bearing Invariant for Stairs and Pillars (PR #437).**
+  In classical architectural design, stairs and pillars exist strictly to bridge or support vertical circulation or load-bearing structures. Freestanding pillars sitting on a floor with empty air above them (random pillars out in the middle of a room), and stairs leading into empty air, look unnatural and sloppy:
+  1) **Structural Support Enforcement (`isConnectingTwoFloors`)**:
+     - **Stairs**: A stair/ramp is valid IF AND ONLY IF its bottom landing rests on a lower floor slab and its top landing connects with an upper floor slab elevated by at least $1.5\text{m}$ above the lower floor.
+     - **Pillars**: A pillar is valid IF AND ONLY IF its base rests on a lower floor slab and its top directly supports a load-bearing structure above it: either an upper floor deck/loft ($\Delta Y \ge 1.5\text{m}$, as in `multi-level-descent`), OR an overhead ceiling/roof/vault arch (as in `crypt-hall` where nave colonnades hold up the vaulted stone roof).
+  2) **Synthesis Pruning & Socket Gate**:
+     - Both during socket expansion and in a post-synthesis verification pass, any stair or pillar lacking overhead support or floor connectivity is rejected and pruned.
+     - In intact dungeon spaces, random freestanding pillar stumps in the middle of a single-level court (such as `boss-arena`) are omitted, while vaulted crypt halls preserve their colonnades supporting the stone roof arches above, preventing floating ceilings.
+- **2026-10-26 — Universal Procedural Multi-Rig Engine, Bone Ontology & Creature Catalog.**
+  The animation pipeline was constrained by quadruped-only segmentation and hardcoded humanoid sword attacks.
+  We established:
+  1. Canonical Bone Ontology (`CANONICAL_BONE_ONTOLOGY`) with complete finger chains, creature appendages, wings, and tails, supporting preset mappings for Mixamo, Synty, Rigify, Mannequin, Kevin Iglesias, and CMU, plus automated preset detection and synonym resolution (`resolveBoneMapping`).
+  2. Protocol & Animation expansion: 10 creature natural attacks (`Move.Bite`, `Move.Claw`, `Move.Pounce`, `Move.Roar`, `Move.Breath`, `Move.TailWhip`, `Move.Stomp`, `Move.WingBuffet`, `Move.Sting`, `Move.Cleave`), locomotion clips (`Trot`, `Gallop`, `Fly`), and creature behaviors (`Graze`, `Sleep`, `Threaten`, `DeathFall`).
+  3. Dynamic Weapon-to-Move Resolution in `CombatSystem`: Attacks resolve combat moves dynamically from the attacker's weapon/natural base (`family: "bite" -> Move.Bite`, `"claw" -> Move.Claw`, `"tusk" / "horn" -> Move.Pounce`, etc.) rather than forcing `Move.SwordA`.
+  4. Universal Multi-Rig Classification & Segmentation (`apps/client/src/render/animal/`): Added `segmentAvian`, `segmentSerpentine`, `segmentAquatic`, `segmentArachnid`, and `segmentFlora`, driven by geometric proportions and name patterns, while preserving `segmentQuadruped` backwards compatibility.
+  5. Multi-Rig Motion Solvers in `gait.ts`: Harmonic wing flapping and gliding, sinusoidal serpentine travelling waves, aquatic caudal/pectoral fin undulation, arachnid alternating tripod scurrying, and flora wind sway, updating scratch buffers with zero allocation in tick loops.
+  6. Comprehensive Creature & Loot Catalog: Complete rules for all 19 species in `content/rules/creatures.json`, monster loot tables in `content/rules/loot.json`, and model mapping catalog in `content/wildlife/flora-fauna-models.json`.
+
+- **2026-10-27 — Documentation Ecosystem Modernization, Private Business Analysis Suite, and Agent Invariants (AGENTS.md).**
+  1) **Documentation Separation Policy**: Public-facing manuals (docs/wiki/, docs/WIKI.md, README.md) focus exclusively on the Nexus MMO Engine's architecture, APIs, module systems, and developer workflows with zero competitor disparagement. All competitive intelligence, side-by-side matrices (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical benchmark telemetry (100k integration in 0.20ms, 64k req/s ingress), strategic SWOT, and cloud hosting OpEx models belong in the private repository under docs/business-analysis/.
+  2) **Interactive Documentation Tooling (Yank Note & Data Apps)**: Standardized on Yank Note (purocean/yn) as our interactive Markdown editor kernel. Documentation supports runnable in-note code blocks for 1-click test/benchmark execution, embedded HTML5 telemetry widgets (ws://127.0.0.1:3000/telemetry) and cloud cost calculators with dark-mode styling (color-scheme: dark), client-side AES-GCM encrypted notes (.c.md), and a drop-in editor plugin (docs/wiki/scripts/yn-nexus-plugin.js).
+  3) **Workspace Agent Guidelines (AGENTS.md)**: Enforced mandatory invariants across the repository:
+     - Strict Mermaid diagram rendering compatibility (prohibiting quadrantChart and experimental headers; permitting flowchart TD, xychart-beta, etc.).
+     - The Native C++ Marshalling Trap Invariant: No per-property N-API object traversal (obj.Get()) on hot paths; contiguous SharedArrayBuffer / TypedArray pointer crossings only.
+     - Local feature branches only (feat/*); no unapproved merges to main.
+     - Universal SI metric standard (1.0 unit = 1.0 meter).
+
+- **2026-10-28 — C++ Main Tick Migration Phase 0: Baselines and the Transport Guarantee.**
+  Completed Phase 0 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §4, `docs/CPP-MAIN-TICK-PHASE0-REPORT.md`):
+  1. **Transport bench (`bench:transport`)** at 250 / 500 / 1,000 / 2,000 clients (`packages/engine-core/test/bench/transport-bench.ts`):
+     - `ws` results [sandbox, Node v25, 2 vCPUs]: p99 fan-out 22.5 ms / 42.4 ms / 79.2 ms / 135.7 ms; CPU 68.7% / 98.2% / 100.2% / 99.1% of one core; RSS 66 / 76 / 98 / 106 MB.
+     - `uWS` unavailable on this host (prebuilt binary does not support Node 25 on Windows); uWS numbers pending real-hardware measurement per spec §4.
+     - `ws` at 500+ clients saturates one core and exceeds the 33.33 ms frame budget at p99 — confirms uWS is required at target scale.
+  2. **JS production tick re-baseline** at 51k entities under contention (`packages/engine-core/test/bench/js-tick-baseline.mjs`):
+     - JS fallback kernel: mean 0.708 ms, p99 2.681 ms (8.0% of budget), 0 spiral events [sandbox].
+     - Native kernel: mean 0.233 ms, p99 0.926 ms — ~3× faster for the dense-math slice.
+  3. **Boot-time transport assertion:** server logs which transport loaded at boot; `MMO_TRANSPORT=uws` + uWS unavailable → fatal error, no silent `ws` fallback. Gate: PASS.
+  4. **uWS packaging decision:** vendored binary selected — commit the uWS `.node` binary for the target platform, add boot-time integrity check, fail loud on missing/corrupt binary. Decision documented; implementation pending Joey's approval.
+
+- **2026-10-27 — C++ Main Tick Migration Phase 2: Production Data-Plane Wiring & Security Perimeter.**
+  Implemented and verified Phase 2 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md`):
+  1) **Production Boot Flag (`MMO_DATA_PLANE=1`)**:
+     - Wires the uWebSockets.js Gateway to the 3-thread SharedArrayBuffer topology: Gateway (uWS with Argon2id auth, Zod validation, rate limiting) -> AtomicSPSCQueue -> 30Hz SimWorker -> persist ring -> PersistWorker.
+     - Rollback path remains instant and fully supported: omitting or setting `MMO_DATA_PLANE=0` keeps the legacy in-process simulation loop active with zero overhead.
+  2) **Strict Gateway Security Perimeter**:
+     - Enforces that memory-unsafe C++ worker threads and native kernels are never exposed to raw untrusted network frames.
+     - Inbound player intents are validated by the Gateway: unauthenticated intents, foreign entity intents, non-finite vectors, and out-of-order packets are rejected (code 4003) and never reach the SPSC ring.
+     - Validated intents are bit-packed into 32-bit tokens (`packCommandToken(slot, actionCode)`) with zero garbage-collection allocations.
+  3) **Crash Containment & Verification**:
+     - Worker failures are isolated from the Gateway process: background worker crashes do not drop client WebSocket connections or corrupt the master event loop.
+     - All 7 tests in `packages/engine-core/test/data-plane-production-boot.test.ts` pass cleanly along with the full protocol and hybrid data-plane test suites.

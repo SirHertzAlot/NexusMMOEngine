@@ -95,9 +95,13 @@ const DEPENDS_ON: Record<RuleFile, RuleFile[]> = {
   items: ["combat"],
   loot: ["items"],
   ingress: [],
+  interest: [],
   creatures: ["items", "loot"],
   needs: [],
   spells: [],
+  gathering: [],
+  movement: [],
+  social: [],
 };
 
 let defaults: Rules | null = null;

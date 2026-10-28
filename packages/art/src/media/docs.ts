@@ -4,7 +4,7 @@
  *
  *   combat     content/combat/moves.json          server + client
  *   animation  content/animation/animations.json  client (v3 manifest: the locomotion graph)
- *   materials  content/materials/materials.json   client (toon look, surface tints, footsteps)
+ *   materials  content/materials/materials.json   client (toon look, surface tints, footsteps, shading)
  *
  * Audio, particle effects and their budgets have their own documents,
  * hosts and panels (content/audio, content/vfx); references to audio
@@ -19,10 +19,22 @@ import { validateMaterials, type MaterialsDoc } from "./materials.js";
 export const MEDIA_DOC_NAMES = ["combat", "animation", "materials"] as const;
 export type MediaDocName = (typeof MEDIA_DOC_NAMES)[number];
 
-/** content/animation/animations.json: a v3 manifest that carries only the locomotion graph (the clips come from the rig's own manifest). */
+/** content/animation/animations.json: a v3 manifest with pinned source entries plus the locomotion graph (clips come from the rig's own manifest). */
+export interface AnimationSource {
+  id: string;
+  title: string;
+  author: string;
+  license: string;
+  url: string;
+  /** Source fingerprint (URL + hash) for reproducibility. */
+  hash?: string;
+  /** Expected clip count from this source (build-time assertion). */
+  clipsExpected?: number;
+}
+
 export interface AnimationDoc {
   version: 3;
-  sources: [];
+  sources: AnimationSource[];
   clips: [];
   locomotion: LocomotionGraph;
 }
@@ -31,7 +43,20 @@ export function validateAnimationDoc(doc: unknown): MediaIssue[] {
   const c = checker();
   if (!isObj(doc)) return [{ path: "", message: "animations must be an object" }];
   if (doc.version !== 3) c.add("version", "must be 3");
-  for (const k of ["sources", "clips"]) if (!Array.isArray(doc[k]) || (doc[k] as unknown[]).length > 0) c.add(k, "must be an empty list (clips come from the rig's manifest)");
+  if (!Array.isArray(doc.sources)) c.add("sources", "must be an array");
+  else {
+    for (let i = 0; i < doc.sources.length; i++) {
+      const src = doc.sources[i];
+      const prefix = `sources[${i}]`;
+      if (!isObj(src)) { c.add(prefix, "must be an object"); continue; }
+      for (const k of ["id", "title", "author", "license", "url"]) {
+        if (typeof src[k] !== "string") c.add(`${prefix}.${k}`, "must be a string");
+      }
+      if (typeof src.hash !== "undefined" && typeof src.hash !== "string") c.add(`${prefix}.hash`, "must be a string");
+      if (typeof src.clipsExpected !== "undefined" && typeof src.clipsExpected !== "number") c.add(`${prefix}.clipsExpected`, "must be a number");
+    }
+  }
+  if (!Array.isArray(doc.clips) || (doc.clips as unknown[]).length > 0) c.add("clips", "must be an empty list (clips come from the rig's manifest)");
   return [...c.issues, ...validateLocomotion(doc.locomotion, "locomotion.")];
 }
 

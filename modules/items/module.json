@@ -1,1 +1,19 @@
-{"description":"Items in the world (M3a): dropping, pickup, bags, ground expiry. The service validates every request server-side.","name":"items","server":{"entry":"server.js","extensions":["dropper"],"systems":[{"name":"items"}]},"version":"0.1.0"}
+{
+  "description": "Items in the world (M3a): dropping, pickup, bags, ground expiry. The service validates every request server-side.",
+  "name": "items",
+  "server": {
+    "entry": "server.js",
+    "extensions": [
+      "dropper"
+    ],
+    "systems": [
+      {
+        "name": "items"
+      }
+    ]
+  },
+  "version": "0.1.0",
+  "dependsOn": [
+    "economy"
+  ]
+}

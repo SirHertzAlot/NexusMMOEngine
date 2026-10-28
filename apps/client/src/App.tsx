@@ -21,9 +21,19 @@ import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
-import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
-import type { DungeonMessage } from "@mmo-engine/protocol";
-import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
+import { DialogPanel, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
+import type { DungeonLook, DungeonMessage } from "@mmo-engine/protocol";
+import type { PouchMaterial } from "@mmo-engine/protocol";
+// Lazy-load heavy panels (code splitting)
+import React from "react";
+import type { DungeonRun } from "./ui/dungeon.js";
+const DungeonHud = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonHud })));
+const DungeonResult = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonResult })));
+const DungeonTransit = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonTransit })));
+const CharacterSheet = React.lazy(() => import("./ui/character-sheet.js").then((m) => ({ default: m.CharacterSheet })));
+const BagPanel = React.lazy(() => import("./ui/bag-panel.js").then((m) => ({ default: m.BagPanel })));
+const VendorPanel = React.lazy(() => import("./ui/vendor-panel.js").then((m) => ({ default: m.VendorPanel })));
+const QuestLogPanel = React.lazy(() => import("./ui/quests.js").then((m) => ({ default: m.QuestLog })));
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -43,13 +53,18 @@ import { CharacterScreen } from "./ui/character-screen.js";
 import { PlayerFrame } from "./ui/player-frame.js";
 import { HudLayoutProvider, HudSlot, useHudJson } from "./ui/hud-slot.js";
 import { TargetFrame } from "./ui/target-frame.js";
+import { CombatHud, type CombatReticleTelemetry } from "./ui/combat-hud.js";
+import type { HitMessage } from "@mmo-engine/protocol";
 import { ChatPanel } from "./ui/chat-panel.js";
 import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
 import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
-import { CharacterSheet } from "./ui/character-sheet.js";
-import { BagPanel, EMPTY_WORN, type Worn } from "./ui/bag-panel.js";
+import { PouchPanel, tierColor } from "./ui/pouch-panel.js";
+import { nextShop, type ShopView } from "./ui/vendor-panel.js";
+// Types for lazy-loaded components
+import type { Worn } from "./ui/bag-panel.js";
+import { EMPTY_WORN } from "./ui/bag-panel.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
@@ -59,7 +74,9 @@ import { parseAudioBank, type Listener } from "./audio/sound-logic.js";
 import combatMovesDoc from "virtual:combat-moves";
 import animationDoc from "virtual:animation-doc";
 import materialsDoc from "virtual:materials-doc";
+import vfxBudgetsDoc from "virtual:vfx-budgets";
 import { applyGameContent } from "./render/game-content.js";
+import { setParticleBudgets } from "./render/fx/particle-fx.js";
 import {
   loadBindings,
   prettyCode,
@@ -71,6 +88,11 @@ import {
 /** Our game's techniques and the aims R and T step through (M3, catalog 0x19). */
 // The animation-side content (combat moves, locomotion graph, materials) is applied once, before any world is built.
 applyGameContent({ combat: combatMovesDoc, animation: animationDoc, materials: materialsDoc } as Parameters<typeof applyGameContent>[0]);
+// Particle tier budgets (EG10): a bad file keeps the built-in budgets.
+{
+  const problem = setParticleBudgets(vfxBudgetsDoc);
+  if (problem) console.warn(`[content] ${problem}`);
+}
 
 const TECHNIQUES = ["cut", "thrust", "bludgeon"] as const;
 const AIMS = ["torso", "head", "legLeft", "legRight", "armUpperLeft", "armUpperRight"];
@@ -204,6 +226,14 @@ export function App(): React.ReactElement {
   const [worn, setWorn] = useState<Worn>(EMPTY_WORN);
   const [bagOpen, setBagOpen] = useState(false);
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
+  // Gathering (0x24): the resource node in reach (its view re-read when the nodes change) and the materials pouch.
+  const [nearResource, setNearResource] = useState<bigint | null>(null);
+  const [nearChest, setNearChest] = useState<bigint | null>(null);
+  // The shop E opened (protocol 0x21) and the player's gold.
+  const [shop, setShop] = useState<ShopView | null>(null);
+  const [gold, setGold] = useState<number | null>(null);
+  const [, setResourcesSeen] = useState(0);
+  const [pouch, setPouch] = useState<PouchMaterial[]>([]);
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
   const [quests, setQuests] = useState<QuestView[] | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -216,6 +246,8 @@ export function App(): React.ReactElement {
   const [run, setRun] = useState<DungeonRun | null>(null);
   const runRef = useRef<DungeonRun | null>(null);
   runRef.current = run;
+  // How the run looks (the server's `look`, sent on entering): the canvas reads it each frame; every hop clears it.
+  const lookRef = useRef<DungeonLook | null>(null);
   const [nearEntrance, setNearEntrance] = useState<string | null>(null);
   const regionRef = useRef<{ url: string; token: string } | null>(null);
   // The server and name as of this render, for socket callbacks made in an earlier one
@@ -225,11 +257,30 @@ export function App(): React.ReactElement {
   const usernameRef = useRef(username);
   usernameRef.current = username;
   const [notice, setNotice] = useState<{ text: string; at: number } | null>(null);
+  const [isDead, setIsDead] = useState(false);
 
   const clientRef = useRef<MirrorClient | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
   const lastStateAtRef = useRef(0);
   const streamingRef = useRef<{ onRegionChange: (endpoint: string) => void } | null>(null);
+  // Cross-region view (IM8): a read-only mirror per neighbouring region the player stands near.
+  const observersRef = useRef(new Map<string, MirrorClient>());
+  const closeObservers = (): void => {
+    for (const o of observersRef.current.values()) o.disconnect();
+    observersRef.current.clear();
+  };
+  useEffect(() => {
+    // Tell each neighbour where the player stands, so it sends what is near.
+    const id = setInterval(() => {
+      const c = clientRef.current;
+      const me = c?.playerEntity != null ? c.state.get(c.playerEntity)?.transform : undefined;
+      if (me) for (const o of observersRef.current.values()) o.sendObserve(me.px, me.pz);
+    }, 250);
+    return () => {
+      clearInterval(id);
+      closeObservers();
+    };
+  }, []);
   // The last skills message (M4): a discipline new since it is announced.
   const skillsRef = useRef<SkillsMessage | null>(null);
   const [mastery, setMastery] = useState<SkillsMessage | null>(null);
@@ -237,6 +288,18 @@ export function App(): React.ReactElement {
   // Hit feedback (U12a): flashes and the target, written by combat messages.
   const [combat] = useState(() => new CombatFeedback());
   const [combatView, setCombatView] = useState<CombatView | null>(null);
+  const [cameraView, setCameraView] = useState<"third" | "first">("third");
+  const [stanceState, setStanceState] = useState<{ technique: string | null; aim: string | null }>({ technique: null, aim: null });
+  const [lastPlayerHit, setLastPlayerHit] = useState<{ hit: HitMessage; atMs: number } | null>(null);
+  const [reticleTelemetry, setReticleTelemetry] = useState<CombatReticleTelemetry>({
+    hoveredEntity: null,
+    hoveredPart: null,
+    hoveredDistance: Infinity,
+    pitchAimPart: "torso",
+    activeMove: 0,
+    moveElapsed: 0,
+    pointerLocked: false,
+  });
 
   /** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient => {
@@ -253,7 +316,7 @@ export function App(): React.ReactElement {
       onError: (e) => {
         // A refusal in the world (too far, someone else's, bag full) is a
         // notice, not a failed connection.
-        if (e.code === 4005 && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
+        if ((e.code === 4005 || e.code === 4003 || e.message.includes("tiles too frequent")) && clientRef.current?.playerEntity != null) setNotice({ text: e.message, at: performance.now() });
         else setError(t("net.serverError", { code: e.code, message: e.message }));
       },
       onClose: () => {
@@ -272,7 +335,32 @@ export function App(): React.ReactElement {
       },
       // Crossed into another region (WORLD-SERVER-SPEC §6): reconnects and
       // asset requests go to the server that has the player now.
+      onBorder: (b) => {
+        if (clientRef.current !== c) return;
+        const open = observersRef.current.get(b.region);
+        if (b.leave) {
+          open?.disconnect();
+          observersRef.current.delete(b.region);
+          return;
+        }
+        if (open) return; // a renewed ticket: the open observer socket stays
+        const o = new MirrorClient((u) => new BrowserSocket(u), {
+          onWelcome: () => {},
+          onState: () => {},
+          onError: () => {},
+          onClose: () => {
+            if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
+          },
+        });
+        observersRef.current.set(b.region, o);
+        const { region, from, account, exp, ticket } = b;
+        void o.observe(b.endpoint, "mmo-client-observer", { region, from, account, exp, ticket }).catch(() => {
+          if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
+        });
+      },
       onRegionChange: (endpoint: string) => {
+        // The neighbours are different from the new region: they come again as border messages.
+        closeObservers();
         setUrl(endpoint);
         streamingRef.current?.onRegionChange(endpoint);
       },
@@ -304,9 +392,22 @@ export function App(): React.ReactElement {
         setHands({ main: inv.main ?? null, off: inv.off ?? null });
         setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
+      onVendor: (v) => setShop((prev) => nextShop(prev, v)),
+      onWallet: (w) => setGold(w.balance),
+      onResources: () => setResourcesSeen((n) => n + 1),
+      onPouch: (p) => {
+        setPouch(p.materials);
+        if (p.gathered) {
+          audio.playEvent("pickup");
+          setNotice({ text: t("pouch.gathered", { count: p.gathered.count, name: p.gathered.name }), at: performance.now() });
+        }
+      },
       onHit: (h) => {
         const player = clientRef.current?.playerEntity ?? null;
         combat.hit(h, player);
+        if (player !== null && BigInt(h.source) === player) {
+          setLastPlayerHit({ hit: h, atMs: performance.now() });
+        }
         // Only blows the player gives or takes make a sound, for now, from where the other party stands.
         if (player !== null && (BigInt(h.source) === player || BigInt(h.target) === player)) {
           const other = BigInt(h.source) === player ? BigInt(h.target) : BigInt(h.source);
@@ -329,7 +430,18 @@ export function App(): React.ReactElement {
         setMastery(next);
         if (text) setNotice({ text, at: performance.now() });
       },
-      onLife: (l) => combat.life(l),
+      onLife: (l) => {
+        combat.life(l);
+        const myWireId = clientRef.current?.playerEntity?.toString();
+        if (myWireId && l.target === myWireId) {
+          if (l.state === "dead") setIsDead(true);
+          else if (l.state === "alive") setIsDead(false);
+        }
+      },
+      onTelegraph: (tg) => {
+        combat.telegraphs.push(tg);
+        if (combat.telegraphs.length > 64) combat.telegraphs.shift(); // nothing draws them until the canvas mounts
+      },
       onTreatment: (t) => {
         const c = clientRef.current;
         const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
@@ -344,6 +456,7 @@ export function App(): React.ReactElement {
   /** Dungeon messages (D4): a transfer moves the player in; state and the end update the run. */
   const onDungeon = (d: DungeonMessage): void => {
     if (d.op === "transfer") void hop(d.endpoint, d.token, { phase: "entering", dungeon: d.dungeon });
+    else if (d.op === "look") lookRef.current = d.look;
     else if (d.op === "state") setRun((prev) => (prev && prev.phase !== "leaving" ? { phase: "in", dungeon: d.dungeon, state: d, at: performance.now() } : prev));
     else if (d.op === "ended") setRun((prev) => ({ phase: "ended", dungeon: prev?.dungeon ?? "", result: d }));
   };
@@ -356,6 +469,7 @@ export function App(): React.ReactElement {
    */
   const hop = async (endpoint: string, token: string, transit: Extract<DungeonRun, { phase: "entering" | "leaving" }>): Promise<void> => {
     if (transit.phase === "entering" && !regionRef.current && sessionTokenRef.current) regionRef.current = { url: urlRef.current, token: sessionTokenRef.current };
+    lookRef.current = null;
     setRun(transit);
     setDialog(null);
     setNearDrop(null);
@@ -373,6 +487,7 @@ export function App(): React.ReactElement {
       else {
         regionRef.current = null;
         setRun(null);
+        setIsDead(false);
       }
       fire("net.joinReply.ok");
     } catch (err) {
@@ -489,6 +604,7 @@ export function App(): React.ReactElement {
     (mode === "login" || password === confirmPassword);
 
   const disconnect = (): void => {
+    closeObservers();
     clientRef.current?.disconnect();
     clientRef.current = null;
     setAccount(null);
@@ -534,10 +650,11 @@ export function App(): React.ReactElement {
   useEffect(() => {
     if (notice) audio.playEvent("ui-notice");
   }, [audio, notice]);
-  // PCG assets (trees, …) come from the region's Pcg webrpc service on the game port.
+  // PCG assets (trees, a dungeon's shell, …) come from the Pcg webrpc service on the game port of
+  // the gateway the client joined: the region, or a dungeon instance's own port after a hop.
   const pcg = useMemo(
-    () => (client ? new PcgRpcClient(httpBaseForGameUrl(url), () => client.sessionToken) : undefined),
-    // One service per joined client (the URL it joined with).
+    () => (client ? new PcgRpcClient(httpBaseForGameUrl(client.endpoint ?? url), () => client.sessionToken) : undefined),
+    // One service per joined client (the gateway it joined).
     [client],
   );
   const toggleBag = useCallback(() => setBagOpen((o) => !o), []);
@@ -553,9 +670,15 @@ export function App(): React.ReactElement {
     const aims = AIMS.filter((a) => known.has(a));
     const st = stance.current;
     if (which === "technique") st.technique = (st.technique + 1) % TECHNIQUES.length;
-    else st.aim = (st.aim + 1) % Math.max(1, aims.length);
+    else st.aim = st.aim + 1 >= aims.length ? -1 : st.aim + 1;
+    // technique computed above
+    // aim resolved below
     const technique = st.technique >= 0 ? TECHNIQUES[st.technique] : null;
-    const aim = aims[st.aim % Math.max(1, aims.length)] ?? null;
+    // aim resolved below
+    const aim = st.aim >= 0 ? (aims[st.aim] ?? null) : null;
+    setStanceState({ technique, aim });
+    // technique computed above
+    // aim computed above
     c.stance(technique, aim);
     const label = (id: string | null): string => (id ? id.replace(/([A-Z])/g, " $1").toLowerCase() : t("stance.weapon"));
     setNotice({ text: t("stance.notice", { technique: label(technique), aim: label(aim) }), at: performance.now() });
@@ -566,6 +689,14 @@ export function App(): React.ReactElement {
   const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
+  // E with nothing in reach eats or drinks the selected hotkey item (any bag item of that definition).
+  const [hotkeyDef, setHotkeyDef] = useState<string | null>(null);
+  const bagRef = useRef(bag);
+  bagRef.current = bag;
+  const onUseHotkey = useCallback(() => {
+    const item = hotkeyDef === null ? undefined : bagRef.current?.find((i) => i?.def === hotkeyDef);
+    if (item) clientRef.current?.use(item.id);
+  }, [hotkeyDef]);
   const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
   const onQuality = useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
 
@@ -592,17 +723,21 @@ export function App(): React.ReactElement {
   if (client && (run?.phase === "entering" || run?.phase === "leaving")) {
     return (
       <div className="relative h-full w-full bg-background">
-        <DungeonTransit run={run} />
+        <React.Suspense fallback={<div className="flex h-full items-center justify-center text-muted-foreground">Loading dungeon transit…</div>}>
+          <DungeonTransit run={run} />
+        </React.Suspense>
       </div>
     );
   }
   if (client) {
     const entrance = nearEntrance ? client.entrances.find((e) => e.id === nearEntrance) : undefined;
+    const resource = nearResource !== null ? client.resources.get(nearResource) : undefined;
     return (
       <HudLayoutProvider layout={hudLayout}>
       <div className="relative h-full w-full">
         <WorldCanvas
           client={client}
+          observers={() => observersRef.current.values()}
           assets={assets}
           pcg={pcg}
           lastStateAt={() => lastStateAtRef.current}
@@ -618,14 +753,28 @@ export function App(): React.ReactElement {
           onStance={onStance}
           onTreat={onTreat}
           onMend={onMend}
+          onUseHotkey={onUseHotkey}
           onNearDrop={setNearDrop}
+          onNearResource={setNearResource}
+          onNearChest={setNearChest}
           onQuests={toggleQuests}
           onNearNpc={setNearNpc}
           onNearEntrance={setNearEntrance}
           instance={run !== null}
+          getLook={() => lookRef.current}
+          // combat feedback and view
+          // combat feedback and view
           combat={combat}
           onCombat={setCombatView}
+          view={cameraView}
+          onViewChange={setCameraView}
+          stance={stanceState}
+          equippedMain={hands.main?.model || hands.main?.base || null}
+          equippedOff={hands.off?.model || hands.off?.base || null}
+          equippedMainColor={hands.main?.color}
+          onReticle={setReticleTelemetry}
           streamingRef={streamingRef}
+          audio={audio}
         />
         {nearDrop && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
@@ -633,13 +782,49 @@ export function App(): React.ReactElement {
             {t("interact.pickUp")} <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
           </div>
         )}
-        {!nearDrop && !dialog && nearNpc && (
+        {!nearDrop && !dialog && resource && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            {t("interact.gather")} <span style={{ color: tierColor(resource.tier) }}>{resource.name}</span>{" "}
+            <span className="text-muted-foreground">
+              {resource.stock > 0
+                ? t("interact.left", { count: resource.stock })
+                : `${t("interact.workedOut")}, ${resource.regrowAt === null ? t("interact.goneForGood") : t("interact.backIn", { hours: Math.max(1, Math.ceil((resource.regrowAt - Date.now()) / 3_600_000)) })}`}
+            </span>
+          </div>
+        )}
+        {!nearDrop && !dialog && !resource && nearChest !== null && (
+          <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
+            <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
+            {(() => {
+              const v = client.chests.get(nearChest);
+              return v?.kind === "vendor" ? (
+                <>
+                  {t("interact.trade")} <span className="text-amber-200">{t("interact.shop")}</span>
+                </>
+              ) : v?.kind === "ruin" ? (
+                <>
+                  {t("interact.repair")} <span className="text-amber-200">{t("interact.building")}</span>
+                </>
+              ) : v?.kind === "door" ? (
+                <>
+                  {t(v.open ? "interact.close" : "interact.open")} <span className="text-amber-200">{t("interact.door")}</span>
+                </>
+              ) : (
+                <>
+                  {t("interact.open")} <span className="text-amber-200">{t("interact.chest")}</span>
+                </>
+              );
+            })()}
+          </div>
+        )}
+        {!nearDrop && !dialog && !resource && nearChest === null && nearNpc && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.talkTo")} <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
           </div>
         )}
-        {!nearDrop && !dialog && !nearNpc && entrance && (
+        {!nearDrop && !dialog && !resource && !nearNpc && entrance && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.enter")} <span className="text-violet-300">{entrance.name}</span>
@@ -648,12 +833,24 @@ export function App(): React.ReactElement {
         )}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
-            <DungeonHud run={run} onOpen={() => clientRef.current?.dungeon({ kind: "dungeon", op: "open" })} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-2 text-muted-foreground text-sm">Loading dungeon HUD…</div>}>
+              <DungeonHud run={run} />
+            </React.Suspense>
           </div>
         )}
         {run?.phase === "ended" && (
           <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
-            <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading dungeon result…</div>}>
+              <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
+            </React.Suspense>
+          </div>
+        )}
+        {isDead && run?.phase !== "ended" && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center bg-red-950/40 backdrop-grayscale">
+            <div className="rounded-lg border border-red-500/40 bg-black/85 px-6 py-4 text-center text-red-200 shadow-2xl">
+              <div className="text-xl font-bold uppercase tracking-widest text-red-400">You Died</div>
+              <div className="mt-1 text-xs text-red-300/80">Respawning at the gates...</div>
+            </div>
           </div>
         )}
         {dialog && (
@@ -694,6 +891,15 @@ export function App(): React.ReactElement {
           <CastBar cast={cast} />
         </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
+        <CombatHud
+          view={cameraView}
+          technique={stanceState.technique}
+          lockedAim={stanceState.aim}
+          telemetry={reticleTelemetry}
+          mainWeapon={hands.main}
+          offWeapon={hands.off}
+          lastHit={lastPlayerHit}
+        />
         <SettingsMenu
           quality={quality === "auto" ? t("settings.qualityAuto", { tier: activeQuality?.active ?? "…" }) : quality}
           onQuality={cycleQuality}
@@ -740,29 +946,64 @@ export function App(): React.ReactElement {
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
         />
+        {shop && bag && (
+          <HudSlot id="vendor-panel" className="z-10">
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading vendor…</div>}>
+              <VendorPanel
+                shop={shop}
+                gold={gold}
+                bag={bag}
+                onBuy={(def) => client?.vendorBuy(shop.vendor, def)}
+                onSell={(item) => client?.vendorSell(shop.vendor, item)}
+                onClose={() => setShop(null)}
+              />
+            </React.Suspense>
+          </HudSlot>
+        )}
         {bagOpen && bag && (
           <HudSlot id="bag-panel" className="z-10">
-            <BagPanel
-              bag={bag}
-              hands={hands}
-              worn={worn}
-              onDrop={(id) => client?.dropItem(id)}
-              onEquip={(id) => client?.equip(id)}
-              onUnequip={(slot) => client?.unequip(slot)}
-            />
+            <div>
+            <PouchPanel materials={pouch} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading bag…</div>}>
+              <BagPanel
+                bag={bag}
+                hands={hands}
+                worn={worn}
+                gold={gold}
+                onDrop={(id) => client?.dropItem(id)}
+                onEquip={(id) => client?.equip(id)}
+                onUnequip={(slot) => client?.unequip(slot)}
+                onUse={(id) => client?.use(id)}
+                hotkeyDef={hotkeyDef}
+                onHotkey={setHotkeyDef}
+              />
+            </React.Suspense>
+            </div>
           </HudSlot>
         )}
         {questsOpen && quests && (
           <HudSlot id="quest-log" className="z-10">
-            <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading quest log…</div>}>
+              <QuestLogPanel quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />
+            </React.Suspense>
           </HudSlot>
         )}
         {sheetOpen && sheet && (
           <HudSlot id="character-sheet" className="z-10">
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading character sheet…</div>}>
+              <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
+            </React.Suspense>
           </HudSlot>
         )}
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setCameraView((v) => (v === "third" ? "first" : "third"))}
+            title={t("hud.view.toggleTitle")}
+          >
+            {cameraView === "first" ? t("hud.view.first") : t("hud.view.third")}
+          </Button>
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={t("hud.questLogTitle", { key: prettyCode(bindings.quests[0] ?? "KeyJ") })}>
             {t("hud.quests")}
           </Button>

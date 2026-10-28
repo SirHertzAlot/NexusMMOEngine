@@ -1,0 +1,11 @@
+{
+  "name": "database",
+  "version": "0.1.0",
+  "description": "Editor module: Database workspace: data grid, query console, audit log. Pairs with EA17 DB functions. Disable it and the panels leave their workspaces without a restart.",
+  "dependsOn": [
+    "core"
+  ],
+  "editor": {
+    "entry": "editor/index.tsx"
+  }
+}

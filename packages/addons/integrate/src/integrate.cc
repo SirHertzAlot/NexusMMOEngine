@@ -25,21 +25,293 @@
 
 #include <napi.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <string>
 #include <vector>
+
+#include "log_producer.h"
+
+#if defined(__AVX2__) || defined(_M_X64) || defined(__x86_64__)
+#include <immintrin.h>
+#define MMO_HAS_AVX2 1
+#endif
+#if defined(_M_X64) || defined(__x86_64__) || defined(__SSE2__)
+#include <emmintrin.h>
+#define MMO_HAS_SSE2 1
+#else
+#define MMO_HAS_SSE2 0
+#endif
+
+namespace mmo::logging {  // SAB Logging Layer native producer statics (Phase 2)
+uint32_t* NativeLogProducer::base_ = nullptr;
+uint32_t NativeLogProducer::capacity_ = 0;
+uint32_t NativeLogProducer::mask_ = 0;
+uint32_t NativeLogProducer::telemetryEvery_ = 0;
+uint32_t NativeLogProducer::stepTick_ = 0;
+uint32_t NativeLogProducer::emitCount_ = 0;
+int64_t NativeLogProducer::cachedNowNs_ = 0;
+const NativeLogArg NativeLogProducer::empty_{};
+}  // namespace mmo::logging
 
 namespace mmo_integrate {
 
+using mmo::logging::NativeLogArg;
+using mmo::logging::NativeLogProducer;
+namespace codes = mmo::logging::codes;
+
+static NativeLogArg MakeArgU32(uint32_t v) {
+  NativeLogArg a;
+  a.tag = mmo::logging::TAG_U32;
+  a.lo = v;
+  return a;
+}
+
+static NativeLogArg MakeArgI32(int32_t v) {
+  NativeLogArg a;
+  a.tag = mmo::logging::TAG_I32;
+  a.lo = static_cast<uint32_t>(v);
+  return a;
+}
+
+static NativeLogArg MakeArgF32(float v) {
+  NativeLogArg a;
+  a.tag = mmo::logging::TAG_F32;
+  std::memcpy(&a.lo, &v, sizeof(uint32_t));
+  return a;
+}
+
+// Narrow single-process producer handle for Init-time bootstrap semantics.
+static NativeLogProducer& NativeLogProducerGetInstance() {
+  static NativeLogProducer instance;  // POD state only; safe under NAPI_DISABLE_CPP_EXCEPTIONS
+  return instance;
+}
+
+static NativeLogArg MakeTaggedArg(uint32_t tag, double value) {
+  NativeLogArg a;
+  a.tag = tag;
+  switch (tag) {
+    case mmo::logging::TAG_I32:
+      a.lo = static_cast<uint32_t>(static_cast<int32_t>(value));
+      break;
+    case mmo::logging::TAG_U32:
+      a.lo = static_cast<uint32_t>(value);
+      break;
+    case mmo::logging::TAG_F32: {
+      const float f = static_cast<float>(value);
+      std::memcpy(&a.lo, &f, sizeof(uint32_t));
+      break;
+    }
+    case mmo::logging::TAG_I64:
+    case mmo::logging::TAG_U64: {
+      const uint64_t bits = static_cast<uint64_t>(value);
+      a.lo = static_cast<uint32_t>(bits & 0xffffffffu);
+      a.hi = static_cast<uint32_t>((bits >> 32) & 0xffffffffu);
+      break;
+    }
+    case mmo::logging::TAG_F64: {
+      uint64_t bits;
+      std::memcpy(&bits, &value, sizeof(uint64_t));
+      a.lo = static_cast<uint32_t>(bits & 0xffffffffu);
+      a.hi = static_cast<uint32_t>((bits >> 32) & 0xffffffffu);
+      break;
+    }
+    default:
+      a.tag = mmo::logging::TAG_EMPTY;
+      break;
+  }
+  return a;
+}
+
+// Hardware AVX2 8-Wide FMA3 Kernel Implementation (PATCH-01)
+#if defined(__AVX2__)
+inline __m256 fma3_integrate_kernel(__m256 p, __m256 v, __m256 dt) {
+  return _mm256_fmadd_ps(v, dt, p);
+}
+#endif
+
+
+// Stride structural dimensions matching TypeScript SOA_LAYOUT schema bounds
+constexpr size_t SOA_STRIDE    = 8;
+constexpr size_t OFFSET_PX     = 0;
+constexpr size_t OFFSET_PY     = 1;
+constexpr size_t OFFSET_PZ     = 2;
+constexpr size_t OFFSET_VX     = 3;
+constexpr size_t OFFSET_VY     = 4;
+constexpr size_t OFFSET_VZ     = 5;
+constexpr size_t OFFSET_HP     = 6;
+constexpr size_t OFFSET_INTENT = 7;
+
+// Intent bitflags for fused intent-to-velocity decoding
+constexpr int32_t INTENT_FORWARD  = 1 << 0; // +Z
+constexpr int32_t INTENT_BACKWARD = 1 << 1; // -Z
+constexpr int32_t INTENT_LEFT     = 1 << 2; // -X
+constexpr int32_t INTENT_RIGHT    = 1 << 3; // +X
+constexpr int32_t INTENT_UP       = 1 << 4; // +Y
+constexpr int32_t INTENT_DOWN     = 1 << 5; // -Y
+constexpr int32_t INTENT_SPRINT   = 1 << 6; // 2x speed multiplier
+
 // The single integration kernel shared by both harnesses.
 // position += velocity * dt, SoA, f32 — mirrors IntegrateSystem (slice 1.2).
-inline void integrate_kernel(const float* vx, const float* vy, const float* vz,
-                             float* px, float* py, float* pz, size_t n,
+inline void integrate_kernel(const float* __restrict vx,
+                             const float* __restrict vy,
+                             const float* __restrict vz,
+                             float* __restrict px,
+                             float* __restrict py,
+                             float* __restrict pz,
+                             size_t n,
                              float dt) {
+#if MMO_HAS_SSE2
+  const __m128 dt_v = _mm_set1_ps(dt);
+  size_t i = 0;
+  for (; i + 4 <= n; i += 4) {
+    __m128 px_v = _mm_loadu_ps(px + i);
+    __m128 py_v = _mm_loadu_ps(py + i);
+    __m128 pz_v = _mm_loadu_ps(pz + i);
+    __m128 vx_v = _mm_loadu_ps(vx + i);
+    __m128 vy_v = _mm_loadu_ps(vy + i);
+    __m128 vz_v = _mm_loadu_ps(vz + i);
+    _mm_storeu_ps(px + i, _mm_add_ps(px_v, _mm_mul_ps(vx_v, dt_v)));
+    _mm_storeu_ps(py + i, _mm_add_ps(py_v, _mm_mul_ps(vy_v, dt_v)));
+    _mm_storeu_ps(pz + i, _mm_add_ps(pz_v, _mm_mul_ps(vz_v, dt_v)));
+  }
+  for (; i < n; ++i) {
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+    pz[i] += vz[i] * dt;
+  }
+#else
   for (size_t i = 0; i < n; ++i) {
     px[i] += vx[i] * dt;
     py[i] += vy[i] * dt;
     pz[i] += vz[i] * dt;
+  }
+#endif
+}
+
+/**
+ * Pure native execution algorithm processing direct pointers on raw memory bytes
+ * (ENGINE_IMPLEMENTATION_SPEC.md Section 4).
+ * The loop structure maximizes sequential data alignment for optimized hardware parsing.
+ */
+inline void NativeIntegrateSystem(float* __restrict matrix,
+                                  const int32_t* __restrict intMatrix,
+                                  size_t entityCount,
+                                  float dt) {
+  for (size_t i = 0; i < entityCount; ++i) {
+    const size_t baseIdx = i * SOA_STRIDE;
+
+    // Skip dead entity processing loops immediately
+    if (intMatrix[baseIdx + OFFSET_HP] <= 0) {
+      continue;
+    }
+
+    // Fetch position & velocity elements sequentially
+    const float px = matrix[baseIdx + OFFSET_PX];
+    const float py = matrix[baseIdx + OFFSET_PY];
+    const float pz = matrix[baseIdx + OFFSET_PZ];
+    const float vx = matrix[baseIdx + OFFSET_VX];
+    const float vy = matrix[baseIdx + OFFSET_VY];
+    const float vz = matrix[baseIdx + OFFSET_VZ];
+
+    // Execute step computations
+    matrix[baseIdx + OFFSET_PX] = px + vx * dt;
+    matrix[baseIdx + OFFSET_PY] = py + vy * dt;
+    matrix[baseIdx + OFFSET_PZ] = pz + vz * dt;
+  }
+}
+
+/**
+ * DoD Planar SoA Branchless SIMD Integration Kernel.
+ * Processes 4 entities per iteration via SSE2 without any branches on HP > 0,
+ * eliminating CPU branch-misprediction penalties under arbitrary alive/dead entropy.
+ */
+inline void NativeIntegrateSoASystem(float* __restrict px,
+                                     float* __restrict py,
+                                     float* __restrict pz,
+                                     const float* __restrict vx,
+                                     const float* __restrict vy,
+                                     const float* __restrict vz,
+                                     const int32_t* __restrict hp,
+                                     size_t entityCount,
+                                     float dt) {
+#if MMO_HAS_SSE2
+  const __m128 dt_v = _mm_set1_ps(dt);
+  const __m128i zero_i = _mm_setzero_si128();
+  size_t i = 0;
+  for (; i + 4 <= entityCount; i += 4) {
+    __m128i hp_v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(hp + i));
+    __m128 alive_mask = _mm_castsi128_ps(_mm_cmpgt_epi32(hp_v, zero_i));
+
+    __m128 px_v = _mm_loadu_ps(px + i);
+    __m128 py_v = _mm_loadu_ps(py + i);
+    __m128 pz_v = _mm_loadu_ps(pz + i);
+    __m128 vx_v = _mm_loadu_ps(vx + i);
+    __m128 vy_v = _mm_loadu_ps(vy + i);
+    __m128 vz_v = _mm_loadu_ps(vz + i);
+
+    __m128 nx = _mm_add_ps(px_v, _mm_mul_ps(vx_v, dt_v));
+    __m128 ny = _mm_add_ps(py_v, _mm_mul_ps(vy_v, dt_v));
+    __m128 nz = _mm_add_ps(pz_v, _mm_mul_ps(vz_v, dt_v));
+
+    _mm_storeu_ps(px + i, _mm_or_ps(_mm_and_ps(alive_mask, nx), _mm_andnot_ps(alive_mask, px_v)));
+    _mm_storeu_ps(py + i, _mm_or_ps(_mm_and_ps(alive_mask, ny), _mm_andnot_ps(alive_mask, py_v)));
+    _mm_storeu_ps(pz + i, _mm_or_ps(_mm_and_ps(alive_mask, nz), _mm_andnot_ps(alive_mask, pz_v)));
+  }
+  for (; i < entityCount; ++i) {
+    if (hp[i] <= 0) continue;
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+    pz[i] += vz[i] * dt;
+  }
+#else
+  for (size_t i = 0; i < entityCount; ++i) {
+    if (hp[i] <= 0) continue;
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+    pz[i] += vz[i] * dt;
+  }
+#endif
+}
+
+/**
+ * Fused DoD Intent-Decode + Integration Kernel.
+ * Translates non-zero INTENT_BIT bitmasks into velocity vectors and integrates
+ * positions in a single cache-coherent pass over the SharedArrayBuffer matrix.
+ */
+inline void NativeApplyIntentsAndStep(float* __restrict matrix,
+                                      int32_t* __restrict intMatrix,
+                                      size_t entityCount,
+                                      float dt,
+                                      float baseSpeed) {
+  for (size_t i = 0; i < entityCount; ++i) {
+    const size_t baseIdx = i * SOA_STRIDE;
+    if (intMatrix[baseIdx + OFFSET_HP] <= 0) {
+      continue;
+    }
+
+    const int32_t intent = intMatrix[baseIdx + OFFSET_INTENT];
+    if (intent != 0) {
+      const float speed = (intent & INTENT_SPRINT) ? (baseSpeed * 2.0f) : baseSpeed;
+      float vx = 0.0f;
+      float vy = 0.0f;
+      float vz = 0.0f;
+      if (intent & INTENT_RIGHT)    vx += speed;
+      if (intent & INTENT_LEFT)     vx -= speed;
+      if (intent & INTENT_UP)       vy += speed;
+      if (intent & INTENT_DOWN)     vy -= speed;
+      if (intent & INTENT_FORWARD)  vz += speed;
+      if (intent & INTENT_BACKWARD) vz -= speed;
+      matrix[baseIdx + OFFSET_VX] = vx;
+      matrix[baseIdx + OFFSET_VY] = vy;
+      matrix[baseIdx + OFFSET_VZ] = vz;
+    }
+
+    matrix[baseIdx + OFFSET_PX] += matrix[baseIdx + OFFSET_VX] * dt;
+    matrix[baseIdx + OFFSET_PY] += matrix[baseIdx + OFFSET_VY] * dt;
+    matrix[baseIdx + OFFSET_PZ] += matrix[baseIdx + OFFSET_VZ] * dt;
   }
 }
 
@@ -65,7 +337,274 @@ float* CheckedF32Data(Napi::Env env, Napi::Value value, const char* name,
   return arr.Data();
 }
 
+int32_t* CheckedI32Data(Napi::Env env, Napi::Value value, const char* name,
+                        size_t* out_len) {
+  if (!value.IsTypedArray()) {
+    Napi::TypeError::New(env, std::string(name) + " must be a TypedArray")
+        .ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::TypedArray ta = value.As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_int32_array) {
+    Napi::TypeError::New(env, std::string(name) + " must be an Int32Array")
+        .ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::Int32Array arr = ta.As<Napi::Int32Array>();
+  *out_len = arr.ElementLength();
+  return arr.Data();
+}
+
 }  // namespace
+
+// stepSimulation(floatMatrixView, entityCount, dt) -> boolean
+// Exact zero-copy C++ simulation core entry point from ENGINE_IMPLEMENTATION_SPEC.md §4.
+Napi::Value StepSimulation(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  // Air-tight parameter assertion checks before extracting pointers
+  if (info.Length() < 3 || !info[0].IsTypedArray() || !info[1].IsNumber() ||
+      !info[2].IsNumber()) {
+    Napi::TypeError::New(
+        env, "Parameters mismatched. Expecting (Float32Array, Uint32, Float).")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  Napi::TypedArray ta = info[0].As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_float32_array) {
+    Napi::TypeError::New(
+        env, "Parameters mismatched. Expecting (Float32Array, Uint32, Float).")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  Napi::Float32Array jsArray = info[0].As<Napi::Float32Array>();
+  size_t entityCount = info[1].As<Napi::Number>().Uint32Value();
+  float dt = info[2].As<Napi::Number>().FloatValue();
+
+  if (entityCount * SOA_STRIDE > jsArray.ElementLength()) {
+    Napi::RangeError::New(
+        env, "entityCount * SOA_STRIDE exceeds Float32Array length")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  // True Zero-Copy Interception: Pull raw native hardware memory array references
+  float* dataPointerFloat = jsArray.Data();
+  int32_t* dataPointerInt = reinterpret_cast<int32_t*>(dataPointerFloat);
+
+  // Invoke compiled simulation processing core
+  NativeIntegrateSystem(dataPointerFloat, dataPointerInt, entityCount, dt);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
+
+  return Napi::Boolean::New(env, true);
+}
+
+// stepSimulationSoA(px, py, pz, vx, vy, vz, hp, entityCount, dt) -> boolean
+// DoD Planar SoA branchless SIMD kernel entry point.
+Napi::Value StepSimulationSoA(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 9 || !info[7].IsNumber() || !info[8].IsNumber()) {
+    Napi::TypeError::New(
+        env,
+        "stepSimulationSoA expects (px, py, pz, vx, vy, vz, hp, entityCount, dt)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  size_t lens[6];
+  float* p[6];
+  const char* names[6] = {"px", "py", "pz", "vx", "vy", "vz"};
+  for (int i = 0; i < 6; ++i) {
+    p[i] = CheckedF32Data(env, info[i], names[i], &lens[i]);
+    if (p[i] == nullptr) return env.Null();
+  }
+  size_t hpLen = 0;
+  int32_t* hp = CheckedI32Data(env, info[6], "hp", &hpLen);
+  if (hp == nullptr) return env.Null();
+
+  const size_t entityCount = info[7].As<Napi::Number>().Uint32Value();
+  const float dt = info[8].As<Napi::Number>().FloatValue();
+  for (int i = 0; i < 6; ++i) {
+    if (entityCount > lens[i]) {
+      Napi::RangeError::New(env, "entityCount exceeds float array length")
+          .ThrowAsJavaScriptException();
+      return env.Null();
+    }
+  }
+  if (entityCount > hpLen) {
+    Napi::RangeError::New(env, "entityCount exceeds hp array length")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  NativeIntegrateSoASystem(p[0], p[1], p[2], p[3], p[4], p[5], hp, entityCount,
+                           dt);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
+  return Napi::Boolean::New(env, true);
+}
+// PATCH-01: 8-wide AVX2 FMA3 kernel with 64-bit hierarchical alive-bitset block skipping.
+//
+// Adapted to the live planar SoA layout (`hp` is an Int32Array, no mana channel).
+// Invariant: `aliveBitset` must be a SUPERSET of alive entities (every entity with
+// hp > 0 has its bit set). Within a non-zero octet all 8 lanes are masked by hp,
+// so a stale "1" bit for a dead entity is harmless; a fully-dead octet is cleared
+// in place so subsequent ticks skip it.
+static inline uint64_t LoadBitsetWord64(const uint32_t* __restrict words, size_t w) noexcept {
+  uint64_t word;
+  std::memcpy(&word, words + (w * 2), sizeof(uint64_t));  // SAB views are only 4-byte aligned
+  return word;
+}
+
+static inline void NativeIntegrateSoABitsetSystem(float* __restrict px,
+                                                  float* __restrict py,
+                                                  float* __restrict pz,
+                                                  const float* __restrict vx,
+                                                  const float* __restrict vy,
+                                                  const float* __restrict vz,
+                                                  const int32_t* __restrict hp,
+                                                  uint32_t* __restrict aliveBitset,
+                                                  size_t entityCount,
+                                                  float dt) noexcept {
+  const size_t wordCount64 = entityCount / 64;
+#if defined(__AVX2__)
+  const __m256 vDt = _mm256_set1_ps(dt);
+  const __m256i vZeroI = _mm256_setzero_si256();
+  uint8_t* aliveBytes = reinterpret_cast<uint8_t*>(aliveBitset);
+
+  for (size_t w = 0; w < wordCount64; ++w) {
+    const uint64_t word = LoadBitsetWord64(aliveBitset, w);
+    if (word == 0ULL) continue;  // skip 64 entities without touching the planar channels
+
+    const size_t baseEntity = w * 64;
+    for (size_t octet = 0; octet < 8; ++octet) {
+      if (((word >> (octet * 8)) & 0xFFULL) == 0ULL) continue;
+
+      const size_t i = baseEntity + octet * 8;
+      const __m256i vHp = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(hp + i));
+      const __m256 vAlive = _mm256_castsi256_ps(_mm256_cmpgt_epi32(vHp, vZeroI));
+      if (_mm256_movemask_ps(vAlive) == 0) {
+        aliveBytes[w * 8 + octet] = 0;  // whole octet died: clear so later ticks skip it
+        continue;
+      }
+      const __m256 vEffDt = _mm256_and_ps(vAlive, vDt);  // dead lanes integrate with dt = 0
+      _mm256_storeu_ps(px + i, _mm256_fmadd_ps(_mm256_loadu_ps(vx + i), vEffDt, _mm256_loadu_ps(px + i)));
+      _mm256_storeu_ps(py + i, _mm256_fmadd_ps(_mm256_loadu_ps(vy + i), vEffDt, _mm256_loadu_ps(py + i)));
+      _mm256_storeu_ps(pz + i, _mm256_fmadd_ps(_mm256_loadu_ps(vz + i), vEffDt, _mm256_loadu_ps(pz + i)));
+    }
+  }
+  // Tail (entityCount not divisible by 64): hp-gated scalar path.
+  for (size_t i = wordCount64 * 64; i < entityCount; ++i) {
+    if (hp[i] <= 0) continue;
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+    pz[i] += vz[i] * dt;
+  }
+#else
+  (void)aliveBitset;
+  (void)wordCount64;
+  NativeIntegrateSoASystem(px, py, pz, vx, vy, vz, hp, entityCount, dt);
+#endif
+}
+
+namespace {
+uint32_t* CheckedU32Data(Napi::Env env, Napi::Value value, const char* name, size_t* out_len) {
+  if (!value.IsTypedArray()) {
+    Napi::TypeError::New(env, std::string(name) + " must be a TypedArray").ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::TypedArray ta = value.As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_uint32_array) {
+    Napi::TypeError::New(env, std::string(name) + " must be a Uint32Array").ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::Uint32Array arr = ta.As<Napi::Uint32Array>();
+  *out_len = arr.ElementLength();
+  return arr.Data();
+}
+}  // namespace
+
+// stepSimulationSoABitset(px, py, pz, vx, vy, vz, hp, aliveBitset, entityCount, dt) -> boolean
+Napi::Value StepSimulationSoABitset(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 10 || !info[8].IsNumber() || !info[9].IsNumber()) {
+    Napi::TypeError::New(
+        env, "stepSimulationSoABitset expects (px, py, pz, vx, vy, vz, hp, aliveBitset, entityCount, dt)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  size_t lens[6];
+  float* p[6];
+  const char* names[6] = {"px", "py", "pz", "vx", "vy", "vz"};
+  for (int i = 0; i < 6; ++i) {
+    p[i] = CheckedF32Data(env, info[i], names[i], &lens[i]);
+    if (p[i] == nullptr) return env.Null();
+  }
+  size_t hpLen = 0;
+  int32_t* hp = CheckedI32Data(env, info[6], "hp", &hpLen);
+  if (hp == nullptr) return env.Null();
+  size_t bitsetLen = 0;
+  uint32_t* aliveBitset = CheckedU32Data(env, info[7], "aliveBitset", &bitsetLen);
+  if (aliveBitset == nullptr) return env.Null();
+
+  const size_t entityCount = info[8].As<Napi::Number>().Uint32Value();
+  const float dt = info[9].As<Napi::Number>().FloatValue();
+  for (int i = 0; i < 6; ++i) {
+    if (entityCount > lens[i]) {
+      Napi::RangeError::New(env, "entityCount exceeds float array length").ThrowAsJavaScriptException();
+      return env.Null();
+    }
+  }
+  if (entityCount > hpLen) {
+    Napi::RangeError::New(env, "entityCount exceeds hp array length").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if ((entityCount + 31) / 32 > bitsetLen) {
+    Napi::RangeError::New(env, "aliveBitset too short for entityCount").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  NativeIntegrateSoABitsetSystem(p[0], p[1], p[2], p[3], p[4], p[5], hp, aliveBitset, entityCount, dt);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
+  return Napi::Boolean::New(env, true);
+}
+
+// applyIntentsAndStep(floatMatrixView, entityCount, dt, baseSpeed) -> boolean
+Napi::Value ApplyIntentsAndStep(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 4 || !info[0].IsTypedArray() || !info[1].IsNumber() ||
+      !info[2].IsNumber() || !info[3].IsNumber()) {
+    Napi::TypeError::New(
+        env,
+        "applyIntentsAndStep expects (Float32Array, Uint32, Float, Float)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  Napi::TypedArray ta = info[0].As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_float32_array) {
+    Napi::TypeError::New(env, "First argument must be a Float32Array")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  Napi::Float32Array jsArray = info[0].As<Napi::Float32Array>();
+  const size_t entityCount = info[1].As<Napi::Number>().Uint32Value();
+  const float dt = info[2].As<Napi::Number>().FloatValue();
+  const float baseSpeed = info[3].As<Napi::Number>().FloatValue();
+
+  if (entityCount * SOA_STRIDE > jsArray.ElementLength()) {
+    Napi::RangeError::New(
+        env, "entityCount * SOA_STRIDE exceeds Float32Array length")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  float* dataPointerFloat = jsArray.Data();
+  int32_t* dataPointerInt = reinterpret_cast<int32_t*>(dataPointerFloat);
+  NativeApplyIntentsAndStep(dataPointerFloat, dataPointerInt, entityCount, dt,
+                            baseSpeed);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
+  return Napi::Boolean::New(env, true);
+}
 
 // integrate(px, py, pz, vx, vy, vz, count, dt) -> undefined
 // Harness A entry point: bulk integration over JS-owned SoA buffers.
@@ -242,17 +781,149 @@ Napi::Value WorldSize(const Napi::CallbackInfo& info) {
   return Napi::Number::New(env, static_cast<double>(world->n));
 }
 
+// ---- SAB logging layer Phase 2: native producers --------------------------
+// The TS side attaches the log ring SAB once per worker boot; every later
+// emission stays fully inside C++ (scope, MPSC ticketing, record layout).
+
+Napi::Value LogAttachRing(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[0].IsTypedArray() || !info[1].IsNumber()) {
+    Napi::TypeError::New(env, "logAttachRing expects (Uint8Array over the ring SAB, capacity)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  Napi::TypedArray ta = info[0].As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_uint8_array) {
+    Napi::TypeError::New(env, "First argument must be a Uint8Array over the ring SAB")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  void* data = nullptr;
+  size_t byteLen = 0;
+  const napi_status st = napi_get_typedarray_info(
+      env, info[0], nullptr, &byteLen, &data, nullptr, nullptr);
+  if (st != napi_ok || data == nullptr) {
+    Napi::TypeError::New(env, "cannot acquire ring backing memory")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  NativeLogProducer& prod = NativeLogProducerGetInstance();
+  const uint32_t capacity = info[1].As<Napi::Number>().Uint32Value();
+  const bool ok = prod.attach(data, byteLen, capacity);
+  return Napi::Boolean::New(env, ok);
+}
+
+Napi::Value LogNativeTelemetryEvery(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) {
+    Napi::TypeError::New(env, "logNativeTelemetryEvery(expected (n: number))")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  NativeLogProducerGetInstance().setTelemetryEvery(
+      info[0].As<Napi::Number>().Uint32Value());
+  return env.Undefined();
+}
+
+Napi::Value LogIsAttached(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  return Napi::Boolean::New(env, NativeLogProducerGetInstance().attached());
+}
+
+// [sim] tick {0} budget overrun: {1}us  (CODES: SIM_TICK_OVERRUN)
+Napi::Value LogSimTickOverrunNative(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsNumber()) {
+    Napi::TypeError::New(env, "logSimTickOverrunNative((tick, durationUs) expected")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  const uint32_t tick = info[0].As<Napi::Number>().Uint32Value();
+  const int32_t durationUs = info[1].As<Napi::Number>().Int32Value();
+  return Napi::Boolean::New(
+      env,
+      NativeLogProducerGetInstance().emit(
+          static_cast<uint8_t>(mmo::logging::LogLevel::Warn), static_cast<uint8_t>(mmo::logging::LogProducer::Sim),
+          codes::SIM_TICK_OVERRUN, 0u, 0u, 0u,
+          MakeArgI32(static_cast<int32_t>(tick)), MakeArgI32(durationUs),
+          NativeLogArg{}, NativeLogArg{}));}
+
+// [sim] spiral guard fired: dropped {0}ms backlog  (CODES: SIM_SPIRAL_GUARD_FIRED)
+Napi::Value LogSimSpiralGuardFiredNative(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) {
+    Napi::TypeError::New(env, "logSimSpiralGuardFiredNative expected (droppedMs: number)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  const int32_t droppedMs = info[0].As<Napi::Number>().Int32Value();
+  return Napi::Boolean::New(
+      env,
+      NativeLogProducerGetInstance().emit(
+          static_cast<uint8_t>(mmo::logging::LogLevel::Warn), static_cast<uint8_t>(mmo::logging::LogProducer::Sim),
+          codes::SIM_SPIRAL_GUARD_FIRED, 0u, 0u, 0u,
+          MakeArgI32(droppedMs), NativeLogArg{}, NativeLogArg{},
+          NativeLogArg{}));
+}
+
+// Generic native producer seam (fixed positional args, no object traversal):
+// logNativeEmit2(level, producerId, code, tick, entLo, entHi, t0, v0, t1, v1)
+// where t* is an ARG_TAGS code and v* is its value (number).
+Napi::Value LogNativeEmit2(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  const char* msg = "logNativeEmit2 expects (level, producerId, code, tick, entLo, entHi, t0, v0, t1, v1)";
+  if (info.Length() < 10 || !info[0].IsNumber() || !info[1].IsNumber() ||
+      !info[2].IsNumber() || !info[3].IsNumber() || !info[4].IsNumber() ||
+      !info[5].IsNumber() || !info[6].IsNumber() || !info[9].IsNumber()) {
+    Napi::TypeError::New(env, msg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  const uint8_t level = static_cast<uint8_t>(info[0].As<Napi::Number>().Uint32Value());
+  const uint8_t producerId = static_cast<uint8_t>(info[1].As<Napi::Number>().Uint32Value());
+  const uint16_t code = static_cast<uint16_t>(info[2].As<Napi::Number>().Uint32Value());
+  const uint32_t tick = info[3].As<Napi::Number>().Uint32Value();
+  const uint32_t entLo = info[4].As<Napi::Number>().Uint32Value();
+  const uint32_t entHi = info[5].As<Napi::Number>().Uint32Value();
+  const uint32_t t0 = info[6].As<Napi::Number>().Uint32Value();
+  double v0 = 0;
+  if (info[7].IsNumber()) v0 = info[7].As<Napi::Number>().DoubleValue();
+  else if (info[7].IsBigInt()) v0 = static_cast<double>(info[7].As<Napi::BigInt>().Int64Value(nullptr));
+  uint32_t t1 = 0;
+  if (info[8].IsNumber()) t1 = info[8].As<Napi::Number>().Uint32Value();
+  double v1 = 0;
+  if (info[9].IsNumber()) v1 = info[9].As<Napi::Number>().DoubleValue();
+  else if (info[9].IsBigInt()) v1 = static_cast<double>(info[9].As<Napi::BigInt>().Int64Value(nullptr));
+
+  NativeLogArg a0 = MakeTaggedArg(t0, v0);
+  NativeLogArg a1 = MakeTaggedArg(t1, v1);
+  return Napi::Boolean::New(
+      env,
+      NativeLogProducerGetInstance().emit(
+          level, producerId, code, tick, entLo, entHi, a0, a1, NativeLogArg{}, NativeLogArg{}));
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("integrate", Napi::Function::New(env, Integrate));
+  exports.Set("stepSimulation", Napi::Function::New(env, StepSimulation));
+  exports.Set("stepSimulationSoA", Napi::Function::New(env, StepSimulationSoA));
+  exports.Set("stepSimulationSoABitset", Napi::Function::New(env, StepSimulationSoABitset));
+  exports.Set("applyIntentsAndStep", Napi::Function::New(env, ApplyIntentsAndStep));
   exports.Set("noop", Napi::Function::New(env, Noop));
   exports.Set("createWorld", Napi::Function::New(env, CreateWorld));
   exports.Set("stepWorld", Napi::Function::New(env, StepWorld));
   exports.Set("copyPositions", Napi::Function::New(env, CopyPositions));
   exports.Set("worldSize", Napi::Function::New(env, WorldSize));
   exports.Set("deleteWorld", Napi::Function::New(env, DeleteWorld));
+  exports.Set("logAttachRing", Napi::Function::New(env, LogAttachRing));
+  exports.Set("logNativeTelemetryEvery", Napi::Function::New(env, LogNativeTelemetryEvery));
+  exports.Set("logIsAttached", Napi::Function::New(env, LogIsAttached));
+  exports.Set("logSimTickOverrunNative", Napi::Function::New(env, LogSimTickOverrunNative));
+  exports.Set("logSimSpiralGuardFiredNative", Napi::Function::New(env, LogSimSpiralGuardFiredNative));
+  exports.Set("logNativeEmit2", Napi::Function::New(env, LogNativeEmit2));
   return exports;
 }
 
 NODE_API_MODULE(integrate, Init)
 
 }  // namespace mmo_integrate
+

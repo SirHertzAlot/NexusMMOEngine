@@ -17,6 +17,11 @@
  * reconnects, slow consumers, and later interest filtering have
  * somewhere to live.
  *
+ * Fan-out (Phase 5, Part A): the once-encoded delta is published once
+ * per occupied sector topic (see ./sector.ts) instead of one send per
+ * socket; snapshot ticks and resyncing sessions stay per-socket. Same
+ * bytes, zero client changes.
+ *
  * Reconnect semantics (auth slice): the server-issued SESSION TOKEN
  * doubles as the client identity. Reconnecting with the same token inside
  * the disconnect grace period re-attaches the SAME player entity (fresh
@@ -56,6 +61,11 @@ import {
   decodeEnvelope,
   encodeControl,
   encodeEnvelope,
+  encodeDeltaSet,
+  DeltaSetKind,
+  GLOBAL_SECTOR,
+  type DeltaSetEntry,
+  type BorderMessage,
   MessageType,
   PROTOCOL_VERSION,
   type AccountMessage,
@@ -83,6 +93,8 @@ import {
   type DuelMessage,
   type TradeMessage,
   type WalletMessage,
+  type ResourcesMessage,
+  type ChestsMessage,
   type VendorAction,
   type VendorMessage,
   type AuctionMessage,
@@ -97,7 +109,9 @@ import {
   Ability,
   LocomotionMode,
   encodeTileHeights,
+  type ChatChannel,
 } from "@mmo-engine/protocol";
+import type { SocialRules } from "@mmo-engine/rules";
 import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
@@ -111,9 +125,24 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
-import { describeMatches, ItemActionSchema, ItemPickArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
+import { GatheringSystem } from "../gathering/index.js";
+import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/index.js";
+import { ResidentSystem } from "../residents/index.js";
+import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
+import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
+import { RemoveComponentArgsSchema, applyRemoveComponent } from "../admin/remove-component.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
+import { REGION_TOPIC } from "./sector.js";
+import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
+import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+
+const EMPTY_BYTES = new Uint8Array(0);
+/** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
+const COMBAT_PIN_TICKS = 300;
+/** IM8: a border ticket lives 60 s and is renewed with 20 s left. */
+const BORDER_TICKET_S = 60;
+const BORDER_RENEW_S = 20;
 import {
   MAX_QUEUED_DELTAS,
   type ClientSession,
@@ -133,13 +162,9 @@ import {
   type SessionStore,
 } from "../auth/index.js";
 import {
-  attachChunkHeights,
-  collectDeltaState,
-  collectFullState,
   DeltaTracker,
-  encodeDelta,
-  encodeSnapshot,
-  type CollectedState,
+  encodeDeltaFromSim,
+  encodeSnapshotFromSim,
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
@@ -149,7 +174,9 @@ import { FriendBook, FriendSchema } from "../friends.js";
 import type { SocialStore } from "../social-store.js";
 // Fallback during migration; removed once all bootstraps inject chatRules.
 import * as builtInChat from "../chat.js";
-import { IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
+import { clearOfStatics } from "../prop-collision.js";
+import type { ScaleResolver } from "../scale.js";
 import { CombatSystem } from "../combat.js";
 import { DeathSystem } from "../death.js";
 import { AbilitySystem } from "../abilities.js";
@@ -157,14 +184,34 @@ import { StatusSystem } from "../status.js";
 import { TelegraphSystem } from "../telegraph.js";
 import { DuelSystem } from "../duel.js";
 import { WalletSystem } from "../economy/wallet.js";
+import { lessonCost, lessonPoints, type Lessons } from "../residents/lessons.js";
 import { TradeSystem } from "../economy/trade.js";
 import { VendorSystem } from "../economy/vendor.js";
 import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import { AtomicSPSCQueue, packCommandToken } from "../lockless-ring.js";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  runLogLevelCommand,
+  logAdminCommandExecuted,
+  logGatewayAuthError,
+  logGatewayHelloPassword,
+  logGatewayHelloMigration,
+  logGatewayHelloToken,
+  logGatewayContainedError,
+  logGatewayCharacterCreated,
+  logGatewayRegisterError,
+  logGatewayRegisterSuccess,
+} from "../logging/index.js";
+import { INTENT_FLAGS } from "../sab-store.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
-import type { MigrationRecord } from "@mmo-engine/world-server";
+import type { WorldCharacterSync } from "../world/character-sync.js";
+import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
+import type { AtomicOpResult, MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
 import { Mana, type MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
@@ -223,6 +270,15 @@ export interface GatewayOptions {
    * Default: the built-in rules (backward compat during migration).
    */
   chatRules?: ChatRules;
+  /**
+   * Lockless SPSC intent queue to the 30Hz Simulation Worker (PR #430 / Phase 2 data-plane topology).
+   * When provided, validated player intent messages are packed into 32-bit tokens
+   * (entity index + action code) and enqueued directly to the worker thread without
+   * heap allocations.
+   */
+  dataPlaneQueue?: AtomicSPSCQueue;
+  /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
+  logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
   /** Missed heartbeats before the client is dropped. Default 3. */
@@ -257,6 +313,28 @@ export interface GatewayOptions {
    * production server passes a SqliteCharacterStore.
    */
   characterStore?: CharacterStore;
+  /**
+   * Persistence P4: world-tier character records + session locks
+   * (fleet mode). When present, a character's login acquires its world
+   * session lock and seeds the local store from the world record
+   * before the avatar spawns, working saves also write uphill, and
+   * logout (grace expiry, shutdown, migration commit) commits finally
+   * and releases the lock. Absent: local-only behaviour, unchanged
+   * (standalone mode never passes one).
+   */
+  worldCharacters?: WorldCharacterSync;
+  /**
+   * Atomic operations (slice A2, fleet mode): the world-tier commit
+   * path for the economy trade/vendor/auction settlements and the
+   * item grant path. When present, a completing trade accept, a
+   * vendor buy/sell, an auction buyout, and an admin `give` route
+   * their commit step through the world tier and apply the settled
+   * outcome; negotiation, validation, and rate limits stay in the
+   * region handlers. A world rejection or outage fails the operation
+   * closed (4005, nothing committed locally). Absent: every path is
+   * the local one, unchanged (standalone mode never passes one).
+   */
+  atomicOps?: WorldAtomicOps;
   /** Guild persistence (S4b). Default: in memory; the production server passes a SqliteGuildStore. */
   guildStore?: GuildStore;
   /** Party persistence (S3b). Default: in memory; the production server passes a SqlitePartyStore. */
@@ -273,8 +351,17 @@ export interface GatewayOptions {
    * null/absent = structural checks only (a server without the art).
    */
   characterCatalog?: ModularCatalog | null;
-  /** Characters an account may have. Default 8. */
+  /** Characters an account may have. Default 8, or social.characters.slots; this option wins over both. */
   maxCharacters?: number;
+  /**
+   * Party, guild, chat and character slot limits (content/rules/social.json,
+   * EG9). Absent: the built-in constants. setSocial replaces them live.
+   */
+  social?: SocialRules;
+  /** Needs rules: how long eating and drinking take (a cast; 0 at once). */
+  needs?: { eatSeconds: number };
+  /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
+  lessons?: Lessons | null;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -308,6 +395,8 @@ export interface GatewayOptions {
    * table in tests.
    */
   spawnTable?: SpawnTable;
+  /** The global scale for admin-spawned props (default: none). */
+  scale?: ScaleResolver;
   /**
    * Region chat text filter (roadmap S1): return false to reject a line.
    * Default allows everything that passes shape limits; a profanity or
@@ -376,6 +465,8 @@ export interface GatewayOptions {
   };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
+  /** Dungeon gates / respawn anchors (where players respawn if nearer than spawnPoint). */
+  respawnAnchors?: { name: string; x: number; z: number }[];
   /**
    * The spawn point was chosen for this run (the editor's Play menu
    * "Start from"): characters enter there instead of where they were
@@ -400,9 +491,10 @@ export interface GatewayOptions {
   /**
    * The socket library behind the port (see ./transport.ts): "uws"
    * (uWebSockets.js), "ws", or "auto" (uws when it loads). Default:
-   * MMO_TRANSPORT, else auto.
+   * MMO_TRANSPORT, else auto. A Transport itself serves the port that way
+   * (the edge's relay, ChannelTransport).
    */
-  transport?: TransportKind;
+  transport?: TransportKind | Transport;
   /**
    * Largest inbound WebSocket frame accepted, bytes. Default 64 KiB
    * (see MAX_CLIENT_PAYLOAD_BYTES).
@@ -435,6 +527,21 @@ export interface GatewayOptions {
    * when they enter and leave (see ./extension.ts).
    */
   extensions?: GatewayExtension[];
+  /**
+   * Per-tick deltas fan out via sector-topic publish (Phase 5, Part A):
+   * one publish per occupied sector topic instead of one send per
+   * socket, with identical FlatBuffers bytes. Default true; false keeps
+   * the per-socket send loop (e.g. when a transport's publish is
+   * suspected). Snapshot ticks and resyncing sessions always use the
+   * per-socket path either way.
+   */
+  sectorBroadcast?: boolean;
+  /**
+   * Interest management (IM3): each client gets only the sectors near its
+   * avatar, as a DeltaSet of shared per-sector bytes. Radii in metres;
+   * absent = every client gets the whole region (today's path).
+   */
+  interest?: InterestRadii;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -738,6 +845,7 @@ export class Gateway {
       | "partyStore"
       | "characterCatalog"
       | "maxCharacters"
+      | "social"
       | "sessionTtlMs"
       | "sessionStore"
       | "authRateLimit"
@@ -761,11 +869,25 @@ export class Gateway {
       | "http"
       | "transport"
       | "spawnTable"
+      | "scale"
       | "extensions"
+      | "needs"
+      | "lessons"
       | "items"
+      | "sectorBroadcast"
+      | "interest"
+      | "worldCharacters"
+      | "atomicOps"
+      | "respawnAnchors"
+      | "dataPlaneQueue"
+      | "logger"
     >
   > & { port: number };
+  public readonly logger: LogProducerClient;
   private readonly systems: SimSystem[];
+  public readonly dataPlaneQueue?: AtomicSPSCQueue;
+  private dataPlaneEnqueuedIntents = 0;
+  private dataPlaneDroppedIntents = 0;
   private readonly clock: () => number;
   private readonly loop: TickLoop;
   private readonly tracker = new DeltaTracker();
@@ -776,8 +898,16 @@ export class Gateway {
   private readonly rateLimiter: AuthRateLimiter;
   private readonly credentialStore: CredentialStore;
   private readonly characterStore: CharacterStore;
+  /** Persistence P4 world-tier character sync (fleet mode); null standalone. */
+  private readonly worldCharacters: WorldCharacterSync | null;
+  /** Atomic operations commit path (slice A2, fleet mode); null standalone. */
+  private readonly atomicOps: WorldAtomicOps | null;
   private readonly characterCatalog: ModularCatalog | null;
-  private readonly maxCharacters: number;
+  private maxCharacters: number;
+  /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
+  private readonly fixedMaxCharacters: boolean;
+  /** social.json (EG9), or null for the chat module's own range and cooldowns. */
+  private social: SocialRules | null = null;
   /**
    * Editor-only read-only debug answers (protocol v3, 0x0a).
    * Injected by the production server via makeDebugSource(); null →
@@ -805,6 +935,7 @@ export class Gateway {
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
+  private readonly respawnAnchors: { name: string; x: number; z: number }[];
   private readonly spawnOverridden: boolean;
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
@@ -858,9 +989,19 @@ export class Gateway {
    * first use so addon-less boots never pay for it.
    */
   private spawnTable: SpawnTable | null = null;
+  private readonly scale: ScaleResolver | undefined;
 
-  private readonly transportKind: TransportKind | undefined;
+  private readonly transportKind: TransportKind | Transport | undefined;
   private transport: Transport | null = null;
+  /** Per-tick deltas fan out via sector-topic publish (Phase 5, Part A). Default true. */
+  private readonly sectorBroadcast: boolean;
+  /** Interest radii, or null when every client sees the whole region. */
+  private readonly interest: InterestRadii | null;
+  private readonly sectorIndex = new SectorIndex();
+  /** IM8: this region's border identity, or null outside a fleet. */
+  private border: { regionId: string; key: string; rect: RegionRect } | null = null;
+  /** IM8: live neighbouring regions (from the world's registry). */
+  private borderNeighbours: Array<{ regionId: string; endpoint: string; rect: RegionRect }> = [];
   private httpHandler: HttpHandler | null;
   private tickTimer: NodeJS.Timeout | null = null;
   private clientSeq = 0;
@@ -900,6 +1041,8 @@ export class Gateway {
       );
     }
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
+    this.logger = opts.logger ?? new LogProducerClient(LogProducer.GATEWAY, new LogRingBuffer(1024));
+    this.dataPlaneQueue = opts.dataPlaneQueue;
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
     this.parties = new PartyBook(() => this.clock(), opts.partyStore);
@@ -909,8 +1052,14 @@ export class Gateway {
     this.presence = opts.presence ?? null;
     this.credentialStore = opts.credentialStore ?? new CsvCredentialStore();
     this.characterStore = opts.characterStore ?? new MemoryCharacterStore();
+    this.worldCharacters = opts.worldCharacters ?? null;
+    this.atomicOps = opts.atomicOps ?? null;
     this.characterCatalog = opts.characterCatalog ?? null;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
+    this.fixedMaxCharacters = opts.maxCharacters !== undefined;
+    if (opts.social) this.setSocial(opts.social);
+    this.eatSeconds = opts.needs?.eatSeconds ?? 0;
+    this.lessons = opts.lessons ?? null;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -920,6 +1069,7 @@ export class Gateway {
     this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
+    this.respawnAnchors = opts.respawnAnchors ?? [];
     this.spawnOverridden = opts.spawnOverridden ?? false;
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
@@ -927,11 +1077,14 @@ export class Gateway {
     this.admins = new Set(this.opts.admins);
     this.devServer = this.opts.devServer;
     this.spawnTable = opts.spawnTable ?? null;
+    this.scale = opts.scale;
     this.textFilter = opts.textFilter ?? this.chatRules.allowAllText;
     for (const ext of opts.extensions ?? []) this.extensions.set(ext.kind, ext);
     this.items = opts.items ?? null;
     this.httpHandler = opts.http ?? null;
     this.transportKind = opts.transport;
+    this.sectorBroadcast = opts.sectorBroadcast ?? true;
+    this.interest = opts.interest ?? null;
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -948,18 +1101,6 @@ export class Gateway {
     const startTick = this.opts.startTick;
     this.loop = new TickLoop((i) => this.onTick(i + startTick));
     this.tracker.commit(this.world); // baseline: empty world
-  }
-
-  /**
-   * Terrain-height channel: fill authoritative heights on chunk rows
-   * when a chunk source is configured. Identity when absent (tests,
-   * addon-less environments) — snapshots then carry metadata only.
-   */
-  private withHeights(state: CollectedState): CollectedState {
-    if (this.chunkSource !== null) {
-      attachChunkHeights(state, this.chunkSource);
-    }
-    return state;
   }
 
   /** Last completed server tick. */
@@ -987,6 +1128,15 @@ export class Gateway {
   }
 
   /** Rate-limiter diagnostics: dropped excess and abuse disconnects. */
+  /** Data plane queue stats (Phase 2 topology). */
+  get dataPlaneStats(): { hasQueue: boolean; enqueued: number; dropped: number } {
+    return {
+      hasQueue: this.dataPlaneQueue !== undefined,
+      enqueued: this.dataPlaneEnqueuedIntents,
+      dropped: this.dataPlaneDroppedIntents,
+    };
+  }
+
   ingressStats(): { droppedIntents: number; droppedPickups: number; abuseDisconnects: number } {
     return {
       droppedIntents: this.droppedByRateLimitIntents,
@@ -998,7 +1148,7 @@ export class Gateway {
   /** Bind the port (WebSocket + HTTP). Does NOT start the tick driver. */
   async listen(): Promise<number> {
     if (this.transport) throw new Error("gateway: already listening");
-    const transport = createTransport(this.transportKind);
+    const transport = typeof this.transportKind === "object" ? this.transportKind : createTransport(this.transportKind);
     this.transport = transport;
     return transport.listen(this.opts.port, {
       connection: (socket) => this.onConnection(socket),
@@ -1007,6 +1157,19 @@ export class Gateway {
       // close the connection (ws: 1009) instead of buffering the payload.
       maxMessageBytes: this.maxClientPayloadBytes,
     });
+  }
+
+  /** Fleet mode (PL3c): another region changed guilds, parties, friends or blocks, and the store holds them now. */
+  reloadSocial(kind: "guild" | "party" | "friends" | "blocks"): void {
+    if (kind === "guild") this.guilds.reload();
+    else if (kind === "party") this.parties.reload();
+    else if (kind === "friends") this.friends.reload();
+    else this.blocks.reload();
+  }
+
+  /** Fleet mode (PL3c): new guilds and parties take world-wide ids from `next` (null: none on hand). */
+  socialIds(kind: "guild" | "party", next: () => number | null): void {
+    (kind === "guild" ? this.guilds : this.parties).ids = next;
   }
 
   /** Which socket library serves the port ("uws" or "ws"), once listening. */
@@ -1060,6 +1223,22 @@ export class Gateway {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    // Fleet mode (P4): shutdown is a logout for every character in
+    // the world — final commit uphill + lock release, awaited but
+    // never blocking teardown on a dead world (the sync logs and the
+    // lock expires on its own). Standalone closes are unchanged.
+    if (this.worldCharacters) {
+      const departing: Promise<boolean>[] = [];
+      for (const s of this.sessions.values()) {
+        if (s.playerEntity === null || !s.character) continue;
+        // A hand-off arrival not yet arrived holds no lock here and
+        // its state is not ours to commit.
+        if (this.handoffArrivals.has(s.clientId)) continue;
+        this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+        departing.push(this.worldCharacters.logout(s.character.id));
+      }
+      await Promise.allSettled(departing);
+    }
     for (const s of this.sessions.values()) {
       try {
         s.socket?.listen({ message() {}, close() {} });
@@ -1082,6 +1261,26 @@ export class Gateway {
    * Set the HTTP handler (see GatewayOptions.http) before listen(): for
    * services that authenticate through this gateway's sessions.
    */
+  /**
+   * Apply social.json (EG9): party and guild sizes and timeouts, the block
+   * limit, chat reach, line length and cooldowns, and character slots. Takes
+   * effect on the next action; parties, guilds and blocks already over a
+   * lowered limit stay as they are.
+   */
+  setSocial(rules: SocialRules): void {
+    this.social = rules;
+    this.parties.setRules(rules.party);
+    this.guilds.setRules(rules.guild);
+    if ("limit" in this.blocks) (this.blocks as { limit: number }).limit = rules.chat.blockLimit;
+    if (!this.fixedMaxCharacters) this.maxCharacters = rules.characters.slots;
+  }
+
+  /** Milliseconds between two lines on `channel` from one session. */
+  private chatCooldownMs(channel: ChatChannel): number {
+    const s = this.social?.chat.cooldownSeconds[channel];
+    return s === undefined ? this.chatRules.CHAT_COOLDOWN_MS[channel] : s * 1000;
+  }
+
   setHttpHandler(handler: HttpHandler): void {
     if (this.transport) throw new Error("gateway: set the HTTP handler before listen()");
     this.httpHandler = handler;
@@ -1112,10 +1311,13 @@ export class Gateway {
   // the edge serves the client protocol.
 
   private readonly tickListeners: Array<(t: GatewayTick) => void> = [];
+  /** Tick listeners that read `GatewayTick.delta`; with interest on, the global delta is only encoded for them. */
+  private deltaListeners = 0;
 
   /** Called after every tick's broadcast. */
-  addTickListener(cb: (t: GatewayTick) => void): void {
+  addTickListener(cb: (t: GatewayTick) => void, needsDelta = true): void {
     this.tickListeners.push(cb);
+    if (needsDelta) this.deltaListeners++;
   }
 
   private readonly tickTimeListeners: Array<(ms: number) => void> = [];
@@ -1158,7 +1360,24 @@ export class Gateway {
     if (!s || !s.welcomed || s.playerEntity === null) return "no_player";
     const clean = sanitizeIntent(intent);
     if (clean === null) return "bad_intent";
-    this.world.queueIntent(parseWireEntityId(s.playerEntity).slot, clean);
+    const slot = parseWireEntityId(s.playerEntity).slot;
+    this.world.queueIntent(slot, clean);
+    if (this.dataPlaneQueue) {
+      let actionCode = 0;
+      if (clean.mz > 0.1) actionCode |= INTENT_FLAGS.FORWARD;
+      if (clean.mz < -0.1) actionCode |= INTENT_FLAGS.BACKWARD;
+      if (clean.mx > 0.1) actionCode |= INTENT_FLAGS.RIGHT;
+      if (clean.mx < -0.1) actionCode |= INTENT_FLAGS.LEFT;
+      if (clean.my > 0.1) actionCode |= INTENT_FLAGS.UP;
+      if (clean.my < -0.1) actionCode |= INTENT_FLAGS.DOWN;
+      if ((clean.buttons & 1) !== 0) actionCode |= INTENT_FLAGS.SPRINT;
+      const packedToken = packCommandToken(slot, actionCode);
+      if (this.dataPlaneQueue.enqueue(packedToken)) {
+        this.dataPlaneEnqueuedIntents++;
+      } else {
+        this.dataPlaneDroppedIntents++;
+      }
+    }
     return "ok";
   }
 
@@ -1202,26 +1421,37 @@ export class Gateway {
       ...this.sendWallets(sim, tick),
       ...this.sendAuctions(sim, tick),
     ];
+    this.sendResources(sim);
+    this.sendChests(sim);
+    this.checkCasts();
     this.dropFromUselessHands(sim);
     this.showLostParts(sim);
     this.sendTreatments(sim);
     this.sendSpells(sim);
 
-    const state = this.withHeights(collectDeltaState(sim, tick, tick - 1, this.tracker));
     // Names for newly spawned character entities ride before the delta
     // that first shows them (catalog §0x12).
-    const namesEnv = this.namesFor(state.spawned);
-    const dropsEnv = this.dropsFor(state.spawned);
-    const deltaBytes = encodeDelta(state);
+    const spawned = sim.spawnedWireIds();
+    const namesEnv = this.namesFor(spawned);
+    const dropsEnv = this.dropsFor(spawned);
+    // Phase 3: the delta encodes directly from the SAB-backed stores —
+    // no intermediate CollectedState row copy. Read-only w.r.t. the
+    // tracker: commit() still runs below, as on the row path.
+    const frame = this.interest ? this.sectorIndex.frame(sim, tick, this.tracker, this.chunkSource) : null;
+    // With interest on, the global delta is only for tick listeners.
+    const deltaBytes = frame === null || this.deltaListeners > 0
+      ? encodeDeltaFromSim(sim, tick, tick - 1, this.tracker, this.chunkSource)
+      : EMPTY_BYTES;
     this.tracker.commit(sim);
     sim.endTick();
 
-    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv);
+    this.broadcast(tick, deltaBytes, namesEnv, dropsEnv, frame);
     for (const l of this.tickListeners) {
-      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshot(this.withHeights(collectFullState(this.world, tick))) });
+      l({ tick, delta: deltaBytes, events, fullState: () => encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }) });
     }
     this.sweepGracePeriods();
     this.maybeHeartbeat();
+    if (this.border && tick % TICK_HZ === 0) this.updateBorders();
   }
 
   /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
@@ -1252,7 +1482,15 @@ export class Gateway {
       this.dropDisarmed(sim, hits);
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Hit, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          const h = hits[i];
+          if (this.interest) {
+            // Foes pin each other for 10 s (IM5): an attacker out of its victim's view stays visible.
+            const foe = sim.wireId(h.source) === r.playerEntity ? h.target : sim.wireId(h.target) === r.playerEntity ? h.source : -1;
+            if (foe >= 0) (r.combatPins ??= new Map()).set(sim.wireId(foe), this.tick + COMBAT_PIN_TICKS);
+          }
+          if (this.sees(r, h.source, h.target)) this.sendEnvelope(r, MessageType.Hit, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1386,7 +1624,9 @@ export class Gateway {
       }
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Life, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          if (this.sees(r, events[i].target, events[i].killer ?? -1)) this.sendEnvelope(r, MessageType.Life, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1410,7 +1650,7 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Ability, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) if (this.sees(r, events[i].entity)) this.sendEnvelope(r, MessageType.Ability, encodeControl(msgs[i]));
       }
       all.push(...msgs);
     }
@@ -1436,7 +1676,9 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) {
+          if (this.sees(r, events[i].source, ...(events[i].hits ?? []).map((h) => h.target))) this.sendEnvelope(r, MessageType.Telegraph, encodeControl(msgs[i]));
+        }
       }
       all.push(...msgs);
     }
@@ -1460,7 +1702,7 @@ export class Gateway {
       }));
       for (const r of this.sessions.values()) {
         if (!r.welcomed || r.playerEntity === null) continue;
-        for (const m of msgs) this.sendEnvelope(r, MessageType.Status, encodeControl(m));
+        for (let i = 0; i < msgs.length; i++) if (this.sees(r, changes[i].entity)) this.sendEnvelope(r, MessageType.Status, encodeControl(msgs[i]));
       }
       all.push(...msgs);
     }
@@ -1589,6 +1831,11 @@ export class Gateway {
       if (s.playerEntity === null || !s.character) continue;
       this.saveAvatar(this.world.resolveWireId(s.playerEntity));
       n++;
+      // Persistence P4: the same cadence writes uphill to the world
+      // tier, fenced by the session lock. Fire-and-forget: the sync
+      // never throws, and a fenced or failed write only degrades
+      // durability (logged there), never this save cycle.
+      if (this.worldCharacters) void this.worldCharacters.save(s.character.id);
     }
     return n;
   }
@@ -1673,12 +1920,26 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Bye, encodeControl(bye));
   }
 
-  /** The target region took the player: remove the avatar here, unsaved (it isn't ours to save). */
+  /**
+   * The target region took the player: remove the avatar here. (The
+   * entity state itself travels in the migration record.) In fleet
+   * mode (P4) this is also the migration commit point for the
+   * character's session lock: the avatar's final state is staged
+   * into the local store, committed uphill, and the lock releases
+   * here — so the destination can acquire it (fresh epoch) before
+   * the character is playable there. Fire-and-forget like the rest
+   * of the commit path; a failed release leaves the lock to expire.
+   */
   private handoffDrop(entityId: string): void {
     const s = this.handoffSession(entityId);
     if (!s || s.playerEntity === null) return;
+    if (this.worldCharacters && s.character) {
+      this.saveAvatar(this.world.resolveWireId(s.playerEntity));
+      void this.worldCharacters.logout(s.character.id);
+    }
     const eid = this.world.resolveWireId(s.playerEntity);
     this.mastery?.forget(eid);
+    this.forgetDuels(eid);
     this.world.despawn(parseWireEntityId(s.playerEntity).slot);
     s.playerEntity = null;
     this.handoffArrivals.delete(s.clientId);
@@ -1735,6 +1996,7 @@ export class Gateway {
       character: st.character ? { id: st.character.id, name: st.character.name } : null,
       isAdmin: this.devServer || this.admins.has(st.username),
       lastChatMs: {},
+      sectorTopic: null,
     };
     this.authSessions.rebind(s.token, s.clientId);
     const auth = this.authSessions.get(s.token);
@@ -1771,6 +2033,18 @@ export class Gateway {
       const a = this.handoffArrivals.get(s.clientId);
       if (!a || a.migrationId !== migrationId) continue;
       if (a.ticketHash !== hash) return null;
+      // Fleet mode (P4): the lock moves with the character. The
+      // destination acquires it (fresh epoch) and seeds its local
+      // cache from the world record here — after the migration
+      // commit, before the character is playable (this hello is what
+      // makes it playable). Refused (the source's release has not
+      // landed yet, or the world is unreachable): the hello fails
+      // like any other auth failure and the arrival stays parked,
+      // so a retry can complete the move.
+      if (this.worldCharacters && s.character) {
+        const res = await this.worldCharacters.login(s.character.id);
+        if (!res.ok) return null;
+      }
       this.handoffArrivals.delete(s.clientId);
       return s.token;
     }
@@ -1795,9 +2069,10 @@ export class Gateway {
     if (!st || !(st.health > 0)) return;
     if (!this.spawnOverridden) {
       const T = C.Transform;
-      T.px[eid] = st.x;
-      T.pz[eid] = st.z;
-      T.py[eid] = this.groundHeightAt?.(st.x, st.z) ?? st.y;
+      const at = clearOfStatics(this.world, st.x, st.z, CHARACTER_CAPSULE.radius);
+      T.px[eid] = at.x;
+      T.pz[eid] = at.z;
+      T.py[eid] = this.groundHeightAt?.(at.x, at.z) ?? st.y;
     }
     C.Health.current[eid] = Math.min(st.health, C.Health.max[eid]);
     C.Stamina.current[eid] = Math.min(st.stamina, C.Stamina.max[eid]);
@@ -1816,29 +2091,97 @@ export class Gateway {
    */
   respawnPlayer(sim: SimWorld, eid: number): boolean {
     if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
-    const x = this.spawnPoint.x;
-    const z = this.spawnPoint.z;
-    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ? this.groundHeightAt(x, z) : null);
+    let x = this.spawnPoint.x;
+    let z = this.spawnPoint.z;
+    if (this.respawnAnchors.length > 0) {
+      const px = C.Transform.px[eid];
+      const pz = C.Transform.pz[eid];
+      let bestDistSq = (px - x) ** 2 + (pz - z) ** 2;
+      for (const anchor of this.respawnAnchors) {
+        const dSq = (px - anchor.x) ** 2 + (pz - anchor.z) ** 2;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          x = anchor.x;
+          z = anchor.z;
+        }
+      }
+    }
+    const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ?? null);
     return r.ok;
   }
 
   /** Fan one tick's state out to every connected session (broadcast). */
-  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null): void {
+  private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
-    const deltaEnv = encodeEnvelope(MessageType.Delta, deltaBytes);
+    // IM2: every tick goes out as a DeltaSet; one global entry until
+    // interest management splits it per sector (IM3).
+    const deltaEnv = encodeEnvelope(
+      MessageType.DeltaSet,
+      encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
+    );
     let snapshotEnv: Uint8Array | undefined;
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(
         MessageType.Snapshot,
-        encodeSnapshot(this.withHeights(collectFullState(this.world, tick))),
+        encodeSnapshotFromSim(this.world, tick, { chunkSource: this.chunkSource }),
       ));
+
+    // Phase 5, Part A: on delta ticks, sessions with a sector
+    // subscription get the once-encoded delta via one publish per
+    // occupied sector topic instead of one send per socket. Snapshot
+    // ticks and resyncing sessions stay on the per-socket path: a
+    // snapshot is a per-session baseline, and a resyncing session must
+    // not receive a delta it has no baseline for. Without a live
+    // transport (tests driving frame() before listen()) there is no
+    // publish target, so everything falls back to per-socket sends.
+    const usePublish = !isSnapshotTick && this.sectorBroadcast && this.transport !== null;
+    const edge = frame && this.transport instanceof ChannelTransport ? this.transport : null;
+    const edgeBytes = new Map<string, Uint8Array>();
+    const edgePlans: EdgePlan[] = [];
+    const publishSectors = new Map<string, ClientSession[]>();
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
       if (namesEnv) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
-      if (isSnapshotTick || s.needsResync) {
+      if (frame) {
+        const replace = isSnapshotTick || s.needsResync || !s.interestSet;
+        const entries = this.interestEntries(s, frame, replace);
+        const sid = edge && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
+        if (sid !== undefined) {
+          // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
+          const plan: Array<[number, string, string]> = [];
+          for (const e of entries) {
+            const key = `${e.kind}:${e.sector}`;
+            if (e.kind !== DeltaSetKind.Leave) edgeBytes.set(key, e.bytes);
+            plan.push([e.kind, e.sector, key]);
+          }
+          edgePlans.push({ sid, replace, entries: plan });
+          if (replace) {
+            s.needsResync = false;
+            s.lastSnapshotTick = BigInt(tick);
+          }
+          s.lastAckedTick = BigInt(tick);
+        } else {
+          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace, entries }));
+          if (replace) this.deliverSnapshot(s, env, tick);
+          else this.deliver(s, env, tick);
+        }
+      } else if (isSnapshotTick || s.needsResync) {
+        // Leave the sector topic while resyncing: the next delta tick
+        // re-subscribes once the snapshot baseline is in place.
+        this.clearSectorSubscription(s);
         this.deliverSnapshot(s, snapshotFor(), tick);
+      } else if (usePublish) {
+        this.syncSectorSubscription(s);
+        if (s.sectorTopic) {
+          const members = publishSectors.get(s.sectorTopic);
+          if (members) members.push(s);
+          else publishSectors.set(s.sectorTopic, [s]);
+        } else {
+          // No sector (no player entity yet): per-socket, as before.
+          this.deliver(s, deltaEnv, tick);
+        }
       } else {
         this.deliver(s, deltaEnv, tick);
       }
@@ -1846,6 +2189,221 @@ export class Gateway {
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendMana(s, tick);
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
+    }
+
+    if (edge && edgePlans.length > 0) edge.sendSectors(tick, edgeBytes, edgePlans);
+
+    // One publish per occupied sector topic. Per-session messages
+    // (names/drops above) already flushed each member's queue through
+    // deliver(), so the published delta cannot overtake them.
+    for (const [topic, members] of publishSectors) {
+      this.transport!.publish(topic, deltaEnv);
+      for (const s of members) s.lastAckedTick = BigInt(tick);
+    }
+  }
+
+  /**
+   * Cross-region view (IM8): this region's id and ground, the fleet's shared
+   * key (WORLD_API_KEY) that signs and checks border tickets, and the live
+   * neighbours from the world's registry. server.ts refreshes it.
+   */
+  setBorders(self: { regionId: string; key: string; rect: RegionRect }, regions: Array<{ regionId: string; endpoint: string; rect: RegionRect }>): void {
+    this.border = self;
+    this.borderNeighbours = regions.filter((r) => r.regionId !== self.regionId);
+  }
+
+  /**
+   * IM8, home side: tell each player near a neighbour's ground where to
+   * observe it from (a ticket, renewed before it expires), and when to stop.
+   */
+  private updateBorders(): void {
+    const b = this.border!;
+    const r = this.interest ?? { enterM: 96, leaveM: 128 };
+    const nowS = Math.floor(Date.now() / 1000);
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || !s.socket || s.observer || s.playerEntity === null) continue;
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      const x = C.Transform.px[eid], z = C.Transform.pz[eid];
+      for (const n of this.borderNeighbours) {
+        const d = rectDistance(n.rect, x, z);
+        const exp = s.borders?.get(n.regionId);
+        if (d <= r.enterM && (exp === undefined || exp - nowS < BORDER_RENEW_S)) {
+          const e = nowS + BORDER_TICKET_S;
+          (s.borders ??= new Map()).set(n.regionId, e);
+          const msg: BorderMessage = { kind: "border", region: n.regionId, endpoint: n.endpoint, from: b.regionId, account: s.username, exp: e, ticket: borderTicket(b.key, n.regionId, b.regionId, s.username, e) };
+          this.sendEnvelope(s, MessageType.Border, encodeControl(msg));
+        } else if (exp !== undefined && d > r.leaveM) {
+          s.borders!.delete(n.regionId);
+          const msg: BorderMessage = { kind: "border", region: n.regionId, endpoint: n.endpoint, leave: true };
+          this.sendEnvelope(s, MessageType.Border, encodeControl(msg));
+        }
+      }
+    }
+  }
+
+  /** IM8, neighbour side: a home region's ticket for this region lets a read-only observer in. */
+  private acceptObserver(s: ClientSession, t: { region: string; from: string; account: string; exp: number; ticket: string }): void {
+    const b = this.border;
+    const home = this.borderNeighbours.find((n) => n.regionId === t.from);
+    const ok = b !== null && home !== undefined && this.interest !== null && t.region === b.regionId
+      && t.exp > Date.now() / 1000 && ticketOk(b.key, t.region, t.from, t.account, t.exp, t.ticket);
+    s.joining = false;
+    if (!ok) {
+      this.rateLimiter.recordFailure(s.remoteIp);
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    s.observer = { x: NaN, z: NaN, home: home!.rect };
+    s.welcomed = true;
+    s.interestSet = null;
+    const welcome: WelcomeMessage = {
+      protocol: PROTOCOL_VERSION,
+      player_entity: "0",
+      server_tick: this.tick,
+      tick_hz: TICK_HZ,
+      snapshot_every: this.opts.snapshotEveryTicks,
+      session_token: "",
+    };
+    this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
+  }
+
+  /** IM8: where the observer's player stands, clamped into its home region. */
+  private onObserve(s: ClientSession, payload: Uint8Array): void {
+    let m: { kind?: unknown; x?: unknown; z?: unknown };
+    try {
+      m = decodeControl(payload);
+    } catch {
+      return;
+    }
+    if (m.kind !== "observe" || typeof m.x !== "number" || typeof m.z !== "number" || !Number.isFinite(m.x) || !Number.isFinite(m.z)) return;
+    // ponytail: the anchor is client-reported, kept inside its home region, so it sees at most the
+    // strip a player at the border would; a home-signed anchor is the upgrade if that leaks too much.
+    const home = s.observer!.home;
+    s.observer = { ...clampInto(home, m.x, m.z), home };
+  }
+
+  /** IM5: the wire ids a session always sees: its party in this region and recent foes. */
+  private pinsOf(s: ClientSession): bigint[] {
+    const out: bigint[] = [];
+    const me = s.character?.name ?? s.username;
+    const mates = this.parties.partyOf(me);
+    if (mates.length > 0) {
+      const names = new Set(mates.map((n) => n.toLowerCase()));
+      for (const r of this.sessions.values()) {
+        if (r === s || r.playerEntity === null) continue;
+        if (names.has((r.character?.name ?? r.username).toLowerCase())) out.push(r.playerEntity);
+      }
+    }
+    if (s.combatPins) {
+      for (const [wid, until] of s.combatPins) {
+        if (until < this.tick) s.combatPins.delete(wid);
+        else out.push(wid);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Whether a session is told about events of these entities (IM5): with
+   * interest on, when one stands in its interest sectors or is pinned.
+   */
+  private sees(s: ClientSession, ...eids: number[]): boolean {
+    if (!this.interest || !s.interestSet) return true;
+    for (const eid of eids) {
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      if (s.interestSet.has(homeSector(this.world, eid))) return true;
+      const wid = this.world.wireId(eid);
+      if (wid === s.playerEntity || s.pinnedOut?.has(wid)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * One session's DeltaSet this tick (interest management): its interest
+   * sectors' shared bytes, full state for sectors it just entered (or all of
+   * them on a replace), and a leave for each it dropped.
+   */
+  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
+    const prev = replace ? null : (s.interestSet ?? null);
+    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    const next = s.observer
+      ? (Number.isFinite(s.observer.x) ? interestSectors(s.observer.x, s.observer.z, this.interest!, prev) : new Set([GLOBAL_SECTOR]))
+      : s.interestAll && s.isAdmin
+      ? frame.occupied()
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
+      ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
+      : new Set([GLOBAL_SECTOR]);
+    const entries: DeltaSetEntry[] = [];
+    for (const sector of next) {
+      if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
+      else {
+        const d = frame.delta(sector);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      }
+    }
+    if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    s.interestSet = next;
+    // Pinned (IM5): party members and recent foes, wherever they are.
+    const was = replace ? new Set<bigint>() : (s.pinnedOut ?? new Set<bigint>());
+    const out = new Set<bigint>();
+    const fresh: number[] = [], kept: number[] = [];
+    for (const wid of this.pinsOf(s)) {
+      const pe = this.world.resolveWireId(wid);
+      if (pe < 0 || next.has(homeSector(this.world, pe))) continue;
+      out.add(wid);
+      (was.has(wid) ? kept : fresh).push(pe);
+    }
+    const left: bigint[] = [];
+    for (const wid of was) {
+      if (out.has(wid)) continue;
+      const pe = this.world.resolveWireId(wid);
+      if (pe < 0 || !next.has(homeSector(this.world, pe))) left.push(wid);
+    }
+    s.pinnedOut = out;
+    if (fresh.length + kept.length + left.length > 0) {
+      entries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
+    }
+    return entries;
+  }
+
+  /**
+   * The topic a session's deltas are published on, or null when the session
+   * has no avatar in the world yet (its deltas go per-socket). While the delta
+   * is global every session shares one region topic, so a tick is one publish
+   * (IM1: through the edge, a publish per occupied sector was a channel copy
+   * each). Per-sector content comes with interest management (IM3).
+   */
+  private sectorTopicOf(s: ClientSession): string | null {
+    if (s.playerEntity === null) return null;
+    const eid = this.world.resolveWireId(s.playerEntity);
+    if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) return null;
+    return REGION_TOPIC;
+  }
+
+  /**
+   * Move a session's subscription onto its avatar's current sector
+   * (no-op when it hasn't crossed a boundary). Called on delta ticks
+   * only — snapshot ticks and resyncs go through deliverSnapshot.
+   */
+  private syncSectorSubscription(s: ClientSession): void {
+    if (!s.socket || !s.socket.isOpen) return;
+    const topic = this.sectorTopicOf(s);
+    if (topic === s.sectorTopic) return;
+    if (s.sectorTopic) s.socket.unsubscribe(s.sectorTopic);
+    s.sectorTopic = topic;
+    if (topic) s.socket.subscribe(topic);
+  }
+
+  /** Leave the subscribed sector topic, if any, and forget it. */
+  private clearSectorSubscription(s: ClientSession): void {
+    if (s.sectorTopic) {
+      try {
+        s.socket?.unsubscribe(s.sectorTopic);
+      } catch {
+        /* a dying socket's subscription dies with it */
+      }
+      s.sectorTopic = null;
     }
   }
 
@@ -2042,7 +2600,16 @@ export class Gateway {
         const eid = this.world.resolveWireId(s.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(slot);
+      }
+      // The grace period is over: this is the logout. Fleet mode
+      // (P4) commits the just-saved state uphill and releases the
+      // character's session lock — fire-and-forget, never blocking
+      // the sweep (an unreachable world leaves the local record as
+      // the fallback truth and the lock to expire on its own).
+      if (this.worldCharacters && s.character) {
+        void this.worldCharacters.logout(s.character.id);
       }
       this.tokenToClient.delete(s.token);
       this.sessions.delete(s.clientId);
@@ -2111,6 +2678,7 @@ export class Gateway {
       character: null,
       isAdmin: false,
       lastChatMs: {},
+      sectorTopic: null,
     };
     this.sessions.set(s.clientId, s);
     this.route(s, socket);
@@ -2128,20 +2696,34 @@ export class Gateway {
   }
 
   private onClose(s: ClientSession): void {
-    if (!s.welcomed) {
+    this.endCast(s);
+    if (!s.welcomed || s.observer) {
       // Never said hello: nothing to keep.
       this.sessions.delete(s.clientId);
       return;
     }
     // Park the session: the player entity survives the grace period so a
     // quick reconnect re-attaches seamlessly.
+    this.clearSectorSubscription(s); // the closing socket's subscription dies with it
     s.socket = null;
     s.sendQueue.length = 0;
     s.disconnectedAtMs = this.clock();
+    this.leaveDuel(s);
     this.partyOffline(s);
     this.guildOffline(s);
     this.friendPresence(s);
     this.extensionsLeave(s);
+  }
+
+  /** A disconnecting player's duel and challenges end (the opponent is told on 0x20). */
+  private leaveDuel(s: ClientSession): void {
+    if (s.playerEntity !== null) this.forgetDuels(this.world.resolveWireId(s.playerEntity));
+  }
+
+  /** End `eid`'s duel and drop its challenges (disconnect, logout, leaving the region). */
+  private forgetDuels(eid: number): void {
+    if (eid < 0) return;
+    for (const x of this.systems) if (x instanceof DuelSystem) x.forget(eid, this.tick);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -2151,12 +2733,18 @@ export class Gateway {
     } catch {
       /* ignore */
     }
+    if (s.observer) {
+      // An observer has nothing to keep through a grace period.
+      this.sessions.delete(s.clientId);
+      return;
+    }
     // The close event fires async; mark it now so a slow close can't
     // keep the session looking live.
     if (s.socket) {
       const sock = s.socket;
       s.socket = null;
       s.disconnectedAtMs = this.clock();
+      this.leaveDuel(s);
       this.partyOffline(s);
       this.guildOffline(s);
       this.friendPresence(s);
@@ -2175,6 +2763,12 @@ export class Gateway {
       ({ type, payload } = decodeEnvelope(buf));
     } catch {
       this.sendError(s, 4003, "bad envelope");
+      return;
+    }
+    if (s.observer) {
+      // IM8: an observer only reports where its player stands (and keeps the socket alive).
+      if (type === MessageType.Border) this.onObserve(s, payload);
+      else if (type === MessageType.Ping) this.sendEnvelope(s, MessageType.Pong, payload);
       return;
     }
     switch (type) {
@@ -2232,6 +2826,9 @@ export class Gateway {
         break;
       case MessageType.TileRequest:
         this.onTileRequest(s, payload);
+        break;
+      case MessageType.Interact:
+        this.onInteract(s, payload);
         break;
       case MessageType.CreateCharacter:
         this.contain(s, "create character", this.onCreateCharacter(s, payload));
@@ -2334,11 +2931,25 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, inspect, set, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
       res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(t) };
+    } else if (cmd.command === "residents") {
+      // {npc}: where that resident stands now (they exist only while a player is near their town).
+      const want = (cmd.args as { npc?: unknown } | undefined)?.npc;
+      if (typeof want === "string") {
+        const e = this.residents?.entityOf(want);
+        res = { kind: "admin", command: cmd.command, ok: e !== undefined, message: e === undefined ? "not in the world now" : JSON.stringify({ wire: String(this.world.wireId(e)), x: C.Transform.px[e], z: C.Transform.pz[e] }) };
+        if (e === undefined) {
+          this.logAdmin(s.username, cmd.command, false);
+          this.sendError(s, 4003, res.message);
+          return;
+        }
+      } else {
+        res = { kind: "admin", command: cmd.command, ok: true, message: JSON.stringify(this.residents?.summary() ?? { towns: [], live: 0, walking: 0 }) };
+      }
     } else if (cmd.command === "whoami") {
       res = {
         kind: "admin",
@@ -2360,6 +2971,20 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "addcomponent") {
+      res = this.runAddComponent(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "removecomponent") {
+      res = this.runRemoveComponent(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else if (cmd.command === "appearance") {
       res = this.runAppearance(s, cmd.args);
       if (!res.ok) {
@@ -2374,6 +2999,11 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "give" && this.atomicOps) {
+      // Slice A2 (fleet mode): the grant's commit is async (world
+      // tier); the handler answers and logs like the sync path does.
+      this.contain(s, "give", this.runItemGiveFleet(s, cmd.args));
+      return;
     } else if (cmd.command === "items" || cmd.command === "give" || cmd.command === "drop" || cmd.command === "loot" || cmd.command === "gold") {
       res = this.runItemCommand(s, cmd.command, cmd.args);
       if (!res.ok) {
@@ -2397,6 +3027,25 @@ export class Gateway {
       }
     } else if (cmd.command === "god") {
       res = this.runGodCommand(s, cmd.command, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "interest") {
+      // IM6: the play-mode debugger's "show everything / show what the player sees".
+      const mode = (cmd.args as { mode?: unknown } | undefined)?.mode;
+      if (mode !== "all" && mode !== "near") {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "interest: args.mode must be \"all\" or \"near\"");
+        return;
+      }
+      s.interestAll = mode === "all";
+      s.interestSet = null; // a full replace of the new view next tick
+      res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
+    } else if (cmd.command === "loglevel") {
+      const r = runLogLevelCommand(this.logger.ring, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -2532,6 +3181,48 @@ export class Gateway {
   }
 
   /**
+   * `addcomponent` (viewport authoring): give an entity a component it
+   * lacks, initialised to the component's defaults (admin/add-component
+   * owns the addable set). Args: {entity: "<u64>" | "me", component}.
+   * Adding a present component, a component with no defined defaults,
+   * and unknown entities/components read as errors, never throw.
+   */
+  private runAddComponent(s: ClientSession, args: unknown): AdminResult {
+    const parsed = AddComponentArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "addcomponent", ok: false, message: "usage: addcomponent {entity, component}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "addcomponent", ok: false, message: target.error };
+    }
+    const r = applyAddComponent(this.world, target.wireId, parsed.data.component);
+    if (!r.ok) return { kind: "admin", command: "addcomponent", ok: false, message: r.message };
+    return { kind: "admin", command: "addcomponent", ok: true, message: r.message };
+  }
+
+  /**
+   * `removecomponent` (viewport authoring): take a component off an
+   * entity, live — the inverse of `addcomponent` (the authoring
+   * unbind). Args: {entity: "<u64>" | "me", component}. Absent
+   * components, the toggle-owned tags (God / Noclip), and unknown
+   * entities/components read as errors, never throw.
+   */
+  private runRemoveComponent(s: ClientSession, args: unknown): AdminResult {
+    const parsed = RemoveComponentArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "removecomponent", ok: false, message: "usage: removecomponent {entity, component}" };
+    }
+    const target = this.resolveTarget(s, parsed.data.entity);
+    if ("error" in target) {
+      return { kind: "admin", command: "removecomponent", ok: false, message: target.error };
+    }
+    const r = applyRemoveComponent(this.world, target.wireId, parsed.data.component);
+    if (!r.ok) return { kind: "admin", command: "removecomponent", ok: false, message: r.message };
+    return { kind: "admin", command: "removecomponent", ok: true, message: r.message };
+  }
+
+  /**
    * `appearance` (roadmap A6): view and edit a character's look live.
    * Args: {entity: "<u64>" | "me", args: string[]}. Parts and colours are
    * validated against the character catalog; the change applies via
@@ -2611,7 +3302,7 @@ export class Gateway {
     }
     const built = buildSpawn(table, parsed.data.asset, x, y, z, parsed.data.yaw ?? 0);
     if ("error" in built) return { kind: "admin", command, ok: false, message: built.error };
-    const eid = spawnScatterEntity(this.world, built);
+    const eid = spawnScatterEntity(this.world, built, undefined, this.scale);
     return { kind: "admin", command, ok: true, message: `spawned ${parsed.data.asset} as ${this.world.wireId(eid)}` };
   }
 
@@ -2628,8 +3319,7 @@ export class Gateway {
       }
       const target = this.resolveTarget(s, parsed.data.entity);
       if ("error" in target) return { kind: "admin", command, ok: false, message: target.error };
-      const ground = this.groundHeightAt ? this.groundHeightAt(parsed.data.x, parsed.data.z) : null;
-      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, ground);
+      const r = applyTeleport(this.world, target.wireId, parsed.data.x, parsed.data.z, this.groundHeightAt ?? null);
       if (!r.ok) return { kind: "admin", command, ok: false, message: r.message };
       return { kind: "admin", command, ok: true, message: r.message };
     }
@@ -2714,8 +3404,7 @@ export class Gateway {
     if (this.adminLog.length > ADMIN_LOG_SIZE) {
       this.adminLog.splice(0, this.adminLog.length - ADMIN_LOG_SIZE);
     }
-    // eslint-disable-next-line no-console
-    console.log(`[admin] ${username} ${command} -> ${ok ? "ok" : "rejected"}`);
+    logAdminCommandExecuted(this.logger, username, command, ok ? "ok" : "rejected");
   }
 
   /** Recent admin commands, oldest first (a copy). */
@@ -2741,6 +3430,11 @@ export class Gateway {
       const raw = decodeControl<unknown>(payload);
       const ext = typeof raw === "object" && raw !== null ? this.extensions.get(String((raw as { kind?: unknown }).kind)) : undefined;
       if (ext) {
+        const op = (raw as { op?: unknown }).op;
+        if ((ext.kind === "quest" && op === "talk") || (ext.kind === "dungeon" && op === "enter")) {
+          this.sendError(s, 4003, "use interact (0x27)");
+          return;
+        }
         ext.onMessage(this.extensionPlayer(s), raw);
         return;
       }
@@ -2762,6 +3456,7 @@ export class Gateway {
       }
       const parsed = this.chatRules.ChatSchema.safeParse(raw);
       if (!parsed.success) throw new Error("bad shape");
+      if (this.social && parsed.data.text.length > this.social.chat.textMax) throw new Error("too long");
       text = parsed.data.text;
       channel = parsed.data.channel;
       to = parsed.data.to;
@@ -2774,8 +3469,9 @@ export class Gateway {
       return;
     }
     const now = this.clock();
-    const last = s.lastChatMs[channel] ?? -this.chatRules.CHAT_COOLDOWN_MS[channel] - 1;
-    if (now - last < this.chatRules.CHAT_COOLDOWN_MS[channel]) {
+    const cooldown = this.chatCooldownMs(channel);
+    const last = s.lastChatMs[channel] ?? -cooldown - 1;
+    if (now - last < cooldown) {
       this.sendError(s, 4003, "chat too fast");
       return;
     }
@@ -2851,7 +3547,8 @@ export class Gateway {
     }
     const sx = C.Transform.px[eid];
     const sz = C.Transform.pz[eid];
-    const range2 = this.chatRules.SAY_RANGE_M * this.chatRules.SAY_RANGE_M;
+    const range = this.social?.chat.sayRangeM ?? this.chatRules.SAY_RANGE_M;
+    const range2 = range * range;
     for (const r of this.sessions.values()) {
       if (!r.welcomed || r.playerEntity === null) continue;
       const reid = this.world.resolveWireId(r.playerEntity);
@@ -3012,6 +3709,31 @@ export class Gateway {
   }
 
   /** A server notice in the sender's chat (S2). */
+  /** A master townsperson gives a lesson (RS5 learn): bonus points by an S curve of the pupil's level, for gold, once a day. */
+  private teach(s: ClientSession, avatar: number, info: { npc: string; mastery?: string; grandMaster?: boolean }): void {
+    const l = this.lessons;
+    if (!l || !info.mastery || !this.mastery) return;
+    const skill = l.professions[info.mastery];
+    const i = skill === undefined ? -1 : this.mastery.index.of(skill);
+    if (i < 0) return;
+    const who = s.character?.id ?? -1;
+    const day = Math.floor(Date.now() / 86_400_000); // ponytail: a real day, not the game's; the game clock is not visible here
+    const key = `${who}/${info.npc}`;
+    if (this.lessonDay.get(key) === day) return this.sendSystem(s, "They have taught you what they can for today.");
+    const sheet = this.mastery.sheetOf(avatar);
+    const level = sheet.get(skill);
+    const max = this.mastery.index.rules.max;
+    const points = lessonPoints(l, level, max, info.grandMaster === true);
+    if (points <= 0) return this.sendSystem(s, `You have nothing left to learn about ${skill} from them.`);
+    const cost = lessonCost(l, level, max);
+    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    if (cost > 0 && (!wallet || !wallet.spend(this.holderOf(s), cost, this.tick))) return this.sendSystem(s, `A lesson in ${skill} costs ${cost} gold.`);
+    sheet.grant(i, points, Date.now());
+    this.lessonDay.set(key, day);
+    this.sendSystem(s, `A lesson in ${skill} (${cost} gold): +${points.toFixed(1)}.`);
+    if (wallet) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
+  }
+
   private sendSystem(s: ClientSession, text: string): void {
     const msg: ChatBroadcast = { kind: "chat", channel: "system", text, from: "", entity: "" };
     this.sendEnvelope(s, MessageType.Chat, encodeControl(msg));
@@ -3176,10 +3898,7 @@ export class Gateway {
     void this.authenticate(s, payload)
       .catch((err: unknown) => {
         // Defense in depth: a store/argon2 failure must not kill the pump.
-        // eslint-disable-next-line no-console
-        console.error(
-          `[gateway] auth error: ${err instanceof Error ? err.message : err}`,
-        );
+        logGatewayAuthError(this.logger, err instanceof Error ? err.message : String(err));
         this.sendErrorAndClose(s, 4004, "internal auth error");
       })
       .finally(() => {
@@ -3238,6 +3957,11 @@ export class Gateway {
       return;
     }
 
+    if (parsed.kind === "observe") {
+      this.acceptObserver(s, parsed.value.observe);
+      return;
+    }
+
     // Narrowed by parsed.kind: credentials vs token variant.
     const clientLabel = JSON.stringify(parsed.value.client);
     let sessionToken: string;
@@ -3250,8 +3974,7 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = this.authSessions.create(s.clientId, username);
-      // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=password`);
+      logGatewayHelloPassword(this.logger, clientLabel);
     } else if (parsed.kind === "migration") {
       const token = await this.handoffArrive(parsed.value.migration, parsed.value.ticket);
       if (!token) {
@@ -3261,8 +3984,7 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = token;
-      // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=migration`);
+      logGatewayHelloMigration(this.logger, clientLabel);
     } else {
       const sess = this.authSessions.get(parsed.value.token);
       if (!sess) {
@@ -3272,8 +3994,7 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = sess.token;
-      // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=token`);
+      logGatewayHelloToken(this.logger, clientLabel);
     }
 
     await this.joinWithSession(s, sessionToken, parsed.value.characters === true);
@@ -3324,6 +4045,10 @@ export class Gateway {
     s.isAdmin = this.devServer || this.admins.has(auth.username);
     // A session that already entered as a character re-enters as it.
     if (auth.character) {
+      if (!(await this.prepareCharacterEntry(auth.character))) {
+        this.sendErrorAndClose(s, 4002, "auth failed");
+        return;
+      }
       this.enterWorld(s, auth.character);
       return;
     }
@@ -3335,7 +4060,12 @@ export class Gateway {
     // No choice asked for: the account's first character, if any.
     const [first] = await this.characterStore.list(s.username);
     if (!this.sessions.has(s.clientId)) return;
-    this.enterWorld(s, first ? this.remember(s, first) : null);
+    const chosen = first ? this.remember(s, first) : null;
+    if (!(await this.prepareCharacterEntry(chosen))) {
+      this.sendErrorAndClose(s, 4002, "auth failed");
+      return;
+    }
+    this.enterWorld(s, chosen);
   }
 
   /** Record `c` as the character of the session's token (see AuthSession.character). */
@@ -3344,6 +4074,21 @@ export class Gateway {
     const auth = this.authSessions.get(s.token);
     if (auth) auth.character = character;
     return character;
+  }
+
+  /**
+   * Persistence P4 (fleet mode): acquire the character's world
+   * session lock and seed the local store from the world record —
+   * both BEFORE the character is playable (enterWorld). True when
+   * the character may enter (always true standalone, and for sessions
+   * without a character). On refusal the caller answers through the
+   * join path's existing error semantics (4002 on a hello, 4005 on
+   * enter_world) — there is no parallel auth path.
+   */
+  private async prepareCharacterEntry(character: { id: number } | null): Promise<boolean> {
+    if (!character || !this.worldCharacters) return true;
+    const res = await this.worldCharacters.login(character.id);
+    return res.ok;
   }
 
   /**
@@ -3387,6 +4132,7 @@ export class Gateway {
         const eid = this.world.resolveWireId(other.playerEntity);
         this.saveAvatar(eid);
         this.mastery?.forget(eid);
+        this.forgetDuels(eid);
         this.world.despawn(parseWireEntityId(other.playerEntity).slot);
       }
       other.playerEntity = null;
@@ -3424,8 +4170,7 @@ export class Gateway {
   /** Run an async handler; a store failure answers 4004 and never kills the pump. */
   private contain(s: ClientSession, what: string, work: Promise<void>): void {
     void work.catch((err: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error(`[gateway] ${what} error: ${err instanceof Error ? err.message : err}`);
+      logGatewayContainedError(this.logger, what, err instanceof Error ? err.message : String(err));
       this.sendError(s, 4004, `internal error (${what})`);
     });
   }
@@ -3464,8 +4209,7 @@ export class Gateway {
       }
       throw err;
     }
-    // eslint-disable-next-line no-console
-    console.log(`[gateway] character created user=${JSON.stringify(s.username)} name=${JSON.stringify(record.name)}`);
+    logGatewayCharacterCreated(this.logger, s.username, record.name);
     await this.sendAccount(s, record.id);
   }
 
@@ -3493,6 +4237,14 @@ export class Gateway {
       this.sendError(s, 4005, "no such character");
       return;
     }
+    // Fleet mode (P4): the world session lock gates entry; a live
+    // holder elsewhere refuses here, in character selection, so the
+    // player can pick another character.
+    if (!(await this.prepareCharacterEntry(record))) {
+      this.sendError(s, 4005, "that character is already in the world elsewhere");
+      return;
+    }
+    if (!this.sessions.has(s.clientId) || !s.choosingCharacter) return;
     this.enterWorld(s, this.remember(s, record));
   }
 
@@ -3507,10 +4259,7 @@ export class Gateway {
     void this.registerAccount(s, payload)
       .catch((err: unknown) => {
         // Defense in depth: a store/argon2 failure must not kill the pump.
-        // eslint-disable-next-line no-console
-        console.error(
-          `[gateway] register error: ${err instanceof Error ? err.message : err}`,
-        );
+        logGatewayRegisterError(this.logger, err instanceof Error ? err.message : String(err));
         this.sendErrorAndClose(s, 4004, "internal auth error");
       })
       .finally(() => {
@@ -3587,10 +4336,7 @@ export class Gateway {
     }
     this.rateLimiter.recordSuccess(s.remoteIp);
     const sessionToken = this.authSessions.create(s.clientId, username);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[gateway] register client=${JSON.stringify(client)} user=${JSON.stringify(username)}`,
-    );
+    logGatewayRegisterSuccess(this.logger, JSON.stringify(client), username);
     await this.joinWithSession(s, sessionToken, characters === true);
   }
 
@@ -3617,6 +4363,10 @@ export class Gateway {
    */
   private attachSocket(s: ClientSession, socket: WireSocket): void {
     const old = s.socket;
+    // The old socket holds the sector subscription (if any): leave the
+    // topic before it is replaced, so the new socket re-subscribes
+    // cleanly on the next delta tick.
+    if (old) this.clearSectorSubscription(s);
     s.socket = socket;
     s.disconnectedAtMs = null;
     s.missedHeartbeats = 0;
@@ -3725,6 +4475,23 @@ export class Gateway {
     s.lastIntentTick = clientTick;
     const { slot } = parseWireEntityId(entity);
     this.world.queueIntent(slot, intent);
+
+    if (this.dataPlaneQueue) {
+      let actionCode = 0;
+      if (intent.mz > 0.1) actionCode |= INTENT_FLAGS.FORWARD;
+      if (intent.mz < -0.1) actionCode |= INTENT_FLAGS.BACKWARD;
+      if (intent.mx > 0.1) actionCode |= INTENT_FLAGS.RIGHT;
+      if (intent.mx < -0.1) actionCode |= INTENT_FLAGS.LEFT;
+      if (intent.my > 0.1) actionCode |= INTENT_FLAGS.UP;
+      if (intent.my < -0.1) actionCode |= INTENT_FLAGS.DOWN;
+      if ((intent.buttons & 1) !== 0) actionCode |= INTENT_FLAGS.SPRINT;
+      const token = packCommandToken(slot, actionCode);
+      if (this.dataPlaneQueue.enqueue(token)) {
+        this.dataPlaneEnqueuedIntents++;
+      } else {
+        this.dataPlaneDroppedIntents++;
+      }
+    }
   }
 
   // ------------------------------------------------------------ outbound
@@ -3812,13 +4579,25 @@ export class Gateway {
     if (names) this.deliver(s, names, this.tick);
     const drops = this.dropsFor(null);
     if (drops) this.deliver(s, drops, this.tick);
+    // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
+    const gathering = this.gathering;
+    const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world, (e) => this.residents?.isResident(e) === true) ?? [])];
+    if (targets.length > 0) this.sendEnvelope(s, MessageType.Interact, encodeControl({ kind: "chests", chests: targets } satisfies ChestsMessage));
+    if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
+    if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
+    // The player's gold (catalog 0x21): on join too, not only when it changes.
+    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
+    if (this.interest) {
+      // Interest management: the next tick sends a full replace of what this session sees.
+      s.interestSet = null;
+      return;
+    }
     this.deliverSnapshot(
       s,
       encodeEnvelope(
         MessageType.Snapshot,
-        encodeSnapshot(
-          this.withHeights(collectFullState(this.world, this.tick)),
-        ),
+        encodeSnapshotFromSim(this.world, this.tick, { chunkSource: this.chunkSource }),
       ),
       this.tick,
     );
@@ -4056,9 +4835,345 @@ export class Gateway {
       this.sendError(s, 4003, "malformed trade");
       return;
     }
-    if (kind === "vendor") this.onVendor(s, payload);
-    else if (kind === "auction") this.onAuction(s, payload);
-    else this.onTrade(s, payload);
+    // Slice A2 (fleet mode): the commit actions (a completing trade
+    // accept, a vendor buy/sell, an auction buyout) go through the
+    // async world-tier handlers; every other action is handled by
+    // the ordinary synchronous handlers, exactly as standalone.
+    if (kind === "vendor") {
+      if (this.atomicOps) this.contain(s, "vendor", this.onVendorFleet(s, payload));
+      else this.onVendor(s, payload);
+    } else if (kind === "auction") {
+      if (this.atomicOps) this.contain(s, "auction", this.onAuctionFleet(s, payload));
+      else this.onAuction(s, payload);
+    } else {
+      if (this.atomicOps) this.contain(s, "trade", this.onTradeFleet(s, payload));
+      else this.onTrade(s, payload);
+    }
+  }
+
+  /**
+   * The refusal text for a settled world rejection (slice A2): the
+   * typed rejection surfaces through the gateway's existing 4005
+   * refusal semantics, in the vocabulary the local paths use where
+   * one exists.
+   */
+  private atomicRefusal(result: AtomicOpResult & { ok: false }): string {
+    switch (result.rejection) {
+      case "INSUFFICIENT_FUNDS":
+        return "not enough gold";
+      case "ITEM_NOT_PRESENT":
+        return "that item is not there";
+      default:
+        return `refused by the world (${result.rejection}: ${result.message})`;
+    }
+  }
+
+  /**
+   * Trade in fleet mode (slice A2): open/offer/cancel and a
+   * non-completing accept are region-side negotiation and run
+   * through the ordinary handler. A COMPLETING accept routes the
+   * settlement through the world-tier `tradeCommit`: on success the
+   * trade closes as settled (its event and the wallet changes drain
+   * on the next tick as usual) with the local caches already
+   * reconciled to the world records; on a rejection or an outage
+   * the trade cancels — the existing failed-settlement semantics —
+   * and nothing has moved anywhere.
+   */
+  private async onTradeFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    if (!trade || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "trade outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed trade");
+      return;
+    }
+    const parsed = TradeActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action !== "accept" || parsed.data.id === undefined) {
+      this.onTrade(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    const id = parsed.data.id;
+    const t = trade.pending(id);
+    if (!t || (me !== t.a && me !== t.b)) {
+      this.sendError(s, 4005, "nothing to accept");
+      return;
+    }
+    const otherAccepted = me === t.a ? t.bAccepted : t.aAccepted;
+    if (!otherAccepted) {
+      // Not the completing accept: record it locally, as standalone.
+      trade.accept(id, me, tick);
+      return;
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.trade({
+        a: t.a,
+        b: t.b,
+        aGivesGold: t.aGold,
+        bGivesGold: t.bGold,
+        aGivesItems: t.aItems.map(itemInstanceId),
+        bGivesItems: t.bItems.map(itemInstanceId),
+      });
+    } catch {
+      trade.failSettlement(id, tick);
+      this.sendError(s, 4005, "trade refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      trade.failSettlement(id, tick);
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    trade.settleFromWorld(id, tick);
+    this.sendInventory(s);
+    const other = this.sessionOf(me === t.a ? t.b : t.a);
+    if (other) this.sendInventory(other);
+  }
+
+  /**
+   * Vendor in fleet mode (slice A2): `list` is region-side and runs
+   * through the ordinary handler. Buy and sell validate region-side
+   * (the system's terms checks, the wallet balance, bag room), then
+   * route the value movement through the world-tier
+   * `vendorTransact`; the settled outcome reconciles the buyer's
+   * gold and bag before the usual vendor/inventory messages go out.
+   * A rejection or an outage refuses with 4005 and moves nothing —
+   * the pre-allocated purchase item is destroyed, never bagged.
+   */
+  private async onVendorFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    if (!vendor || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "vendor outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed vendor");
+      return;
+    }
+    const parsed = VendorActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action === "list") {
+      this.onVendor(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const sim = this.world;
+    const me = sim.resolveWireId(s.playerEntity);
+    if (me < 0) return;
+    const meChar = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.vendor === undefined) {
+      this.sendError(s, 4003, "vendor action needs a vendor");
+      return;
+    }
+    let vEntity = -1;
+    try {
+      vEntity = sim.resolveWireId(BigInt(parsed.data.vendor));
+    } catch {
+      vEntity = -1;
+    }
+    if (vEntity < 0) {
+      this.sendError(s, 4005, "no such vendor");
+      return;
+    }
+    const wire = parsed.data.vendor;
+    const wallet = this.systems.find((x): x is WalletSystem => x instanceof WalletSystem);
+    if (parsed.data.action === "buy") {
+      if (parsed.data.def === undefined) {
+        this.sendError(s, 4003, "buy needs a def");
+        return;
+      }
+      const def = parsed.data.def;
+      const terms = vendor.buyTerms(sim, me, vEntity, def);
+      if ("error" in terms) {
+        this.sendError(s, 4005, terms.error);
+        return;
+      }
+      if (!wallet || wallet.balanceOf(meChar) < terms.price) {
+        this.sendError(s, 4005, "not enough gold");
+        return;
+      }
+      if (!this.items || !this.items.store.hasRoom(meChar)) {
+        this.sendError(s, 4005, "your bag is full");
+        return;
+      }
+      // Allocate the purchased item's identity locally (Free state,
+      // in no bag): the world grant and the local item share it, and
+      // a failed commit destroys it without ever bagging it.
+      const item = this.items.store.create(def, this.items.defs.durability[def]);
+      let result: AtomicOpResult;
+      try {
+        result = await this.atomicOps!.vendor({
+          character: meChar,
+          vendorId: terms.vendorId,
+          direction: "buy",
+          def,
+          price: terms.price,
+          instanceId: itemInstanceId(item),
+        });
+      } catch {
+        this.items.store.destroy(item);
+        this.sendError(s, 4005, "vendor refused: the world tier is unreachable");
+        return;
+      }
+      if (!result.ok) {
+        this.items.store.destroy(item);
+        this.sendError(s, 4005, this.atomicRefusal(result));
+        return;
+      }
+      vendor.commitBuyStock(terms.vendorId, def);
+      const m: VendorMessage = {
+        kind: "vendor",
+        tick,
+        vendor: wire,
+        state: "bought",
+        def,
+        price: terms.price,
+      };
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+      this.sendInventory(s);
+      return;
+    }
+    // sell
+    if (parsed.data.item === undefined) {
+      this.sendError(s, 4003, "sell needs an item");
+      return;
+    }
+    const item = parsed.data.item;
+    const terms = vendor.sellTerms(sim, me, vEntity, item);
+    if ("error" in terms) {
+      this.sendError(s, 4005, terms.error);
+      return;
+    }
+    if (!this.items || !this.items.store.inBagOf(meChar, item)) {
+      this.sendError(s, 4005, "you don't have that");
+      return;
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.vendor({
+        character: meChar,
+        vendorId: terms.vendorId,
+        direction: "sell",
+        def: terms.def,
+        price: terms.price,
+        instanceId: itemInstanceId(item),
+      });
+    } catch {
+      this.sendError(s, 4005, "vendor refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    const m: VendorMessage = {
+      kind: "vendor",
+      tick,
+      vendor: wire,
+      state: "sold",
+      item,
+    };
+    this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    this.sendInventory(s);
+  }
+
+  /**
+   * Auction in fleet mode (slice A2): browse/list/bid/cancel are
+   * region-side negotiation and run through the ordinary handler.
+   * A buyout validates region-side, then routes the settlement
+   * through the world-tier `auctionSettle` (buyer pays the full
+   * price, seller receives it net of the same 5% house cut a local
+   * settle takes — fleet auction parity). When the buyer is their own top bidder,
+   * their escrow is first released locally and the made-whole
+   * balance uploaded, so the world charges the full price exactly
+   * once. A rejection or an outage refuses with 4005; the listing
+   * stays live and no value has moved.
+   */
+  private async onAuctionFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
+    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    if (!auction || !s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "auction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed auction");
+      return;
+    }
+    const parsed = AuctionActionSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.action !== "buyout") {
+      this.onAuction(s, payload);
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const me = this.holderOf(s);
+    const tick = this.tick;
+    if (parsed.data.listing === undefined) {
+      this.sendError(s, 4003, "buyout needs a listing");
+      return;
+    }
+    const terms = auction.buyoutTerms(me, parsed.data.listing, tick);
+    if ("error" in terms) {
+      this.sendError(s, 4005, terms.error);
+      return;
+    }
+    const l = terms.listing;
+    if (l.topBidder === me && l.topBid > 0) {
+      auction.releaseEscrow(l.id, tick);
+      if (this.worldCharacters) await this.worldCharacters.save(me);
+    }
+    let result: AtomicOpResult;
+    try {
+      result = await this.atomicOps!.auction({
+        buyer: me,
+        seller: l.seller,
+        instanceId: itemInstanceId(l.item),
+        price: l.buyout,
+      });
+    } catch {
+      this.sendError(s, 4005, "auction refused: the world tier is unreachable");
+      return;
+    }
+    if (!result.ok) {
+      this.sendError(s, 4005, this.atomicRefusal(result));
+      return;
+    }
+    auction.settleFromWorld(l.id, me, tick);
+    const tell = (m: AuctionMessage): void => {
+      this.sendEnvelope(s, MessageType.Trade, encodeControl(m));
+    };
+    tell({ kind: "auction", tick, state: "sold", listing: undefined });
+    this.sendInventory(s);
+    const seller = this.sessionOf(l.seller);
+    if (seller) this.sendInventory(seller);
   }
 
   /**
@@ -4463,15 +5578,7 @@ export class Gateway {
       this.sendError(s, 4003, "malformed item action");
       return;
     }
-    // Pickup requests share the session's pickup bucket (roadmap T1):
-    // past it the request is dropped and counted, never reaching the
-    // item service. Other bag actions are bag-local and stay unthrottled.
-    if (parsed.data.action === "pickup" && !this.takeToken(s, "pickup")) {
-      s.droppedPickups += 1;
-      this.droppedByRateLimitPickups += 1;
-      this.noteViolation(s);
-      return;
-    }
+    // Bag actions are bag-local and stay unthrottled (picking up is interact, 0x27).
     const avatar = this.world.resolveWireId(s.playerEntity);
     if (avatar < 0) {
       this.sendError(s, 4005, "no avatar");
@@ -4480,11 +5587,37 @@ export class Gateway {
     const holder = this.holderOf(s);
     const a = parsed.data;
     let result;
-    if (a.action === "pickup") {
-      const entity = parseEntityArg(a.entity);
-      result = entity === null ? { ok: false as const, error: "nothing to pick up there" } : this.items.pickup(this.world, holder, avatar, entity);
-    } else if (a.action === "drop") {
+    if (a.action === "drop") {
       result = this.items.dropFromBag(this.world, holder, avatar, a.item);
+    } else if (a.action === "use") {
+      const items = this.items;
+      const apply = (av: number) => (nourish: number, quench: number, dryRun: boolean): boolean => {
+        if (!hasComponent(this.world.ecs, C.Needs, av)) return false;
+        const hungry = nourish > 0 && C.Needs.hunger[av] < C.Needs.hungerMax[av];
+        const thirsty = quench > 0 && C.Needs.thirst[av] < C.Needs.thirstMax[av];
+        if (!dryRun && hungry) C.Needs.hunger[av] = Math.min(C.Needs.hungerMax[av], C.Needs.hunger[av] + nourish);
+        if (!dryRun && thirsty) C.Needs.thirst[av] = Math.min(C.Needs.thirstMax[av], C.Needs.thirst[av] + quench);
+        return hungry || thirsty;
+      };
+      if (this.casts.has(s)) return; // already casting one
+      if (this.eatSeconds > 0) {
+        // Eating takes a moment: checked now, done when the bar fills (a move or a blow cancels it).
+        const check = items.consume(holder, a.item, apply(avatar), true);
+        if (!check.ok) {
+          this.sendError(s, 4005, check.error);
+          return;
+        }
+        this.beginCast(s, avatar, check.message.startsWith("ate") ? "eat" : "drink", this.eatSeconds, (av) => {
+          const done = items.consume(holder, a.item, apply(av));
+          if (!done.ok) {
+            this.sendError(s, 4005, done.error);
+            return;
+          }
+          this.sendInventory(s);
+        });
+        return;
+      }
+      result = items.consume(holder, a.item, apply(avatar));
     } else if (a.action === "equip") {
       // A maimed or lost hand (M3) can't take hold of anything.
       const hands = this.body?.has(this.world, avatar) ? this.items.handsFor(holder, a.item) : null;
@@ -4498,8 +5631,7 @@ export class Gateway {
       this.sendError(s, 4005, result.error);
       return;
     }
-    if (a.action === "pickup") this.telemetry.pickup();
-    else if (a.action === "drop") this.telemetry.drop();
+    if (a.action === "drop") this.telemetry.drop();
     this.refreshAvatarLook(avatar, holder);
     this.sendInventory(s);
   }
@@ -4529,6 +5661,225 @@ export class Gateway {
     this.sendEnvelope(s, MessageType.Inventory, encodeControl(this.items.inventoryOf(this.holderOf(s))));
   }
 
+  /** The server's gathering system (resource nodes and pouches), if it runs one. */
+  private get gathering(): GatheringSystem | undefined {
+    return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
+  }
+
+  /** The server's world chests, if it runs any. */
+  private get chests(): ChestSystem | undefined {
+    return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
+  }
+
+  /** The server's settlement residents (E talks to one), if it runs any. */
+  private get residents(): ResidentSystem | undefined {
+    return this.systems.find((g): g is ResidentSystem => g instanceof ResidentSystem);
+  }
+
+  /** The server's vendors (E opens a shop), if it runs any. */
+  private get vendors(): VendorSystem | undefined {
+    return this.systems.find((g): g is VendorSystem => g instanceof VendorSystem);
+  }
+
+  /** The server's breakable props (ruins can be mended), if it runs any. */
+  private get breaks(): BreakSystem | undefined {
+    return this.systems.find((g): g is BreakSystem => g instanceof BreakSystem);
+  }
+
+  /** Tell every player in the world about the chests, doors and ruins that changed this tick (catalog 0x27). */
+  private sendChests(sim: SimWorld): void {
+    const list = [...(this.chests?.drainChanges(sim) ?? []), ...(this.breaks?.drainChanges(sim) ?? [])];
+    if (list.length === 0) return;
+    const bytes = encodeControl({ kind: "chests", chests: list } satisfies ChestsMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Interact, bytes);
+  }
+
+  /**
+   * Interact (catalog 0x27): the one request for everything E does. In-world
+   * sessions only; a bad shape is 4003, a refusal 4005. Shares the pickup
+   * rate limit. The target is a wire entity (a world chest, a ground item,
+   * a resource node) or a content id (a quest giver, a dungeon entrance).
+   */
+  private onInteract(s: ClientSession, payload: Uint8Array): void {
+    if (!s.welcomed || s.playerEntity === null) {
+      this.sendError(s, 4003, "interaction outside the world");
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = decodeControl<unknown>(payload);
+    } catch {
+      this.sendError(s, 4003, "malformed interact");
+      return;
+    }
+    const parsed = InteractActionSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.sendError(s, 4003, "malformed interact");
+      return;
+    }
+    if (!this.takeToken(s, "pickup")) {
+      s.droppedPickups += 1;
+      this.droppedByRateLimitPickups += 1;
+      this.noteViolation(s);
+      return;
+    }
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) {
+      this.sendError(s, 4005, "no avatar");
+      return;
+    }
+    const a = parsed.data;
+    // Content targets are not entities: the quest and dungeon extensions take them.
+    if ("npc" in a || "entrance" in a) {
+      const ext = this.extensions.get("npc" in a ? "quest" : "dungeon");
+      if (!ext) return this.sendError(s, 4005, "nothing to use there");
+      ext.onMessage(this.extensionPlayer(s), "npc" in a ? { kind: "quest", op: "talk", npc: a.npc } : { kind: "dungeon", op: "enter", entrance: a.entrance });
+      return;
+    }
+    const wire = parseEntityArg(a.entity);
+    const eid = wire === null ? -1 : this.world.resolveWireId(wire);
+    const holder = this.holderOf(s);
+    if (eid >= 0 && this.residents?.describe(eid)) {
+      // A resident of a town answers with a line made for who they are, the hour and the day (quest dialog channel, no replies).
+      const dx = C.Transform.px[eid]! - C.Transform.px[avatar]!;
+      const dz = C.Transform.pz[eid]! - C.Transform.pz[avatar]!;
+      if (dx * dx + dz * dz > 16) return this.sendError(s, 4005, "too far away");
+      const talk = this.residents!.talk(eid, this.tick);
+      if (!talk) return this.sendError(s, 4005, "they have nothing to say");
+      // A townsperson who gives quests opens that dialog instead of their usual line (RS5 quest).
+      const questExt = this.extensions.get("quest") as unknown as { npcOfResident?(r: string): string | undefined; talkAt?(p: ExtensionPlayer, npc: string): void } | undefined;
+      const giver = questExt?.npcOfResident?.(talk.npc);
+      if (giver !== undefined && questExt?.talkAt) {
+        questExt.talkAt(this.extensionPlayer(s), giver);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Chat, encodeControl({ kind: "dialog", npc: talk.npc, name: talk.name, text: talk.text, replies: [] }));
+      this.teach(s, avatar, this.residents.describe(eid)!);
+      // A shopkeeper (RS5 trade) also opens their shop.
+      if (this.vendors?.vendorOf(eid)) this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
+    } else if (eid >= 0 && this.vendors?.vendorOf(eid)) {
+      // A shop: the same list the vendor action answers with; buying and selling stay on 0x21.
+      this.onVendor(s, encodeControl({ kind: "vendor", action: "list", vendor: String(wire) }));
+    } else if (eid >= 0 && this.breaks?.hasRuin(eid)) {
+      const breaks = this.breaks;
+      if (this.casts.has(s)) return; // already casting one
+      const check = breaks.checkRepair(holder, avatar, eid);
+      if (!check.ok) return this.sendError(s, 4005, check.error);
+      this.beginCast(s, avatar, check.spell, check.castSeconds, (av) => {
+        const result = breaks.repair(this.world, holder, av, eid);
+        if (!result.ok) this.sendError(s, 4005, result.error);
+      });
+    } else if (eid >= 0 && this.chests?.has(eid)) {
+      const chests = this.chests;
+      if (this.casts.has(s)) return; // already casting one
+      const check = chests.check(this.world, holder, avatar, eid);
+      if (!check.ok) return this.sendError(s, 4005, check.error);
+      this.beginCast(s, avatar, check.spell, check.castSeconds, (av) => {
+        const result = chests.open(this.world, holder, av, eid);
+        if (!result.ok) this.sendError(s, 4005, result.error);
+      });
+    } else if (eid >= 0 && this.gathering?.has(eid)) {
+      this.startGather(s, this.gathering, holder, avatar, eid);
+    } else if (this.items) {
+      const result = wire === null ? { ok: false as const, error: "nothing to use there" } : this.items.pickup(this.world, holder, avatar, wire);
+      if (!result.ok) return this.sendError(s, 4005, result.error);
+      this.telemetry.pickup();
+      this.refreshAvatarLook(avatar, holder);
+      this.sendInventory(s);
+    } else {
+      this.sendError(s, 4005, "nothing to use there");
+    }
+  }
+
+  /** Tell every player in the world about the resource nodes that changed this tick (catalog 0x24). */
+  private sendResources(sim: SimWorld): void {
+    const nodes = this.gathering?.drainChanges(sim) ?? [];
+    if (nodes.length === 0) return;
+    const bytes = encodeControl({ kind: "resources", nodes } satisfies ResourcesMessage);
+    for (const r of this.sessions.values()) if (r.welcomed && r.playerEntity !== null) this.sendEnvelope(r, MessageType.Gather, bytes);
+  }
+
+  /**
+   * Gather once from a resource node: the gather is checked up front, the
+   * cast bar runs for `castSeconds`, and the real gather re-checks reach,
+   * stock and pouch when the bar fills. A gather answers with the whole
+   * pouch (catalog 0x24), naming what was added.
+   */
+  private startGather(s: ClientSession, gathering: GatheringSystem, holder: number, avatar: number, node: number): void {
+    if (this.casts.has(s)) return; // already casting one
+    const check = gathering.gather(this.world, holder, avatar, node, true);
+    if (!check.ok) {
+      this.sendError(s, 4005, check.error);
+      return;
+    }
+    this.beginCast(s, avatar, "gather", gathering.castSeconds, (av) => {
+      const result = gathering.gather(this.world, holder, av, node);
+      if (!result.ok) {
+        this.sendError(s, 4005, result.error);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(holder, { material: result.material, name: result.name, count: result.count })));
+    });
+  }
+
+  /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
+  private readonly eatSeconds: number;
+  private readonly lessons: Lessons | null;
+  /** The game day a pupil last took a lesson from a master, by character and npc. */
+  private readonly lessonDay = new Map<string, number>();
+
+  /** Interaction casts under way, one per session: the timer, where the player stood and their health when it began. */
+  private readonly casts = new Map<ClientSession, { timer: ReturnType<typeof setTimeout>; x: number; z: number; hp: number; spell: string; avatar: number }>();
+
+  /**
+   * Run an interaction that takes `seconds` (0: at once): the cast bar starts
+   * now, `finish` runs with the avatar when it fills. A move of more than
+   * 0.3 m, a blow, a move of their own or a death cancels it (checkCasts).
+   */
+  private beginCast(s: ClientSession, avatar: number, spell: string, seconds: number, finish: (avatar: number) => void): void {
+    const done = (): void => {
+      this.casts.delete(s);
+      const av = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      if (av < 0) return;
+      this.sendCastEvent(s, "done", av, spell);
+      finish(av);
+    };
+    if (seconds <= 0) return done();
+    this.sendCastEvent(s, "started", avatar, spell, seconds);
+    this.casts.set(s, { timer: setTimeout(done, seconds * 1000), x: C.Transform.px[avatar], z: C.Transform.pz[avatar], hp: C.Health.current[avatar], spell, avatar });
+  }
+
+  /** Stop a session's cast without finishing it (they left, or something cancelled it). */
+  private endCast(s: ClientSession): void {
+    const c = this.casts.get(s);
+    if (!c) return;
+    clearTimeout(c.timer);
+    this.casts.delete(s);
+  }
+
+  /** Cancel every cast whose caster moved, was hurt, started a move or died. */
+  private checkCasts(): void {
+    for (const [s, c] of this.casts) {
+      const a = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+      let why = "";
+      if (a < 0 || C.Health.current[a] <= 0) why = "you are down";
+      else if (C.Health.current[a] < c.hp) why = "you were hit";
+      else if (C.Action.move[a] !== 0) why = "you attacked";
+      else if ((C.Transform.px[a] - c.x) ** 2 + (C.Transform.pz[a] - c.z) ** 2 > 0.09) why = "you moved";
+      if (!why) continue;
+      this.endCast(s);
+      if (a >= 0) this.sendCastEvent(s, "stopped", a, c.spell);
+      this.sendError(s, 4005, `interrupted: ${why}`);
+    }
+  }
+
+  /** The cast bar's start and end for an interaction, over the spell channel (catalog 0x1c). */
+  private sendCastEvent(s: ClientSession, state: "started" | "done" | "stopped", avatar: number, spell: string, seconds?: number): void {
+    const id = String(this.world.wireId(avatar));
+    const m: SpellMessage = { kind: "spell", caster: id, target: id, spell, state, ...(seconds !== undefined ? { seconds } : {}) };
+    this.sendEnvelope(s, MessageType.Magic, encodeControl(m));
+  }
+
   /** What these ground items are (catalog §0x15; null: all), enveloped, or null. */
   private dropsFor(only: readonly bigint[] | null): Uint8Array | null {
     if (!this.items) return null;
@@ -4545,9 +5896,47 @@ export class Gateway {
     const items = this.items;
     if (!items) return fail("no items on this server");
     if (command === "items") {
-      const a = ItemPickArgsSchema.safeParse(args ?? {});
-      if (!a.success) return fail("usage: items {base?, rank?, source?}");
-      return { kind: "admin", command, ok: true, message: describeMatches(items.defs, a.data) };
+      const a = ItemsCommandArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail('usage: items {base?, rank?, source?} or {sub: "take"|"move"|"defof"|"countbase", item?, base?, from?, to?}');
+      const d = a.data;
+      if (d.sub === undefined) {
+        return { kind: "admin", command, ok: true, message: describeMatches(items.defs, d) };
+      }
+      if (d.sub === "defof") {
+        // A pure store read — no bag, so no player entity needed.
+        if (d.item === undefined) return fail("usage: items {sub: \"defof\", item}");
+        const def = items.defOf(d.item);
+        if (def < 0) return fail(`item ${d.item} is not a live item`);
+        return { kind: "admin", command, ok: true, message: `item ${d.item}: ${items.defs.names[def]} [${items.defs.ranks[def]} ${items.defs.bases[def]}] ${items.defs.ids[def]}` };
+      }
+      // The bag sub-actions act on the console holder's bag, like give.
+      if (s.playerEntity === null) return fail("no player entity (not in the world)");
+      const holder = this.holderOf(s);
+      if (d.sub === "take") {
+        if (d.item !== undefined) {
+          const def = items.defOf(d.item);
+          if (!items.take(holder, d.item)) return fail(`item ${d.item} is not in your bag`);
+          this.sendInventory(s);
+          return { kind: "admin", command, ok: true, message: `took ${def >= 0 ? items.defs.names[def] : "item"} (item ${d.item}) from your bag` };
+        }
+        if (d.base !== undefined) {
+          if (!items.takeBase(holder, d.base)) return fail(`no ${d.base} in your bag`);
+          this.sendInventory(s);
+          return { kind: "admin", command, ok: true, message: `took one ${d.base} from your bag` };
+        }
+        return fail("usage: items {sub: \"take\", item} or {sub: \"take\", base}");
+      }
+      if (d.sub === "move") {
+        if (d.item === undefined || d.to === undefined) return fail("usage: items {sub: \"move\", item, to, from?}");
+        const from = d.from ?? holder;
+        if (!items.moveItem(d.item, from, d.to)) return fail(`move refused: item ${d.item} is not in character ${from}'s bag, or character ${d.to}'s bag is full`);
+        if (from === holder || d.to === holder) this.sendInventory(s);
+        return { kind: "admin", command, ok: true, message: `moved item ${d.item} from character ${from} to character ${d.to}` };
+      }
+      // countbase
+      if (d.base === undefined) return fail("usage: items {sub: \"countbase\", base}");
+      const n = items.countBase(holder, d.base);
+      return { kind: "admin", command, ok: true, message: `you carry ${n} × ${d.base}` };
     }
     if (s.playerEntity === null) return fail("no player entity (not in the world)");
     const avatar = this.world.resolveWireId(s.playerEntity);
@@ -4581,18 +5970,59 @@ export class Gateway {
         ? { kind: "admin", command, ok: true, message: `dropped ${dropped} mob drop${dropped === 1 ? "" : "s"} around you` }
         : fail("no mob drops in the pool");
     }
+    if (command === "drop") {
+      const a = DropArgsSchema.safeParse(args ?? {});
+      if (!a.success) return fail("usage: drop {def? | base?, rank?, source?, x?, z?, fixture?}");
+      if ((a.data.x === undefined) !== (a.data.z === undefined)) return fail("drop needs x and z together");
+      const def = pickDef(items.defs, a.data, seed);
+      if (def < 0) return fail("no items match");
+      const at = a.data.x !== undefined && a.data.z !== undefined ? { x: a.data.x, z: a.data.z } : { x: x + 1, z };
+      if (a.data.fixture) {
+        const { item, eid } = items.placeFixture(this.world, def, at.x, at.z);
+        return { kind: "admin", command, ok: true, message: `placed ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)} at ${at.x}, ${at.z} — a fixture, it stays` };
+      }
+      const { item, eid } = items.spawnDrop(this.world, def, at.x, at.z, 0);
+      const where = a.data.x !== undefined ? ` at ${at.x}, ${at.z}` : "";
+      return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}${where}` };
+    }
     const a = ItemPickArgsSchema.safeParse(args ?? {});
     if (!a.success) return fail(`usage: ${command} {def? | base?, rank?, source?}`);
     const def = pickDef(items.defs, a.data, seed);
     if (def < 0) return fail("no items match");
-    if (command === "give") {
-      const r = items.give(this.holderOf(s), def);
-      if (!r.ok) return fail(r.error);
-      this.sendInventory(s);
-      return { kind: "admin", command, ok: true, message: r.message };
-    }
-    const { item, eid } = items.spawnDrop(this.world, def, x + 1, z, 0);
-    return { kind: "admin", command, ok: true, message: `dropped ${items.defs.names[def]} (item ${item}) as ${this.world.wireId(eid)}` };
+    // give (the only command left sharing this tail)
+    const r = items.give(this.holderOf(s), def);
+    if (!r.ok) return fail(r.error);
+    this.sendInventory(s);
+    return { kind: "admin", command, ok: true, message: r.message };
+  }
+
+  /**
+   * The admin `give` command in fleet mode (slice A2): same pick and
+   * answers as the sync path, but the grant itself routes through
+   * ItemService.giveGranted — the world-tier `lootGrant` commits it,
+   * and a refusal or outage answers 4003 having granted nothing.
+   */
+  private async runItemGiveFleet(s: ClientSession, args: unknown): Promise<void> {
+    const fail = (message: string): void => {
+      this.logAdmin(s.username, "give", false);
+      this.sendError(s, 4003, message);
+    };
+    const items = this.items;
+    if (!items) return fail("no items on this server");
+    if (s.playerEntity === null) return fail("no player entity (not in the world)");
+    const avatar = this.world.resolveWireId(s.playerEntity);
+    if (avatar < 0) return fail("avatar is gone");
+    const a = ItemPickArgsSchema.safeParse(args ?? {});
+    if (!a.success) return fail("usage: give {def? | base?, rank?, source?}");
+    const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
+    const def = pickDef(items.defs, a.data, seed);
+    if (def < 0) return fail("no items match");
+    const r = await items.giveGranted(this.holderOf(s), def);
+    if (!r.ok) return fail(r.error);
+    this.sendInventory(s);
+    this.logAdmin(s.username, "give", true);
+    const res: AdminResult = { kind: "admin", command: "give", ok: true, message: r.message };
+    this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
   }
 
   /**
@@ -4794,8 +6224,10 @@ export class Gateway {
     C.Locomotion.breath[eid] = 1;
     const T = C.Transform;
     const i = this.playerSeq++;
-    T.px[eid] = this.spawnPoint.x + (i % 8) * 4 - 14;
-    T.pz[eid] = this.spawnPoint.z + Math.floor(i / 8) * 4 - 14;
+    // Clear of baked buildings: the spawn point can sit inside a generated town.
+    const at = clearOfStatics(sim, this.spawnPoint.x + (i % 8) * 4 - 14, this.spawnPoint.z + Math.floor(i / 8) * 4 - 14, CHARACTER_CAPSULE.radius);
+    T.px[eid] = at.x;
+    T.pz[eid] = at.z;
     T.py[eid] = this.groundHeightAt?.(T.px[eid], T.pz[eid]) ?? 0;
     T.qx[eid] = 0; T.qy[eid] = 0; T.qz[eid] = 0; T.qw[eid] = 1;
     T.sx[eid] = 1; T.sy[eid] = 1; T.sz[eid] = 1;

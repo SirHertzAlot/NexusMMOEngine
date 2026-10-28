@@ -57,6 +57,12 @@ export class FriendBook {
 
   constructor(store: SocialStore | FriendStore = memorySocialStore()) {
     this.store = friendPersistence(store);
+    this.reload();
+  }
+
+  /** Read every list again from the store (another region changed some, PL3c). */
+  reload(): void {
+    this.lists.clear();
     for (const r of this.store.loadFriends()) {
       let list = this.lists.get(r.owner);
       if (!list) this.lists.set(r.owner, (list = new Map()));

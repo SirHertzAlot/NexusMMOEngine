@@ -155,9 +155,11 @@ describe("species", () => {
 
   it("a bad species is refused and no overlay is written", async () => {
     const snap = await readGameplay(ROOT);
+    const file = join(ROOT, "content", "species", "species.json");
+    const was = existsSync(file) ? readFileSync(file, "utf8") : null; // the test above may have written an overlay
     const rows = editCell(toRows(TABLE_DEFS.species, snap.tables.species), "void-watcher", "pack", [3, 1]);
     await assert.rejects(saveGameplay(ROOT, "species", fromRows(TABLE_DEFS.species, snap.tables.species, rows)), (e: Any) => e.status === 400 && e.issues.some((i: Any) => /void-watcher/.test(i.path)));
-    assert.equal(existsSync(join(ROOT, "content", "species", "species.json")), false);
+    assert.equal(existsSync(file) ? readFileSync(file, "utf8") : null, was);
   });
 });
 

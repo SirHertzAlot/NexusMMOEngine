@@ -101,7 +101,8 @@ export interface GuildStore {
   loadAll(): { guilds: GuildRecord[]; log: Array<{ guild: number; at: number; text: string }> };
   saveGuild(g: GuildRecord): void;
   deleteGuild(id: number): void;
-  appendLog(guild: number, at: number, text: string): void;
+  /** Keeps the newest `keep` lines of the guild (default GUILD_LOG_KEEP). */
+  appendLog(guild: number, at: number, text: string, keep?: number): void;
 }
 
 export function memoryGuildStore(): GuildStore {
@@ -125,12 +126,30 @@ export class GuildBook {
   private readonly invites = new Map<string, { guild: number; from: string; expires: number }>();
   private readonly online = new Set<string>();
 
+  /** Size, invite timeout and text limits (social.json `guild`, EG9); setRules swaps them on a rules reload. */
+  limits = { max: GUILD_MAX, inviteMs: GUILD_INVITE_TTL_MS, motdMax: GUILD_MOTD_MAX, logKeep: GUILD_LOG_KEEP };
+
+  /** Fleet mode (PL3c): a new guild's id comes from the world (null: none to hand right now). Unset: counted here. */
+  ids: (() => number | null) | null = null;
+
   constructor(
     private readonly clock: () => number = Date.now,
     private readonly store: GuildStore = memoryGuildStore(),
-    private readonly max: number = GUILD_MAX,
+    max: number = GUILD_MAX,
   ) {
-    const { guilds, log } = store.loadAll();
+    this.limits.max = max;
+    this.load();
+  }
+
+  /** Read every guild again from the store (another region changed some, PL3c); invites and who's online stay. */
+  reload(): void {
+    this.guilds.clear();
+    this.byMember.clear();
+    this.load();
+  }
+
+  private load(): void {
+    const { guilds, log } = this.store.loadAll();
     for (const r of guilds) {
       const g: Guild = {
         id: r.id,
@@ -171,8 +190,8 @@ export class GuildBook {
   private note(g: Guild, text: string): void {
     const at = this.clock();
     g.log.push({ at, text });
-    if (g.log.length > GUILD_LOG_KEEP) g.log.shift();
-    this.store.appendLog(g.id, at, text);
+    while (g.log.length > this.limits.logKeep) g.log.shift();
+    this.store.appendLog(g.id, at, text, this.limits.logKeep);
   }
 
   private everyone(g: Guild): string[] {
@@ -235,8 +254,10 @@ export class GuildBook {
       if (key(g.name) === key(name)) return { ok: false, reason: "guild name is taken" };
       if (g.tag === tag) return { ok: false, reason: "guild tag is taken" };
     }
+    const id = this.ids ? this.ids() : this.nextId++;
+    if (id === null) return { ok: false, reason: "guilds can't be founded this moment; try again shortly" };
     const g: Guild = {
-      id: this.nextId++,
+      id,
       name,
       tag,
       motd: "",
@@ -257,8 +278,8 @@ export class GuildBook {
     if (POWER[me.rank] < POWER.officer) return { ok: false, reason: "officers and above can invite" };
     if (key(from) === key(to)) return { ok: false, reason: "cannot invite yourself" };
     if (this.byMember.has(key(to))) return { ok: false, reason: "already in a guild" };
-    if (g.members.length >= this.max) return { ok: false, reason: "guild is full" };
-    this.invites.set(key(to), { guild: g.id, from: me.name, expires: this.clock() + GUILD_INVITE_TTL_MS });
+    if (g.members.length >= this.limits.max) return { ok: false, reason: "guild is full" };
+    this.invites.set(key(to), { guild: g.id, from: me.name, expires: this.clock() + this.limits.inviteMs });
     return { ok: true, notify: [to] };
   }
 
@@ -269,7 +290,7 @@ export class GuildBook {
     const g = inv && this.guilds.get(inv.guild);
     if (!inv || !g || inv.expires <= this.clock()) return { ok: false, reason: "no invite" };
     if (this.byMember.has(k)) return { ok: false, reason: "already in a guild" };
-    if (g.members.length >= this.max) return { ok: false, reason: "guild is full" };
+    if (g.members.length >= this.limits.max) return { ok: false, reason: "guild is full" };
     g.members.push({ key: k, name, rank: "recruit", joinedAt: this.clock() });
     this.byMember.set(k, g.id);
     this.save(g);
@@ -335,12 +356,16 @@ export class GuildBook {
     return { ok: true, notify: this.everyone(g) };
   }
 
+  setRules(r: { max: number; inviteSeconds: number; motdMax: number; logKeep: number }): void {
+    this.limits = { max: r.max, inviteMs: r.inviteSeconds * 1000, motdMax: r.motdMax, logKeep: r.logKeep };
+  }
+
   setMotd(actor: string, text: string): GuildResult {
     const g = this.guildFor(actor);
     if (!g) return { ok: false, reason: "not in a guild" };
     const me = this.memberOf(g, actor)!;
     if (POWER[me.rank] < POWER.officer) return { ok: false, reason: "officers and above can edit the message of the day" };
-    g.motd = text.trim().slice(0, GUILD_MOTD_MAX);
+    g.motd = text.trim().slice(0, this.limits.motdMax);
     this.save(g);
     this.note(g, `${me.name} set the message of the day`);
     return { ok: true, notify: this.everyone(g) };

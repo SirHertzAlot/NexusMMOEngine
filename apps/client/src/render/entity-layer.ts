@@ -31,7 +31,7 @@
 
 import * as THREE from "three";
 import { labelSprite } from "./element-fx.js";
-import { combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type VelocityRow } from "@mmo-engine/protocol";
+import { BROKEN_VARIANT, combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
 import { parseLook, heldOf, lostOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
@@ -50,12 +50,17 @@ import { DEFAULT_CLIP_MAP, indexClipMap, parseClipMap, planClip } from "@mmo-eng
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
+import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
+import { applyShading } from "./shading/shading.js";
+import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
   pcg?: PcgRpcClient;
   /** Decode PCG meshes and build their BVHs off the main thread. */
   workers?: WorkerRequester;
+  /** Materials for a PCG mesh with material slots, by slot name (a dungeon shell's palette). */
+  materialFor?: (slots: readonly string[]) => THREE.Material[] | undefined;
 }
 
 interface TrackedMesh {
@@ -72,6 +77,10 @@ interface TrackedMesh {
   female?: boolean;
   /** The combat move on show: "seq:move" of its Action row. */
   actionKey?: string;
+  /** A static animal model given a procedural skeleton and gait (see animal/animal-rig.ts). */
+  animal?: AnimalRig;
+  /** The animal rig was tried (a model without a quadruped shape stays as it is). */
+  animalTried?: boolean;
   /** Nameplate sprite above the head, and the name it shows. */
   plate?: THREE.Sprite;
   plateFor?: string;
@@ -81,6 +90,66 @@ interface TrackedMesh {
   heldJson?: string;
   /** Live weapon meshes, per hand (shared geometry/material — never disposed). */
   weapons?: { main?: THREE.Object3D; off?: THREE.Object3D };
+  /** Cached look colours for the first-person hand/forearm viewmodel. */
+  skinColor?: string;
+  sleeveColor?: string;
+  cuffColor?: string;
+  /** Rest position of the character's Head bone in root-local space. */
+  headRest?: THREE.Vector3;
+  /** Half-height from BodyConfig for body-part raycast normalization. */
+  halfY?: number;
+}
+
+/**
+ * Pure helper: classify which anatomical body part a 3D raycast hit point
+ * (`hitX, hitY, hitZ`) lands on relative to an entity at (`entityX, entityY, entityZ`)
+ * facing `entityYaw`.
+ */
+export function classifyAimedBodyPart(
+  hitX: number,
+  hitY: number,
+  hitZ: number,
+  entityX: number,
+  entityY: number,
+  entityZ: number,
+  entityYaw = 0,
+  bottomY = entityY - 0.5,
+  height = 1.0,
+): string {
+  const safeHeight = Math.max(0.4, height);
+  const u = (hitY - bottomY) / safeHeight;
+  if (u >= 0.76) return "head";
+  const dx = hitX - entityX;
+  const dz = hitZ - entityZ;
+  const rx = -Math.cos(entityYaw);
+  const rz = Math.sin(entityYaw);
+  const lat = dx * rx + dz * rz;
+  if (u < 0.44) {
+    return lat < 0 ? "legLeft" : "legRight";
+  }
+  if (Math.abs(lat) > 0.18) {
+    return lat < 0 ? "armUpperLeft" : "armUpperRight";
+  }
+  return "torso";
+}
+
+export interface PlayerRenderSample {
+  vx: number;
+  vy: number;
+  vz: number;
+  mode: number;
+  grounded: boolean;
+  move: number;
+  moveElapsed: number;
+  headBoneOffset: { x: number; y: number; z: number } | null;
+  mainHeld: string | null;
+  offHeld: string | null;
+  skinColor: string | null;
+  sleeveColor: string | null;
+  cuffColor: string | null;
+}
+
+{
 }
 
 /** Nameplate height above a character's feet, and full-visibility range. */
@@ -126,9 +195,15 @@ export class EntityLayer {
   private playerHidden = false;
   private lastPlayerWireId: bigint | null = null;
   private readonly meshes = new Map<bigint, TrackedMesh>();
+  /** Worked-out resource nodes (gathering): drawn low until they come back. */
+  private depleted: ReadonlySet<bigint> = new Set();
+  /** Their lowered rows, made once per row the server sends (the props skip unchanged rows by identity). */
+  private readonly lowRows = new Map<bigint, { from: TransformRow; fromBody: BodyConfigRow | null; t: TransformRow; b: BodyConfigRow | null }>();
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
-  private readonly syntyProps: SyntyProps;
+  readonly syntyProps: SyntyProps;
+  /** Rig data per art model (null: the model is not a quadruped); disposed with the layer. */
+  private readonly animalTemplates = new Map<number, AnimalTemplate | null>();
   /** The modular character kit; null until loaded (or when the art isn't served). */
   private kit: CharacterKit | null = null;
   /** The characters' clips; null until loaded (or when none are served). */
@@ -144,6 +219,26 @@ export class EntityLayer {
   private readonly playerPos = new THREE.Vector3();
   private readonly lastPlayerPos = new THREE.Vector3(8, 2, 8);
   private hoveredWireId: bigint | null = null;
+  private hoveredBodyPart: string | null = null;
+  private hoveredHitDistance = Infinity;
+  private readonly headBoneDelta = { x: 0, y: 0, z: 0 };
+  private readonly tmpBonePos = new THREE.Vector3();
+  private readonly tmpRootInv = new THREE.Matrix4();
+  readonly playerSample: PlayerRenderSample = {
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    mode: 0,
+    grounded: true,
+    move: 0,
+    moveElapsed: 0,
+    headBoneOffset: null,
+    mainHeld: null,
+    offHeld: null,
+    skinColor: null,
+    sleeveColor: null,
+    cuffColor: null,
+  };
   /** Hit flashes: wire id -> flash end, performance.now() seconds (see setFlashes). */
   private flashes: ReadonlyMap<bigint, number> = new Map();
   private quality: QualitySettings | null = null;
@@ -159,7 +254,7 @@ export class EntityLayer {
     private readonly terrain: TerrainRenderer,
     opts: EntityLayerOptions = {},
   ) {
-    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers) : null;
+    this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers, opts.materialFor) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
@@ -210,15 +305,71 @@ export class EntityLayer {
 
   /** Hover highlight: the nearest entity mesh or batched prop under the ray (terrain excluded). */
   hover(raycaster: THREE.Raycaster): void {
-    const hit = raycaster.intersectObjects([...this.pickMap.keys()], false)[0];
+    const pickRoots: THREE.Object3D[] = [];
+    for (const [obj, wid] of this.pickMap) {
+      if (this.lastPlayerWireId !== null && wid === this.lastPlayerWireId) continue;
+      pickRoots.push(obj);
+    }
+    const hits = raycaster.intersectObjects(pickRoots, true);
+    let hit: THREE.Intersection | undefined;
+    let hitWid: bigint | null = null;
+    for (let i = 0; i < hits.length; i++) {
+      const h = hits[i]!;
+      if (h.object instanceof THREE.Sprite) continue;
+      let cur: THREE.Object3D | null = h.object;
+      while (cur && !this.pickMap.has(cur)) cur = cur.parent;
+      if (cur) {
+        hit = h;
+        hitWid = this.pickMap.get(cur) ?? null;
+        break;
+      }
+    }
     const prop = this.props.pick(raycaster);
     this.hoveredWireId =
-      prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hit ? this.pickMap.get(hit.object) ?? null : null;
+      prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hitWid;
+    if (prop && (!hit || prop.distance < hit.distance)) {
+      this.hoveredBodyPart = null;
+      this.hoveredHitDistance = prop.distance;
+    } else if (hit && hitWid !== null) {
+      this.hoveredHitDistance = hit.distance;
+      const tr = this.meshes.get(hitWid);
+      if (tr) {
+        const pos = tr.object.position;
+        const yaw = tr.yaw ?? 0;
+        const halfY = tr.halfY ?? 0.5;
+        const bottomY = tr.character ? pos.y : pos.y - halfY;
+        const height = tr.character ? 1.8 : Math.max(0.5, halfY * 2);
+        this.hoveredBodyPart = classifyAimedBodyPart(
+          hit.point.x,
+          hit.point.y,
+          hit.point.z,
+          pos.x,
+          pos.y,
+          pos.z,
+          yaw,
+          bottomY,
+          height,
+        );
+      } else {
+        this.hoveredBodyPart = "torso";
+      }
+    } else {
+      this.hoveredBodyPart = null;
+      this.hoveredHitDistance = Infinity;
+    }
   }
 
   /** The entity under the cursor at the last hover() (a batched prop's or a mesh's wire id). */
   get hovered(): bigint | null {
     return this.hoveredWireId;
+  }
+
+  get hoveredPart(): string | null {
+    return this.hoveredBodyPart;
+  }
+
+  get hoveredDistance(): number {
+    return this.hoveredHitDistance;
   }
 
   /** Entities flash red until their entry's time (performance.now() seconds); the map is read, never copied. */
@@ -299,6 +450,25 @@ export class EntityLayer {
     tracked.plate.visible = mat.opacity > 0;
   }
 
+  /** The resource nodes worked out now (ResourceNodes.depleted): drawn at DEPLETED_HEIGHT of their height. */
+  setDepleted(ids: ReadonlySet<bigint>): void {
+    this.depleted = ids;
+  }
+
+  /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node or broken (BROKEN_VARIANT). */
+  private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null, asset?: AssetRefRow): [TransformRow, BodyConfigRow | null] {
+    if (!this.depleted.has(wid) && asset?.variant !== BROKEN_VARIANT) {
+      this.lowRows.delete(wid);
+      return [t, b];
+    }
+    let low = this.lowRows.get(wid);
+    if (!low || low.from !== t || low.fromBody !== b) {
+      low = { from: t, fromBody: b, t: { ...t, sy: t.sy * DEPLETED_HEIGHT }, b: b ? { ...b, halfY: b.halfY * DEPLETED_HEIGHT } : null };
+      this.lowRows.set(wid, low);
+    }
+    return [low.t, low.b];
+  }
+
   /** Reconcile the layer with mirror state and advance the FX. */
   sync(
     state: MirrorState,
@@ -340,7 +510,10 @@ export class EntityLayer {
       }
       // Batched static props: follow their rows (unchanged rows cost nothing).
       if (this.props.has(wid)) {
-        if (e.transform) this.props.update(wid, e.transform, e.body ?? null);
+        if (e.transform) {
+          const [t, b] = this.shown(wid, e.transform, e.body ?? null, e.asset);
+          this.props.update(wid, t, b);
+        }
         continue;
       }
       let tracked = this.meshes.get(wid);
@@ -350,16 +523,17 @@ export class EntityLayer {
         const model = this.modelFor(e.asset);
         if (!model && isStaticProp(e.body, e.asset)) {
           // Scenery: no spawn portal (a streamed ring brings hundreds at once).
-          this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
+          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null, e.asset), placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
         this.group.add(obj);
-        tracked = { object: obj, shaped: e.body !== undefined };
+        tracked = { object: obj, shaped: e.body !== undefined, halfY: e.body?.halfY };
         this.meshes.set(wid, tracked);
         this.pickMap.set(obj, wid);
-        // Spawn portal for newly-appearing entities.
-        this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
+        // Spawn portal for newly-spawned entities; one that only came
+        // into view (interest management) appears without it.
+        if (!state.entered.delete(wid)) this.fx.spawnBurst(tmpSpawn.set(e.transform.px, 0, e.transform.pz));
       } else if (!tracked.shaped && e.body) {
         // BodyConfig arrived after the stand-in: reshape (or batch).
         this.group.remove(tracked.object);
@@ -372,22 +546,27 @@ export class EntityLayer {
           detachPlate(tracked);
           this.detachWeapons(tracked);
           this.meshes.delete(wid);
-          this.props.add(wid, e.transform, e.body ?? null, placeholderColor(wid), propAsset(e.asset));
+          this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null, e.asset), placeholderColor(wid), propAsset(e.asset));
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
         this.group.add(obj);
         tracked.object = obj;
         tracked.shaped = true;
+        tracked.halfY = e.body.halfY;
         this.pickMap.set(obj, wid);
       }
+
+      // A moving entity whose AssetRef is a static animal model: give it a procedural skeleton once the model is in.
+      if (!tracked.animalTried && !tracked.character && !e.appearance && e.asset) this.dressAsAnimal(wid, tracked, e.asset);
 
       // Appearance: show (or restyle) the entity as its modular character.
       if (e.appearance && this.kit && tracked.look !== e.appearance.look) {
         this.dressAsCharacter(wid, tracked, e.appearance.look);
       }
       // Held weapons ride in the appearance JSON next to the look.
-      if (e.appearance && tracked.character) this.updateHeld(tracked, e.appearance.look);
+      // Held weapons ride in the appearance JSON next to the look.
+      if (e.appearance) this.updateHeld(tracked, e.appearance.look);
 
       if (!e.transform) continue;
 
@@ -412,18 +591,66 @@ export class EntityLayer {
           },
           plan,
         );
+      } else if (tracked.animal) {
+        const acting = e.action && e.action.move !== 0 ? e.action : null;
+        turnToward(tracked, e.velocity, dt, acting?.yaw);
+        tracked.object.scale.set(t.sx, t.sy, t.sz);
+        const move = acting ? combatMove(acting.move) : undefined;
+        tracked.animal.update(
+          dt,
+          {
+            speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
+            attackT: acting && move ? Math.max(0, (clock.tick - acting.started) / clock.tickHz) : -1,
+            hitAt: move?.hitAt ?? (move ? move.duration * 0.5 : 0),
+            attackDuration: move?.duration ?? 0,
+            dead: e.health !== undefined && e.health.current <= 0,
+          },
+          this.camera.getWorldPosition(tmpEye).distanceTo(tracked.object.position) < ANIMAL_LOD_RADIUS,
+        );
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
-        tracked.object.scale.set(t.sx, t.sy, t.sz);
+        tracked.object.scale.set(t.sx, this.depleted.has(wid) ? t.sy * DEPLETED_HEIGHT : t.sy, t.sz);
       }
 
       const isPlayer = playerWireId !== null && wid === playerWireId;
-      if (isPlayer) this.player = this.playerPos.copy(tracked.object.position);
+      if (isPlayer) {
+        this.player = this.playerPos.copy(tracked.object.position);
+        const s = this.playerSample;
+        s.vx = e.velocity?.lx ?? 0;
+        s.vy = e.velocity?.ly ?? 0;
+        s.vz = e.velocity?.lz ?? 0;
+        s.mode = e.locomotion?.mode ?? 0;
+        s.grounded = s.mode === 0 && Math.abs(s.vy) < 0.08;
+        s.move = e.action?.move ?? 0;
+        s.moveElapsed = e.action && e.action.move !== 0 ? Math.max(0, (clock.tick - e.action.started) / Math.max(1, clock.tickHz)) : 0;
+        s.mainHeld = tracked.held?.main ?? null;
+        s.offHeld = tracked.held?.off ?? null;
+        s.skinColor = tracked.skinColor ?? null;
+        s.sleeveColor = tracked.sleeveColor ?? null;
+        s.cuffColor = tracked.cuffColor ?? null;
+        const headBone = tracked.character?.bones.get("Head");
+        if (headBone && tracked.character) {
+          tracked.character.root.updateWorldMatrix(true, true);
+          this.tmpRootInv.copy(tracked.character.root.matrixWorld).invert();
+          this.tmpBonePos.setFromMatrixPosition(headBone.matrixWorld).applyMatrix4(this.tmpRootInv);
+          if (!tracked.headRest) {
+            tracked.headRest = this.tmpBonePos.clone();
+          }
+          this.headBoneDelta.x = this.tmpBonePos.x - tracked.headRest.x;
+          this.headBoneDelta.y = this.tmpBonePos.y - tracked.headRest.y;
+          this.headBoneDelta.z = this.tmpBonePos.z - tracked.headRest.z;
+          s.headBoneOffset = this.headBoneDelta;
+        } else {
+          s.headBoneOffset = null;
+        }
+      }
       this.updatePlate(tracked, wid, isPlayer, names);
       if ((this.flashes.get(wid) ?? 0) > now) {
         highlight(tracked.object, "hit");
       } else if (tracked.character) {
         highlight(tracked.object, wid === this.hoveredWireId && !isPlayer ? "hover" : "none");
+      } else if (tracked.animal) {
+        // Shares the model's material with the scenery: no per-entity tint.
       } else {
         highlight(tracked.object, isPlayer ? "player" : wid === this.hoveredWireId ? "hover" : "none");
       }
@@ -438,6 +665,16 @@ export class EntityLayer {
     this.fx.update(dt, now);
     this.showcase.update(now, dt);
     this.vfx.update(dt);
+  }
+
+  /** Where the static props showing any of these assets stand (a dungeon's torches give light there). */
+  emitterPositions(hashes: ReadonlySet<number>): [number, number, number][] {
+    return this.props.positionsOf(hashes);
+  }
+
+  /** Matte stand-ins and models (nothing shiny). */
+  matte(): void {
+    this.props.matte();
   }
 
   dispose(): void {
@@ -455,6 +692,8 @@ export class EntityLayer {
     this.meshes.clear();
     this.pickMap.clear();
     this.props.dispose();
+    for (const t of this.animalTemplates.values()) t?.dispose();
+    this.animalTemplates.clear();
     this.pcgMeshes?.dispose();
     this.syntyProps.dispose();
     this.kit?.dispose();
@@ -470,14 +709,21 @@ export class EntityLayer {
    * or the entity goes away (see detachWeapons).
    */
   private updateHeld(tracked: TrackedMesh, lookJson: string): void {
-    if (!tracked.character) return;
+    // Parse held items and look colours before checking tracked.character so FPS rig always has them.
     if (tracked.heldJson !== lookJson) {
       tracked.heldJson = lookJson;
       const held = heldOf(lookJson);
       tracked.held = held.main || held.off ? held : undefined;
+      const parsedLook = parseLook(lookJson);
+      if (parsedLook?.colours) {
+        tracked.skinColor = parsedLook.colours.skin;
+        tracked.sleeveColor = parsedLook.colours.primary;
+        tracked.cuffColor = parsedLook.colours.leatherPrimary ?? parsedLook.colours.secondary;
+      }
       this.detachWeapons(tracked);
     }
     const want = tracked.held;
+    if (!tracked.character || !want) return;
     if (!want) return;
     tracked.weapons ??= {};
     this.attachHeld(tracked, "main", want.main, "Hand_R");
@@ -510,6 +756,32 @@ export class EntityLayer {
     mesh.scale.setScalar(1 / Math.max(scale.x, 1e-6));
     bone.add(mesh);
     tracked.weapons![side] = mesh;
+  }
+
+  /**
+   * Swap the stand-in for the animal's art model on a procedural skeleton, once the model has loaded.
+   * Retried each frame until the model is in; a model that is not a quadruped is left as it is.
+   */
+  private dressAsAnimal(wid: bigint, tracked: TrackedMesh, asset: AssetRefRow): void {
+    const ready = this.syntyProps.model(asset.assetHash, asset.variant);
+    if (!ready) return;
+    tracked.animalTried = true;
+    let template = this.animalTemplates.get(asset.assetHash);
+    if (template === undefined) {
+      template = AnimalTemplate.from(ready.geometry);
+      this.animalTemplates.set(asset.assetHash, template);
+    }
+    if (!template) return;
+    const rig = template.create(ready.material);
+    this.group.remove(tracked.object);
+    this.pickMap.delete(tracked.object);
+    detachPlate(tracked);
+    disposeObject(tracked.object);
+    tracked.object = rig.root;
+    tracked.animal = rig;
+    tracked.shaped = true;
+    this.group.add(rig.root);
+    this.pickMap.set(rig.root, wid);
   }
 
   private dressAsCharacter(wid: bigint, tracked: TrackedMesh, lookJson: string): void {
@@ -549,11 +821,13 @@ export class EntityLayer {
   private makeBodyMesh(wid: bigint, body: BodyConfigRow | undefined, model: THREE.Object3D | null): THREE.Object3D {
     if (model) {
       colorize(model, placeholderColor(wid));
+      applyShading(model, "model");
       return model;
     }
     if (body) {
       const obj = this.assets.bodyMesh(body);
       colorize(obj, placeholderColor(wid));
+      applyShading(obj, "placeholder");
       return obj;
     }
     // Stand-in until the BodyConfig row arrives (spawned entities carry
@@ -563,6 +837,7 @@ export class EntityLayer {
       new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }),
     );
     colorize(obj, placeholderColor(wid));
+    applyShading(obj, "placeholder");
     return obj;
   }
 }
@@ -665,6 +940,7 @@ function disposeTracked(t: TrackedMesh): void {
   detachWeapons(t);
   t.animator?.dispose();
   if (t.character) t.character.dispose();
+  else if (t.animal) t.animal.dispose(); // geometry and material belong to the model cache
   else disposeObject(t.object);
 }
 

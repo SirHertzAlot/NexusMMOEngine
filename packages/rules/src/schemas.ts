@@ -28,6 +28,14 @@ export const SkillsSchema = z.strictObject({
   max: positive.default(100),
   families: z.array(id).default([]),
   skills: z.array(SkillSchema).default([]),
+  /** Training from moving (EG8): swimming trains Swimming, running on foot Athletics, once per `useEverySeconds` of effort. */
+  pacing: z
+    .strictObject({
+      useEverySeconds: positive.default(5),
+      swimmingDifficulty: share.default(0.4),
+      athleticsDifficulty: share.default(0.3),
+    })
+    .prefault({}),
   gain: z
     .strictObject({
       /** Points a use at full challenge gives a novice. */
@@ -121,6 +129,26 @@ export const CombatSchema = z.strictObject({
       max: share.default(0.95),
       failedLetsThrough: share.default(0.5),
       disarmMargin: share.default(0.3),
+    })
+    .prefault({}),
+  /**
+   * How a swing finds its targets, and the rest of resolving a blow: what an
+   * unskilled guard lets through, the arm's length added to the weapon's
+   * reach, the cone and height a target must be inside, and how hard a fight
+   * counts for training. (A blow with no weapon is items.json's `unarmed`.)
+   */
+  resolution: z
+    .strictObject({
+      /** Share of a blow a facing guard lets through when the defender has no combat skills (bots). */
+      guardLetsThrough: share.default(0.25),
+      /** The attacking arm's length added to the weapon's reach, metres. */
+      armReachM: z.number().min(0).default(0.6),
+      /** Targets within this many degrees either side of the facing are struck. */
+      coneDegrees: z.number().min(1).max(180).default(60),
+      /** Targets further than this above or below are out of reach, metres. */
+      maxHeightDifferenceM: z.number().min(0).default(2),
+      /** How hard a fight counts for training (dodges, guards, landed blows, dungeon kills). */
+      fightDifficulty: share.default(0.5),
     })
     .prefault({}),
 });
@@ -236,6 +264,17 @@ export const BodySchema = z.strictObject({
       bandage: Treatment.prefault({ seconds: 4, difficulty: 0.2 }),
       stump: Treatment.prefault({ seconds: 6, difficulty: 0.4 }),
       set: Treatment.extend({ minHp: share.default(0.1) }).prefault({ seconds: 10, difficulty: 0.5 }),
+      /** A treatment trains Medicine at its difficulty plus this (EG8). */
+      trainsAbove: share.default(0.3),
+      /** A failed treatment teaches this much more on top. */
+      failedTeaches: share.default(0.1),
+      /**
+       * Which wound a healer treats first when none is named: highest wins. A thrust
+       * wound's bandage ranks `thrust`; a set breaks ties by the part's share.
+       */
+      priority: z
+        .strictObject({ stump: z.number().min(0).default(4), thrust: z.number().min(0).default(3), bandage: z.number().min(0).default(2), set: z.number().min(0).default(1) })
+        .prefault({}),
     })
     .prefault({}),
 });
@@ -388,8 +427,14 @@ export const ItemsSchema = z.strictObject({
   fallback: ItemBaseRulesSchema.prefault({}),
   /** A composed item's `power` stat scales its blows: × (1 + power × powerScale). */
   powerScale: z.number().min(0).default(0.02),
-  /** Damage from a blow with no item in hand (fists), before power and parts. */
-  unarmed: ItemBaseRulesSchema.prefault({ mass: 0.6, length: 0.3, edge: 0, point: 0, hardness: 0.3, technique: "bludgeon" }),
+  /** A blow with no item in hand (fists): its physics, technique and reach (`length`, metres). */
+  unarmed: ItemBaseRulesSchema.extend({
+    mass: positive.default(0.5),
+    length: z.number().min(0).default(0.8),
+    edge: share.default(0),
+    point: share.default(0),
+    hardness: share.default(0.3),
+  }).prefault({}),
 });
 
 // ------------------------------------------------------------------ loot
@@ -459,7 +504,148 @@ export const IngressSchema = z.strictObject({
   maxViolations: z.number().int().min(1).default(100),
 });
 
+// --------------------------------------------------------------- interest
+
+/**
+ * Interest management (IM): a session sees the sectors whose rectangle is
+ * within enterM of its avatar and drops one only past leaveM (hysteresis).
+ * farM is how far a farVisible entity (megafauna, landmarks) is seen.
+ */
+export const InterestSchema = z
+  .strictObject({
+    enterM: z.number().positive().default(96),
+    leaveM: z.number().positive().default(128),
+    farM: z.number().positive().default(400),
+  })
+  .refine((r) => r.leaveM >= r.enterM, { message: "leaveM must be at least enterM" });
+
+// -------------------------------------------------------------- gathering
+
+/** Gathering from resource nodes (tree stands, ore veins, fishing spots): reach, pace, the pouch, training. */
+export const GatheringSchema = z.strictObject({
+  /** How far from a node's edge a player can gather, metres. */
+  reachM: z.number().min(0).default(2.5),
+  /** One gather per character this often, seconds. */
+  cooldownSeconds: z.number().min(0).default(1.2),
+  /** How long one gather takes (the cast bar), seconds; 0 gathers at once. */
+  castSeconds: z.number().min(0).default(2),
+  /** Most of one material a pouch holds. */
+  pouchMax: z.number().int().min(1).default(999),
+  /** A gather trains the node's skill at this difficulty per material tier (tier 2: twice it), capped at 1. */
+  trainDifficultyPerTier: z.number().min(0).max(1).default(0.2),
+  /** Worked-out nodes are checked for regrowth this often, seconds (EG11). */
+  regrowCheckSeconds: z.number().positive().default(1),
+  /** How long one of a node's regrow hours lasts, real seconds: 3600 is real hours, less speeds every node up (EG11). */
+  regrowHourSeconds: z.number().positive().default(3600),
+});
+
+// -------------------------------------------------------------- movement
+
+/**
+ * How characters move (players, and creatures and bots, whose speeds are a
+ * share of the walk): speeds, jumping and falling, breath and drowning,
+ * flight, and what moving and fighting cost in stamina. Body geometry (the
+ * capsule, head height, swim depth) stays in code: animation and the
+ * colliders are built to it.
+ */
+export const MovementSchema = z.strictObject({
+  /** Walking speed, metres a second; creature and bot speeds are shares of it. */
+  walkSpeed: z.number().positive().default(6),
+  swimSpeed: z.number().positive().default(3),
+  flySpeed: z.number().positive().default(12),
+  /** Rising and diving in water, metres a second. */
+  swimVerticalSpeed: z.number().positive().default(2),
+  /** Climbing and descending in flight, metres a second. */
+  flyVerticalSpeed: z.number().positive().default(6),
+  /** Upward speed a jump starts with, metres a second. */
+  jumpSpeed: z.number().min(0).default(8),
+  /** Downward acceleration in the air, metres a second squared. */
+  gravity: z.number().positive().default(22),
+  /** Air in full lungs, seconds. */
+  breathSeconds: z.number().positive().default(30),
+  /** Breath comes back this many times as fast as it runs out. */
+  breathRecovery: z.number().positive().default(3),
+  /** Health lost a second underwater with no air left. */
+  drownDamagePerSecond: z.number().min(0).default(10),
+  /** Highest a flyer climbs above the ground, metres. */
+  flightCeilingM: z.number().min(0).default(250),
+  stamina: z
+    .strictObject({
+      dodgeCost: z.number().min(0).default(20),
+      attackCost: z.number().min(0).default(10),
+      jumpCost: z.number().min(0).default(8),
+      /** Stamina a second while swimming and moving. */
+      swimDrainPerSecond: z.number().min(0).default(10),
+      /** Stamina a second while running. */
+      runDrainPerSecond: z.number().min(0).default(6),
+      /** Seconds after spending before stamina starts coming back. */
+      regenDelaySeconds: z.number().min(0).default(1),
+      /** Stamina back a second when the stats bind no `staminaRegen`. */
+      regenPerSecond: z.number().min(0).default(12),
+    })
+    .prefault({}),
+  /** Server-run bots (MMO_BOTS, EG12): how they stroll and spar. Paces are shares of the walk. */
+  bots: z
+    .strictObject({
+      wanderPace: z.number().min(0).max(1).default(0.35),
+      /** A steered wanderer that moves less than this in `stuckSeconds` picks another spot. */
+      stuckMetres: z.number().min(0).default(0.4),
+      stuckSeconds: z.number().positive().default(2),
+      /** Arm's length for a sword fight, metres. */
+      sparRangeM: z.number().positive().default(1.9),
+      sparApproachPace: z.number().min(0).max(1).default(0.45),
+      sparBackPace: z.number().min(0).max(1).default(0.3),
+    })
+    .prefault({}),
+});
+
 // -------------------------------------------------------------- creatures
+
+export const TEMPERAMENTS = ["flee", "defend", "territorial", "hunt", "raid"] as const;
+export const ACTIVITIES = ["diurnal", "nocturnal", "crepuscular", "cathemeral"] as const;
+
+/**
+ * How a creature acts (docs/WILDLIFE.md): what it does on noticing someone, its warning,
+ * when it is awake and where it lives. Absent: the plain `hunt` brain (a goblin's).
+ */
+export const CreatureBehaviorSchema = z.strictObject({
+  /** flee: runs; defend: fights only when hurt; territorial: warns then drives off; hunt: warns (if it does) then chases; raid: instinct-driven, goes for settlements. */
+  temperament: z.enum(TEMPERAMENTS).default("hunt"),
+  /** What it is among its kind (livestock, large_herbivore, ...): raiders pick livestock by it. */
+  role: z.string().optional(),
+  /** Metres at which it notices a player (default: `aggroRadius`). */
+  noticeM: positive.optional(),
+  /** Seconds of visible warning before it strikes; 0: none. */
+  telegraphS: z.number().min(0).default(0),
+  /** Multiple of its run speed it flees at (flee temperament). */
+  fleeSpeed: positive.default(1.4),
+  /** Run speed as a multiple of a player's walk, beating `chaseSpeed` (which is a share, at most 1). */
+  speedX: positive.optional(),
+  /** ambush: lies in wait, lunges when close; flank: pack members come in from the sides. */
+  tactics: z.enum(["none", "ambush", "flank"]).default("none"),
+  activity: z.enum(ACTIVITIES).default("cathemeral"),
+  /** water: confined to water cells, swims. */
+  habitat: z.enum(["land", "water"]).default("land"),
+  /** habitat water: depth below the surface it keeps to, [shallowest, deepest] metres. */
+  depthM: z.tuple([z.number().min(0), z.number().positive()]).optional(),
+  /** Body scale (1 = a human): scales the model, the reach of its blows. */
+  size: positive.default(1),
+  /** temperament raid: what draws it and how it behaves. */
+  raid: z
+    .strictObject({
+      /** Metres from its lair it will go for a settlement. */
+      rangeM: positive.default(1500),
+      /** A settlement qualifies with at least this many structures. */
+      minStructures: z.number().int().min(0).default(1),
+      /** Seconds from sated to hungry again. */
+      hungerSeconds: positive.default(600),
+      /** Seconds of fighting at a settlement before it is sated and goes home. */
+      satiateSeconds: positive.default(45),
+      /** Relative pull of each kind of target at a settlement (players = noise, livestock = food/scent, structures = bulk). */
+      weights: z.strictObject({ player: z.number().min(0).default(1), livestock: z.number().min(0).default(1), structure: z.number().min(0).default(0.5) }).prefault({}),
+    })
+    .optional(),
+});
 
 /** One kind of creature (docs/ALPHA-PLAN.md, decision D6). */
 export const CreatureSchema = z.strictObject({
@@ -480,6 +666,9 @@ export const CreatureSchema = z.strictObject({
   chaseSpeed: share.default(0.9),
   /** Seconds between its blows while in reach. */
   attackEverySeconds: positive.default(1.5),
+  /** Damage per blow as a multiple of the base weapon's (a goblin's is 1). */
+  damageX: positive.default(1),
+  behavior: CreatureBehaviorSchema.optional(),
   /** What it drops when killed: it rolls `rolls` times (inclusive range), each roll yields one mob-pool item with `chance`. */
   drops: z
     .strictObject({
@@ -493,9 +682,48 @@ export const CreatureSchema = z.strictObject({
     .default({ rolls: [1, 2], chance: 0.8 }),
 });
 
+/**
+ * How every creature's brain is paced and how far it looks (EG7): the same for
+ * all kinds; a kind's own numbers (notice radius, leash, telegraph…) are its entry.
+ */
+export const CreatureAiSchema = z.strictObject({
+  /** Pack-mates within this alert each other, metres. */
+  alertRadiusM: z.number().min(0).default(40),
+  /** A hurt creature looks for its attacker this far when the combat system doesn't say, metres. */
+  hurtSearchRadiusM: z.number().min(0).default(20),
+  /** A light sleeper notices this share of its radius while asleep. */
+  asleepNotice: share.default(0.25),
+  /** Ambushers notice this share of their radius (they wait for what comes close). */
+  ambushNotice: share.default(0.5),
+  /** Seconds a creature stays calm after a warning that came to nothing. */
+  calmSeconds: z.number().min(0).default(6),
+  /** Fleeing prey calms once the threat is beyond this many times its notice radius. */
+  fleeCalmFactor: z.number().min(1).default(1.5),
+  /** A territorial creature gives up the chase beyond this many times its notice radius. */
+  territoryGiveUpFactor: z.number().min(1).default(1.6),
+  /** Flankers swing out this far to the side at most, metres. */
+  flankOffsetM: z.number().min(0).default(8),
+  /** …and close in straight inside this, metres. */
+  closeInM: z.number().min(0).default(6),
+  /** A creature swings this far inside its weapon's reach, metres. */
+  reachMarginM: z.number().min(0).default(0.3),
+  /** Home counts as reached inside this, metres. */
+  homeRadiusM: z.number().positive().default(1.5),
+  /** A steered creature re-aims its walk this often, seconds. */
+  repathSeconds: z.number().positive().default(1 / 3),
+  /** Raiders rescan their targets this often, seconds. */
+  raidRescanSeconds: z.number().positive().default(0.5),
+  /** Water must be this deep for an aquatic creature to be in it, metres. */
+  minWaterM: z.number().min(0).default(0.8),
+  /** An aquatic creature looks this far ahead before it swims on, metres. */
+  waterLookAheadM: z.number().min(0).default(2),
+});
+
 export const CreaturesSchema = z.strictObject({
   /** Creature kind id -> its numbers. */
   creatures: z.record(id, CreatureSchema).default({}),
+  /** Brain pacing and ranges every kind shares. */
+  ai: CreatureAiSchema.prefault({}),
 });
 
 // ------------------------------------------------------------------ needs
@@ -515,6 +743,10 @@ export const NeedsSchema = z.strictObject({
   thirst: NeedSchema.default({ max: 100, drainPerMinute: 3, damagePerSecond: 1 }),
   /** Share of the drain that applies while running or swimming (1 = no change). */
   exertionFactor: z.number().min(1).default(1.5),
+  /** Drinking: thirst refills at `perSecond` while the feet are within `reachM` of a water surface (in it or at its edge). */
+  drink: z.strictObject({ reachM: z.number().min(0), perSecond: z.number().min(0) }).default({ reachM: 0.5, perSecond: 10 }),
+  /** How long eating or drinking takes (a cast bar that a move or a blow cancels), seconds; 0 at once. */
+  eatSeconds: z.number().min(0).default(1),
 });
 
 // ---------------------------------------------------------------- spells
@@ -550,6 +782,71 @@ export const SpellsSchema = z.strictObject({
   defaultRegen: z.number().min(0).default(1),
 });
 
+// ---------------------------------------------------------------- social
+
+/** Most a chat line can be: the client's input box and the wire cap. A rules file can lower it, not raise it. */
+export const CHAT_TEXT_CEILING = 500;
+/** Most a guild message of the day can be on the wire. */
+export const GUILD_MOTD_CEILING = 200;
+
+const seconds = z.number().min(0);
+
+/**
+ * Parties, guilds, chat and character slots (EG9): sizes, how long invites
+ * and absences last, chat reach, line length and pacing, and how many
+ * characters an account keeps. The create payload cap (4 KiB) stays in code:
+ * it guards the server, it is not a design value.
+ */
+export const SocialSchema = z.strictObject({
+  party: z
+    .strictObject({
+      /** Most members, leader included. */
+      max: z.number().int().min(2).default(6),
+      /** An invite lapses after this many seconds. */
+      inviteSeconds: seconds.default(60),
+      /** A member offline this long leaves the party. */
+      offlineMinutes: seconds.default(5),
+    })
+    .prefault({}),
+  guild: z
+    .strictObject({
+      max: z.number().int().min(1).default(500),
+      inviteSeconds: seconds.default(60),
+      /** Longest message of the day. */
+      motdMax: z.number().int().min(1).max(GUILD_MOTD_CEILING).default(200),
+      /** Officer log lines kept per guild. */
+      logKeep: z.number().int().min(1).default(200),
+    })
+    .prefault({}),
+  chat: z
+    .strictObject({
+      /** Say and emote reach this many metres; yell is region-wide. */
+      sayRangeM: z.number().positive().default(30),
+      /** Longest chat line, after trimming. */
+      textMax: z.number().int().min(1).max(CHAT_TEXT_CEILING).default(500),
+      /** Most accounts one account can block. */
+      blockLimit: z.number().int().min(0).default(200),
+      /** Seconds between two lines from one player, per channel. */
+      cooldownSeconds: z
+        .strictObject({
+          say: seconds.default(2),
+          yell: seconds.default(10),
+          emote: seconds.default(2),
+          whisper: seconds.default(1),
+          party: seconds.default(0.5),
+          guild: seconds.default(0.5),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+  characters: z
+    .strictObject({
+      /** Characters one account can keep. */
+      slots: z.number().int().min(1).default(8),
+    })
+    .prefault({}),
+});
+
 // ------------------------------------------------------------------ all
 
 /** Every rules file, by file name (content/rules/<name>.json). */
@@ -566,7 +863,11 @@ export const RULE_FILES = {
   creatures: CreaturesSchema,
   needs: NeedsSchema,
   ingress: IngressSchema,
+  interest: InterestSchema,
   spells: SpellsSchema,
+  gathering: GatheringSchema,
+  movement: MovementSchema,
+  social: SocialSchema,
 } as const;
 
 export type RuleFile = keyof typeof RULE_FILES;
@@ -591,7 +892,12 @@ export type LootRules = z.infer<typeof LootSchema>;
 export type NeedsRules = z.infer<typeof NeedsSchema>;
 export type NeedRules = z.infer<typeof NeedSchema>;
 export type IngressRules = z.infer<typeof IngressSchema>;
+export type InterestRules = z.infer<typeof InterestSchema>;
+export type GatheringRules = z.infer<typeof GatheringSchema>;
+export type MovementRules = z.infer<typeof MovementSchema>;
+export type SocialRules = z.infer<typeof SocialSchema>;
 export type CreaturesRules = z.infer<typeof CreaturesSchema>;
+export type CreatureAiRules = z.infer<typeof CreatureAiSchema>;
 export type CreatureRules = z.infer<typeof CreatureSchema>;
 export type AttributeDef = z.infer<typeof AttributeSchema>;
 export type DerivedStatDef = z.infer<typeof DerivedStatSchema>;
@@ -609,7 +915,11 @@ export interface Rules {
   items: ItemsRules;
   loot: LootRules;
   ingress: IngressRules;
+  interest: InterestRules;
   creatures: CreaturesRules;
   needs: NeedsRules;
   spells: SpellsRules;
+  gathering: GatheringRules;
+  movement: MovementRules;
+  social: SocialRules;
 }

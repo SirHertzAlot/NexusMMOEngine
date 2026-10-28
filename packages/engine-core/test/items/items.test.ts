@@ -36,6 +36,7 @@ const POOL: PoolItemLike[] = [
   poolItem("a", "sword", "common", "mob", 0, { power: 10 }),
   poolItem("b", "sword", "rare", "boss", 1, { power: 20 }),
   poolItem("c", "ring", "common", "mob", 2, { spell: 3 }),
+  poolItem("d", "bread", "common", "mob", 3, { nourish: 25 }),
 ];
 
 function loot(over: Partial<LootRules> = {}): LootRules {
@@ -95,7 +96,7 @@ describe("ItemStore", () => {
 describe("ItemDefs", () => {
   it("joins pool items with the rules' physics, picks a model by seed, and indexes by source and base", () => {
     const d = new ItemDefs(POOL, RULES);
-    assert.equal(d.count, 3);
+    assert.equal(d.count, 4);
     assert.equal(d.models[0], "pack/SM_Wep_Sword_01");
     assert.equal(d.models[1], "pack/SM_Wep_Sword_02");
     assert.equal(d.assetHash[0], fnv1a32("pack/SM_Wep_Sword_01"));
@@ -103,7 +104,7 @@ describe("ItemDefs", () => {
     assert.equal(d.power[1], 20);
     assert.equal(d.models[2], "", "a base with no rules falls back, with no model");
     assert.equal(d.technique[2], RULES.items.fallback.technique);
-    assert.deepEqual([...d.ofSource("mob")], [0, 2]);
+    assert.deepEqual([...d.ofSource("mob")], [0, 2, 3]);
     assert.deepEqual([...d.ofBase("sword")], [0, 1]);
     assert.equal(d.indexOf("b"), 1);
     assert.equal(d.starter("sword", ["common", "rare"]), 0);
@@ -251,7 +252,7 @@ describe("ItemService", () => {
 describe("ItemService held weapons (M3b)", () => {
   const defs = new ItemDefs(POOL, RULES);
   const held = (tickHz = 30): ItemService =>
-    new ItemService({ defs, loot: loot(), tickHz, rankOrder: ["common", "rare"] });
+    new ItemService({ defs, loot: loot(), tickHz, rankOrder: ["common", "rare"], starterBase: "sword" });
 
   it("equips into the hand, swapping what was there back to the bag", () => {
     const items = held();
@@ -324,5 +325,89 @@ describe("ItemService armour (U10)", () => {
     assert.ok(items.equip(1, 2).ok, "second helm displaces the first");
     assert.deepEqual(items.inventoryOf(1).worn?.head?.id, 2);
     assert.ok(items.inventoryOf(1).bag.some((i) => i?.id === 1), "first helm is back in the bag");
+  });
+});
+
+describe("ItemService economy verbs (viewport authoring)", () => {
+  const defs = new ItemDefs(POOL, RULES);
+  const svc = (over: Partial<LootRules> = {}, rankOrder?: readonly string[]) =>
+    new ItemService({ defs, loot: loot(over), tickHz: 30, rankOrder });
+
+  it("defOf: a live item resolves to its def, a dead or unknown item to -1", () => {
+    const items = svc();
+    items.give(1, 0); // item 1, def 0
+    assert.equal(items.defOf(1), 0);
+    assert.equal(items.defOf(9999), -1, "never existed");
+    items.store.destroy(1);
+    assert.equal(items.defOf(1), -1, "destroyed");
+  });
+
+  it("moveItem: moves bag-to-bag, refuses when the item is not in from's bag or to's bag is full", () => {
+    const items = svc();
+    items.give(1, 0); // item 1 in char 1's bag
+    assert.equal(items.moveItem(1, 1, 2), true);
+    assert.ok(items.store.inBagOf(2, 1), "arrived in char 2's bag");
+    assert.ok(!items.store.inBagOf(1, 1), "left char 1's bag");
+    assert.equal(items.moveItem(1, 1, 2), false, "no longer in char 1's bag");
+
+    const small = svc({ bagSlots: 1 });
+    small.give(2, 0); // item 1: char 2's only slot
+    small.give(1, 1); // item 2: char 1's bag
+    assert.equal(small.moveItem(2, 1, 2), false, "char 2's bag is full");
+    assert.ok(small.store.inBagOf(1, 2), "item stayed put");
+  });
+
+  it("take: destroys the item from the character's bag, refuses items they do not hold", () => {
+    const items = svc();
+    items.give(1, 0); // item 1
+    assert.equal(items.take(1, 1), true);
+    assert.ok(!items.store.exists(1), "destroyed");
+    items.give(1, 1); // item 2
+    assert.equal(items.take(2, 2), false, "char 2 does not hold it");
+    assert.ok(items.store.exists(2), "still there");
+  });
+
+  it("consume: uses a provision up only when the caller took some of it", () => {
+    const items = svc();
+    items.give(1, 3); // item 1: bread
+    items.give(1, 0); // item 2: a sword
+    assert.deepEqual(items.consume(1, 2, () => true), { ok: false, error: "you can't eat or drink that" });
+    assert.deepEqual(items.consume(1, 1, () => false), { ok: false, error: "you're not hungry" });
+    assert.ok(items.store.exists(1), "kept when nothing was taken");
+    let got = 0;
+    assert.equal(items.consume(1, 1, (n) => ((got = n), true)).ok, true);
+    assert.equal(got, 25);
+    assert.ok(!items.store.exists(1), "used up");
+    assert.deepEqual(items.consume(2, 1, () => true), { ok: false, error: "you don't have that" });
+  });
+
+  it("countBase: counts bag items of an item base (what quests check)", () => {
+    const items = svc();
+    items.give(1, 0); // sword
+    items.give(1, 1); // sword
+    items.give(1, 2); // ring
+    assert.equal(items.countBase(1, "sword"), 2);
+    assert.equal(items.countBase(1, "ring"), 1);
+    assert.equal(items.countBase(1, "axe"), 0);
+    assert.equal(items.countBase(2, "sword"), 0, "another character's bag");
+  });
+
+  it("resolveBase: the lowest-ranked definition of a base, -1 for an unknown base", () => {
+    const items = svc({}, ["common", "rare"]);
+    assert.equal(items.resolveBase("sword"), 0, "common sword outranks rare");
+    assert.equal(items.resolveBase("axe"), -1);
+    assert.equal(svc().resolveBase("sword"), 0, "no rank order: first definition wins");
+  });
+
+  it("grantItem: one grant shape everywhere — false for an unknown def or a full bag", () => {
+    const items = svc();
+    assert.equal(items.grantItem(1, 0), true);
+    assert.ok(items.store.inBagOf(1, 1));
+    assert.equal(items.grantItem(1, -1), false);
+    assert.equal(items.grantItem(1, 999), false);
+
+    const small = svc({ bagSlots: 1 });
+    assert.equal(small.grantItem(1, 0), true);
+    assert.equal(small.grantItem(1, 1), false, "bag is full");
   });
 });

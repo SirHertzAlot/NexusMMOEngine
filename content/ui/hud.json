@@ -56,6 +56,14 @@
       },
       "visible": true
     },
+    "vendor-panel": {
+      "anchor": "top-center",
+      "offset": {
+        "x": 0,
+        "y": 160
+      },
+      "visible": true
+    },
     "quest-log": {
       "anchor": "bottom-right",
       "offset": {

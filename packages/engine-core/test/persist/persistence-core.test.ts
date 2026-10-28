@@ -30,7 +30,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   core.close();
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 32, retryDelay: 50 });
 });
 
 const rejects = (p: Promise<unknown>, code: string): Promise<void> =>
@@ -76,6 +76,19 @@ describe("query", () => {
     const r = await core.query("characters", "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 100000) SELECT i FROM n", { limit: 10 });
     assert.equal(r.rows.length, 10);
     assert.equal(r.truncated, true);
+  });
+  it("takes its row caps from the server settings, read on each query (EG13)", async () => {
+    let caps = { defaultRows: 3, maxRows: 5, timeoutMs: 2000 };
+    const limited = new PersistenceCore({ dataDir: dir, queryLimits: () => caps });
+    try {
+      const many = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 100) SELECT i FROM n";
+      assert.equal((await limited.query("characters", many)).rows.length, 3, "the default rows");
+      assert.equal((await limited.query("characters", many, { limit: 50 })).rows.length, 5, "capped at the most rows");
+      caps = { ...caps, defaultRows: 4 };
+      assert.equal((await limited.query("characters", many)).rows.length, 4, "a changed setting applies to the next query");
+    } finally {
+      limited.close();
+    }
   });
   it("stops a heavy query at the timeout", async () => {
     const t0 = Date.now();

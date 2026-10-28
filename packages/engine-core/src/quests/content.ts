@@ -20,7 +20,7 @@
  * error naming every problem, so a server never starts on broken quests.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -111,6 +111,8 @@ const NpcSchema = z.strictObject({
   /** How close a character must stand to talk, metres. */
   talkRange: z.number().positive().max(50).default(6),
   dialog: id,
+  /** A baked townsperson (settlement npc id) who is this giver: talking to them (E, 4 m) opens this dialog instead of their usual line. x and z are then only the quest marker. */
+  resident: z.string().min(1).max(64).optional(),
   /** The templates this npc's board draws generated quests from. */
   board: z.array(id).default([]),
   places: z.array(PlaceSchema).default([]),
@@ -181,6 +183,28 @@ export interface QuestContent {
 
 export const DEFAULT_QUEST_DIR = fileURLToPath(new URL("../../../../../content/quests", import.meta.url));
 
+/** Valid empty quest content: no stages, steps, templates, quests, npcs or dialogs. */
+export const EMPTY_QUEST_CONTENT: QuestContent = {
+  stages: [],
+  steps: {},
+  templates: {},
+  quests: {},
+  npcs: {},
+  dialogs: {},
+};
+
+/** True when a quest content holds nothing authored. */
+export function isQuestContentEmpty(c: QuestContent): boolean {
+  return (
+    c.stages.length === 0 &&
+    Object.keys(c.steps).length === 0 &&
+    Object.keys(c.templates).length === 0 &&
+    Object.keys(c.quests).length === 0 &&
+    Object.keys(c.npcs).length === 0 &&
+    Object.keys(c.dialogs).length === 0
+  );
+}
+
 export class QuestContentError extends Error {
   constructor(readonly problems: string[]) {
     super(`quest content: ${problems.join("; ")}`);
@@ -216,7 +240,20 @@ export function parseQuestContent(files: { steps: unknown; quests: unknown; npcs
   return content;
 }
 
+const QUEST_FILES = ["steps.json", "quests.json", "npcs.json", "dialogs.json"] as const;
+
+/**
+ * Load the quest content. A missing dir (or a dir with none of the files) is
+ * a valid empty quest set — the engine boots game-less. A half-present dir
+ * is an authoring error and fails loud naming the missing files; a present
+ * but invalid file still fails loud.
+ */
 export function loadQuestContent(dir: string = DEFAULT_QUEST_DIR): QuestContent {
+  const missing = QUEST_FILES.filter((f) => !existsSync(join(dir, f)));
+  if (missing.length === QUEST_FILES.length) return structuredClone(EMPTY_QUEST_CONTENT);
+  if (missing.length > 0) {
+    throw new QuestContentError(missing.map((f) => `${f}: no such file (quest content is all four files or none)`));
+  }
   const read = (f: string): unknown => JSON.parse(readFileSync(join(dir, f), "utf8"));
   return parseQuestContent({ steps: read("steps.json"), quests: read("quests.json"), npcs: read("npcs.json"), dialogs: read("dialogs.json") });
 }

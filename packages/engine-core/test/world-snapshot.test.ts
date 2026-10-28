@@ -120,4 +120,13 @@ describe("world snapshot", () => {
   it("snapshotPath is the db path with .bak", () => {
     assert.equal(snapshotPath("/a/world.db"), "/a/world.db.bak");
   });
+
+  it("backing up a world whose data dir does not exist yet records it as absent", () => {
+    const fresh = join(dir, "no", "such", "dir", "world.db");
+    backupWorld(fresh);
+    assert.equal(hasBackup(fresh), true);
+    writeFileSync(fresh, "play");
+    restoreWorld(fresh);
+    assert.equal(existsSync(fresh), false);
+  });
 });

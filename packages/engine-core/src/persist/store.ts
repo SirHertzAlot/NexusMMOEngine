@@ -26,6 +26,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 import { VERSION } from "../index.js";
+import {
+  LogProducerClient,
+  logPersistCheckpointFailed,
+  logPersistCheckpointWorkerFallback,
+  logPersistSavePhases,
+  stdioLog,
+  stdioWarn,
+} from "../logging/index.js";
 import { collectFullState, decodeSnapshot, encodeSnapshot } from "../snapshot.js";
 import type { SimWorld } from "../world.js";
 
@@ -74,6 +82,12 @@ export interface SnapshotStoreOptions {
    * up. Default 4 MiB (~30 snapshots at 1000 entities).
    */
   walSizeLimitBytes?: number;
+  /**
+   * Log-ring producer for save and checkpoint diagnostics
+   * (docs/SAB-LOGGING-LAYER-SPEC.md §2.4). Without one the store reports
+   * through stdio, as before.
+   */
+  logProducer?: LogProducerClient;
 }
 
 export const DEFAULT_WAL_SIZE_LIMIT_BYTES = 4 * 1024 * 1024;
@@ -84,6 +98,12 @@ export interface SaveResult {
   entityCount: number;
   /** Snapshot payload size in bytes. */
   bytes: number;
+  /**
+   * A copy of the exact snapshot bytes this save persisted (persistence
+   * P2): the world-tier upload ships these bytes — never a re-encode —
+   * so local and world copies cannot diverge.
+   */
+  snapshotBytes: Uint8Array;
   /** End-to-end save latency (collect + encode + insert + prune), ms. */
   ms: number;
 }
@@ -123,6 +143,8 @@ export class SnapshotStore {
   /** Callers of whenCheckpointed() waiting for the worker to go idle. */
   private idleWaiters: Array<() => void> = [];
   private walSizeLimitBytes = DEFAULT_WAL_SIZE_LIMIT_BYTES;
+  /** Optional log-ring producer; without it the store falls back to stdio. */
+  private readonly logProducer?: LogProducerClient;
   /** Reused FlatBuffers scratch builder: saves must not regrow it. */
   private readonly snapshotBuilder = new flatbuffers.Builder(131072);
 
@@ -143,6 +165,7 @@ export class SnapshotStore {
 
   constructor(opts: SnapshotStoreOptions = {}) {
     const dbPath = opts.dbPath ?? DEFAULT_DB_PATH;
+    this.logProducer = opts.logProducer;
     if (dbPath !== ":memory:") {
       fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
     }
@@ -250,6 +273,9 @@ export class SnapshotStore {
       tick,
       entityCount,
       bytes: bytes.byteLength,
+      // Copy: the caller's view may alias a reused builder buffer that
+      // the next encode overwrites.
+      snapshotBytes: bytes.slice(),
       ms: performance.now() - t0,
     };
   }
@@ -279,10 +305,21 @@ export class SnapshotStore {
       sim.exportGenerations(),
       sim.liveEntityCount,
     );
+    // Debug-only profiling line (MMO_PROF_SAVE=1): a ring record when one is
+    // attached, stdout as before otherwise.
     if (process.env.MMO_PROF_SAVE) {
-      console.log(
-        `save phases: collect ${(t1 - t0).toFixed(2)} encode ${(t2 - t1).toFixed(2)} persist ${result.ms.toFixed(2)}`,
-      );
+      if (this.logProducer) {
+        logPersistSavePhases(
+          this.logProducer,
+          Number((t1 - t0).toFixed(2)),
+          Number((t2 - t1).toFixed(2)),
+          Number(result.ms.toFixed(2)),
+        );
+      } else {
+        stdioLog(
+          `save phases: collect ${(t1 - t0).toFixed(2)} encode ${(t2 - t1).toFixed(2)} persist ${result.ms.toFixed(2)}`,
+        );
+      }
     }
     return result;
   }
@@ -379,9 +416,9 @@ export class SnapshotStore {
     worker.on("message", (msg: unknown) => {
       if (msg !== "done") {
         // A failed PASSIVE checkpoint is retried after the next save.
-        console.warn(
-          `[persist] checkpoint failed: ${(msg as { failed?: string }).failed ?? String(msg)}`,
-        );
+        const reason = (msg as { failed?: string }).failed ?? String(msg);
+        if (this.logProducer) logPersistCheckpointFailed(this.logProducer, reason);
+        else stdioWarn(`[persist] checkpoint failed: ${reason}`);
       }
       this.checkpointInFlight = false;
       if (this.checkpointPending && this.checkpointer === worker) {
@@ -394,7 +431,8 @@ export class SnapshotStore {
     });
     const fail = (reason: string): void => {
       if (this.checkpointer !== worker) return; // closed deliberately
-      console.warn(`[persist] checkpoint worker ${reason}; using SQLite auto-checkpoint`);
+      if (this.logProducer) logPersistCheckpointWorkerFallback(this.logProducer, reason);
+      else stdioWarn(`[persist] checkpoint worker ${reason}; using SQLite auto-checkpoint`);
       this.checkpointer = null;
       this.checkpointerFailed = true;
       this.checkpointInFlight = false;

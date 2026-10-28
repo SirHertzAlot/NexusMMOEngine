@@ -45,7 +45,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && npm run build:lib && vite build",
-    "build:deps": "npm run build --workspace=@mmo-engine/scene && npm run build --workspace=@mmo-engine/schema && npm run build --workspace=@mmo-engine/protocol && npm run build --workspace=@mmo-engine/art && npm run build --workspace=@mmo-engine/mirror && npm run build --workspace=@mmo-engine/picg && npm run build --workspace=@mmo-engine/compose",
+    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/compose",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",
@@ -57,5 +57,6 @@
     "models:generate": "gltfjsx --types --output src/render/generated --transform"
   },
   "type": "module",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "sideEffects": false
 }

@@ -31,7 +31,7 @@ describe("dressing collision", () => {
       for (const p of x.props) {
         const line = lineOf(x.archetypes[p.room], p.kind);
         assert.equal(p.collision, line.collision ?? (line.mount ? "none" : "solid"), `${theme}: ${p.kind}`);
-        assert.equal(p.radius, line.radius);
+        assert.equal(p.radius, Math.max(line.radius, line.reach ?? 0));
         if (p.collision === "solid") solid++; else none++;
       }
     }
@@ -41,8 +41,8 @@ describe("dressing collision", () => {
   it("the builtin dressing: statues and chests block, candles and coins do not", () => {
     const all = Object.values(BUILTIN_DRESSING.archetypes).flatMap((a) => a.contents);
     const col = (kind: string) => all.find((k) => k.kind === kind)!.collision;
-    for (const kind of ["statue", "chest", "sarcophagus", "crate", "barrel", "bookshelf", "ice-pillar", "throne", "anvil"]) assert.equal(col(kind), "solid", kind);
-    for (const kind of ["candles", "coin-pile", "mushrooms", "rubble", "bedroll", "sack"]) assert.equal(col(kind), "none", kind);
+    for (const kind of ["statue", "chest", "grand-sarcophagus", "crate", "barrel", "bookshelf", "ice-pillar", "throne", "anvil", "bunk-bed", "jail-cell", "altar", "pew"]) assert.equal(col(kind), "solid", kind);
+    for (const kind of ["candles", "coin-pile", "mushrooms", "rubble", "sack", "carpet", "bone-pile", "painting", "wall-coffin", "wall-coffin-high"]) assert.equal(col(kind), "none", kind);
   });
 
   it("a game's dressing file can set it, and a wall-mounted line defaults to none", () => {

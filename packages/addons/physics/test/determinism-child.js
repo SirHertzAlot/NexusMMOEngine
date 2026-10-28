@@ -85,27 +85,47 @@ function main() {
     restitution, motionType, layer, pos, quat, linVel, angVel,
   });
 
-  // 4 seconds at 60 Hz, 2 substeps: the platform drives +x the whole run.
+  // Phase 2 (zero-copy): sync/copy use component arrays indexed by eid
+  // (insertion order: floor=0, platform=1, box=2, spheres=3..7).
+  const PLAT_EID = 1;
   const platIds = new BigUint64Array([PLATFORM]);
-  const platPos = new Float32Array(3);
-  const platQuat = new Float32Array([0, 0, 0, 1]);
-  const zero3 = new Float32Array(3);
+  const platEids = new Int32Array([PLAT_EID]);
+  const c = {
+    px: new Float32Array(n), py: new Float32Array(n), pz: new Float32Array(n),
+    qx: new Float32Array(n), qy: new Float32Array(n), qz: new Float32Array(n),
+    qw: new Float32Array(n),
+    lx: new Float32Array(n), ly: new Float32Array(n), lz: new Float32Array(n),
+    ax: new Float32Array(n), ay: new Float32Array(n), az: new Float32Array(n),
+  };
+  c.qw.fill(1);
   const noFlags = new Uint8Array([0]);
   for (let step = 0; step < 240; step++) {
-    platPos[0] = -6 + step * (4 / 240);
-    platPos[1] = 1.5;
-    platPos[2] = 0;
-    w.syncBodies(1, platIds, platPos, platQuat, zero3, zero3, noFlags, 1 / 60);
+    c.px[PLAT_EID] = -6 + step * (4 / 240);
+    c.py[PLAT_EID] = 1.5;
+    c.pz[PLAT_EID] = 0;
+    w.syncBodies(1, platIds, platEids,
+      c.px, c.py, c.pz, c.qx, c.qy, c.qz, c.qw, noFlags, 1 / 60);
     w.step(1 / 60, 2);
   }
 
   const dynIds = new BigUint64Array([BOX, ...spheres]);
+  const dynEids = new Int32Array([2, 3, 4, 5, 6, 7]);
   const m = dynIds.length;
+  w.copyResults(m, dynIds, dynEids,
+    c.px, c.py, c.pz, c.qx, c.qy, c.qz, c.qw,
+    c.lx, c.ly, c.lz, c.ax, c.ay, c.az);
+  // Gather into dense fingerprint arrays in dyn order (same as before).
   const oPos = new Float32Array(m * 3);
   const oQuat = new Float32Array(m * 4);
   const oLin = new Float32Array(m * 3);
   const oAng = new Float32Array(m * 3);
-  w.copyResults(m, dynIds, oPos, oQuat, oLin, oAng);
+  for (let k = 0; k < m; k++) {
+    const e = dynEids[k];
+    oPos.set([c.px[e], c.py[e], c.pz[e]], k * 3);
+    oQuat.set([c.qx[e], c.qy[e], c.qz[e], c.qw[e]], k * 4);
+    oLin.set([c.lx[e], c.ly[e], c.lz[e]], k * 3);
+    oAng.set([c.ax[e], c.ay[e], c.az[e]], k * 3);
+  }
 
   const fp = [bits(oPos), bits(oQuat), bits(oLin), bits(oAng)].join('|');
   process.stdout.write(`bodies=${w.bodyCount()} fp=${fp}\n`);

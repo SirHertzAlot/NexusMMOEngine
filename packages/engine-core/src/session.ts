@@ -114,6 +114,26 @@ export interface ClientSession {
    * Missing entries never sent on that channel.
    */
   lastChatMs: Partial<Record<"say" | "yell" | "emote" | "whisper" | "party" | "guild", number>>;
+  /**
+   * Sector topic this session is subscribed to (Phase 5 pub/sub fan-out),
+   * e.g. "sector:0,0" — null when not subscribed (no player entity yet,
+   * resyncing, or sector broadcast off). The gateway keeps this in sync
+   * with the avatar's position; the transport drops the subscription
+   * when the socket closes.
+   */
+  sectorTopic: string | null;
+  /** Interest management: the sectors this session sees; null = send it a full replace next tick. */
+  interestSet?: Set<string> | null;
+  /** IM6: an admin's "show everything" (editor play debugger): every occupied sector. */
+  interestAll?: boolean;
+  /** IM8: a read-only observer from a neighbour region's border, anchored where its player stands. */
+  observer?: { x: number; z: number; home: { x0: number; z0: number; x1: number; z1: number } };
+  /** IM8: the neighbours this session was sent a border ticket for, by region id -> ticket expiry (s). */
+  borders?: Map<string, number>;
+  /** IM5: pinned wire ids sent through the pinned entry last tick (out of the interest sectors). */
+  pinnedOut?: Set<bigint>;
+  /** IM5: foes this session hit or was hit by, pinned until the tick given. */
+  combatPins?: Map<bigint, number>;
 }
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */

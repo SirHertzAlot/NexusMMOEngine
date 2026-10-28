@@ -6,6 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { hasComponent } from "bitecs";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,7 +87,10 @@ describe("data-driven entities in a scene", () => {
   });
 
   it("spawns a species at its roster pack size, and says why one can't spawn", () => {
-    const { creatures, deps } = setup();
+    const { deps } = setup();
+    // The repo's roster now defines a creature rule for every species, so the
+    // "no creature rules" branch is exercised with a partial spawner set.
+    const onlyGoblin = new CreatureSystem({ creatures: { goblin: game.rules.creatures.creatures.goblin }, bases: game.rules.items.bases });
     const species = (id: string) => (id === "goblin" ? { pack: [5, 5] as const } : id === "void-watcher" ? { pack: [1, 1] as const } : undefined);
     const r = spawnScene(
       doc([
@@ -94,10 +98,10 @@ describe("data-driven entities in a scene", () => {
         { id: "v", components: { Spawner: { species: "void-watcher" } } },
         { id: "x", components: { Spawner: { species: "dragon" } } },
       ]) as never,
-      { ...deps, species },
+      { ...deps, creatures: onlyGoblin, species },
     );
     assert.equal(r.spawned[0].entities.length, 5);
-    assert.ok(r.spawned[0].entities.every((e) => creatures.isCreature(e)));
+    assert.ok(r.spawned[0].entities.every((e) => onlyGoblin.isCreature(e)));
     assert.match(r.skipped.find((s) => s.id === "v")!.reason, /no creature rules/);
     assert.match(r.skipped.find((s) => s.id === "x")!.reason, /no species "dragon"/);
   });
@@ -194,6 +198,39 @@ describe("loadSceneFile", () => {
   });
 });
 
+describe("Collider nodes in a scene", () => {
+  const collider = (id: string, c: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ id, transform: { position: [3, 1, 4] }, components: { Collider: c }, ...extra });
+
+  it("spawns a bare node as a static box or sphere, with defaults for missing fields, on the ground", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([collider("wall", { shape: "box", hx: 2, hy: 3, hz: 0.25 }), collider("rock", { shape: "sphere", radius: 1.5 }), collider("def", {})]) as never, deps);
+    const [wall, rock, def] = r.spawned.map((s) => s.entities[0]);
+    assert.equal(C.BodyConfig.shapeKind[wall], C.ShapeKind.Box);
+    assert.deepEqual([C.BodyConfig.halfX[wall], C.BodyConfig.halfY[wall], C.BodyConfig.halfZ[wall]], [2, 3, 0.25]);
+    assert.equal(C.BodyConfig.motionType[wall], C.MotionType.Static);
+    assert.equal(C.Transform.py[wall], 3, "node height sits on the ground height");
+    assert.equal(C.BodyConfig.shapeKind[rock], C.ShapeKind.Sphere);
+    assert.equal(C.BodyConfig.radius[rock], 1.5);
+    assert.deepEqual([C.BodyConfig.halfX[def], C.BodyConfig.halfY[def], C.BodyConfig.halfZ[def]], [0.5, 0.5, 0.5]);
+  });
+
+  it('shape "none" is walk-through: no body, and a bare one spawns nothing', () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([collider("ghost", { shape: "none" }), collider("tree", { shape: "none" }, { prefab: "oak" })]) as never, deps);
+    assert.deepEqual(r.skipped.map((s) => s.id), ["ghost"]);
+    const tree = r.spawned[0].entities[0];
+    assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, tree), "a prop's own collision is switched off");
+  });
+
+  it("overrides the collision of a prop prefab", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([collider("tree", { shape: "box", hx: 1, hy: 5, hz: 1 }, { prefab: "oak" })]) as never, deps);
+    const e = r.spawned[0].entities[0];
+    assert.equal(C.AssetRef.assetHash[e], fnv1a32("oak"));
+    assert.deepEqual([C.BodyConfig.halfX[e], C.BodyConfig.halfY[e], C.BodyConfig.halfZ[e]], [1, 5, 1]);
+  });
+});
+
 describe("structures in a scene", () => {
   const node = (id: string, structure: Record<string, unknown>) => ({ id, transform: { position: [10, 0, 20], rotation: [0, 90, 0] }, components: { Structure: structure } });
 
@@ -215,5 +252,110 @@ describe("structures in a scene", () => {
     const { deps } = setup();
     const r = spawnScene(doc([node("smithy-2", { kind: "smithy", asset: "pack/Smithy_01", width: 10, depth: 18, height: 4 })]) as never, deps);
     assert.equal(C.AssetRef.assetHash[r.spawned[0].entities[0]], fnv1a32("pack/Smithy_01"));
+  });
+
+  // The footprint of `node` (10 x 18, yaw 90 at (10, 20)): the local x axis lies along world z, the local z axis along world -x... so 18 m along x, 10 m along z.
+  const footprint = (): Array<[number, number]> => {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i <= 36; i++) for (let j = 0; j <= 20; j++) pts.push([10 - 9 + i * 0.5, 20 - 5 + j * 0.5]);
+    return pts;
+  };
+
+  it("stands a building on the highest ground under its footprint, so no side sinks into a slope", () => {
+    const { deps } = setup();
+    const ground = (x: number, _z: number): number => 0.1 * x; // a 10 percent slope along x: 1.8 m across the 18 m footprint
+    const r = spawnScene(doc([node("smithy-3", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, { ...deps, groundHeightAt: ground });
+    const e = r.spawned[0].entities[0];
+    const highest = Math.max(...footprint().map(([x, z]) => ground(x, z)));
+    assert.ok(C.Transform.py[e] >= highest && C.Transform.py[e] - highest < 0.06, `floor at ${C.Transform.py[e]}, highest ground ${highest} (plus a plinth of a few cm)`);
+    for (const [x, z] of footprint()) assert.ok(ground(x, z) <= C.Transform.py[e] + 1e-5, `ground ${ground(x, z)} at ${x},${z} is above the floor`);
+    const lowest = Math.min(...footprint().map(([x, z]) => ground(x, z)));
+    assert.ok(C.Transform.py[e] - C.BodyConfig.halfY[e] <= lowest + 1e-5, "the body reaches the lowest ground");
+  });
+
+  it("fills the gap under the high side with a foundation slab from the lowest ground up to the floor", () => {
+    const { deps } = setup();
+    const ground = (x: number, _z: number): number => 0.1 * x;
+    const r = spawnScene(doc([node("smithy-4", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, { ...deps, groundHeightAt: ground });
+    const [building, slab] = r.spawned[0].entities;
+    assert.equal(r.spawned[0].entities.length, 2);
+    const drop = C.Transform.py[building] - Math.min(...footprint().map(([x, z]) => ground(x, z)));
+    assert.ok(Math.abs(C.Transform.py[slab] + C.BodyConfig.halfY[slab] - C.Transform.py[building]) < 1e-5, "the slab's top is the floor");
+    assert.ok(Math.abs(C.Transform.py[slab] - C.BodyConfig.halfY[slab] - (C.Transform.py[building] - drop)) < 1e-5, "the slab's underside is the lowest ground");
+    assert.deepEqual([C.BodyConfig.halfX[slab], C.BodyConfig.halfZ[slab]], [C.BodyConfig.halfX[building], C.BodyConfig.halfZ[building]], "as wide as the building");
+    assert.equal(C.BodyConfig.motionType[slab], C.MotionType.Static);
+  });
+
+  it("reaches the lowest ground even when the drop is taller than the building", () => {
+    const { deps } = setup();
+    const ground = (x: number, _z: number): number => 1 * x; // 100 percent: 18 m across the footprint, the building is 4 m tall
+    const r = spawnScene(doc([node("smithy-5", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, { ...deps, groundHeightAt: ground });
+    const e = r.spawned[0].entities[0];
+    assert.ok(C.Transform.py[e] - C.BodyConfig.halfY[e] <= 1 + 1e-5, "the body's underside is at or below the lowest ground (x = 1)");
+  });
+
+  it("adds no foundation on flat ground", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([node("smithy-6", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, deps);
+    assert.equal(r.spawned[0].entities.length, 1);
+  });
+
+  it("makes a Structure with a Collider of shape none walk-through (a town gate), with no foundation slab", () => {
+    const { deps } = setup();
+    const gate = { id: "gate-1", transform: { position: [10, 0, 20] }, components: { Structure: { kind: "town_gate", width: 8, depth: 2, height: 8 }, Collider: { shape: "none" } } };
+    const r = spawnScene(doc([gate]) as never, { ...deps, groundHeightAt: (x: number) => 0.1 * x });
+    assert.equal(r.spawned[0]!.what, "structure town_gate");
+    assert.equal(r.spawned[0]!.entities.length, 1, "no slab under the road");
+    const e = r.spawned[0]!.entities[0]!;
+    assert.equal(C.AssetRef.assetHash[e], fnv1a32("structure:town_gate"));
+    assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, e), "no body: nothing to bump into");
+  });
+});
+
+describe("sea level in a scene", () => {
+  const house = (id: string, x = 10, z = 20) => ({ id, transform: { position: [x, 0, z] }, components: { Structure: { kind: "house", width: 6, depth: 6, height: 3 } } });
+  const tree = (id: string, x = 10, z = 20) => ({ id, kind: "prefab", prefab: "oak", transform: { position: [x, 0, z] } });
+  const run = (nodes: unknown[], ground: (x: number, z: number) => number, extra: object = {}) => {
+    const { deps } = setup();
+    return spawnScene(doc(nodes) as never, { ...deps, groundHeightAt: ground, seaLevel: 0, ...extra });
+  };
+
+  it("refuses a house under water, with the reason, instead of drowning it", () => {
+    const r = run([house("drowned"), house("dry", 100, 20)], (x) => (x < 50 ? -2 : 5));
+    assert.deepEqual(r.spawned.map((s) => s.id), ["dry"]);
+    assert.match(r.skipped.find((s) => s.id === "drowned")!.reason, /under water|below the water/);
+  });
+
+  it("refuses a house on a shore parcel: any part of the footprint within a metre of the water", () => {
+    const slope = (x: number): number => (x - 7) * 0.5; // the footprint (x 7..13) climbs from 0 to 3 m
+    assert.equal(run([house("shore")], slope).spawned.length, 0);
+    assert.equal(run([house("ok")], (x) => 1 + (x - 7) * 0.5).spawned.length, 1, "lowest point exactly 1 m up");
+    assert.equal(run([house("close")], (x) => 0.99 + (x - 7) * 0.5).spawned.length, 0, "a hair under");
+  });
+
+  it("refuses a house on a river or lake cell, and under a lake's surface", () => {
+    assert.equal(run([house("riv")], () => 5, { riverAt: () => true }).spawned.length, 0);
+    assert.equal(run([house("lake")], () => 40, { waterAt: () => 40.5 }).spawned.length, 0);
+    assert.equal(run([house("far")], () => 40, { waterAt: () => 10 }).spawned.length, 1);
+  });
+
+  it("refuses a land prop below the water or inside the margin; one exactly at the margin stands", () => {
+    assert.equal(run([tree("sunk")], () => -2).spawned.length, 0);
+    assert.match(run([tree("sunk")], () => -2).skipped[0].reason, /water/);
+    assert.equal(run([tree("wet")], () => 0.29).spawned.length, 0);
+    assert.equal(run([tree("edge")], () => 0.3).spawned.length, 1);
+  });
+
+  it("an aquatic prop (habitat water) stands on the sea floor within its depths", () => {
+    const { deps } = setup();
+    const coral = parseSpawnTableJSON({ version: 1, archetypes: { coral: { asset: "coral", habitat: "water", depthM: [1, 6] } } });
+    const go = (g: number) => spawnScene(doc([{ id: "c", kind: "prefab", prefab: "coral", transform: { position: [1, 0, 1] } }]) as never, { ...deps, table: () => coral, groundHeightAt: () => g, seaLevel: 0 }).spawned.length;
+    assert.equal(go(-2), 1);
+    assert.equal(go(3), 0);
+  });
+
+  it("without any water known, nothing is refused (legacy worlds)", () => {
+    const { deps } = setup();
+    assert.equal(spawnScene(doc([house("h")]) as never, { ...deps, groundHeightAt: () => -50 }).spawned.length, 1);
   });
 });
