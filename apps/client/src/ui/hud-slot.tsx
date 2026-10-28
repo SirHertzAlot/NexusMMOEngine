@@ -6,7 +6,8 @@
  * it. Moving a widget is a hud.json edit, never a code change.
  */
 import * as React from "react";
-import { anchorStyle, DEFAULT_LAYOUT, loadHudLayout, type HudLayout } from "./hud-layout.js";
+import { anchorStyle, DEFAULT_LAYOUT, type HudLayout } from "./hud-layout.js";
+import { useHudJson } from "../hooks/swr";
 
 const HudLayoutContext = React.createContext<HudLayout>(DEFAULT_LAYOUT);
 
@@ -24,30 +25,11 @@ export function HudLayoutProvider({
   );
 }
 
-/** Fetch hud.json once; fall back to the default layout on any failure. */
-export function useHudJson(url = "/content/ui/hud.json"): HudLayout | null {
-  const [layout, setLayout] = React.useState<HudLayout | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    fetch(url)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (!live) return;
-        try {
-          setLayout(json ? loadHudLayout(json) : null);
-        } catch {
-          setLayout(null);
-        }
-      })
-      .catch(() => {
-        if (live) setLayout(null);
-      });
-    return () => {
-      live = false;
-    };
-  }, [url]);
-  return layout;
-}
+/** Fetch hud.json with SWR deduplication (60s deduping interval). */
+export { useHudJson } from "../hooks/swr";
+
+// Avoid unused import warning
+void useHudJson;
 
 export function HudSlot({
   id,

@@ -19,10 +19,12 @@
     "postprocessing": "^6.39.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "swr": "^2.5.1",
     "three": "^0.186.1",
     "three-mesh-bvh": "^0.9.15",
     "three-nebula": "^13.3.0",
-    "three.quarks": "^0.17.1"
+    "three.quarks": "^0.17.1",
+    "zod": "^4.6.7"
   },
   "description": "three.js mirror client: React + shadcn + Tailwind shell, three.js canvas rendering authoritative ECS snapshots/deltas with interpolation (Phase 3)",
   "devDependencies": {
