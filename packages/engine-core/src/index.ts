@@ -497,3 +497,6 @@ export {
   DEFAULT_RING_CAPACITY,
   COMMAND_SLOT_UINT32_STRIDE,
 } from "./lockless-ring.js";
+
+// SAB Logging Layer Exports (docs/SAB-LOGGING-LAYER-SPEC.md)
+export * from "./logging/index.js";

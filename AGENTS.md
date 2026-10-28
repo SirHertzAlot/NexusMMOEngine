@@ -46,3 +46,22 @@ The rendering pipeline strictly supports standard Mermaid diagram headers. Unsup
 - **Standing Rule on Branches:** All feature work stays on local feature branches (`feat/*`). Never push, open PRs, or merge to main without explicit user authorization.
 - **Universal SI Metric Scale:** All physical and procedural dimensions strictly adhere to SI units ($1.0\text{ unit} = 1.0\text{ meter}$).
 - **Security Perimeter:** Memory-unsafe C++ code must NEVER parse untrusted network input directly; the Node.js Gateway must validate every byte before simulation ingestion.
+
+---
+
+## 6. SharedArrayBuffer & Sacred Hot-Path Producer Invariants ("The V8 Allocation Trap")
+
+- **The Sacred Producer Path:**
+  - Hot-path log emission and command enqueuing must strictly execute in the **tens-of-nanoseconds class** ($< 100\text{ ns}$) with **zero heap allocations ($0\text{ bytes}$ GC churn)**.
+  - **Zero Closures:** Never pass callback closures to ring queue write methods (`enqueueRaw((data, base) => ...)`). Always use direct atomic CAS ticket reservation with in-place typed array writes.
+  - **Zero Array Allocations:** Function signatures on the hot path must never accept dynamic arrays (`args: Array<...>`) or rest parameters (`...args`). Pass fixed positional arguments (`a0, a1, a2, a3`) directly.
+  - **No BigInt Default Literals:** Avoid `bigint = 0n` default parameters in high-frequency signatures. Use optional or undefined checks to prevent V8 BigInt allocation and polymorphic call-site de-optimizations.
+- **Clock Trap Amortization:**
+  - Never call `performance.now()`, `process.hrtime.bigint()`, or `Date.now()` per record in tight loops. Syscall and QPC trap latency costs $50\text{--}85\text{ ns}$ per call on Windows.
+  - Amortize monotonic timestamps across batches (e.g. `(count++ & 15) === 0`) or inherit the simulation frame/tick timestamp.
+- **L2/L3 CPU Cache Sizing Discipline:**
+  - High-frequency SharedArrayBuffer rings must be sized to remain resident in CPU L2/L3 cache (e.g. default capacity $16,384\text{ records} = 2.0\text{ MB}$).
+  - Never inflate buffer sizes to hundreds of megabytes where sequential writes spill into main DRAM, incurring memory bus latency penalties.
+- **Inlined Layout Offsets:**
+  - Do not dereference property lookups (`RECORD_LAYOUT.HEADER_WORD`, `this.dataByteOffset`) inside tight atomic loops. Inline constant numeric word offsets to enable direct V8 register-indirect assembly generation.
+

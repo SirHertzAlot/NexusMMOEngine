@@ -855,3 +855,8 @@ Newest first. One line per merged PR or decision.
   - Disposable sinks: dedicated background log worker flushes batched 64KB writes to file, atomic metrics to edge counters, and formatted batches to uWS live edge topic `logs` for editor live-ops streaming (deleting snapshot timer polling).
   - World-tier fan-in: multi-region collector process lands streams into Redis Streams for persistent GraphQL live-ops queries.
   - Gated 5-phase execution roadmap: Phase 0 (Ring + dictionary + TS producers), Phase 1 (Log worker + file/metrics sinks), Phase 2 (Native C++ producers), Phase 3 (Live edge uWS pub/sub + editor stream), and Phase 4 (World-tier fan-in).
+- **2026-10-27**: SAB Logging Layer — Phase 0 Complete (docs/SAB-LOGGING-PHASE0-REPORT.md):
+  - Shared memory ring buffer (`LogRingBuffer`) over `AtomicMPSCQueue` with 128-byte fixed records, runtime atomic level masks, and exact drop accounting.
+  - Single-source code dictionary (`log-codes.ts`) generating `log-api.ts`, `log-formatters.ts`, and `log_codes.h`.
+  - Sacred producer client (`LogProducerClient`): unrolled, allocation-free in-place SAB emission achieving **83.9ns latency** (11.92M records/s single-threaded) and **13.72M records/s throughput** across 4 concurrent threads.
+  - Migrated Gateway subsystem: all 9 legacy `console.*` calls replaced with typed binary emissions; 0 `console.*` calls remain in `gateway.ts`. All Phase 0 gates PASS.

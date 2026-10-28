@@ -780,12 +780,17 @@ describe("instance manager", () => {
     }
     inst.end("cleared");
     assert.equal(trained.length, 3);
-    for (const [c, s, d, k] of trained) {
+    for (const [c, s, d] of trained) {
       assert.equal(c, trained[0][0]);
       assert.equal(s, "cutting");
       assert.equal(d, 0.5);
-      assert.equal(k, trained[0][3]);
     }
+    // The repeat-falloff key is the victim's kind: the instance spawns a
+    // skeleton and two goblins, so two keys, two uses sharing the goblin's.
+    const keys = new Map<number, number>();
+    for (const t of trained) keys.set(t[3], (keys.get(t[3]) ?? 0) + 1);
+    assert.equal(keys.size, 2, `one key per victim kind, got ${[...keys].join(", ")}`);
+    assert.deepEqual([...keys.values()].sort(), [1, 2]);
   });
 
   it("refuses a party outside its size", async () => {

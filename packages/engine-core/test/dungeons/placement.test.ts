@@ -62,7 +62,9 @@ describe("chest and trap placement", () => {
       const placed = placeChestsAndTraps(layout, content.rules.chestsPerRun, content.rules.trapsPerRun, content.props);
       assert.equal(inst.chests.length, placed.chests.length);
       const near = (e: number, x: number, z: number) => Math.hypot(C.Transform.px[e] - x, C.Transform.pz[e] - z) < 1e-3;
-      const chestAssets = new Set([fnv1a32("dungeon:chest"), fnv1a32("dungeon:gilded-chest")]);
+      // An entity's AssetRef hash is the hash of the table asset id — which
+      // the art overlay swaps for a catalog model (see spawnProp in instance.ts).
+      const chestAssets = new Set([content.props.archetypes["dungeon:chest"].asset, content.props.archetypes["dungeon:gilded-chest"].asset].map((asset) => fnv1a32(asset)));
       const standing = [...defineQuery([C.AssetRef])(inst.world.ecs)].filter((e) => chestAssets.has(C.AssetRef.assetHash[e]));
       for (const ch of inst.chests) assert.equal(standing.filter((e) => near(e, ch.x, ch.z)).length, 1, `exactly one chest entity at ${ch.id}`);
       assert.deepEqual(inst.traps.map((t) => [t.x, t.z]), placed.traps.map((t) => [t.x, t.z]));

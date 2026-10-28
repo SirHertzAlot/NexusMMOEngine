@@ -38,6 +38,16 @@
 import * as path from "node:path";
 import * as argon2 from "argon2";
 import express from "express";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  LogWorkerSupervisor,
+  logWorldMigrationExpired,
+  logWorldMigrationExpiryError,
+  logWorldReapedStaleRegion,
+  logWorldReaperError,
+} from "@mmo-engine/logging/dist/src/logging/index.js";
 import { createWebrpcRouter } from "./adapters/webrpc.js";
 import { WorldCoreImpl } from "./core.js";
 import { MemoryWorldStore } from "./fake-store.js";
@@ -93,6 +103,21 @@ async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<vo
 }
 
 async function main(): Promise<void> {
+  // SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): the world process
+  // hosts its own ring + worker on the shared dictionary (0x0500-0x05FF).
+  // Boot banners and fatals stay on stdio on purpose; WORLD_LOG=0 starts no
+  // worker (records are then only counted as ring drops).
+  const logRing = new LogRingBuffer();
+  const logSupervisor = new LogWorkerSupervisor({
+    ring: logRing,
+    logDir: process.env.WORLD_LOG_DIR || path.join("data", "logs"),
+  });
+  if (process.env.WORLD_LOG !== "0") await logSupervisor.start();
+  process.on("exit", () => {
+    try { logSupervisor.stopSync(); } catch { /* exiting: nothing left to protect */ }
+  });
+  const logger = new LogProducerClient(LogProducer.WORLD, logRing);
+
   const apiKey = process.env.WORLD_API_KEY;
   const apiKeyHash = apiKey ? await argon2.hash(apiKey) : null;
   if (!apiKey) {
@@ -112,15 +137,15 @@ async function main(): Promise<void> {
 
   const app = express();
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
-  app.use(createWebrpcRouter(core));
+  app.use(createWebrpcRouter(core, { logger }));
 
   // Stale-region reaper: runs on its own timer, never in any tick loop.
   const reaper = setInterval(async () => {
     try {
       const reaped = await core.reapStale();
-      for (const id of reaped) console.log(`[world] reaped stale region ${id}`);
+      for (const id of reaped) logWorldReapedStaleRegion(logger, id);
     } catch (err) {
-      console.error("[world] reaper error", err);
+      logWorldReaperError(logger, err instanceof Error ? `${err.message}` : String(err));
     }
   }, Math.max(1000, Math.floor(HEARTBEAT_TIMEOUT_MS / 3)));
   reaper.unref();
@@ -129,9 +154,9 @@ async function main(): Promise<void> {
   // migration begun before a crash is just an old `begun` row.
   const expirer = setInterval(async () => {
     try {
-      for (const id of await core.expireMigrations()) console.log(`[world] migration ${id} expired`);
+      for (const id of await core.expireMigrations()) logWorldMigrationExpired(logger, id);
     } catch (err) {
-      console.error("[world] migration expiry error", err);
+      logWorldMigrationExpiryError(logger, err instanceof Error ? `${err.message}` : String(err));
     }
   }, Math.max(250, Math.floor(MIGRATION_TIMEOUT_MS / 4)));
   expirer.unref();

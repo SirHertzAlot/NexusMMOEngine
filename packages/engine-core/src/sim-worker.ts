@@ -35,6 +35,13 @@ import {
   AtomicSPSCTransactionQueue,
   PERSIST_TX_KIND,
 } from "./lockless-ring.js";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  logSimSpiralGuardFired,
+  logSimTickOverrun,
+} from "./logging/index.js";
 
 const require = createRequire(import.meta.url);
 
@@ -44,6 +51,7 @@ export const DT = 1.0 / TICK_RATE_HZ;
 export const DEFAULT_INPUT_RING_CAPACITY = 1024;
 export const DEFAULT_PERSIST_RING_CAPACITY = 512;
 export const DEFAULT_BASE_SPEED = 5.0;
+export const DEFAULT_KERNEL_TELEMETRY_EVERY = 256;
 
 export interface NativeEngineKernel {
   readonly isNative: boolean;
@@ -65,6 +73,13 @@ export interface NativeEngineKernel {
     dt: number,
     baseSpeed?: number,
   ): void;
+  // --- SAB Logging Layer Phase 2 native producers (all optional; present only
+  // on @mmo-engine/addon-integrate builds compiled after 2026-10-27) ---
+  logAttachRing?(ringBytes: Uint8Array, capacity: number): boolean;
+  logNativeTelemetryEvery?(n: number): void;
+  logIsAttached?(): boolean;
+  logSimTickOverrunNative?(tick: number, durationUs: number): boolean;
+  logSimSpiralGuardFiredNative?(droppedMs: number): boolean;
 }
 
 /** Pure JS fallback matching the C++ kernel semantics bit-for-bit if native binary is unavailable. */
@@ -194,6 +209,22 @@ export function loadNativeKernel(): NativeEngineKernel {
             typeof mod.applyIntentsAndStep === "function"
               ? mod.applyIntentsAndStep.bind(mod)
               : fallback.applyIntentsAndStep,
+          logAttachRing:
+            typeof mod.logAttachRing === "function" ? mod.logAttachRing.bind(mod) : undefined,
+          logNativeTelemetryEvery:
+            typeof mod.logNativeTelemetryEvery === "function"
+              ? mod.logNativeTelemetryEvery.bind(mod)
+              : undefined,
+          logIsAttached:
+            typeof mod.logIsAttached === "function" ? mod.logIsAttached.bind(mod) : undefined,
+          logSimTickOverrunNative:
+            typeof mod.logSimTickOverrunNative === "function"
+              ? mod.logSimTickOverrunNative.bind(mod)
+              : undefined,
+          logSimSpiralGuardFiredNative:
+            typeof mod.logSimSpiralGuardFiredNative === "function"
+              ? mod.logSimSpiralGuardFiredNative.bind(mod)
+              : undefined,
         };
       }
     } catch {
@@ -215,6 +246,15 @@ export interface SimWorkerConfig {
   baseSpeed?: number;
   useBatchDrain?: boolean;
   kernel?: NativeEngineKernel;
+  /** SAB of the process's log ring. Absent (CLI benches) = no ring emission. */
+  logRingSab?: SharedArrayBuffer;
+  /** Exact record capacity the log ring was created with (must match its creator). */
+  logRingCapacity?: number;
+  /**
+   * Sampled in-kernel telemetry stride (records per kernel steps). Default 256
+   * when the native producer attaches; 0 disables. Ignored without a ring.
+   */
+  kernelTelemetryEvery?: number;
 }
 
 export interface SimTickMetrics {
@@ -242,6 +282,9 @@ export class SimWorkerRuntime {
   public readonly useBatchDrain: boolean;
 
   private readonly drainScratch: Int32Array;
+  private readonly logRing?: LogRingBuffer;
+  private readonly logClient?: LogProducerClient;
+  private nativeLogAttached: boolean = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   public readonly stepMs: number = 1000 / TICK_RATE_HZ;
   public readonly maxStepsPerFrame: number = 5;
@@ -274,6 +317,25 @@ export class SimWorkerRuntime {
     this.baseSpeed = config.baseSpeed ?? DEFAULT_BASE_SPEED;
     this.useBatchDrain = config.useBatchDrain ?? false;
     this.drainScratch = new Int32Array(inputCap);
+    if (config.logRingSab && config.logRingCapacity) {
+      this.logRing = new LogRingBuffer(config.logRingCapacity, config.logRingSab);
+      this.logClient = new LogProducerClient(LogProducer.SIM, this.logRing);
+      // Phase 2: hand the same ring memory to the C++ side once. From here on
+      // the native kernels emit records without crossing the N-API boundary
+      // (kernel telemetry), and the runtime's own rare events (budget overrun,
+      // spiral guard) route through the native emitters too.
+      const nativeAttach =
+        this.logClient !== undefined &&
+        this.kernel.isNative &&
+        typeof this.kernel.logAttachRing === "function";
+      if (nativeAttach) {
+        this.nativeLogAttached = this.kernel.logAttachRing!(new Uint8Array(config.logRingSab), config.logRingCapacity);
+        if (this.nativeLogAttached) {
+          const every = config.kernelTelemetryEvery ?? DEFAULT_KERNEL_TELEMETRY_EVERY;
+          this.kernel.logNativeTelemetryEvery?.(every);
+        }
+      }
+    }
   }
 
   private applyCommandToken(commandToken: number): boolean {
@@ -414,9 +476,17 @@ export class SimWorkerRuntime {
     }
     if (budgetOverrun) {
       Atomics.add(tel, TELEMETRY_SLOTS.BUDGET_OVERRUNS, 1);
-      console.warn(
-        `[SimWorker] Tick ${tickNum} exceeded budget: ${elapsedMs.toFixed(2)}ms / ${FRAME_BUDGET_MS.toFixed(2)}ms`,
-      );
+      // The locked counter above is the metric; this is the diagnostic. The
+      // native emitter runs the whole MPSC enqueue inside C++ (Phase 2);
+      // without native attachment the TS producer is the fallback. Without a
+      // ring (benches): nothing.
+      if (this.logClient === undefined) {
+        // no ring — benches only, nothing to do
+      } else if (this.nativeLogAttached && this.kernel.logSimTickOverrunNative) {
+        this.kernel.logSimTickOverrunNative(tickNum, elapsedUs);
+      } else {
+        logSimTickOverrun(this.logClient, tickNum, elapsedUs);
+      }
     }
 
     return {
@@ -458,6 +528,16 @@ export class SimWorkerRuntime {
       this.accMs = 0;
       Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.SPIRAL_EVENTS, 1);
       Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.DROPPED_MS, dropped);
+      // Phase 2: the spiral diagnostic is now an actual log record (WARN,
+      // SIM_SPIRAL_GUARD_FIRED) — native first, TS producer fallback, and
+      // nothing at all in ring-less bench configurations.
+      if (this.logClient !== undefined && dropped > 0) {
+        if (this.nativeLogAttached && this.kernel.logSimSpiralGuardFiredNative) {
+          this.kernel.logSimSpiralGuardFiredNative(dropped);
+        } else {
+          logSimSpiralGuardFired(this.logClient, dropped);
+        }
+      }
     }
     return steps;
   }
@@ -518,6 +598,8 @@ if (isSimWorkerEntrypoint) {
     decodeMovementIntents: workerData.decodeMovementIntents,
     baseSpeed: workerData.baseSpeed,
     useBatchDrain: workerData.useBatchDrain,
+    logRingSab: workerData.logRingSab instanceof SharedArrayBuffer ? workerData.logRingSab : undefined,
+    logRingCapacity: typeof workerData.logRingCapacity === "number" ? workerData.logRingCapacity : undefined,
   });
 
   if (workerData.autoStart !== false) {

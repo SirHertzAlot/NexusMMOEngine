@@ -37,6 +37,7 @@ import { chunkCoordsFor, spawnChunk, type ChunkDataSource } from "../procgen/chu
 import { collectEntitiesState, decodeSnapshot, encodeSnapshot, type CollectedState } from "../snapshot.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
+import { stdioWarn } from "../logging/index.js";
 
 /** Inclusive chunk range a streamer may load. */
 export interface ChunkBounds {
@@ -106,7 +107,7 @@ export interface ChunkStreamerOptions {
    * and running out would throw mid-tick. Default 90,000.
    */
   entityBudget?: number;
-  /** Warnings (navmesh failures). Default console.warn. */
+  /** Warnings (navmesh failures). Default stdio (stderr). */
   warn?: (message: string) => void;
 }
 
@@ -172,7 +173,7 @@ export class ChunkStreamer implements SimSystem {
     this.loadBudgetMs = opts.loadBudgetMs ?? 6;
     this.maxLoadsPerTick = opts.maxLoadsPerTick ?? 32;
     this.entityBudget = opts.entityBudget ?? 90_000;
-    this.warn = opts.warn ?? ((m) => console.warn(m));
+    this.warn = opts.warn ?? stdioWarn;
     for (const [name, v] of [["loadRadius", this.loadRadius], ["unloadRadius", this.unloadRadius], ["unloadDelayTicks", this.unloadDelayTicks]] as const) {
       if (!Number.isInteger(v) || v < 0) throw new RangeError(`chunk streamer: ${name} must be a non-negative integer (got ${v})`);
     }

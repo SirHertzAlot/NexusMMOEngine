@@ -12,10 +12,10 @@
     "extract": "node dist/src/cli.js"
   },
   "dependencies": {
-    "@mmo-engine/art": "workspace:*",
-    "@mmo-engine/scatter": "workspace:*",
-    "@mmo-engine/scene": "workspace:*",
-    "@mmo-engine/wfc": "workspace:*",
+    "@mmo-engine/art": "^0.1.0",
+    "@mmo-engine/scatter": "^0.1.0",
+    "@mmo-engine/scene": "^0.1.0",
+    "@mmo-engine/wfc": "^0.1.0",
     "three": "^0.180.0",
     "zod": "^3.23.8"
   },
