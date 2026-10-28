@@ -12,7 +12,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Retargeter, MANNEQUIN_MAP } from "../src/convert/retarget.js";
+import { Retargeter } from "../src/convert/retarget.js";
+import { MANNEQUIN_MAP } from "../src/convert/convert-animations.js";
 
 function bone(name: string): THREE.Object3D {
   const b = new THREE.Object3D();
