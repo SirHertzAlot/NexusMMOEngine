@@ -28,6 +28,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <string>
 #include <vector>
 
 #include "log_producer.h"
@@ -441,6 +443,131 @@ Napi::Value StepSimulationSoA(const Napi::CallbackInfo& info) {
   NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
   return Napi::Boolean::New(env, true);
 }
+// PATCH-01: 8-wide AVX2 FMA3 kernel with 64-bit hierarchical alive-bitset block skipping.
+//
+// Adapted to the live planar SoA layout (`hp` is an Int32Array, no mana channel).
+// Invariant: `aliveBitset` must be a SUPERSET of alive entities (every entity with
+// hp > 0 has its bit set). Within a non-zero octet all 8 lanes are masked by hp,
+// so a stale "1" bit for a dead entity is harmless; a fully-dead octet is cleared
+// in place so subsequent ticks skip it.
+static inline uint64_t LoadBitsetWord64(const uint32_t* __restrict words, size_t w) noexcept {
+  uint64_t word;
+  std::memcpy(&word, words + (w * 2), sizeof(uint64_t));  // SAB views are only 4-byte aligned
+  return word;
+}
+
+static inline void NativeIntegrateSoABitsetSystem(float* __restrict px,
+                                                  float* __restrict py,
+                                                  float* __restrict pz,
+                                                  const float* __restrict vx,
+                                                  const float* __restrict vy,
+                                                  const float* __restrict vz,
+                                                  const int32_t* __restrict hp,
+                                                  uint32_t* __restrict aliveBitset,
+                                                  size_t entityCount,
+                                                  float dt) noexcept {
+  const size_t wordCount64 = entityCount / 64;
+#if defined(__AVX2__)
+  const __m256 vDt = _mm256_set1_ps(dt);
+  const __m256i vZeroI = _mm256_setzero_si256();
+  uint8_t* aliveBytes = reinterpret_cast<uint8_t*>(aliveBitset);
+
+  for (size_t w = 0; w < wordCount64; ++w) {
+    const uint64_t word = LoadBitsetWord64(aliveBitset, w);
+    if (word == 0ULL) continue;  // skip 64 entities without touching the planar channels
+
+    const size_t baseEntity = w * 64;
+    for (size_t octet = 0; octet < 8; ++octet) {
+      if (((word >> (octet * 8)) & 0xFFULL) == 0ULL) continue;
+
+      const size_t i = baseEntity + octet * 8;
+      const __m256i vHp = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(hp + i));
+      const __m256 vAlive = _mm256_castsi256_ps(_mm256_cmpgt_epi32(vHp, vZeroI));
+      if (_mm256_movemask_ps(vAlive) == 0) {
+        aliveBytes[w * 8 + octet] = 0;  // whole octet died: clear so later ticks skip it
+        continue;
+      }
+      const __m256 vEffDt = _mm256_and_ps(vAlive, vDt);  // dead lanes integrate with dt = 0
+      _mm256_storeu_ps(px + i, _mm256_fmadd_ps(_mm256_loadu_ps(vx + i), vEffDt, _mm256_loadu_ps(px + i)));
+      _mm256_storeu_ps(py + i, _mm256_fmadd_ps(_mm256_loadu_ps(vy + i), vEffDt, _mm256_loadu_ps(py + i)));
+      _mm256_storeu_ps(pz + i, _mm256_fmadd_ps(_mm256_loadu_ps(vz + i), vEffDt, _mm256_loadu_ps(pz + i)));
+    }
+  }
+  // Tail (entityCount not divisible by 64): hp-gated scalar path.
+  for (size_t i = wordCount64 * 64; i < entityCount; ++i) {
+    if (hp[i] <= 0) continue;
+    px[i] += vx[i] * dt;
+    py[i] += vy[i] * dt;
+    pz[i] += vz[i] * dt;
+  }
+#else
+  (void)aliveBitset;
+  (void)wordCount64;
+  NativeIntegrateSoASystem(px, py, pz, vx, vy, vz, hp, entityCount, dt);
+#endif
+}
+
+namespace {
+uint32_t* CheckedU32Data(Napi::Env env, Napi::Value value, const char* name, size_t* out_len) {
+  if (!value.IsTypedArray()) {
+    Napi::TypeError::New(env, std::string(name) + " must be a TypedArray").ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::TypedArray ta = value.As<Napi::TypedArray>();
+  if (ta.TypedArrayType() != napi_uint32_array) {
+    Napi::TypeError::New(env, std::string(name) + " must be a Uint32Array").ThrowAsJavaScriptException();
+    return nullptr;
+  }
+  Napi::Uint32Array arr = ta.As<Napi::Uint32Array>();
+  *out_len = arr.ElementLength();
+  return arr.Data();
+}
+}  // namespace
+
+// stepSimulationSoABitset(px, py, pz, vx, vy, vz, hp, aliveBitset, entityCount, dt) -> boolean
+Napi::Value StepSimulationSoABitset(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 10 || !info[8].IsNumber() || !info[9].IsNumber()) {
+    Napi::TypeError::New(
+        env, "stepSimulationSoABitset expects (px, py, pz, vx, vy, vz, hp, aliveBitset, entityCount, dt)")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  size_t lens[6];
+  float* p[6];
+  const char* names[6] = {"px", "py", "pz", "vx", "vy", "vz"};
+  for (int i = 0; i < 6; ++i) {
+    p[i] = CheckedF32Data(env, info[i], names[i], &lens[i]);
+    if (p[i] == nullptr) return env.Null();
+  }
+  size_t hpLen = 0;
+  int32_t* hp = CheckedI32Data(env, info[6], "hp", &hpLen);
+  if (hp == nullptr) return env.Null();
+  size_t bitsetLen = 0;
+  uint32_t* aliveBitset = CheckedU32Data(env, info[7], "aliveBitset", &bitsetLen);
+  if (aliveBitset == nullptr) return env.Null();
+
+  const size_t entityCount = info[8].As<Napi::Number>().Uint32Value();
+  const float dt = info[9].As<Napi::Number>().FloatValue();
+  for (int i = 0; i < 6; ++i) {
+    if (entityCount > lens[i]) {
+      Napi::RangeError::New(env, "entityCount exceeds float array length").ThrowAsJavaScriptException();
+      return env.Null();
+    }
+  }
+  if (entityCount > hpLen) {
+    Napi::RangeError::New(env, "entityCount exceeds hp array length").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if ((entityCount + 31) / 32 > bitsetLen) {
+    Napi::RangeError::New(env, "aliveBitset too short for entityCount").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  NativeIntegrateSoABitsetSystem(p[0], p[1], p[2], p[3], p[4], p[5], hp, aliveBitset, entityCount, dt);
+  NativeLogProducerGetInstance().maybeKernelTelemetry(static_cast<uint32_t>(entityCount), dt);
+  return Napi::Boolean::New(env, true);
+}
 
 // applyIntentsAndStep(floatMatrixView, entityCount, dt, baseSpeed) -> boolean
 Napi::Value ApplyIntentsAndStep(const Napi::CallbackInfo& info) {
@@ -779,6 +906,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("integrate", Napi::Function::New(env, Integrate));
   exports.Set("stepSimulation", Napi::Function::New(env, StepSimulation));
   exports.Set("stepSimulationSoA", Napi::Function::New(env, StepSimulationSoA));
+  exports.Set("stepSimulationSoABitset", Napi::Function::New(env, StepSimulationSoABitset));
   exports.Set("applyIntentsAndStep", Napi::Function::New(env, ApplyIntentsAndStep));
   exports.Set("noop", Napi::Function::New(env, Noop));
   exports.Set("createWorld", Napi::Function::New(env, CreateWorld));

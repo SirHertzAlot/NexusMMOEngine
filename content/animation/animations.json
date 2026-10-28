@@ -1,6 +1,16 @@
 {
   "version": 3,
-  "sources": [],
+  "sources": [
+    {
+      "id": "mesh2motion",
+      "title": "Mesh2Motion — CC0 creature/humanoid library",
+      "author": "Mesh2Motion contributors",
+      "license": "CC0-1.0",
+      "url": "https://mesh2motion.org",
+      "hash": "cc0-mesh2motion-hash-placeholder",
+      "clipsExpected": 251
+    }
+  ],
   "clips": [],
   "locomotion": {
     "fade": 0.2,

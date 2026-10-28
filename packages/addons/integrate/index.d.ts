@@ -67,6 +67,24 @@ export declare function stepSimulationSoA(
 ): boolean;
 
 /**
+ * PATCH-01: AVX2 8-wide FMA kernel with hierarchical 64-bit alive-bitset skipping.
+ * `aliveBitset` must hold at least ceil(entityCount / 32) words and must be a
+ * superset of alive entities (hp > 0). Fully-dead octets are cleared in place.
+ */
+export declare function stepSimulationSoABitset(
+  px: Float32Array,
+  py: Float32Array,
+  pz: Float32Array,
+  vx: Float32Array,
+  vy: Float32Array,
+  vz: Float32Array,
+  hp: Int32Array,
+  aliveBitset: Uint32Array,
+  entityCount: number,
+  dt: number,
+): boolean;
+
+/**
  * Fused DoD Intent-Decode + Integration kernel over the strided SAB matrix.
  */
 export declare function applyIntentsAndStep(

@@ -40,6 +40,8 @@ export interface AnimationSource {
   author: string;
   license: string;
   url: string;
+  /** Expected clip count from this source (build-time assertion). */
+  clipsExpected?: number;
   /** One library file holding every clip, relative to <assets>… */
   file?: string;
   /** …or a folder of one-clip files (relative paths matching `include`). */
@@ -421,6 +423,23 @@ export const ANIMATION_SOURCES: AnimationSource[] = [
     hips: "hip",
     map: CMU_MAP,
     reference: true,
+},
+  {
+    id: "mesh2motion",
+    title: "Mesh2Motion — CC0 creature/humanoid library",
+    author: "Mesh2Motion contributors",
+    license: "CC0-1.0",
+    url: "https://mesh2motion.org",
+    clipsExpected: 251,
+    // Individual GLB clips per animation, CC0 — pinnable by URL + hash.
+    dir: "animations/mesh2motion",
+    include: /\.glb$/i,
+    rename: (_clip, file) => {
+      // Mesh2Motion filenames are already descriptive; just remove extension.
+      return file.replace(/\.glb$/i, "");
+    },
+    hips: "pelvis",  // Mesh2Motion uses mannequin-style skeleton
+    map: MANNEQUIN_MAP,
   },
 ];
 
@@ -465,6 +484,7 @@ export async function convertAnimations(
   const infos: AnimationClipInfo[] = [];
   const used: AnimationManifest["sources"] = [];
   const names = new Set<string>();
+  const clipsPerSource = new Map<string, number>();
   const outDir = path.join(rigDir, "animations");
   fs.mkdirSync(outDir, { recursive: true });
   let bytes = 0;
@@ -479,8 +499,7 @@ export async function convertAnimations(
       }
     }
     if (files.length === 0 || !fs.existsSync(files[0].file)) {
-      log(`[animations] ${src.id}: not found (${src.file ?? src.dir}) — skipped`);
-      continue;
+      throw new Error(`[animations] ${src.id}: source not found (${src.file ?? src.dir}) — abort: pinned source manifest requires all sources`);
     }
     const clips: THREE.AnimationClip[] = [];
     let missingNoted = false;
@@ -538,11 +557,24 @@ export async function convertAnimations(
     fs.writeFileSync(path.join(rigDir, file), glb);
     bytes += glb.byteLength;
     used.push({ id: src.id, title: src.title, author: src.author, license: src.license, url: src.url, file, ...(src.reference ? { reference: true } : {}) });
+    clipsPerSource.set(src.id, clips.length);
     log(`[animations] ${src.id}: ${clips.length} clips, ${(glb.byteLength / 1e6).toFixed(1)} MB (hip scale ${scale.toPrecision(3)})`);
   }
 
   const manifest: AnimationManifest = { version: 2, sources: used, clips: infos };
   fs.writeFileSync(path.join(rigDir, "animations.json"), `${JSON.stringify(manifest, null, 1)}\n`);
+  // Phase A0: verify every pinned source produced the expected clip count.
+  for (const src of sources) {
+    if (typeof src.clipsExpected === "number") {
+      const got = clipsPerSource.get(src.id) ?? 0;
+      if (got !== src.clipsExpected) {
+        throw new Error(`[animations] ${src.id}: expected ${src.clipsExpected} clips but got ${got} — pin mismatch, abort`);
+      }
+    }
+  }
+  if (infos.length === 0) {
+    throw new Error("[animations] no clips produced — abort");
+  }
   fs.rmSync(path.join(rigDir, "animations.glb"), { force: true }); // the old single file
   log(`[animations] wrote ${infos.length} clips from ${used.length} sources (${(bytes / 1e6).toFixed(1)} MB)`);
   return manifest;
