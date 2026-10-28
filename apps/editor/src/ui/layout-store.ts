@@ -12,6 +12,10 @@ type PaneLayout = {
 
 type LayoutState = {
   panes: PaneLayout[];
+  activeTab: string;
+  bottomTab: string;
+  leftVisible: boolean;
+  bottomVisible: boolean;
 };
 
 const STORAGE_KEY = "editor-dock-layout";
@@ -23,8 +27,14 @@ function loadInitial(): LayoutState {
   } catch {
     // ignore parse errors
   }
-  // default layout – empty for now
-  return { panes: [] };
+  // default layout – include persistent UI defaults
+  return {
+    panes: [],
+    activeTab: "admin",
+    bottomTab: "appearance",
+    leftVisible: true,
+    bottomVisible: true,
+  };
 }
 
 export const layoutStore = createStore<LayoutState>(loadInitial());
