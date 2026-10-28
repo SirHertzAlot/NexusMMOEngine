@@ -9,7 +9,7 @@ import { MIcon } from "./components.js";
 
 export function AdminConsole(): React.JSX.Element {
   const [status, setStatus] = React.useState<AdminStatus | null>(null);
-  const [loading, setLoading] = React.useState<boolean>(false);
+  const [_loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
 
