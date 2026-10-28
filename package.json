@@ -44,6 +44,7 @@
     "valgrind:check": "node scripts/valgrind/check.mjs",
     "valgrind:build-debug": "node scripts/valgrind/build-debug.mjs",
     "valgrind:perf": "npm run build --workspace=@mmo-engine/engine-core && node scripts/valgrind/perf.mjs",
+    "valgrind:helgrind": "node scripts/valgrind/helgrind.mjs",
     "test:addon-physics": "npm run test --workspace=@mmo-engine/addon-physics",
     "test:addon-picg": "npm run test --workspace=@mmo-engine/addon-picg",
     "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
