@@ -21,10 +21,19 @@ import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
-import { DialogPanel, QuestLog, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
+import { DialogPanel, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
 import type { DungeonLook, DungeonMessage } from "@mmo-engine/protocol";
 import type { PouchMaterial } from "@mmo-engine/protocol";
-import { DungeonHud, DungeonResult, DungeonTransit, type DungeonRun } from "./ui/dungeon.js";
+// Lazy-load heavy panels (code splitting)
+import React from "react";
+import type { DungeonRun } from "./ui/dungeon.js";
+const DungeonHud = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonHud })));
+const DungeonResult = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonResult })));
+const DungeonTransit = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonTransit })));
+const CharacterSheet = React.lazy(() => import("./ui/character-sheet.js").then((m) => ({ default: m.CharacterSheet })));
+const BagPanel = React.lazy(() => import("./ui/bag-panel.js").then((m) => ({ default: m.BagPanel })));
+const VendorPanel = React.lazy(() => import("./ui/vendor-panel.js").then((m) => ({ default: m.VendorPanel })));
+const QuestLogPanel = React.lazy(() => import("./ui/quests.js").then((m) => ({ default: m.QuestLog })));
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -51,10 +60,11 @@ import { PartyFrame } from "./ui/party-frame.js";
 import { FriendsFrame } from "./ui/friends-frame.js";
 import { GuildFrame } from "./ui/guild-frame.js";
 import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
-import { CharacterSheet } from "./ui/character-sheet.js";
-import { BagPanel, EMPTY_WORN, type Worn } from "./ui/bag-panel.js";
 import { PouchPanel, tierColor } from "./ui/pouch-panel.js";
-import { nextShop, VendorPanel, type ShopView } from "./ui/vendor-panel.js";
+import { nextShop, type ShopView } from "./ui/vendor-panel.js";
+// Types for lazy-loaded components
+import type { Worn } from "./ui/bag-panel.js";
+import { EMPTY_WORN } from "./ui/bag-panel.js";
 import { SettingsMenu } from "./ui/settings-menu.js";
 import { applyUiScale, loadUiScale, type UiScale } from "./ui/ui-scale.js";
 import { AudioEngine } from "./audio/engine.js";
@@ -713,7 +723,9 @@ export function App(): React.ReactElement {
   if (client && (run?.phase === "entering" || run?.phase === "leaving")) {
     return (
       <div className="relative h-full w-full bg-background">
-        <DungeonTransit run={run} />
+        <React.Suspense fallback={<div className="flex h-full items-center justify-center text-muted-foreground">Loading dungeon transit…</div>}>
+          <DungeonTransit run={run} />
+        </React.Suspense>
       </div>
     );
   }
@@ -821,12 +833,16 @@ export function App(): React.ReactElement {
         )}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
-            <DungeonHud run={run} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-2 text-muted-foreground text-sm">Loading dungeon HUD…</div>}>
+              <DungeonHud run={run} />
+            </React.Suspense>
           </div>
         )}
         {run?.phase === "ended" && (
           <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
-            <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading dungeon result…</div>}>
+              <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
+            </React.Suspense>
           </div>
         )}
         {isDead && run?.phase !== "ended" && (
@@ -932,43 +948,51 @@ export function App(): React.ReactElement {
         />
         {shop && bag && (
           <HudSlot id="vendor-panel" className="z-10">
-            <VendorPanel
-              shop={shop}
-              gold={gold}
-              bag={bag}
-              onBuy={(def) => client?.vendorBuy(shop.vendor, def)}
-              onSell={(item) => client?.vendorSell(shop.vendor, item)}
-              onClose={() => setShop(null)}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading vendor…</div>}>
+              <VendorPanel
+                shop={shop}
+                gold={gold}
+                bag={bag}
+                onBuy={(def) => client?.vendorBuy(shop.vendor, def)}
+                onSell={(item) => client?.vendorSell(shop.vendor, item)}
+                onClose={() => setShop(null)}
+              />
+            </React.Suspense>
           </HudSlot>
         )}
         {bagOpen && bag && (
           <HudSlot id="bag-panel" className="z-10">
             <div>
             <PouchPanel materials={pouch} />
-            <BagPanel
-              bag={bag}
-              hands={hands}
-              worn={worn}
-              gold={gold}
-              onDrop={(id) => client?.dropItem(id)}
-              onEquip={(id) => client?.equip(id)}
-              onUnequip={(slot) => client?.unequip(slot)}
-              onUse={(id) => client?.use(id)}
-              hotkeyDef={hotkeyDef}
-              onHotkey={setHotkeyDef}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading bag…</div>}>
+              <BagPanel
+                bag={bag}
+                hands={hands}
+                worn={worn}
+                gold={gold}
+                onDrop={(id) => client?.dropItem(id)}
+                onEquip={(id) => client?.equip(id)}
+                onUnequip={(slot) => client?.unequip(slot)}
+                onUse={(id) => client?.use(id)}
+                hotkeyDef={hotkeyDef}
+                onHotkey={setHotkeyDef}
+              />
+            </React.Suspense>
             </div>
           </HudSlot>
         )}
         {questsOpen && quests && (
           <HudSlot id="quest-log" className="z-10">
-            <QuestLog quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading quest log…</div>}>
+              <QuestLogPanel quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />
+            </React.Suspense>
           </HudSlot>
         )}
         {sheetOpen && sheet && (
           <HudSlot id="character-sheet" className="z-10">
-            <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading character sheet…</div>}>
+              <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
+            </React.Suspense>
           </HudSlot>
         )}
         <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
