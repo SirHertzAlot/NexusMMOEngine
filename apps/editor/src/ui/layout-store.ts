@@ -2,7 +2,7 @@
 // Simple key/value: {panes: Array<{id:string,visible:boolean,size:number}>}
 // Uses the generic createStore helper.
 
-import { createStore } from "./store.js";
+import { createStore } from "../store.js";
 
 type PaneLayout = {
   id: string;
