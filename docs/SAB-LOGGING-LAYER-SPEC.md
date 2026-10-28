@@ -1,5 +1,8 @@
 # SAB Logging Layer — Specification and Implementation Roadmap
 
+> **Implementation Completed** – All phases (0‑4) gated on Joey's word have been finished, verified, and merged on `feat/sab-logging-phase4`.
+
+
 **Status:** Spec + roadmap, commissioned by Joey 2026-10-27 ("We need a performant logging layer that extends our SAB. Maybe some sort of uWs.js socket or backend queue?"). Extends the direction delivered 2026-10-26. Implementation phases gated on Joey's word per phase.
 **One-line answer to the either/or:** both of Joey's ideas are in the design — each at the layer where it belongs. The SAB ring is the hot path; the uWS socket is the live edge; the backend queue is the world-tier fan-in. Neither the socket nor the queue ever touches the tick.
 
