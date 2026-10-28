@@ -2143,9 +2143,7 @@ function GameplayDetails(): React.JSX.Element {
 
 function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
   return (
-    
-      <div className="flex flex-col gap-3 text-xs">
-      
+    <div className="flex flex-col gap-3 text-xs">
       <div>
         <p className="text-sm font-semibold">{selection.label}</p>
         <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -2175,6 +2173,7 @@ function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typ
     </div>
   );
 }
+
 
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();

@@ -37,7 +37,7 @@ export interface ButtonProps
   size?: ButtonSize;
 }
 
-export function Button({
+function ButtonImpl({
   variant = "default",
   size = "default",
   className,
@@ -61,7 +61,7 @@ export function Button({
 
 // ---------------------------------------------------------------- Input
 
-export function Input({
+function InputImpl({
   className,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement>): React.ReactElement {
@@ -81,7 +81,7 @@ export function Input({
 
 // ---------------------------------------------------------------- Label
 
-export function Label({
+function LabelImpl({
   className,
   ...props
 }: React.LabelHTMLAttributes<HTMLLabelElement>): React.ReactElement {
@@ -98,7 +98,7 @@ export function Label({
 
 // ---------------------------------------------------------------- Card
 
-export function Card({
+function CardImpl({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>): React.ReactElement {
@@ -113,7 +113,7 @@ export function Card({
   );
 }
 
-export function CardHeader({
+function CardHeaderImpl({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>): React.ReactElement {
@@ -122,7 +122,7 @@ export function CardHeader({
   );
 }
 
-export function CardTitle({
+function CardTitleImpl({
   className,
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>): React.ReactElement {
@@ -137,9 +137,25 @@ export function CardTitle({
   );
 }
 
-export function CardContent({
+function CardContentImpl({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>): React.ReactElement {
   return <div className={cn("p-6 pt-0", className)} {...props} />;
 }
+
+// Memoized primitives (react-best-practices: rerender-memo).
+export const Button = React.memo(ButtonImpl);
+Button.displayName = "Button";
+export const Input = React.memo(InputImpl);
+Input.displayName = "Input";
+export const Label = React.memo(LabelImpl);
+Label.displayName = "Label";
+export const Card = React.memo(CardImpl);
+Card.displayName = "Card";
+export const CardHeader = React.memo(CardHeaderImpl);
+CardHeader.displayName = "CardHeader";
+export const CardTitle = React.memo(CardTitleImpl);
+CardTitle.displayName = "CardTitle";
+export const CardContent = React.memo(CardContentImpl);
+CardContent.displayName = "CardContent";

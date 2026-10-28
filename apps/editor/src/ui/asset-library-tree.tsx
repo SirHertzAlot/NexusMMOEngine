@@ -36,7 +36,7 @@ export function AssetLibraryTree(): React.JSX.Element {
         <MIcon name="search" size={17} />
         <input
           value={filter}
-          onChange={(e) => setAssetFilter(e.target.value)}
+          onChange={(e) => React.startTransition(() => setAssetFilter(e.target.value))}
           placeholder="Filter models…"
           aria-label="Filter asset models"
           className="m3-focus h-8 min-w-0 flex-1 rounded-lg border bg-transparent px-2 font-mono text-xs"

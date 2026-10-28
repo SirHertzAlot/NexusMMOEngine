@@ -6,7 +6,7 @@
  * it is done or stopped, so the fill is local time since the start.
  */
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { SpellMessage } from "@mmo-engine/protocol";
 import { barFraction } from "./meter.js";
 import { spellTitle } from "./spell-notice.js";
@@ -35,7 +35,7 @@ export function castFraction(cast: CastState, now: number): number {
   return barFraction((now - cast.startedAt) / 1000, cast.seconds);
 }
 
-export function CastBar({ cast }: { cast: CastState | null }): React.ReactElement | null {
+function CastBarImpl({ cast }: { cast: CastState | null }): React.ReactElement | null {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     if (!cast) return;
@@ -68,3 +68,6 @@ export function CastBar({ cast }: { cast: CastState | null }): React.ReactElemen
     </div>
   );
 }
+
+export const CastBar = memo(CastBarImpl);
+CastBar.displayName = "CastBar";

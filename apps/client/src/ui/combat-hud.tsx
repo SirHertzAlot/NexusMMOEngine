@@ -167,7 +167,7 @@ const TECH_LABELS: Record<"cut" | "thrust" | "bludgeon", string> = {
   bludgeon: "BLUDGEON",
 };
 
-export function CombatHud(props: CombatHudProps): React.ReactElement {
+function CombatHudImpl(props: CombatHudProps): React.ReactElement {
   const vm = deriveCombatHudModel(props);
   const partLabel = PART_LABELS[vm.effectiveAimPart] ?? vm.effectiveAimPart.toUpperCase();
   const techLabel = TECH_LABELS[vm.effectiveTechnique];
@@ -465,3 +465,6 @@ export function CombatHud(props: CombatHudProps): React.ReactElement {
     </div>
   );
 }
+
+export const CombatHud = React.memo(CombatHudImpl);
+CombatHud.displayName = "CombatHud";
