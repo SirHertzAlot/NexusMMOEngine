@@ -62,5 +62,6 @@
   },
   "optionalDependencies": {
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.71.0"
-  }
+  },
+  "sideEffects": false
 }
