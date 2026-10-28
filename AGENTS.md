@@ -65,3 +65,66 @@ The rendering pipeline strictly supports standard Mermaid diagram headers. Unsup
 - **Inlined Layout Offsets:**
   - Do not dereference property lookups (`RECORD_LAYOUT.HEADER_WORD`, `this.dataByteOffset`) inside tight atomic loops. Inline constant numeric word offsets to enable direct V8 register-indirect assembly generation.
 
+---
+
+## 7. Report Generation & Performance Telemetry Standards
+
+Every performance-affecting change must ship a metrics report in `docs/` alongside the code. Reports are not optional decoration — they are the gate evidence.
+
+### 7.1 Required Report Contents
+
+| Element | Requirement |
+|---|---|
+| **Measured vs. modeled** | Every number tagged `[measured]` (produced by a bench on this project) or `[modeled]` (estimate with stated assumptions). Modeled numbers must be replaced by measurement at the phase gate. |
+| **Measurement environment** | OS, CPU, Node version, build configuration, sandbox vs. real hardware. Sandbox numbers are labeled as such wherever used. |
+| **Methodology** | Warm-up iterations, sample count, what was included/excluded (e.g. "sim passes only — no physics, no network"). |
+| **Caveats** | Honest statement of what the number does and does not bound (e.g. "one pass, not a tick"). |
+| **Gate verification table** | Columns: Telemetry Metric \| Measured Value \| Gate Requirement \| Gate Status (PASS/FAIL/MET). |
+
+### 7.2 Chart & Diagram Standards
+
+- Use only Mermaid diagram types supported by the renderer (see Section 2): `flowchart TD/LR`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `erDiagram`, `xychart-beta`, `pie`.
+- `xychart-beta` for latency/throughput bar charts (e.g. p50/p95/p99 vs. budget).
+- Never use `quadrantChart`, `gantt`, `gitGraph`, or other experimental headers.
+- Embed images only where they add decision-relevant evidence (benchmark comparisons, determinism overlays, crash-drill timelines). Every image must have a caption and an alt-text description.
+
+### 7.3 Where Reports Live
+
+- Phase reports: `docs/CPP-MAIN-TICK-PHASE<N>-REPORT.md` (or `docs/SAB-LOGGING-PHASE<N>-REPORT.md` for the logging layer).
+- Benchmark results: `docs/` adjacent to the feature, or `transport-bench-results.json`/`lighthouse-report.json` at repo root for transport/client telemetry.
+- Business/competitive intelligence (SWOT, OpEx, third-engine comparisons): exclusively in `docs/business-analysis/` — never in public-facing manuals (Section 1).
+
+---
+
+## 8. Pull Request Reporting & Documentation Synchronization
+
+### 8.1 PR Report Structure
+
+Every PR that changes engine behavior, performance, or architecture must include a **PR Report** section in its description (or in a linked docs file) containing:
+
+1. **Summary** — what changed, why, and which systems are affected.
+2. **Gate status** — for each gating criterion from the spec/roadmap: PASSED / FAILED / NOT-APPLICABLE, with evidence.
+3. **Performance numbers** — before/after at 1k / 10k / 50k entities, with measured p50/p99/max tick times and heap allocation deltas.
+4. **Test results** — full suite counts (e.g. "22/22 green", "60/60 tests green"), including regression suites.
+5. **Images / charts** — benchmark charts, Mermaid diagrams, or screenshots where performance or visual claims are made. No performance claim without a chart.
+6. **Documentation sync** — list of docs files updated (ARCHITECTURE.md, DECISIONS.md, ROADMAP.md, phase reports) in the same PR.
+
+### 8.2 Documentation Synchronization Invariant
+
+- **Code and docs move together.** If a PR changes a system, its tick share, its port status (TS vs. native), or a feature flag, the corresponding row in `docs/ROADMAP.md` and the relevant entry in `docs/DECISIONS.md` must be updated in the same PR.
+- **Never claim "landed" without verification.** Use `git merge-base --is-ancestor` + `git diff --stat` to confirm a change is actually in `main` before citing it as built. Distinguish local / tests / runtime-verified / pushed / PR / merged / accepted.
+- **Pre-existing failures are documented, not inherited.** If `main` has known breakage (e.g. engine-core tsc errors), work around it and note it; never silently inherit it.
+
+---
+
+## 9. C++ Main Tick Migration — Remaining Phase 0 Work
+
+The C++ Main Tick migration (Phases 1–4) is complete and merged (commit `e5f98682`, ancestor of `main`). The only defined remaining work is **Phase 0 — Baselines and the Transport Guarantee** (`docs/CPP-MAIN-TICK-SPEC.md §4`), which makes no sim changes. These four items are standing work:
+
+1. **Re-run `bench:transport`** at 250 / 500 / 1,000 / 2,000 clients in production shape; publish the metrics doc + chart (CPU, fan-out p50/p99, RSS, both uWS and ws transports).
+2. **Re-baseline the JS production tick** under the contention harness at 51k entities (mean / p99 / max, spiral-event count), same doc.
+3. **Boot-time transport assertion:** the server logs and exposes which transport loaded; production mode fails loud if uWS was requested but ws silently loaded.
+4. **uWS packaging decision:** vendored binary vs self-hosted artifact, so production installs cannot silently degrade to ws.
+
+> Known environment limit: the transport test suite hangs on uWS inside Arlo's sandbox, so Phase 0 network numbers must be produced or reproduced on real hardware (Joey's Windows machine). Sandbox numbers are labeled as such wherever used.
+
