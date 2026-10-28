@@ -3,6 +3,7 @@
 // Registered with Admin Console dock pane (left sidebar, ⚙️) and Appearance Editor bottom dock pane (🎨).
 
 import * as React from "react";
+import { useLayout } from "./layout-provider.js";
 import { WorkspacePicker } from "./workspace-picker.js";
 import { LayoutProvider } from "./layout-provider.js";
 import { AdminConsole } from "./AdminConsole.js";
@@ -10,10 +11,21 @@ import { AppearanceEditor } from "./AppearanceEditor.js";
 import { DockPanel } from "./components.js";
 
 export function DockShell({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [activeTab, setActiveTab] = React.useState<string>("admin");
-  const [leftVisible, setLeftVisible] = React.useState<boolean>(true);
-  const [bottomTab, setBottomTab] = React.useState<string>("appearance");
-  const [bottomVisible, setBottomVisible] = React.useState<boolean>(true);
+  const { layout, setLayout } = useLayout();
+  const activeTab = layout.activeTab;
+  const setActiveTab = (tab: string) => setLayout({ ...layout, activeTab: tab });
+  const leftVisible = layout.leftVisible;
+  const setLeftVisible = (val: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof val === "function" ? val(layout.leftVisible) : val;
+    setLayout({ ...layout, leftVisible: next });
+  };
+  const bottomTab = layout.bottomTab;
+  const setBottomTab = (tab: string) => setLayout({ ...layout, bottomTab: tab });
+  const bottomVisible = layout.bottomVisible;
+  const setBottomVisible = (val: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof val === "function" ? val(layout.bottomVisible) : val;
+    setLayout({ ...layout, bottomVisible: next });
+  };
 
   return (
     <LayoutProvider>
