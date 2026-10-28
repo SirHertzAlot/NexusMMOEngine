@@ -55,5 +55,6 @@
     "models:generate": "gltfjsx --types --output src/render/generated --transform"
   },
   "type": "module",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "sideEffects": false
 }
