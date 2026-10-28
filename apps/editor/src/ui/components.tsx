@@ -40,7 +40,7 @@ export interface ButtonProps
   size?: ButtonSize;
 }
 
-export function Button({
+function ButtonImpl({
   variant = "default",
   size = "default",
   className,
@@ -62,7 +62,7 @@ export function Button({
 
 // ---------------------------------------------------------------- Input
 
-export function Input({
+function InputImpl({
   className,
   ...rest
 }: React.InputHTMLAttributes<HTMLInputElement>): React.JSX.Element {
@@ -80,7 +80,7 @@ export function Input({
 }
 
 /** A number box: `onChange` gets the number, or NaN while the box is empty. */
-export function NumberInput({
+function NumberInputImpl({
   value,
   onChange,
   className,
@@ -102,7 +102,7 @@ export function NumberInput({
 const selectSizes = { xs: "h-7 px-1.5 text-xs", sm: "h-8 px-2 text-sm", md: "h-9 px-2 text-sm" } as const;
 
 /** The editor's one native dropdown. Children are its `<option>`s. */
-export function Select({
+function SelectImpl({
   size = "md",
   invalid = false,
   className,
@@ -146,7 +146,7 @@ export function CheckField({ label, checked, onChange, className }: { label: Rea
 
 // ---------------------------------------------------------------- Card
 
-export function Card({
+function CardImpl({
   className,
   ...rest
 }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
@@ -161,7 +161,7 @@ export function Card({
   );
 }
 
-export function CardHeader({
+function CardHeaderImpl({
   className,
   ...rest
 }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
@@ -180,7 +180,7 @@ export function CardTitle({
   );
 }
 
-export function CardContent({
+function CardContentImpl({
   className,
   ...rest
 }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element {
@@ -189,7 +189,7 @@ export function CardContent({
 
 // ---------------------------------------------------------------- Label
 
-export function Label({
+function LabelImpl({
   className,
   ...rest
 }: React.LabelHTMLAttributes<HTMLLabelElement>): React.JSX.Element {
@@ -216,7 +216,7 @@ const badgeTones: Record<BadgeTone, string> = {
   info: "bg-blue-900 text-blue-200",
 };
 
-export function Badge({
+function BadgeImpl({
   tone = "default",
   className,
   ...rest
@@ -256,7 +256,7 @@ export function SectionTitle({
 // passed as plain text so the shell works offline with system fonts.
 
 /** Material Symbol glyph rendered as text (bundled woff2, offline-safe). */
-export function MIcon({ name, size = 20 }: { name: string; size?: number }): React.JSX.Element {
+function MIconImpl({ name, size = 20 }: { name: string; size?: number }): React.JSX.Element {
   return (
     <span aria-hidden="true" className="ms" style={{ fontSize: size }}>
       {name}
@@ -303,7 +303,7 @@ export function Chip({
 }
 
 /** M3 icon button — 40 px target on viewport overlays, 36 px in bars. */
-export function IconButton({
+function IconButtonImpl({
   label,
   children,
   active,
@@ -486,7 +486,7 @@ export function EmptyState({
 }
 
 /** Live/idle status dot + label (play server, module set). */
-export function StatusChip({
+function StatusChipImpl({
   live,
   children,
 }: {
@@ -552,7 +552,7 @@ export function notify(msg: string): void {
 }
 
 /** Bottom-center transient feedback (M3 snackbar). Mount once at the root. */
-export function SnackbarHost(): React.JSX.Element {
+function SnackbarHostImpl(): React.JSX.Element {
   const snack = snackStore.use();
   const [visible, setVisible] = React.useState(false);
   React.useEffect(() => {
@@ -594,7 +594,7 @@ export interface MenuItem {
   run?: () => void;
 }
 
-export function OverflowMenu({ label, items, size = 36 }: {
+function OverflowMenuImpl({ label, items, size = 36 }: {
   label: string;
   items: Array<MenuItem | "sep">;
   size?: 36 | 40;
@@ -656,7 +656,7 @@ export function OverflowMenu({ label, items, size = 36 }: {
 // ---------------------------------------------------------------- tree row
 
 /** Drill-down outliner row: chevron, icon, label, hover ⋯ menu, indent. */
-export function TreeItem({ icon, label, trailing, depth = 0, expanded, onToggle, hasKids, menu, selected, onPick, mono = false }: {
+function TreeItemImpl({ icon, label, trailing, depth = 0, expanded, onToggle, hasKids, menu, selected, onPick, mono = false }: {
   icon: string;
   label: string;
   trailing?: string;
@@ -785,7 +785,7 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (next: T | ((pr
 
 // ---------------------------------------------------------------- KV table
 
-export function KvTable({
+function KvTableImpl({
   rows,
 }: {
   rows: Array<{ key: string; value: string }>;
@@ -803,3 +803,37 @@ export function KvTable({
     </table>
   );
 }
+
+// Memoized primitives (react-best-practices: rerender-memo).
+export const Button = React.memo(ButtonImpl);
+Button.displayName = "Button";
+export const Input = React.memo(InputImpl);
+Input.displayName = "Input";
+export const NumberInput = React.memo(NumberInputImpl);
+NumberInput.displayName = "NumberInput";
+export const Select = React.memo(SelectImpl);
+Select.displayName = "Select";
+export const Badge = React.memo(BadgeImpl);
+Badge.displayName = "Badge";
+export const MIcon = React.memo(MIconImpl);
+MIcon.displayName = "MIcon";
+export const IconButton = React.memo(IconButtonImpl);
+IconButton.displayName = "IconButton";
+export const StatusChip = React.memo(StatusChipImpl);
+StatusChip.displayName = "StatusChip";
+export const OverflowMenu = React.memo(OverflowMenuImpl);
+OverflowMenu.displayName = "OverflowMenu";
+export const TreeItem = React.memo(TreeItemImpl);
+TreeItem.displayName = "TreeItem";
+export const KvTable = React.memo(KvTableImpl);
+KvTable.displayName = "KvTable";
+export const Card = React.memo(CardImpl);
+Card.displayName = "Card";
+export const CardHeader = React.memo(CardHeaderImpl);
+CardHeader.displayName = "CardHeader";
+export const CardContent = React.memo(CardContentImpl);
+CardContent.displayName = "CardContent";
+export const Label = React.memo(LabelImpl);
+Label.displayName = "Label";
+export const SnackbarHost = React.memo(SnackbarHostImpl);
+SnackbarHost.displayName = "SnackbarHost";

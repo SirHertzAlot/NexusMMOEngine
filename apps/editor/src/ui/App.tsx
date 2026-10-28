@@ -284,7 +284,7 @@ export function App(): React.JSX.Element {
   const activeView = ws.views.find((v) => v.id === view) ?? ws.views[0];
 
   function pickWorkspace(id: WorkspaceId): void {
-    setWorkspace(id);
+    React.startTransition(() => setWorkspace(id));
     const next = WORKSPACES.find((w) => w.id === id) ?? WORKSPACES[0];
     setView(next.views[0].id);
     setPlayMenu(false);
@@ -2141,6 +2141,41 @@ function GameplayDetails(): React.JSX.Element {
   );
 }
 
+function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
+  return (
+    
+      <div className="flex flex-col gap-3 text-xs">
+      
+      <div>
+        <p className="text-sm font-semibold">{selection.label}</p>
+        <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+          {selection.kind} · {selection.id}
+        </p>
+      </div>
+      <span className="w-fit rounded-md px-2 py-1 text-[11px] font-medium" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>
+        Selected from {selection.source.replace("-", " ")}
+      </span>
+      {selection.components.length === 0 ? (
+        <p style={{ color: "var(--m3-on-surface-variant)" }}>no details for {selection.kind} {selection.id} — pick something else.</p>
+      ) : (
+        selection.components.map((component) => (
+          <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>
+            <p className="mb-2 font-medium">{component.name}</p>
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 font-mono text-[11px]">
+              {component.fields.map((field) => (
+                <React.Fragment key={field.key}>
+                  <dt style={{ color: "var(--m3-on-surface-variant)" }}>{field.key}</dt>
+                  <dd className="text-right">{field.value}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          </section>
+        ))
+      )}
+    </div>
+  );
+}
+
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
@@ -2154,40 +2189,6 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "artaudio" && view === "scale") return <ScaleNote />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
-  function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
-    return (
-      
-        <div className="flex flex-col gap-3 text-xs">
-        
-        <div>
-          <p className="text-sm font-semibold">{selection.label}</p>
-          <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-            {selection.kind} · {selection.id}
-          </p>
-        </div>
-        <span className="w-fit rounded-md px-2 py-1 text-[11px] font-medium" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>
-          Selected from {selection.source.replace("-", " ")}
-        </span>
-        {selection.components.length === 0 ? (
-          <p style={{ color: "var(--m3-on-surface-variant)" }}>no details for {selection.kind} {selection.id} — pick something else.</p>
-        ) : (
-          selection.components.map((component) => (
-            <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>
-              <p className="mb-2 font-medium">{component.name}</p>
-              <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 font-mono text-[11px]">
-                {component.fields.map((field) => (
-                  <React.Fragment key={field.key}>
-                    <dt style={{ color: "var(--m3-on-surface-variant)" }}>{field.key}</dt>
-                    <dd className="text-right">{field.value}</dd>
-                  </React.Fragment>
-                ))}
-              </dl>
-            </section>
-          ))
-        )}
-      </div>
-    );
-  }
   return (
     <EmptyState
       icon="tune"
