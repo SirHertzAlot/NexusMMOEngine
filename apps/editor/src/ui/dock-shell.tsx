@@ -1,25 +1,52 @@
 // DockShell – top‑level layout for the modular editor
 // Provides a toolbar, workspace picker, and a central work area that can host various panels.
-// This is the skeleton for EA1; further panes (admin console, entity inspector, appearance editor) will be
-// registered as dock panes by the feature branches.
+// Registered with Admin Console dock pane (left sidebar, ⚙️).
 
 import * as React from "react";
 import { WorkspacePicker } from "./workspace-picker.js";
-import { LayoutProvider } from "./layout-store.js";
+import { LayoutProvider } from "./layout-provider.js";
+import { AdminConsole } from "./AdminConsole.js";
+import { DockPanel } from "./components.js";
 
 export function DockShell({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const [activeTab, setActiveTab] = React.useState<string>("admin");
+  const [leftVisible, setLeftVisible] = React.useState<boolean>(true);
+
   return (
     <LayoutProvider>
       <div className="flex flex-col h-full">
-        {/* Toolbar – can be expanded later */}
+        {/* Toolbar */}
         <header className="flex items-center p-2 bg-surface-variant" aria-label="Editor toolbar">
           <h1 className="text-lg font-medium mr-4">Nexus MMO Editor</h1>
           <WorkspacePicker />
+          <button
+            onClick={() => setLeftVisible((v) => !v)}
+            className="ml-auto rounded px-2 py-1 text-xs font-medium"
+            style={{ background: "var(--m3-surface-2)", color: "var(--m3-on-surface)" }}
+            title="Toggle Admin Console Sidebar"
+          >
+            ⚙️ Admin
+          </button>
         </header>
         {/* Main work area */}
-        <main className="flex-1 overflow-auto" aria-label="Editor workspace">
-          {children}
-        </main>
+        <div className="flex flex-1 min-h-0">
+          {leftVisible && (
+            <aside className="w-80 flex-none border-r border-outline-variant" aria-label="Admin Console Dock">
+              <DockPanel
+                tabs={[
+                  { id: "admin", label: "Admin Console", icon: "settings" },
+                ]}
+                active={activeTab}
+                onTab={setActiveTab}
+              >
+                <AdminConsole />
+              </DockPanel>
+            </aside>
+          )}
+          <main className="flex-1 overflow-auto" aria-label="Editor workspace">
+            {children}
+          </main>
+        </div>
       </div>
     </LayoutProvider>
   );
