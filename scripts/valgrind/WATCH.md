@@ -28,10 +28,10 @@ watcher or pipeline itself failed.
 
 ## Prerequisites
 
-- **Linux, or WSL2 on Windows.** Valgrind does not run on Windows;
-  on Windows the watcher must run inside WSL (the Task Scheduler
-  setup below does that for you). The repo clone the watcher runs
-  from must be the WSL-side clone, on the WSL filesystem.
+- **Linux.** Valgrind is Linux-only, and so is this watcher: any
+  Linux host, VM, or codespace runs it as-is. (If a checkout lives on
+  Windows instead, run the watcher inside WSL2 against the WSL-side
+  clone — the Task Scheduler setup near the end covers that case.)
 - `valgrind` installed: `sudo apt install -y valgrind`
 - **Node matching the committed baseline.** `perf/callgrind-baseline.json`
   records the Node it was measured with; `valgrind:check` refuses to
@@ -40,7 +40,7 @@ watcher or pipeline itself failed.
 
 ## First run
 
-From the repo root, inside WSL/Linux:
+From the repo root:
 
 ```bash
 node scripts/valgrind/watch.mjs --once
@@ -57,9 +57,40 @@ the addon tests 20–50× slower than native). Later runs only work when
 - `--worktree <path>` — where the profiling worktree lives
   (default: sibling `<repo>-watch`; or set `VALGRIND_WATCH_WORKTREE`).
 
-## Scheduling on Windows (recommended): Task Scheduler via WSL
+## Scheduling on Linux: cron
 
-From PowerShell, in the repo's Windows path:
+```cron
+17 */6 * * * cd /path/to/nexus-engine && node scripts/valgrind/watch.mjs --once >> valgrind-out/watch/cron.log 2>&1
+```
+
+Add it with `crontab -e`. Change `*/6` for a different cadence. The
+watcher takes a lock while it works, so overlapping invocations are
+safe — the second one just exits.
+
+## GitHub Codespaces
+
+A codespace is a fine place to *run* the watcher, but codespaces
+auto-stop when idle, so a cron entry inside one only fires while the
+codespace happens to be awake. The pattern that fits how codespaces
+actually live: check on every start. The watcher is idle-cheap (one
+fetch when `main` has not moved), so create
+`.devcontainer/devcontainer.json` with a post-start hook:
+
+```json
+{
+  "postStartCommand": "nohup node scripts/valgrind/watch.mjs --once >> valgrind-out/watch/cron.log 2>&1 &"
+}
+```
+
+Every codespace start then profiles any merges that landed while it
+was asleep, in the background, without delaying the start. Reports
+wait in `valgrind-out/watch/latest.md`. For a true wall-clock schedule,
+run the cron entry above on a Linux machine that stays on.
+
+## Scheduling on Windows (checkout on Windows): Task Scheduler via WSL
+
+Only needed when the checkout itself lives on Windows. From
+PowerShell, in the repo's Windows path:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\valgrind\install-watch-task.ps1 -RepoWslPath /home/<you>/nexus-engine -EveryHours 6
@@ -74,28 +105,6 @@ logged on (WSL needs your session).
 
 Remove it with the same command plus `-Remove`. Change the cadence by
 re-running without `-Remove` and a new `-EveryHours`.
-
-## Scheduling in WSL/Linux: cron
-
-WSL's cron only runs while WSL is up, which is why Task Scheduler is
-the reliable route on Windows. On a Linux host (or a WSL distro you
-keep alive):
-
-```bash
-sudo service cron start   # WSL only; a plain Linux host already runs it
-crontab -e
-```
-
-```cron
-17 */6 * * * cd /path/to/nexus-engine && node scripts/valgrind/watch.mjs --once >> valgrind-out/watch/cron.log 2>&1
-```
-
-## Codespaces
-
-`--once` works in a codespace while it is awake, but codespaces
-auto-stop when idle, so no persistent schedule can live there. Run
-the watcher on a machine that is actually on — your PC via Task
-Scheduler, or any Linux box via cron.
 
 ## Reading the results
 
