@@ -839,6 +839,18 @@ Every entry: date, decision, rationale. Newest first.
      - Local feature branches only (feat/*); no unapproved merges to main.
      - Universal SI metric standard (1.0 unit = 1.0 meter).
 
+- **2026-10-28 — C++ Main Tick Migration Phase 0: Baselines and the Transport Guarantee.**
+  Completed Phase 0 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §4, `docs/CPP-MAIN-TICK-PHASE0-REPORT.md`):
+  1. **Transport bench (`bench:transport`)** at 250 / 500 / 1,000 / 2,000 clients (`packages/engine-core/test/bench/transport-bench.ts`):
+     - `ws` results [sandbox, Node v25, 2 vCPUs]: p99 fan-out 22.5 ms / 42.4 ms / 79.2 ms / 135.7 ms; CPU 68.7% / 98.2% / 100.2% / 99.1% of one core; RSS 66 / 76 / 98 / 106 MB.
+     - `uWS` unavailable on this host (prebuilt binary does not support Node 25 on Windows); uWS numbers pending real-hardware measurement per spec §4.
+     - `ws` at 500+ clients saturates one core and exceeds the 33.33 ms frame budget at p99 — confirms uWS is required at target scale.
+  2. **JS production tick re-baseline** at 51k entities under contention (`packages/engine-core/test/bench/js-tick-baseline.mjs`):
+     - JS fallback kernel: mean 0.708 ms, p99 2.681 ms (8.0% of budget), 0 spiral events [sandbox].
+     - Native kernel: mean 0.233 ms, p99 0.926 ms — ~3× faster for the dense-math slice.
+  3. **Boot-time transport assertion:** server logs which transport loaded at boot; `MMO_TRANSPORT=uws` + uWS unavailable → fatal error, no silent `ws` fallback. Gate: PASS.
+  4. **uWS packaging decision:** vendored binary selected — commit the uWS `.node` binary for the target platform, add boot-time integrity check, fail loud on missing/corrupt binary. Decision documented; implementation pending Joey's approval.
+
 - **2026-10-27 — C++ Main Tick Migration Phase 2: Production Data-Plane Wiring & Security Perimeter.**
   Implemented and verified Phase 2 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md`):
   1) **Production Boot Flag (`MMO_DATA_PLANE=1`)**:

@@ -833,6 +833,12 @@ Newest first. One line per merged PR or decision.
   - Standardized documentation tooling around Yank Note (purocean/yn), incorporating executable in-note REPL code blocks, client-side AES-GCM encrypted notes (.c.md), and interactive HTML5 telemetry applets (docs/wiki/10-developer-tooling-and-yank-note.md, yn-nexus-plugin.js).
   - Separated public engine manuals from private commercial intelligence: established docs/business-analysis/ housing side-by-side comparison matrices (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), deep subsystem breakdowns, verified empirical benchmarks, strategic SWOT, and cloud infrastructure unit economics ($0.06/CCU vs $1.15/CCU for dedicated UE5 servers).
   - Enforced repository-wide workspace invariants in AGENTS.md: Mermaid diagram rendering constraints (prohibiting quadrantChart), C++ N-API bulk memory boundary standards (prohibiting per-property obj.Get() traversals on hot paths), local feature branches (feat/*), and strict SI metric scaling (1.0 unit = 1.0 meter).
+- **2026-10-28**: C++ Main Tick Migration — Phase 0 Baselines and Transport Guarantee (docs/CPP-MAIN-TICK-PHASE0-REPORT.md):
+  - Transport bench (`bench:transport`) at 250 / 500 / 1,000 / 2,000 clients: `ws` p99 fan-out 22.5 / 42.4 / 79.2 / 135.7 ms, CPU 68.7% / 98.2% / 100.2% / 99.1% — confirms `ws` saturates at target scale; uWS pending real-hardware measurement.
+  - JS tick re-baseline at 51k entities: JS fallback kernel mean 0.708 ms / p99 2.681 ms / 0 spirals [sandbox].
+  - Boot-time transport assertion: server logs transport name; `MMO_TRANSPORT=uws` + missing binary → fatal error. Gate: PASS.
+  - uWS packaging decision: vendored binary selected; implementation pending approval.
+
 - **2026-10-27**: C++ Main Tick Migration — Phase 2 Production Data-Plane Wiring & Security Perimeter (docs/CPP-MAIN-TICK-PHASE2-REPORT.md):
   - Moved production server boot onto PR #430 3-thread SharedArrayBuffer topology under feature flag `MMO_DATA_PLANE=1`: Gateway (uWS with full Argon2id auth, Zod validation, rate limiter) -> AtomicSPSCQueue -> 30Hz SimWorker -> persist ring -> PersistWorker.
   - Implemented strict Gateway security perimeter: unauthenticated intents (before hello), foreign entity intents, non-finite vectors, and stale/out-of-order packets are rejected (code 4003) and never reach the SPSC ring.

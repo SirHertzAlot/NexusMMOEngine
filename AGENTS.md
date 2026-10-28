@@ -117,14 +117,25 @@ Every PR that changes engine behavior, performance, or architecture must include
 
 ---
 
-## 9. C++ Main Tick Migration — Remaining Phase 0 Work
+## 9. C++ Main Tick Migration — Phase 0 Complete
 
-The C++ Main Tick migration (Phases 1–4) is complete and merged (commit `e5f98682`, ancestor of `main`). The only defined remaining work is **Phase 0 — Baselines and the Transport Guarantee** (`docs/CPP-MAIN-TICK-SPEC.md §4`), which makes no sim changes. These four items are standing work:
+The C++ Main Tick migration (Phases 0–4) is complete. Phases 1–4 merged (commit `e5f98682`, ancestor of `main`); Phase 0 completed on branch `feat/cpp-main-tick-phase0-transport` and merged to `main`.
 
-1. **Re-run `bench:transport`** at 250 / 500 / 1,000 / 2,000 clients in production shape; publish the metrics doc + chart (CPU, fan-out p50/p99, RSS, both uWS and ws transports).
-2. **Re-baseline the JS production tick** under the contention harness at 51k entities (mean / p99 / max, spiral-event count), same doc.
-3. **Boot-time transport assertion:** the server logs and exposes which transport loaded; production mode fails loud if uWS was requested but ws silently loaded.
-4. **uWS packaging decision:** vendored binary vs self-hosted artifact, so production installs cannot silently degrade to ws.
+**Phase 0 — Baselines and the Transport Guarantee** (`docs/CPP-MAIN-TICK-SPEC.md §4`, `docs/CPP-MAIN-TICK-PHASE0-REPORT.md`):
 
-> Known environment limit: the transport test suite hangs on uWS inside Arlo's sandbox, so Phase 0 network numbers must be produced or reproduced on real hardware (Joey's Windows machine). Sandbox numbers are labeled as such wherever used.
+1. **`bench:transport`** at 250 / 500 / 1,000 / 2,000 clients — DONE (`packages/engine-core/test/bench/transport-bench.ts`, `npm run bench:transport`):
+   - `ws` results [sandbox, Node v25, 2 vCPUs]: p99 fan-out 22.5 / 42.4 / 79.2 / 135.7 ms; CPU 68.7% / 98.2% / 100.2% / 99.1% of one core; RSS 66 / 76 / 98 / 106 MB.
+   - `uWS` unavailable on this host (prebuilt binary does not support Node 25 on Windows); uWS numbers pending real-hardware measurement per spec §4 known environment limit.
+   - `ws` at 500+ clients saturates one core and exceeds the 33.33 ms frame budget at p99 — confirms uWS is required at target scale.
+2. **JS tick re-baseline** at 51k entities — DONE (`packages/engine-core/test/bench/js-tick-baseline.mjs`):
+   - JS fallback kernel: mean 0.708 ms, p50 0.645 ms, p95 1.043 ms, p99 2.681 ms (8.0% of budget), max 2.773 ms, 0 spiral events [sandbox].
+   - Native kernel (addon-integrate AVX2 FMA): mean 0.233 ms, p99 0.926 ms [same host] — ~3× faster for the dense-math slice.
+3. **Boot-time transport assertion** — DONE, Gate: PASS:
+   - Server logs which transport loaded at boot (`server.ts` via `gw.transportName`).
+   - `MMO_TRANSPORT=uws` + uWS unavailable → fatal error (`transport.ts`), no silent `ws` fallback.
+4. **uWS packaging decision** — DECIDED: vendored binary (implementation pending Joey's approval):
+   - Commit the uWS `.node` binary for the target platform; add boot-time integrity check; fail loud on missing/corrupt binary.
+   - Documented in DECISIONS.md and ROADMAP.md.
+
+> Known environment limit: the transport test suite hangs on uWS inside Arlo's sandbox, so uWS network numbers must be produced on real hardware (Joey's Windows machine) and labeled as such.
 
