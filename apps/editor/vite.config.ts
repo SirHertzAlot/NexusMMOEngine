@@ -64,7 +64,13 @@ function resourceHintsPlugin({
 export default defineConfig(() => {
   return {
     plugins: [
-      react(),
+      react({
+        // React Compiler (React 19): automatically optimizes re-renders,
+        // eliminating the need for most manual React.memo/useMemo/useCallback.
+        babel: {
+          plugins: [["babel-plugin-react-compiler", { target: "19" }]],
+        },
+      }),
       editorHost({ repoRoot }),
       resourceHintsPlugin(),
     ],

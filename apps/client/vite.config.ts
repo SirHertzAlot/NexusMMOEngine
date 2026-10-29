@@ -66,11 +66,17 @@ function resourceHintsPlugin({
 
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
-  
+
   return {
     // localAssets: dev server only — the licensed art never enters a build.
     plugins: [
-      react(),
+      react({
+        // React Compiler (React 19): automatically optimizes re-renders,
+        // eliminating the need for most manual React.memo/useMemo/useCallback.
+        babel: {
+          plugins: [["babel-plugin-react-compiler", { target: "19" }]],
+        },
+      }),
       gameFlow(fileURLToPath(new URL("../../content/flow/game.flow.json", import.meta.url))),
       audioEvents(fileURLToPath(new URL("../../content/audio/events.json", import.meta.url))),
       combatMoves(fileURLToPath(new URL("../../content/combat/moves.json", import.meta.url))),
