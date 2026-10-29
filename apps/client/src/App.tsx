@@ -776,13 +776,13 @@ export function App(): React.ReactElement {
           streamingRef={streamingRef}
           audio={audio}
         />
-        {nearDrop && (
+        {nearDrop ? (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.pickUp")} <span style={{ color: nearDrop.color }}>{nearDrop.name}</span>
           </div>
-        )}
-        {!nearDrop && !dialog && resource && (
+        ) : null}
+        {(!nearDrop && !dialog && resource) ? (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.gather")} <span style={{ color: tierColor(resource.tier) }}>{resource.name}</span>{" "}
@@ -792,7 +792,7 @@ export function App(): React.ReactElement {
                 : `${t("interact.workedOut")}, ${resource.regrowAt === null ? t("interact.goneForGood") : t("interact.backIn", { hours: Math.max(1, Math.ceil((resource.regrowAt - Date.now()) / 3_600_000)) })}`}
             </span>
           </div>
-        )}
+        ) : null}
         {!nearDrop && !dialog && !resource && nearChest !== null && (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
