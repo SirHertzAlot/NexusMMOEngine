@@ -32,7 +32,7 @@ describe("media routes", () => {
 
   it("GET returns one document, or all of them for the game view", async () => {
     const root = fakeRepo();
-    assert.equal((await get(root, "combat")).body.content.moves.length, 8);
+    assert.equal((await get(root, "combat")).body.content.moves.length, (JSON.parse(disk(root, "combat/moves.json")) as { moves: unknown[] }).moves.length);
     const all = (await get(root)).body.content as GameContent;
     assert.ok(all.combat && all.animation && all.materials);
     rmSync(root, { recursive: true });
