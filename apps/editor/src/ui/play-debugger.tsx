@@ -379,17 +379,20 @@ function InterestPanel({ client }: { client: MirrorClient }): React.JSX.Element 
   const me = client.playerEntity !== null ? client.state.get(client.playerEntity)?.transform : undefined;
   const cx = me ? Math.floor(me.px / 64) : 0, cz = me ? Math.floor(me.pz / 64) : 0;
   const R = 4, CELL = 14;
-  const cells: React.JSX.Element[] = [];
-  for (let dz = -R; dz <= R; dz++) {
-    for (let dx = -R; dx <= R; dx++) {
-      const on = client.interestSectors.has(`${cx + dx},${cz + dz}`);
-      cells.push(
-        <rect key={`${dx},${dz}`} x={(dx + R) * CELL} y={(dz + R) * CELL} width={CELL - 1} height={CELL - 1}
-          fill={dx === 0 && dz === 0 ? "currentColor" : on ? "rgb(56 189 248 / 0.6)" : "rgb(148 163 184 / 0.15)"} />,
-      );
+  const cells = React.useMemo(() => {
+    const cells: React.JSX.Element[] = [];
+    for (let dz = -R; dz <= R; dz++) {
+      for (let dx = -R; dx <= R; dx++) {
+        const on = client.interestSectors.has(`${cx + dx},${cz + dz}`);
+        cells.push(
+          <rect key={`${dx},${dz}`} x={(dx + R) * CELL} y={(dz + R) * CELL} width={CELL - 1} height={CELL - 1}
+            fill={dx === 0 && dz === 0 ? "currentColor" : on ? "rgb(56 189 248 / 0.6)" : "rgb(148 163 184 / 0.15)"} />,
+        );
+      }
     }
-  }
-  const sectors = [...client.interestSectors].filter((s) => s !== "g").length;
+    return cells;
+  }, [client.interestSectors, cx, cz]);
+  const sectors = React.useMemo(() => [...client.interestSectors].filter((s) => s !== "g").length, [client.interestSectors]);
   return (
     <div className="flex flex-col gap-2 text-xs">
       <Button
