@@ -279,6 +279,41 @@ const DEFINE_ATOMIC_FUNCTIONS = [
   ...Object.values(ATOMIC_FN_NAMES).map(defineAtomicFnV3),
 ].join("\n");
 
+/**
+ * The hot tables are SCHEMAFULL (DB deep dive item 5): the database
+ * itself rejects unknown fields and wrong types on the save path,
+ * so a store bug cannot silently write a malformed record the way
+ * SCHEMALESS allows. Applied in connect() BEFORE the main schema
+ * block (whose IF NOT EXISTS schemaless definitions then no-op for
+ * these tables). A database created before this change keeps its
+ * schemaless tables — 3.x cannot redefine a table in place, so
+ * conversion there is a one-time operator step (recreate the
+ * database, or copy the tables out and back); the tables keep
+ * working schemaless meanwhile. `state`/`result` are TYPE any —
+ * arbitrary JSON by contract (the Zod wire schemas are their shape
+ * gate). op_dedup.createdAt is option<int>: rows written by the
+ * commit functions carry no stamp until the retention sweep
+ * backfills them.
+ */
+const HOT_TABLE_SCHEMA = `
+DEFINE TABLE IF NOT EXISTS character_state SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS characterId ON character_state TYPE int;
+DEFINE FIELD IF NOT EXISTS state ON character_state TYPE any;
+DEFINE FIELD IF NOT EXISTS version ON character_state TYPE int;
+DEFINE FIELD IF NOT EXISTS epoch ON character_state TYPE int;
+DEFINE FIELD IF NOT EXISTS regionId ON character_state TYPE string;
+DEFINE FIELD IF NOT EXISTS updatedAt ON character_state TYPE int;
+DEFINE TABLE IF NOT EXISTS character_lock SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS characterId ON character_lock TYPE int;
+DEFINE FIELD IF NOT EXISTS regionId ON character_lock TYPE string;
+DEFINE FIELD IF NOT EXISTS epoch ON character_lock TYPE int;
+DEFINE FIELD IF NOT EXISTS expiresAt ON character_lock TYPE int;
+DEFINE TABLE IF NOT EXISTS op_dedup SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS opId ON op_dedup TYPE string;
+DEFINE FIELD IF NOT EXISTS result ON op_dedup TYPE any;
+DEFINE FIELD IF NOT EXISTS createdAt ON op_dedup TYPE option<int>;
+`;
+
 /** First (only) statement's result. */
 function stmt(result: unknown): unknown {
   return Array.isArray(result) ? result[0] : result;
@@ -435,6 +470,9 @@ export class SurrealWorldStore implements WorldStore {
       namespace: this.opts.namespace,
       database: this.opts.database,
     });
+    // Hot-table SCHEMAFULL definitions first (see HOT_TABLE_SCHEMA):
+    // the main block's schemaless IF NOT EXISTS versions no-op after.
+    await this.db.query(HOT_TABLE_SCHEMA);
     await this.db.query(SCHEMA);
     await this.db.query(DEFINE_ATOMIC_FUNCTIONS);
     // The airtightener for the dedup fold: one dedup row per opId,
