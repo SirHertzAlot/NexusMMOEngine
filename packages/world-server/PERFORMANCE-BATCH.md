@@ -67,22 +67,41 @@ box, not MX, is the ceiling here; MX's headroom shows on hardware.
   record-by-record in a standalone probe before implementation
   (insert batch, then a mixed update/insert batch, read back exact).
 
-## Designed next (not in this commit)
+## Wired end-to-end (second commit on this branch)
 
-The store batch is the engine; routing live saves into it is the
-follow-on slice, already designed:
+The store batch is now the live save path:
 
-1. Store batch reads (`getCharacterStates` / `getCharacterLocks` /
-   `getOpResults` by id list) + batched `storeOpResults`, so the
-   core ceremony runs in ~3 round trips per sweep instead of ~6
-   per character.
-2. `WorldCore.putCharacterStates` bulk op with **per-record
-   outcomes** (one fenced record must not sink the batch),
-   a `world.putCharacterStates` webrpc method, and the engine-core
-   client method to match.
-3. A coalescer in `WorldCharacterSync.save`: saves are
-   event-driven from the gateway, so prepared puts collect over a
-   short window and flush as one bulk op (logout's final commit
-   forces an immediate flush). Per the best-practices doc, one
-   query uses about one core — the flusher keeps a small bounded
-   concurrency of independent batches rather than one serial queue.
+1. **Store batch reads**: `getCharacterStates` / `getCharacterLocks`
+   / `getOpResults` by id list (one `IN` query each over the unique
+   indexes) + batched `storeOpResults`, so the core ceremony runs
+   in a constant number of round trips per sweep instead of ~6 per
+   character. Contract-covered in `test/batch-writes.test.ts`.
+2. **Bulk core op**: `WorldCore.putCharacterStates` runs the single
+   put's ceremony per record — dedup (stored op results first,
+   intra-batch replays included), lock fencing with the identical
+   codes/messages, the per-record credits drain as the version
+   base, version = prior + 1 — and reports **per-record outcomes**:
+   a fenced record fails its own outcome and its stored record is
+   untouched; the rest of the batch lands. Exposed as the
+   `World.PutCharacterStates` webrpc method (batch cap 32, body
+   limit sized per entry) with the engine-core `WorldClient` method
+   to match. Contract: `test/batch-core.test.ts` on both stores,
+   including a simulated credits-drain version bump.
+3. **Coalescer**: `WorldCharacterSync.save` now enqueues its
+   prepared put; puts collect for 10 ms (or until 32 are queued)
+   and flush as one bulk call, at most 2 batches in flight (one
+   query ≈ one core — bounded concurrency, not one serial queue).
+   Logout's final commit flushes immediately. A world that answers
+   404/501 (it predates the bulk op) flips the sync to per-record
+   puts permanently for that session — saves survive a rolling
+   upgrade; the fleet test rig, which dispatches only the single
+   put, exercises exactly that fallback. Tests:
+   `packages/engine-core/test/world-sync-batch.test.ts`.
+
+Verification for the wiring commit: world-server suite 126 tests
+(125 pass / 0 fail / 1 skip embedded; **126/126 against the live
+SurrealMX 3.3.5 server**); engine-core character/fleet/terrain
+files 56/56. One pre-existing engine-core failure is unrelated and
+remains: the net transport test expects a dotted-quad peer address
+and this sandbox returns the IPv6-mapped form (code path untouched
+by this work).

@@ -58,8 +58,42 @@ async function contract(store: WorldStore): Promise<void> {
   assert.equal(lock?.expiresAt, 9000);
 }
 
+async function readContract(store: WorldStore): Promise<void> {
+  // Batched reads return exactly the stored records, keyed by id;
+  // ids with nothing stored are absent (not null entries).
+  await store.putCharacterStates([rec(1, 1), rec(2, 1), rec(3, 1)]);
+  await store.putCharacterLock({ characterId: 1, regionId: "r1", epoch: 1, expiresAt: 5000 });
+  await store.putCharacterLock({ characterId: 3, regionId: "r1", epoch: 2, expiresAt: 6000 });
+
+  const states = await store.getCharacterStates([1, 2, 3, 404]);
+  assert.equal(states.size, 3);
+  assert.equal(states.get(2)?.version, 1);
+  assert.equal(states.has(404), false);
+
+  const locks = await store.getCharacterLocks([1, 2, 3]);
+  assert.equal(locks.size, 2);
+  assert.equal(locks.get(3)?.epoch, 2);
+  assert.equal(locks.has(2), false);
+
+  assert.equal((await store.getCharacterStates([])).size, 0);
+  assert.equal((await store.getCharacterLocks([])).size, 0);
+
+  // Batched op results round-trip; unknown opIds are absent.
+  await store.storeOpResults([
+    { opId: "op-a", result: { v: 1 } },
+    { opId: "op-b", result: { v: 2 } },
+  ]);
+  const results = await store.getOpResults(["op-a", "op-b", "op-nope"]);
+  assert.deepEqual(results.get("op-a"), { v: 1 });
+  assert.deepEqual(results.get("op-b"), { v: 2 });
+  assert.equal(results.has("op-nope"), false);
+  assert.equal((await store.getOpResults([])).size, 0);
+  await store.storeOpResults([]);
+}
+
 test("batched character-state writes: memory store", async () => {
   await contract(new MemoryWorldStore());
+  await readContract(new MemoryWorldStore());
 });
 
 test("batched character-state writes: SurrealDB (embedded, or WORLD_TEST_DB_URL)", async () => {
@@ -67,6 +101,7 @@ test("batched character-state writes: SurrealDB (embedded, or WORLD_TEST_DB_URL)
   await store.connect();
   try {
     await contract(store);
+    await readContract(store);
   } finally {
     await store.close();
   }

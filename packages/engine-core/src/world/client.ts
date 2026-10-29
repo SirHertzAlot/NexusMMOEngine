@@ -20,6 +20,7 @@ import {
   type LedgerEvent,
   type LootGrantInput,
   type MigrationRecord,
+  type PutCharacterStateOutcome,
   type RegionInfo,
   type RegionLease,
   type ShardSnapshotRecord,
@@ -546,6 +547,47 @@ export class WorldClient {
       this.token(),
     );
     return res["character"] as CharacterStateRecord;
+  }
+
+  /**
+   * Batched form of putCharacterState: one world call for a whole
+   * save sweep. Each entry reports its own outcome — a fenced entry
+   * fails alone (ok:false with the single put's code/message); the
+   * call itself throws only on transport/auth failure.
+   */
+  async putCharacterStates(
+    items: ReadonlyArray<{ characterId: number; epoch: number; state: unknown }>,
+  ): Promise<PutCharacterStateOutcome[]> {
+    const res = await this.transport.call(
+      "PutCharacterStates",
+      {
+        input: {
+          regionId: this.opts.regionId,
+          inputs: items.map((it) => ({
+            characterId: it.characterId,
+            epoch: it.epoch,
+            state: it.state,
+            opId: newOpId(),
+          })),
+        },
+      },
+      this.token(),
+    );
+    const raw = res["outcomes"] as Array<Record<string, unknown>>;
+    return raw.map((o) =>
+      o["ok"] === true
+        ? {
+            characterId: o["characterId"] as number,
+            ok: true as const,
+            record: o["character"] as CharacterStateRecord,
+          }
+        : {
+            characterId: o["characterId"] as number,
+            ok: false as const,
+            code: o["code"] as number,
+            message: o["message"] as string,
+          },
+    );
   }
 
   /**

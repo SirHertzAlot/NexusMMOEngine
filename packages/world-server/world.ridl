@@ -62,6 +62,9 @@ service World
   # Slice P4 contract, defined in P1: versioned character records and
   # session locks. Character writes are fenced by the lock epoch.
   - PutCharacterState(input: PutCharacterStateInput) => (character: CharacterState)
+  # Batched save sweep: same per-record ceremony as PutCharacterState,
+  # reported per record — a fenced record fails its own outcome only.
+  - PutCharacterStates(input: PutCharacterStatesInput) => (outcomes: []PutCharacterStateOutcome)
   - GetCharacterState(input: GetCharacterStateInput) => (character: CharacterState)
   - AcquireCharacterLock(input: AcquireCharacterLockInput) => (lock: CharacterSessionLock)
   - ReleaseCharacterLock(input: ReleaseCharacterLockInput) => ()
@@ -308,6 +311,28 @@ struct PutCharacterStateInput
   # Opaque serialized character state, stored verbatim
   - state: map<string,any>
   - opId: string
+
+struct PutCharacterStatesInput
+  - regionId: string
+  # 1..32 entries (MAX_CHARACTER_STATE_BATCH in schema.ts)
+  - inputs: []PutCharacterStateItem
+
+struct PutCharacterStateItem
+  - characterId: uint64
+  # The caller's session-lock epoch
+  - epoch: uint64
+  # Opaque serialized character state, stored verbatim
+  - state: map<string,any>
+  - opId: string
+
+struct PutCharacterStateOutcome
+  - characterId: uint64
+  - ok: bool
+  # The stored record when ok; null on the wire when not
+  - character: CharacterState
+  # The single put's error code/message when not ok; 0/empty when ok
+  - code: uint32
+  - message: string
 
 struct CharacterState
   - characterId: uint64

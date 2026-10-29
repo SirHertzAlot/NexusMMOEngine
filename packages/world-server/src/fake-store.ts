@@ -83,6 +83,18 @@ export class MemoryWorldStore implements WorldStore {
     return this.ops.has(opId) ? this.ops.get(opId) : null;
   }
 
+  async getOpResults(opIds: string[]): Promise<Map<string, unknown>> {
+    const out = new Map<string, unknown>();
+    for (const opId of opIds) if (this.ops.has(opId)) out.set(opId, this.ops.get(opId));
+    return out;
+  }
+
+  async storeOpResults(
+    entries: ReadonlyArray<{ opId: string; result: unknown }>,
+  ): Promise<void> {
+    for (const e of entries) await this.storeOpResult(e.opId, e.result);
+  }
+
   async storeOpResult(opId: string, result: unknown): Promise<void> {
     this.ops.set(opId, result);
   }
@@ -256,6 +268,28 @@ export class MemoryWorldStore implements WorldStore {
 
   async putCharacterStates(records: CharacterStateRecord[]): Promise<void> {
     for (const r of records) this.characterStates.set(r.characterId, { ...r });
+  }
+
+  async getCharacterStates(
+    characterIds: number[],
+  ): Promise<Map<number, CharacterStateRecord>> {
+    const out = new Map<number, CharacterStateRecord>();
+    for (const id of characterIds) {
+      const r = this.characterStates.get(id);
+      if (r !== undefined) out.set(id, { ...r });
+    }
+    return out;
+  }
+
+  async getCharacterLocks(
+    characterIds: number[],
+  ): Promise<Map<number, CharacterSessionLock>> {
+    const out = new Map<number, CharacterSessionLock>();
+    for (const id of characterIds) {
+      const l = this.characterLocks.get(id);
+      if (l !== undefined) out.set(id, { ...l });
+    }
+    return out;
   }
 
   async getCharacterLock(characterId: number): Promise<CharacterSessionLock | null> {

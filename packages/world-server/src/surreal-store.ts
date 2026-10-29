@@ -445,6 +445,35 @@ export class SurrealWorldStore implements WorldStore {
     );
   }
 
+  async getOpResults(opIds: string[]): Promise<Map<string, unknown>> {
+    const out = new Map<string, unknown>();
+    if (opIds.length === 0) return out;
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM op_dedup WHERE opId IN $ids", { ids: opIds }),
+    );
+    for (const row of rows) out.set(row["opId"] as string, row["result"] ?? null);
+    return out;
+  }
+
+  async storeOpResults(
+    entries: ReadonlyArray<{ opId: string; result: unknown }>,
+  ): Promise<void> {
+    const CHUNK = 256;
+    for (let i = 0; i < entries.length; i += CHUNK) {
+      const chunk = entries.slice(i, i + CHUNK);
+      const statements: string[] = [];
+      const vars: Record<string, unknown> = {};
+      chunk.forEach((e, j) => {
+        statements.push(
+          `CREATE ONLY op_dedup CONTENT { opId: $opId${j}, result: $result${j} }`,
+        );
+        vars[`opId${j}`] = e.opId;
+        vars[`result${j}`] = e.result;
+      });
+      await this.db.query(statements.join(";\n"), vars);
+    }
+  }
+
   async getRegistryVersion(): Promise<number> {
     const row = singleRow<Record<string, unknown>>(
       await this.db.query("SELECT * FROM ONLY meta WHERE id = meta:registry"),
@@ -690,6 +719,23 @@ export class SurrealWorldStore implements WorldStore {
     return row === null ? null : stripId<CharacterStateRecord>(row);
   }
 
+  async getCharacterStates(
+    characterIds: number[],
+  ): Promise<Map<number, CharacterStateRecord>> {
+    const out = new Map<number, CharacterStateRecord>();
+    if (characterIds.length === 0) return out;
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM character_state WHERE characterId IN $ids", {
+        ids: characterIds,
+      }),
+    );
+    for (const row of rows) {
+      const r = stripId<CharacterStateRecord>(row);
+      out.set(r.characterId, r);
+    }
+    return out;
+  }
+
   /**
    * One character-state upsert (INSERT ... ON DUPLICATE KEY UPDATE over
    * the unique characterId index), parameterized by a suffix so the
@@ -743,6 +789,23 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM ONLY character_lock WHERE characterId = $id LIMIT 1", { id: characterId }),
     );
     return row === null ? null : stripId<CharacterSessionLock>(row);
+  }
+
+  async getCharacterLocks(
+    characterIds: number[],
+  ): Promise<Map<number, CharacterSessionLock>> {
+    const out = new Map<number, CharacterSessionLock>();
+    if (characterIds.length === 0) return out;
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM character_lock WHERE characterId IN $ids", {
+        ids: characterIds,
+      }),
+    );
+    for (const row of rows) {
+      const l = stripId<CharacterSessionLock>(row);
+      out.set(l.characterId, l);
+    }
+    return out;
   }
 
   async putCharacterLock(l: CharacterSessionLock): Promise<void> {
