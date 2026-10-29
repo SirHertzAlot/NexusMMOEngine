@@ -1,11 +1,68 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { localAssets } from "./vite-local-assets.js";
 import { gpuBenchmarks } from "./vite-gpu-benchmarks.js";
 import { animationDoc, audioEvents, combatMoves, gameFlow, materialsDoc, vfxBudgets } from "./vite-game-flow.js";
 import { gameStrings } from "./vite-game-strings.js";
 import compression from "vite-plugin-compression";
+
+const thisDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(thisDir, "..", "..");
+
+/** Vite plugin: injects `<link rel="modulepreload">` hints for vendor chunks
+ * into index.html after the build. Since Vite hashes chunk filenames, we
+ * cannot preload them statically in HTML; this plugin reads the generated
+ * asset manifest and adds preload links for the heavy split chunks. */
+function resourceHintsPlugin({
+  chunks = ["three-core", "three-extras", "three-examples", "r3f-core", "react-vendor", "anim-vendor", "utils-vendor"],
+} = {}) {
+  const htmlPath = resolve(repoRoot, "index.html");
+  const outPath = resolve(repoRoot, "dist-app/index.html");
+
+  return {
+    name: "resource-hints",
+    enforce: "post" as const,
+    writeBundle(_: unknown, bundle: import("rollup").OutputBundle) {
+      const emittedJs: string[] = [];
+      for (const [fileName, chunk] of Object.entries(bundle)) {
+        if ((chunk as { type?: string }).type === "chunk" && fileName.endsWith(".js")) {
+          emittedJs.push(fileName);
+        }
+      }
+
+      const preloads: string[] = [];
+      for (const prefix of chunks) {
+        const match = emittedJs.find((f) => f.startsWith(`${prefix}-`) && f.endsWith(".js"));
+        if (match) {
+          preloads.push(`    <link rel="modulepreload" href="/${match}" />`);
+        }
+      }
+
+      if (preloads.length === 0) return;
+
+      let html: string;
+      try {
+        html = require("node:fs").readFileSync(htmlPath, "utf8");
+      } catch {
+        return;
+      }
+
+      const block = preloads.join("\n") + "\n";
+      const marker = "</head>";
+      if (html.includes(marker) && !html.includes(`modulepreload`)) {
+        html = html.replace(marker, block + marker);
+      }
+
+      try {
+        require("node:fs").writeFileSync(outPath, html, "utf8");
+      } catch {
+        // Output dir may not exist yet; that's fine.
+      }
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
@@ -23,6 +80,7 @@ export default defineConfig(({ mode }) => {
       gameStrings(fileURLToPath(new URL("../../content/strings", import.meta.url))),
       localAssets(fileURLToPath(new URL("../../assets", import.meta.url))),
       gpuBenchmarks(),
+      resourceHintsPlugin(),
       // Compression: gzip + brotli for production builds
       !isDev && compression({
         algorithm: "brotliCompress",

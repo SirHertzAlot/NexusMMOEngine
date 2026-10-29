@@ -117,7 +117,7 @@ export function DataTable<R>(props: DataTableProps<R>): React.JSX.Element {
             </tr>
           </thead>
         )}
-        <tbody className={mono ? "font-mono text-xs" : undefined}>
+        <tbody className={mono ? "font-mono text-xs" : undefined} style={{ containIntrinsicSize: "0 500px", contentVisibility: "auto" }}>
           {rows.map((row, i) => {
             const key = rowKey(row, i);
             const on = isPicked(row, key);

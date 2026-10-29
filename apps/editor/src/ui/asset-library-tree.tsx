@@ -60,7 +60,8 @@ export function AssetLibraryTree(): React.JSX.Element {
       {group("models", "Models", String(models.length), (
         <>
           {shown.map((m) => (
-            <TreeItem
+            <div style={{ containIntrinsicSize: "0 120px", contentVisibility: "auto" }}>
+              <TreeItem
               key={m.id} icon="description" label={m.id} depth={1} mono
               selected={m.id === previewId}
               onPick={() => setAssetPreview(m.id)}
@@ -68,6 +69,7 @@ export function AssetLibraryTree(): React.JSX.Element {
                 { label: `Preview ${m.id}`, icon: "visibility", run: () => setAssetPreview(m.id) },
               ]}
             />
+            </div>
           ))}
           {models.length > shown.length && (
             <p className="px-3 py-1 pl-11 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -79,9 +81,11 @@ export function AssetLibraryTree(): React.JSX.Element {
       {group("textures", "Textures", String(textures.length), (
         <>
           {textures.slice(0, 12).map((t) => (
-            <TreeItem
+            <div style={{ containIntrinsicSize: "0 80px", contentVisibility: "auto" }}>
+              <TreeItem
               key={t.id} icon="image" label={t.id} depth={1} mono
             />
+            </div>
           ))}
         </>
       ))}

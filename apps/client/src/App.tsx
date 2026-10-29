@@ -818,19 +818,19 @@ export function App(): React.ReactElement {
             })()}
           </div>
         )}
-        {!nearDrop && !dialog && !resource && nearChest === null && nearNpc && (
+        {(!nearDrop && !dialog && !resource && nearChest === null && nearNpc) ? (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.talkTo")} <span className="text-amber-200">{npcs.find((n) => n.id === nearNpc)?.name ?? nearNpc}</span>
           </div>
-        )}
-        {!nearDrop && !dialog && !resource && !nearNpc && entrance && (
+        ) : null}
+        {(!nearDrop && !dialog && !resource && !nearNpc && entrance) ? (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.enter")} <span className="text-violet-300">{entrance.name}</span>
             {party && party.members.length > 1 ? <span className="text-muted-foreground"> {t("interact.withParty")}</span> : null}
           </div>
-        )}
+        ) : null}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
             <React.Suspense fallback={<div className="flex items-center justify-center p-2 text-muted-foreground text-sm">Loading dungeon HUD…</div>}>
