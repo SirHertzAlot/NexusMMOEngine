@@ -140,7 +140,7 @@ export class PersistenceWorkerRuntime {
     this.pollIntervalMs = config.pollIntervalMs ?? 10;
   }
 
-  /** Connect to embedded SurrealDB (`mem://` or `rocksdb://`) and apply `schema.surrealql`. */
+  /** Connect to embedded SurrealDB (`mem://` = SurrealMX, volatile; or a durable engine URL) and apply `schema.surrealql`. */
   public async init(): Promise<void> {
     if (this.connected) return;
     await this.db.connect(this.dbUrl);

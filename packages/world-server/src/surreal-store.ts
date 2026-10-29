@@ -1,11 +1,13 @@
 /**
  * SurrealDB-backed WorldStore. The database runs inside the world
- * server (`@surrealdb/node`, the native embedded engine): "rocksdb:<abs
- * path>" is durable on disk, "mem://" is in memory. A "ws://" URL still
- * reaches a separate SurrealDB server.
+ * server (`@surrealdb/node`, the native embedded engine, SurrealDB
+ * 3.x): "surrealkv:<abs path>" is durable on disk (SurrealKV),
+ * "mem://" is SurrealMX in memory (volatile embedded — MX persistence
+ * parameters only take effect on a server). A "ws://" URL reaches a
+ * separate SurrealDB server, e.g. the SurrealMX server from `npm run db`.
  *
  * Env:
- *   WORLD_DB_URL   default rocksdb:<data dir>/surreal (see server.ts)
+ *   WORLD_DB_URL   default surrealkv:<data dir>/surreal (see server.ts)
  *   WORLD_DB_NS    default mmo
  *   WORLD_DB_DB    default world
  *   WORLD_DB_USER / WORLD_DB_PASS  optional credentials

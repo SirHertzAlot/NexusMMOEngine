@@ -2,6 +2,13 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-28 — SurrealMX adoption: SurrealDB 3.x engines everywhere, MX for the world tier (Joey's directive).**
+  Full evidence: `docs/SURREALMX-ADOPTION-REPORT.md`.
+  1. **Versions aligned:** `@surrealdb/node` 3.0.3 → ^3.1.0 and the `surrealdb` JS SDK 2.0.8 → ^2.2.0 in the root, world-server, and engine-core manifests. Every embedded `mem://` endpoint (persist worker, data-plane server, store tests, benches) runs on SurrealMX, SurrealDB 3.x's in-memory engine.
+  2. **Measured constraint:** embedded `mem://` ignores the MX persistence parameters (`aol`/`snapshot`/`sync`) — verified on engines 3.0.3 and 3.1.0: no files written, data gone after reconnect. MX persistence is a server-side feature, so the durable tier gets MX as a **server**, never as a silent embedded downgrade.
+  3. **World tier shapes:** the recommended production shape is now the SurrealMX server — `npm run db` starts SurrealDB ≥3.0 on `mem://./data/surrealmx?aol=sync&snapshot=60s&sync=every` (in-memory MX + sync append-only log + fsync on every commit + periodic snapshots — per the SurrealMX blog's durability table, the only MX configuration that survives both process and system crashes; batched writes amortize the per-commit fsync as group commit) and the world server connects over `ws://` as before. The embedded default in `server.ts` moves from legacy RocksDB to **SurrealKV** (`surrealkv:<WORLD_DATA_DIR>/surreal`), the 3.x native durable engine; new world catalogs are written on SurrealKV too (catalogs are derived data, regenerable from seed). `mem:` (fake store) is unchanged.
+  4. **Nebula evaluated, not adopted:** NebulaGraph is a distributed graph cluster — wrong shape and operational weight for the WorldStore contract (record CRUD + ledger + atomic ops behind one interface), and SurrealDB already covers our graph-shaped queries. NebulaDB (TypeScript embedded) is a pre-1.0 edge/browser database with no multi-writer server story. Neither displaces the WorldStore seam; details in the report.
+
 - **2026-10-27 — SAB Logging Layer Phase 0: Ring Buffer, Append-Only Code Dictionary & Sacred TS Producers.**
   Completed Phase 0 of the SAB Logging Layer specification (`docs/SAB-LOGGING-LAYER-SPEC.md` §4, `docs/SAB-LOGGING-PHASE0-REPORT.md`):
   - **Shared Memory Ring Buffer (`LogRingBuffer`):** Implemented over Dmitry Vyukov's `AtomicMPSCQueue` with 128-byte fixed records ($32 \times \text{u32}$ words) in a 2MB default SAB ($16,384\text{ records}$). Added per-producer atomic level masks (cache-line 3) and atomic drop counter.

@@ -104,7 +104,7 @@
     "packages/synthesis"
   ],
   "dependencies": {
-    "@surrealdb/node": "^3.0.3",
+    "@surrealdb/node": "^3.1.0",
     "argon2": "^0.45.1"
   },
   "allowScripts": {
