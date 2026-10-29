@@ -732,9 +732,10 @@ export function ScopeTree<T extends ScopeNode>({ nodes, open, selected, onToggle
   onPick: (node: T) => void;
   menuFor?: (node: T) => Array<MenuItem | "sep">;
 }): React.JSX.Element {
+  const visible = React.useMemo(() => flattenVisible(nodes, open), [nodes, open]);
   return (
     <>
-      {flattenVisible(nodes, open).map(({ node, depth, hasKids }) => {
+      {visible.map(({ node, depth, hasKids }) => {
         const full = node as T;
         return (
           <TreeItem

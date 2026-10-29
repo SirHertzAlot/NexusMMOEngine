@@ -15,7 +15,8 @@ export function AssetLibraryTree(): React.JSX.Element {
   const toggle = (id: string): void => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const models = scan?.manifest?.models ?? [];
   const textures = scan?.manifest?.textures ?? [];
-  const needle = filter.trim().toLowerCase();
+  const deferredFilter = React.useDeferredValue(filter);
+  const needle = deferredFilter.trim().toLowerCase();
   const shown = models.filter((m) => needle === "" || m.id.toLowerCase().includes(needle)).slice(0, 12);
   const group = (id: string, label: string, trailing: string, kids: React.ReactNode): React.JSX.Element => (
     <div key={id} className="mb-1">

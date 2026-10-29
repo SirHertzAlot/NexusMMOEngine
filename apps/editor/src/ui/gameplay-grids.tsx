@@ -193,7 +193,10 @@ export function GameplayGridsPanel(): React.JSX.Element {
     grids.edit(table, next);
     setStatus(null);
   };
-  const shownRows = viewRows(mine, { search, filters: filterKey ? { [filterKey]: filterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
+  const deferredSearch = React.useDeferredValue(search);
+  const deferredFilterKey = React.useDeferredValue(filterKey);
+  const deferredFilterText = React.useDeferredValue(filterText);
+  const shownRows = viewRows(mine, { search: deferredSearch, filters: deferredFilterKey ? { [deferredFilterKey]: deferredFilterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
   const mainCols = def.columns.filter((c) => !c.nested);
   const nestedCols = def.columns.filter((c) => c.nested);
   const serverCell = (rowId: string, key: string): string | null =>
