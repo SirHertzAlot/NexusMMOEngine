@@ -419,7 +419,7 @@ export function ContentBrowserPanel(): React.JSX.Element {
           </Button>
         ))}
       </div>
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2">
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2" style={{ containIntrinsicSize: "0 500px", contentVisibility: "auto" }}>
         {list.map((e) => (
           <li
             key={`${e.kind}:${e.id}`}

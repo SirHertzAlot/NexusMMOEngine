@@ -149,12 +149,14 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
     return () => clearInterval(t);
   }, [client, combat, library.assets]);
 
+  const onHudRef = React.useRef(onHud);
+  onHudRef.current = onHud;
   const onHudBoth = React.useCallback(
     (h: HudData) => {
       setHud(h);
-      onHud?.(h);
+      onHudRef.current?.(h);
     },
-    [onHud],
+    [],
   );
   const onQuality = React.useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
   const cycleQuality = (): void => React.startTransition(() => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]));
