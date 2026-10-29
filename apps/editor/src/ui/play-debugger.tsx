@@ -157,7 +157,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
     [onHud],
   );
   const onQuality = React.useCallback((active: QualityTier, detected: QualityTier | null) => setActiveQuality({ active, detected }), []);
-  const cycleQuality = (): void => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]);
+  const cycleQuality = (): void => React.startTransition(() => setQuality((q) => QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(q) + 1) % QUALITY_CYCLE.length]));
 
   // Esc leaves the maximized view (once the pointer is free: the first Esc releases it).
   React.useEffect(() => {

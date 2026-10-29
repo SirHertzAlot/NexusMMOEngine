@@ -6,6 +6,7 @@
  * re-implemented per consumer. For sparklines and segmented LOD views,
  * see ui/perf-hud.tsx instead — different visualisations, not bars.
  */
+import * as React from "react";
 
 const TONES: Record<string, string> = {
   health: "bg-red-500",
@@ -28,7 +29,7 @@ export interface BarProps {
   tone: keyof typeof TONES;
 }
 
-export function Bar({ label, value, max, tone }: BarProps): React.ReactElement {
+function BarImpl({ label, value, max, tone }: BarProps): React.ReactElement {
   const pct = barFraction(value, max) * 100;
   return (
     <div>
@@ -50,3 +51,6 @@ export function Bar({ label, value, max, tone }: BarProps): React.ReactElement {
     </div>
   );
 }
+
+export const Bar = React.memo(BarImpl);
+Bar.displayName = "Bar";

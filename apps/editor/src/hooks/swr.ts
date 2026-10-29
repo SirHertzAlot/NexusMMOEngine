@@ -28,6 +28,7 @@ export function useAdminJson<T>(url: string, refreshInterval = 2000) {
 export function useAdminCommand<T>(url: string) {
   return useSWR<T>(url, fetcher, {
     revalidateOnFocus: false,
-    revalidate: false, // Only fetch when triggered
+    revalidateOnMount: false, // Only fetch when triggered
+    revalidateIfStale: false,
   });
 }

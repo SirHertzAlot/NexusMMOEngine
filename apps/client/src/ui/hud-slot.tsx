@@ -31,7 +31,7 @@ export { useHudJson } from "../hooks/swr";
 // Avoid unused import warning
 void useHudJson;
 
-export function HudSlot({
+function HudSlotImpl({
   id,
   children,
   className,
@@ -49,3 +49,6 @@ export function HudSlot({
     </div>
   );
 }
+
+export const HudSlot = React.memo(HudSlotImpl);
+HudSlot.displayName = "HudSlot";

@@ -6,6 +6,7 @@
  * shared ui/meter.tsx; stamina and mana (0x1c, from onMana) reuse it.
  */
 
+import * as React from "react";
 import type { BodyMessage, NeedsLine } from "@mmo-engine/protocol";
 import { BodyDoll, isHurt } from "./body-doll.js";
 import { Bar } from "./meter.js";
@@ -27,7 +28,7 @@ export interface PlayerFrameProps {
   body?: BodyMessage | null;
 }
 
-export function PlayerFrame({ name, hp, maxHp, sp, maxSp, mana, needs, body }: PlayerFrameProps): React.ReactElement | null {
+function PlayerFrameImpl({ name, hp, maxHp, sp, maxSp, mana, needs, body }: PlayerFrameProps): React.ReactElement | null {
   if (hp === null || maxHp === null) return null;
   const hurt = isHurt(body ?? null);
   return (
@@ -56,3 +57,6 @@ export function PlayerFrame({ name, hp, maxHp, sp, maxSp, mana, needs, body }: P
     </div>
   );
 }
+
+export const PlayerFrame = React.memo(PlayerFrameImpl);
+PlayerFrame.displayName = "PlayerFrame";
