@@ -8,9 +8,66 @@ const thisDir = dirname(fileURLToPath(import.meta.url));
 // apps/editor → repo root
 const repoRoot = resolve(thisDir, "..", "..");
 
+/** Vite plugin: injects `<link rel="modulepreload">` hints for vendor chunks
+ * into index.html after the build. Since Vite hashes chunk filenames, we
+ * cannot preload them statically in HTML; this plugin reads the generated
+ * asset manifest and adds preload links for the heavy split chunks. */
+function resourceHintsPlugin({
+  chunks = ["three-core", "three-extras", "three-examples", "r3f-core", "react-vendor", "anim-vendor", "utils-vendor", "editor-ui"],
+} = {}) {
+  const htmlPath = resolve(repoRoot, "index.html");
+  const outPath = resolve(repoRoot, "dist-app/index.html");
+
+  return {
+    name: "resource-hints",
+    enforce: "post" as const,
+    writeBundle(_: unknown, bundle: import("rollup").OutputBundle) {
+      const emittedJs: string[] = [];
+      for (const [fileName, chunk] of Object.entries(bundle)) {
+        if ((chunk as { type?: string }).type === "chunk" && fileName.endsWith(".js")) {
+          emittedJs.push(fileName);
+        }
+      }
+
+      const preloads: string[] = [];
+      for (const prefix of chunks) {
+        const match = emittedJs.find((f) => f.startsWith(`${prefix}-`) && f.endsWith(".js"));
+        if (match) {
+          preloads.push(`    <link rel="modulepreload" href="/${match}" />`);
+        }
+      }
+
+      if (preloads.length === 0) return;
+
+      let html: string;
+      try {
+        html = require("node:fs").readFileSync(htmlPath, "utf8");
+      } catch {
+        return;
+      }
+
+      const block = preloads.join("\n") + "\n";
+      const marker = "</head>";
+      if (html.includes(marker) && !html.includes(`modulepreload`)) {
+        html = html.replace(marker, block + marker);
+      }
+
+      try {
+        require("node:fs").writeFileSync(outPath, html, "utf8");
+      } catch {
+        // Output dir may not exist yet; that's fine.
+      }
+    },
+  };
+}
+
 export default defineConfig(() => {
   return {
-    plugins: [react(), editorHost({ repoRoot })],
+    plugins: [
+      react(),
+      editorHost({ repoRoot }),
+      resourceHintsPlugin(),
+    ],
     resolve: {
       // Play mode's game view (E4) draws with the client's renderer, from its
       // source: one renderer, not a copy (types: tsconfig paths, the built client).
