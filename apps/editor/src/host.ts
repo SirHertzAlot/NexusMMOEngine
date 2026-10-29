@@ -92,6 +92,13 @@
 
 import type { Plugin, ViteDevServer } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
+
+declare module "node:http" {
+  interface IncomingMessage {
+    routeMatch?: RegExpMatchArray | null;
+  }
+}
+
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -445,6 +452,57 @@ function loadPoolDefNames(dataDir: string): { count: number; names: string[]; ra
   }
   return { count: names.length, names, ranks, colors };
 }
+
+/** ------------------------------------------------------------------
+ * Route table for /api/editor/* handlers.
+ *
+ * Each entry matches an HTTP method + URL pattern and hands the handler
+ * an already-parsed JSON body. This consolidates the readBody() +
+ * JSON.parse() pattern that was previously repeated in every route
+ * handler.
+ *
+ * Route matching:
+ *   - Entries are checked in order; first match wins.
+ *   - `path` as string: exact match, or prefix match when URL has "?"
+ *   - `path` as RegExp: `exec()` must match; capture groups available
+ *     to handler via `req.routeMatch`.
+ *   - `method` must equal req.method.
+ * ------------------------------------------------------------------ */
+
+interface RouteHandler {
+  (req: IncomingMessage, res: ServerResponse, body: unknown): Promise<void>;
+}
+
+interface RouteEntry {
+  method: string;
+  path: string | RegExp;
+  handler: RouteHandler;
+}
+
+/** Read request body once and parse JSON. Returns undefined when there
+ * is no body or when the body is empty/non-JSON. */
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const raw = await readBody(req);
+  if (!raw || raw.trim() === "") return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Check whether `url` matches `pattern`. */
+function routeMatches(url: string, pattern: string | RegExp): RegExpMatchArray | null {
+  if (typeof pattern === "string") {
+    if (url === pattern) return [] as unknown as RegExpMatchArray;
+    if (url.startsWith(pattern + "?")) return [] as unknown as RegExpMatchArray;
+    return null;
+  }
+  return pattern.exec(url);
+}
+
+/** All /api/editor/* routes. Handlers receive (req, res, parsedBody). */
+const editorRoutes: RouteEntry[] = [];
 
 export function editorHost(options: EditorHostOptions): Plugin {
   const repoRoot = resolve(options.repoRoot);
@@ -920,6 +978,26 @@ export function editorHost(options: EditorHostOptions): Plugin {
           !isLoopbackAddress(req.socket.remoteAddress)
         ) {
           sendJson(res, 403, { ok: false, error: "editor routes are local-only" });
+          return;
+        }
+        // Route table dispatch: match URL against registered routes, parse
+        // JSON body once, then call the matched handler.
+        const match = editorRoutes.find((route) => {
+          if (route.method !== req.method) return false;
+          return !!routeMatches(url, route.path);
+        });
+        if (match) {
+          req.routeMatch = routeMatches(url, match.path);
+          const body = await readJsonBody(req);
+          try {
+            await match.handler(req, res, body);
+          } catch (err) {
+            const status = (err as { status?: number }).status ?? 500;
+            sendJson(res, status, {
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
           return;
         }
         try {
