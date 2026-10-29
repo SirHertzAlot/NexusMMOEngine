@@ -1130,6 +1130,63 @@ async function atomicStoreContract(store: WorldStore): Promise<void> {
   assert.deepEqual(badReplay, bad, "a rejected op must replay its stored rejection");
 }
 
+test("atomic ops: concurrent disjoint trades do not convoy on the ledger sequence (surreal store)", async () => {
+  const store = new SurrealWorldStore(surrealTestOptions("convoy_" + Date.now()));
+  try {
+    await store.connect();
+    const core = new WorldCoreImpl({
+      store,
+      heartbeatTimeoutMs: 1000,
+      heartbeatIntervalMs: 100,
+      apiKeyHash: await apiKeyHash(),
+    });
+    await register(core, "r1", RANGE_A);
+    await register(core, "r2", RANGE_B);
+    // Eight disjoint character pairs across two regions: no shared
+    // records, no shared locks — nothing to legitimately conflict.
+    const pairs: Array<{ regionId: string; aId: number; bId: number; a: Seeded; b: Seeded }> = [];
+    for (let i = 0; i < 8; i++) {
+      const regionId = i % 2 === 0 ? "r1" : "r2";
+      const aId = 100 + i * 2;
+      const bId = aId + 1;
+      const a = await seedCharacter(core, store, regionId, aId, 100, []);
+      const b = await seedCharacter(core, store, regionId, bId, 100, []);
+      pairs.push({ regionId, aId, bId, a, b });
+    }
+    const results = await Promise.all(
+      pairs.map((p, i) =>
+        core.tradeCommit(p.regionId, {
+          regionId: p.regionId,
+          opId: opId(`convoy-${i}`),
+          a: p.a.fence,
+          b: p.b.fence,
+          aGivesGold: 5,
+          bGivesGold: 0,
+          aGivesItems: [],
+          bGivesItems: [],
+        }),
+      ),
+    );
+    const rejected = results.filter((r) => !r.ok);
+    assert.equal(
+      rejected.length,
+      0,
+      `disjoint concurrent ops must not reject (the seq convoy): ${JSON.stringify(rejected)}`,
+    );
+    const ledger = await store.getAtomicLedger();
+    assert.equal(
+      new Set(ledger.map((e) => e.seq)).size,
+      ledger.length,
+      "ledger seqs must stay unique under concurrency",
+    );
+    let total = 0;
+    for (const p of pairs) total += (await goldOf(store, p.aId)) + (await goldOf(store, p.bId));
+    assert.equal(total, 8 * 200, "gold conserved across all pairs");
+  } finally {
+    await store.close();
+  }
+});
+
 test("atomic store contract: memory", async () => {
   await atomicStoreContract(new MemoryWorldStore());
 });

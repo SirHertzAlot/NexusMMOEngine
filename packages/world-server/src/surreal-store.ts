@@ -238,9 +238,46 @@ DEFINE FUNCTION IF NOT EXISTS fn::${name}_v2($base_seq: int, $new_seq: int, $rec
 };`;
 }
 
-const DEFINE_ATOMIC_FUNCTIONS = Object.values(ATOMIC_FN_NAMES)
-  .map(defineAtomicFn)
-  .join("\n");
+/**
+ * v3 (2026-10-29, sequence block allocation): the same fold with
+ * the global sequence counter REMOVED from the commit path. In v2
+ * every op read and rewrote the single atomic_meta row — its CAS
+ * made independent ops convoy (measured: 7 of 8 concurrent disjoint
+ * trades rejected with VERSION_CONFLICT or engine write-conflicts
+ * on the shared row). The store now claims sequence BLOCKS from
+ * the counter (one atomic increment per 256 seqs, outside the op
+ * transaction) and hands out disjoint ranges; the function's only
+ * guards are the per-record version fences and the ledger's unique
+ * seq index. Unused block tails are lost on restart — seqs stay
+ * unique and per-op ordered, not gapless (the DB2 SEQUENCE CACHE
+ * trade, deliberately taken).
+ */
+function defineAtomicFnV3(name: string): string {
+  return `
+DEFINE FUNCTION IF NOT EXISTS fn::${name}_v3($records: array, $entries: array, $credits: array, $op_id: string, $op_name: string) {
+  LET $prior = (SELECT result FROM ONLY op_dedup WHERE opId = $op_id);
+  IF $prior != NONE { RETURN { deduped: true, result: $prior.result }; };
+  FOR $r IN $records {
+    IF $r.existed {
+      LET $u = (UPDATE ONLY character_state SET state = $r.state, version = $r.version, epoch = $r.epoch, regionId = $r.regionId, updatedAt = $r.updatedAt WHERE characterId = $r.characterId AND version = $r.expectedVersion RETURN AFTER);
+      IF $u = NONE { THROW "VERSION_CONFLICT"; };
+    } ELSE {
+      CREATE ONLY character_state CONTENT { characterId: $r.characterId, state: $r.state, version: $r.version, epoch: $r.epoch, regionId: $r.regionId, updatedAt: $r.updatedAt };
+    };
+  };
+  FOR $e IN $entries { CREATE ONLY atomic_ledger CONTENT $e; };
+  FOR $c IN $credits { CREATE ONLY pending_credit CONTENT $c; };
+  LET $chars = (SELECT characterId, state, version, epoch, regionId, updatedAt FROM $records);
+  LET $env = { ok: true, opId: $op_id, op: $op_name, characters: $chars, ledger: $entries };
+  CREATE ONLY op_dedup CONTENT { opId: $op_id, result: $env };
+  RETURN { deduped: false, result: $env };
+};`;
+}
+
+const DEFINE_ATOMIC_FUNCTIONS = [
+  ...Object.values(ATOMIC_FN_NAMES).map(defineAtomicFn),
+  ...Object.values(ATOMIC_FN_NAMES).map(defineAtomicFnV3),
+].join("\n");
 
 /** First (only) statement's result. */
 function stmt(result: unknown): unknown {
@@ -291,8 +328,57 @@ export class SurrealWorldStore implements WorldStore {
   private db = newClient();
   private readonly opts: SurrealStoreOptions;
 
+  // Sequence block allocation (see defineAtomicFnV3): this instance
+  // owns ledger seqs in (seqLimit - claimed, seqLimit]; seqCursor is
+  // the next seq to hand out. Handout is synchronous (no await
+  // between check and increment), so concurrent ops on this
+  // instance can never draw the same seq.
+  private seqCursor = 1;
+  private seqLimit = 0;
+  private static readonly SEQ_BLOCK = 256;
+
   constructor(opts: SurrealStoreOptions) {
     this.opts = opts;
+  }
+
+  /**
+   * Reserve `count` ledger seqs; returns the base such that the
+   * caller uses base+1 .. base+count. Claims a fresh block from the
+   * global counter when the owned range runs out — one atomic
+   * increment per block, retried through engine write conflicts
+   * (claims are rare and small; the retry is bounded and jittered).
+   */
+  private async reserveSeqs(count: number): Promise<number> {
+    if (count <= this.seqLimit - this.seqCursor + 1) {
+      const base = this.seqCursor - 1;
+      this.seqCursor += count;
+      return base;
+    }
+    const size = Math.max(SurrealWorldStore.SEQ_BLOCK, count);
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const row = singleRow<Record<string, unknown>>(
+          await this.db.query(
+            "UPDATE ONLY atomic_meta SET seq += $size WHERE id = atomic_meta:ledger RETURN AFTER",
+            { size },
+          ),
+        );
+        const end = Number(row?.["seq"] ?? 0);
+        if (end >= size) {
+          this.seqCursor = end - size + 1;
+          this.seqLimit = end;
+          const base = this.seqCursor - 1;
+          this.seqCursor += count;
+          return base;
+        }
+        lastErr = new Error(`seq claim returned ${String(row?.["seq"])}`);
+      } catch (err) {
+        lastErr = err;
+      }
+      await new Promise((r) => setTimeout(r, 5 + Math.random() * 20));
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("sequence block claim failed");
   }
 
   async connect(): Promise<void> {
@@ -1003,7 +1089,6 @@ export class SurrealWorldStore implements WorldStore {
       readStmts.push(`SELECT * FROM ONLY character_state WHERE characterId = $c${i} LIMIT 1`);
       readStmts.push(`SELECT * FROM ONLY character_lock WHERE characterId = $c${i} LIMIT 1`);
     });
-    readStmts.push("SELECT seq FROM ONLY atomic_meta:ledger");
     // The dedup read rides the same round trip (the fold): a prior
     // outcome for this opId — committed by the v2 function's own
     // in-transaction insert, or recorded for a rejection — answers
@@ -1028,9 +1113,6 @@ export class SurrealWorldStore implements WorldStore {
       records.set(id, recRow === null ? null : stripId<CharacterStateRecord>(recRow));
       locks.set(id, lockRow === null ? null : stripId<CharacterSessionLock>(lockRow));
     });
-    const counterRow = SurrealWorldStore.rowValue(results[results.length - 2]);
-    const baseSeq = counterRow === null ? 0 : Number(counterRow["seq"] ?? 0);
-
     const now = Date.now();
     const outcome = apply({ regionId, now, records, locks });
     if (!outcome.ok) {
@@ -1044,6 +1126,9 @@ export class SurrealWorldStore implements WorldStore {
       return rejected;
     }
 
+    // Seqs come from this instance's claimed block (reserveSeqs) —
+    // the global counter is no longer read or written per op.
+    const baseSeq = await this.reserveSeqs(outcome.commit.ledger.length);
     const entries: AtomicLedgerEntry[] = outcome.commit.ledger.map((d, j) => ({
       ...d,
       seq: baseSeq + j + 1,
@@ -1070,10 +1155,8 @@ export class SurrealWorldStore implements WorldStore {
     let fnResult: unknown;
     try {
       fnResult = await this.db.query(
-        `RETURN fn::${ATOMIC_FN_NAMES[op]}_v2($baseSeq, $newSeq, $records, $entries, $credits, $opId, $opName);`,
+        `RETURN fn::${ATOMIC_FN_NAMES[op]}_v3($records, $entries, $credits, $opId, $opName);`,
         {
-          baseSeq,
-          newSeq: baseSeq + entries.length,
           records: fnRecords,
           entries,
           credits: fnCredits,
