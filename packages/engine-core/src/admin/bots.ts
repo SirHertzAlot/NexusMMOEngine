@@ -14,6 +14,7 @@
  * Admin command: `bots <count>` — spawns <count> bot workers.
  * Admin command: `bots stop` — stops all running bot workers.
  */
+import { stdioError, stdioLog } from "../logging/index.js";
 
 import { z } from "zod";
 import { Worker } from "node:worker_threads";
@@ -75,7 +76,7 @@ export function spawnBots(args: BotsArgs): { ok: boolean; message: string } {
 
     worker.on("message", (msg: any) => {
       if (msg.type === "ready") {
-        console.log(
+        stdioLog(
           `[admin bots] worker ${msg.workerId} ready with ${msg.botCount} bot(s)`,
         );
       } else if (msg.type === "stats") {
@@ -86,13 +87,13 @@ export function spawnBots(args: BotsArgs): { ok: boolean; message: string } {
     });
 
     worker.on("error", (err) => {
-      console.error(`[admin bots] worker ${i} error:`, err);
+      stdioError(`[admin bots] worker ${i} error:`, err);
       botWorkers.delete(i);
     });
 
     worker.on("exit", (code) => {
       if (code !== 0) {
-        console.error(`[admin bots] worker ${i} exited with code ${code}`);
+        stdioError(`[admin bots] worker ${i} exited with code ${code}`);
       }
       botWorkers.delete(i);
     });
