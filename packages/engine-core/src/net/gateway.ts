@@ -131,6 +131,7 @@ import { ResidentSystem } from "../residents/index.js";
 import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
 import { RemoveComponentArgsSchema, applyRemoveComponent } from "../admin/remove-component.js";
+import { spawnBots, BotsArgsSchema } from "../admin/bots.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
@@ -2931,7 +2932,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, bots, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2999,6 +3000,22 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "bots") {
+      const parsed = BotsArgsSchema.safeParse(cmd.args);
+      if (!parsed.success) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "malformed bots command");
+        return;
+      }
+      res = spawnBots(parsed.data);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
+      this.logAdmin(s.username, cmd.command, true);
+      return;
     } else if (cmd.command === "give" && this.atomicOps) {
       // Slice A2 (fleet mode): the grant's commit is async (world
       // tier); the handler answers and logs like the sync path does.
