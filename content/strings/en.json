@@ -336,5 +336,14 @@
   "dungeon.died.title": "Fallen in battle",
   "dungeon.died.line": "You perished in the dungeon and lost access to this instance, its treasure chests, and all loot.",
   "dungeon.died.loot": "All dungeon loot and chests were lost.",
-  "dungeon.respawnAtGate": "Respawn at dungeon gates"
+  "dungeon.respawnAtGate": "Respawn at dungeon gates",
+  "loading.dungeonTransit": "Loading dungeon transit…",
+  "loading.dungeonHud": "Loading dungeon HUD…",
+  "loading.dungeonResult": "Loading dungeon result…",
+  "dungeon.youDied": "You Died",
+  "dungeon.respawningAtGates": "Respawning at the gates...",
+  "loading.vendor": "Loading vendor…",
+  "loading.bag": "Loading bag…",
+  "loading.questLog": "Loading quest log…",
+  "loading.characterSheet": "Loading character sheet…"
 }
