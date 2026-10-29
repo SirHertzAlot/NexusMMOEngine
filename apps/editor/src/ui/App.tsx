@@ -881,13 +881,14 @@ function workspaceLabel(id: WorkspaceId): string {
  *  Also feeds the useState initializers so the first paint already matches
  *  the link — no mount-effect race with the hash writer (StrictMode-safe). */
 function parseHashString(hash: string): { workspace: WorkspaceId; view: string; sel: string | null } | null {
-  const m = hash.match(/^#\/([\w-]+)\/([\w-]+)(?:\/(.+))?$/);
+  const m = hash.match(/^#\/([\w-]+)\/([\w.-]+)(?:\/(.+))?$/);
   if (!m) return null;
   const ws = WORKSPACES.find((w) => w.id === m[1]);
   if (!ws) return null;
-  const v = ws.views.find((x) => x.id === m[2]);
-  if (!v) return null;
-  return { workspace: ws.id as WorkspaceId, view: v.id, sel: m[3] !== undefined ? decodeURIComponent(m[3]) : null };
+  // The view may not be contributed yet: module panels arrive after first paint,
+  // and the shell falls back to the workspace's first view until they do. Keeping
+  // the id here means a cold-load link survives instead of being overwritten.
+  return { workspace: ws.id as WorkspaceId, view: m[2], sel: m[3] !== undefined ? decodeURIComponent(m[3]) : null };
 }
 
 let hashClaimed: string | null = null;

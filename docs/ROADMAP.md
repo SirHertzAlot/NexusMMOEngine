@@ -795,3 +795,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-24**: PL4 is opt-in (`npm start -- --world`), with a 60 s give-up if the world server does not come up.
 - **2026-10-24**: D4f opened run chests show an open model (ported from #366).
 - **2026-10-24**: fix: engine-core builds the settlement package (the residents module imports its dist; a build from a clean tree crashed the server with a missing export).
+- **2026-10-29**: fix(editor): deep links survive a cold load (view ids with dots such as `flow.graph` now parse, and a view a module has not contributed yet keeps its link); `npm run editor` builds `@mmo-engine/build` first.
