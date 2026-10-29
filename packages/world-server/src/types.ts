@@ -248,6 +248,19 @@ export interface GetLedgerHeadInput {
 }
 
 /** A character record as stored at the world tier (slice P4 contract). */
+/**
+ * A character record's envelope without its state blob: the cheap
+ * drift check (the full state can be 256 KiB; this is four numbers
+ * and a string).
+ */
+export interface CharacterStateMeta {
+  characterId: number;
+  version: number;
+  epoch: number;
+  regionId: string;
+  updatedAt: number;
+}
+
 export interface CharacterStateRecord {
   characterId: number;
   /** Opaque serialized character state, stored verbatim. */
@@ -698,6 +711,14 @@ export interface WorldStore {
   /** Idempotency: stored result for opId, or null. */
   getOpResult(opId: string): Promise<unknown | null>;
   storeOpResult(opId: string, result: unknown): Promise<void>;
+  /**
+   * Retention sweep for the dedup table: delete op results recorded
+   * before `beforeMs` (ms epoch) and return how many were pruned.
+   * Rows written before createdAt stamping existed are backfilled
+   * with the sweep time first — their replay window restarts rather
+   * than being wiped on the first sweep.
+   */
+  pruneOpResults(beforeMs: number): Promise<number>;
   /** Batched getOpResult: stored results by opId, absent key = none. */
   getOpResults(opIds: string[]): Promise<Map<string, unknown>>;
   /** Batched storeOpResult: one round trip per chunk where possible. */
@@ -774,6 +795,8 @@ export interface WorldStore {
   putCharacterStates(records: CharacterStateRecord[]): Promise<void>;
   /** Batched getCharacterState: records by characterId, absent key = none. */
   getCharacterStates(characterIds: number[]): Promise<Map<number, CharacterStateRecord>>;
+  /** A record's envelope (no state blob); null when no record. */
+  getCharacterStateMeta(characterId: number): Promise<CharacterStateMeta | null>;
   /** The character's session lock as stored, or null when unheld. */
   getCharacterLock(characterId: number): Promise<CharacterSessionLock | null>;
   /** Batched getCharacterLock: locks by characterId, absent key = unheld. */
@@ -819,6 +842,13 @@ export interface WorldStore {
    * NOTHING and return `{ total: 0, record: <current or null> }`.
    */
   applyPendingCredits(characterId: number): Promise<{ total: number; record: CharacterStateRecord | null }>;
+  /**
+   * Pending-credit totals by characterId (absent key = none pending).
+   * The batched read that lets bulk writers skip the per-record
+   * applyPendingCredits call for the common no-credits case: a drain
+   * with no credits is a no-op returning the current record.
+   */
+  getPendingCreditTotals(characterIds: number[]): Promise<Map<number, number>>;
 
   // -- host reports (persistence P5) --
   /** Store a host's latest resource report (one per hostId, replaced). */
@@ -840,6 +870,12 @@ export interface WorldCore {
   reportSnapshot(input: SnapshotReportInput): Promise<void>;
   /** Reap regions silent longer than the timeout. Returns reaped ids. */
   reapStale(): Promise<string[]>;
+  /**
+   * Dedup retention sweep: prune op results older than
+   * `retentionMs`; returns how many were pruned. Maintenance-only —
+   * no caller/region semantics.
+   */
+  pruneOpResults(retentionMs: number): Promise<number>;
 
   // -- slice B: `caller` is the authenticated region id --
   listRegions(): Promise<RegionInfo[]>;
@@ -908,6 +944,8 @@ export interface WorldCore {
   ): Promise<PutCharacterStateOutcome[]>;
   /** A character's stored record, version included; null when none. */
   getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null>;
+  /** A record's envelope without the state blob; null when none. */
+  getCharacterStateMeta(caller: string, input: GetCharacterStateInput): Promise<CharacterStateMeta | null>;
   /**
    * Acquire a character's session lock. Refused (409) while a lock is
    * held and unexpired; after expiry the lock is stolen with its epoch

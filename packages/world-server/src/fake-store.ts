@@ -18,6 +18,7 @@ import type {
   AtomicOpResult,
   AuctionSettleInput,
   CharacterSessionLock,
+  CharacterStateMeta,
   CharacterStateRecord,
   CraftExecuteInput,
   HostResourceReport,
@@ -40,7 +41,7 @@ import type {
 
 export class MemoryWorldStore implements WorldStore {
   private regions = new Map<string, RegionRecord>();
-  private ops = new Map<string, unknown>();
+  private ops = new Map<string, { result: unknown; createdAt: number }>();
   private registryVersion = 0;
   private migrations = new Map<string, MigrationRecord>();
 
@@ -80,12 +81,12 @@ export class MemoryWorldStore implements WorldStore {
   }
 
   async getOpResult(opId: string): Promise<unknown | null> {
-    return this.ops.has(opId) ? this.ops.get(opId) : null;
+    return this.ops.has(opId) ? this.ops.get(opId)!.result : null;
   }
 
   async getOpResults(opIds: string[]): Promise<Map<string, unknown>> {
     const out = new Map<string, unknown>();
-    for (const opId of opIds) if (this.ops.has(opId)) out.set(opId, this.ops.get(opId));
+    for (const opId of opIds) if (this.ops.has(opId)) out.set(opId, this.ops.get(opId)!.result);
     return out;
   }
 
@@ -96,7 +97,18 @@ export class MemoryWorldStore implements WorldStore {
   }
 
   async storeOpResult(opId: string, result: unknown): Promise<void> {
-    this.ops.set(opId, result);
+    this.ops.set(opId, { result, createdAt: Date.now() });
+  }
+
+  async pruneOpResults(beforeMs: number): Promise<number> {
+    let pruned = 0;
+    for (const [opId, entry] of this.ops) {
+      if (entry.createdAt < beforeMs) {
+        this.ops.delete(opId);
+        pruned += 1;
+      }
+    }
+    return pruned;
   }
 
   async getRegistryVersion(): Promise<number> {
@@ -270,6 +282,18 @@ export class MemoryWorldStore implements WorldStore {
     for (const r of records) this.characterStates.set(r.characterId, { ...r });
   }
 
+  async getCharacterStateMeta(characterId: number): Promise<CharacterStateMeta | null> {
+    const r = this.characterStates.get(characterId);
+    if (r === undefined) return null;
+    return {
+      characterId: r.characterId,
+      version: r.version,
+      epoch: r.epoch,
+      regionId: r.regionId,
+      updatedAt: r.updatedAt,
+    };
+  }
+
   async getCharacterStates(
     characterIds: number[],
   ): Promise<Map<number, CharacterStateRecord>> {
@@ -432,6 +456,16 @@ export class MemoryWorldStore implements WorldStore {
    * for the character lands in its current record at once, or —
    * no record, no numeric gold, no credits — nothing is consumed.
    */
+  async getPendingCreditTotals(characterIds: number[]): Promise<Map<number, number>> {
+    const out = new Map<number, number>();
+    for (const c of this.pendingCredits) {
+      if (characterIds.includes(c.characterId)) {
+        out.set(c.characterId, (out.get(c.characterId) ?? 0) + c.amount);
+      }
+    }
+    return out;
+  }
+
   async applyPendingCredits(
     characterId: number,
   ): Promise<{ total: number; record: CharacterStateRecord | null }> {

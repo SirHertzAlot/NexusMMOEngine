@@ -196,6 +196,12 @@ test("putCharacterStates: single-put ceremony, fanned out (surreal store)", asyn
  */
 test("putCharacterStates: builds on the credits drain like the single put", async () => {
   class DrainingStore extends MemoryWorldStore {
+    override async getPendingCreditTotals(
+      characterIds: number[],
+    ): Promise<Map<number, number>> {
+      return new Map(characterIds.map((id) => [id, 50] as const));
+    }
+
     override async applyPendingCredits(
       characterId: number,
     ): Promise<{ total: number; record: CharacterStateRecord | null }> {
@@ -235,4 +241,30 @@ test("putCharacterStates: builds on the credits drain like the single put", asyn
     // Payload gold (100) + drained total (50).
     assert.equal((outcomes[0].record.state as { gold: number }).gold, 150);
   }
+});
+
+test("putCharacterStates: the drain runs only for characters holding credits", async () => {
+  class CountingStore extends MemoryWorldStore {
+    drainCalls = 0;
+    override async applyPendingCredits(
+      characterId: number,
+    ): Promise<{ total: number; record: CharacterStateRecord | null }> {
+      this.drainCalls += 1;
+      return super.applyPendingCredits(characterId);
+    }
+  }
+  const store = new CountingStore();
+  const core = await makeCore(store);
+  const lease = await register(core, "r1");
+  const e1 = await lock(core, lease, 1);
+  const e2 = await lock(core, lease, 2);
+  const e3 = await lock(core, lease, 3);
+  store.drainCalls = 0; // lock acquisition drains too; count only the batch
+  const outcomes = await core.putCharacterStates("r1", "r1", [
+    item(1, e1, 10),
+    item(2, e2, 20),
+    item(3, e3, 30),
+  ]);
+  assert.ok(outcomes.every((o) => o.ok));
+  assert.equal(store.drainCalls, 0, "no credits anywhere: the per-record drain never runs");
 });

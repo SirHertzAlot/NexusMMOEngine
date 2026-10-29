@@ -29,6 +29,7 @@ import {
   type TradeCommitInput,
   type VendorTransactInput,
   type CharacterSessionLock,
+  type CharacterStateMeta,
   type CharacterStateRecord,
   type ChunkRange,
   type CommitMigrationInput,
@@ -330,6 +331,10 @@ export class WorldCoreImpl implements WorldCore {
     await this.store.upsertRegion(r);
   }
 
+  async pruneOpResults(retentionMs: number): Promise<number> {
+    return this.store.pruneOpResults(Date.now() - retentionMs);
+  }
+
   async reapStale(): Promise<string[]> {
     const now = Date.now();
     const reaped = await this.store.reapStaleRegions(
@@ -625,6 +630,11 @@ export class WorldCoreImpl implements WorldCore {
       const freshIds = [...new Set(fresh.map((ix) => items[ix]!.characterId))];
       const locks = await this.store.getCharacterLocks(freshIds);
       const states = await this.store.getCharacterStates(freshIds);
+      // One batched read of pending-credit totals: the drain below
+      // only runs for characters that actually hold credits (rare).
+      // A drain with no credits is a no-op returning the current
+      // record — the batch-read state above serves as its base.
+      const creditTotals = await this.store.getPendingCreditTotals(freshIds);
       const now = Date.now();
       const fail = (ix: number, code: number, message: string): void => {
         outcomes[ix] = { characterId: items[ix]!.characterId, ok: false, code, message };
@@ -664,15 +674,18 @@ export class WorldCoreImpl implements WorldCore {
           fail(ix, 409, `character lock for ${item.characterId} has expired`);
           continue;
         }
-        // Same credits drain as the single put (kept per-record: it
-        // is a transactional fold with its own version guard). Its
-        // returned record is the post-drain state — the version base,
-        // exactly as the single put's post-drain read; a record built
-        // earlier in this batch supersedes both store views, and the
-        // batch read covers the no-drain-write case. (Fencing means
-        // no foreign writer can interleave, so the pre-drain batch
-        // read is equivalent to the single put's post-drain read.)
-        const drained = await this.store.applyPendingCredits(item.characterId);
+        // Same credits drain as the single put (a transactional
+        // fold with its own version guard), gated on the batched
+        // totals read: no credits pending -> the drain would be a
+        // no-op, so it is skipped and the batch-read state is the
+        // base. When the drain does run, its returned record is the
+        // post-drain state — the version base, exactly as the single
+        // put's post-drain read; a record built earlier in this
+        // batch supersedes both store views. (Fencing means no
+        // foreign writer can interleave.)
+        const drained = creditTotals.has(item.characterId)
+          ? await this.store.applyPendingCredits(item.characterId)
+          : { total: 0, record: null };
         const base =
           built.get(item.characterId) ??
           drained.record ??
@@ -716,6 +729,11 @@ export class WorldCoreImpl implements WorldCore {
   async getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null> {
     await this.knownRegion(caller, input.regionId);
     return this.store.getCharacterState(input.characterId);
+  }
+
+  async getCharacterStateMeta(caller: string, input: GetCharacterStateInput): Promise<CharacterStateMeta | null> {
+    await this.knownRegion(caller, input.regionId);
+    return this.store.getCharacterStateMeta(input.characterId);
   }
 
   /** PL3c: a guild, party, friends or blocks record; version-guarded (409 when the writer's view is stale). */

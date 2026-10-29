@@ -151,6 +151,13 @@ class CoreTransport implements WorldTransport {
               input as never,
             ),
           };
+        case "GetCharacterStateMeta":
+          return {
+            meta: await this.core.getCharacterStateMeta(
+              await this.caller(token),
+              input as never,
+            ),
+          };
         case "PutCharacterState":
           return {
             character: await this.core.putCharacterState(

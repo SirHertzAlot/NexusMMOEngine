@@ -74,6 +74,11 @@ const HEARTBEAT_TIMEOUT_MS = Number(
 const MIGRATION_TIMEOUT_MS = Number(
   process.env.WORLD_MIGRATION_TIMEOUT_MS ?? 10000,
 );
+// Dedup retention: op results exist to answer client retries; a
+// week is far beyond any plausible retry window. Sweep hourly.
+const DEDUP_RETENTION_MS = Number(
+  process.env.WORLD_DEDUP_RETENTION_MS ?? 7 * 24 * 3600 * 1000,
+);
 const TOTAL_WORLD_CHUNK_SPACE = (() => {
   const parts = (process.env.WORLD_TOTAL_CHUNK_SPACE ?? "0,0,4096,4096")
     .split(",")
@@ -169,6 +174,21 @@ async function main(): Promise<void> {
   }, Math.max(250, Math.floor(MIGRATION_TIMEOUT_MS / 4)));
   expirer.unref();
 
+  // Dedup retention sweep (op_dedup grows one row per mutating op;
+  // results older than the retention horizon can no longer be
+  // replayed by any live client, so they are pruned).
+  const dedupSweeper = setInterval(async () => {
+    try {
+      const pruned = await core.pruneOpResults(DEDUP_RETENTION_MS);
+      if (pruned > 0) console.log(`[world] pruned ${pruned} expired op-dedup rows`);
+    } catch (err) {
+      console.error(
+        `[world] op-dedup sweep failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }, 3600_000);
+  dedupSweeper.unref();
+
   const server = app.listen(PORT, () => {
     console.log(`[world] listening on :${PORT} (webrpc /rpc/World/*)`);
   });
@@ -177,6 +197,7 @@ async function main(): Promise<void> {
     console.log(`[world] ${sig}: shutting down`);
     clearInterval(reaper);
     clearInterval(expirer);
+    clearInterval(dedupSweeper);
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await close();
     process.exit(0);

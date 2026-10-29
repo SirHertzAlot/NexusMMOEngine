@@ -66,6 +66,8 @@ service World
   # reported per record — a fenced record fails its own outcome only.
   - PutCharacterStates(input: PutCharacterStatesInput) => (outcomes: []PutCharacterStateOutcome)
   - GetCharacterState(input: GetCharacterStateInput) => (character: CharacterState)
+  # The record's envelope only (no state blob): the cheap drift check.
+  - GetCharacterStateMeta(input: GetCharacterStateInput) => (meta: CharacterStateMeta)
   - AcquireCharacterLock(input: AcquireCharacterLockInput) => (lock: CharacterSessionLock)
   - ReleaseCharacterLock(input: ReleaseCharacterLockInput) => ()
   - GetCharacterLock(input: GetCharacterLockInput) => (lock: CharacterSessionLock)
@@ -346,6 +348,13 @@ struct CharacterState
 struct GetCharacterStateInput
   - regionId: string
   - characterId: uint64
+
+struct CharacterStateMeta
+  - characterId: uint64
+  - version: uint64
+  - epoch: uint64
+  - regionId: string
+  - updatedAt: uint64
 
 struct AcquireCharacterLockInput
   - regionId: string

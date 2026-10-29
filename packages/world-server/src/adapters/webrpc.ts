@@ -369,6 +369,15 @@ export function createWebrpcRouter(core: WorldCoreImpl, opts: WebrpcRouterOption
     }),
   );
 
+  r.post("/rpc/World/GetCharacterStateMeta", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetCharacterStateSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { meta: await core.getCharacterStateMeta(regionId, input) };
+    }),
+  );
+
   r.post("/rpc/World/PutSocialRecord", (req, res) =>
     authed(req, res, async (regionId) => {
       const input = PutSocialRecordSchema.parse(req.body?.input);

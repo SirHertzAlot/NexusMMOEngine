@@ -12,6 +12,7 @@ import {
   type AtomicOpResult,
   type AuctionSettleInput,
   type CharacterSessionLock,
+  type CharacterStateMeta,
   type CharacterStateRecord,
   type ChunkRange,
   type CraftExecuteInput,
@@ -495,6 +496,18 @@ export class WorldClient {
       this.token(),
     );
     return (res["character"] as CharacterStateRecord | null) ?? null;
+  }
+
+  /** A character record's envelope (version/epoch), without the state blob. */
+  async getCharacterStateMeta(
+    characterId: number,
+  ): Promise<CharacterStateMeta | null> {
+    const res = await this.transport.call(
+      "GetCharacterStateMeta",
+      { input: { regionId: this.opts.regionId, characterId } },
+      this.token(),
+    );
+    return (res["meta"] as CharacterStateMeta | null) ?? null;
   }
 
   /** PL3c: write a guild, party, friends or blocks record; a stale `expectedVersion` throws (409). */

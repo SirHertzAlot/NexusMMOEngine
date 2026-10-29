@@ -35,6 +35,7 @@ import type {
   AtomicOpResult,
   AuctionSettleInput,
   CharacterSessionLock,
+  CharacterStateMeta,
   CharacterStateRecord,
   CraftExecuteInput,
   HostResourceReport,
@@ -110,6 +111,7 @@ DEFINE FIELD IF NOT EXISTS tokenIssuedAt ON region TYPE option<int>;
 DEFINE TABLE IF NOT EXISTS op_dedup SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS meta SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_op_dedup_op ON op_dedup FIELDS opId;
+DEFINE INDEX IF NOT EXISTS idx_op_dedup_created ON op_dedup FIELDS createdAt;
 DEFINE INDEX IF NOT EXISTS idx_region_regionId ON region FIELDS regionId UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_region_tokenHash ON region FIELDS tokenHash;
 -- Slice B. Schemaless: entityState is an arbitrary serialized ECS blob.
@@ -441,9 +443,35 @@ export class SurrealWorldStore implements WorldStore {
 
   async storeOpResult(opId: string, result: unknown): Promise<void> {
     await this.db.query(
-      "CREATE ONLY op_dedup CONTENT { opId: $opId, result: $result }",
-      { opId, result },
+      "CREATE ONLY op_dedup CONTENT { opId: $opId, result: $result, createdAt: $now }",
+      { opId, result, now: Date.now() },
     );
+  }
+
+  async pruneOpResults(beforeMs: number): Promise<number> {
+    // Backfill rows written before createdAt stamping existed: their
+    // replay window restarts at the sweep instead of being wiped.
+    await this.db.query("UPDATE op_dedup SET createdAt = $now WHERE createdAt = NONE", {
+      now: Date.now(),
+    });
+    // Batched by opId (this DELETE form returns no rows on the 3.x
+    // engine, so the count comes from the selecting read).
+    let pruned = 0;
+    for (;;) {
+      const batch = rowList<Record<string, unknown>>(
+        await this.db.query(
+          "SELECT opId FROM op_dedup WHERE createdAt < $before LIMIT 500",
+          { before: beforeMs },
+        ),
+      );
+      if (batch.length === 0) break;
+      await this.db.query("DELETE FROM op_dedup WHERE opId IN $opIds", {
+        opIds: batch.map((r) => r["opId"] as string),
+      });
+      pruned += batch.length;
+      if (batch.length < 500) break;
+    }
+    return pruned;
   }
 
   async getOpResults(opIds: string[]): Promise<Map<string, unknown>> {
@@ -464,12 +492,14 @@ export class SurrealWorldStore implements WorldStore {
       const chunk = entries.slice(i, i + CHUNK);
       const statements: string[] = [];
       const vars: Record<string, unknown> = {};
+      const now = Date.now();
       chunk.forEach((e, j) => {
         statements.push(
-          `CREATE ONLY op_dedup CONTENT { opId: $opId${j}, result: $result${j} }`,
+          `CREATE ONLY op_dedup CONTENT { opId: $opId${j}, result: $result${j}, createdAt: $now${j} }`,
         );
         vars[`opId${j}`] = e.opId;
         vars[`result${j}`] = e.result;
+        vars[`now${j}`] = now;
       });
       await this.db.query(statements.join(";\n"), vars);
     }
@@ -718,6 +748,16 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM ONLY character_state WHERE characterId = $id LIMIT 1", { id: characterId }),
     );
     return row === null ? null : stripId<CharacterStateRecord>(row);
+  }
+
+  async getCharacterStateMeta(characterId: number): Promise<CharacterStateMeta | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query(
+        "SELECT characterId, version, epoch, regionId, updatedAt FROM ONLY character_state WHERE characterId = $id LIMIT 1",
+        { id: characterId },
+      ),
+    );
+    return row === null ? null : stripId<CharacterStateMeta>(row);
   }
 
   async getCharacterStates(
@@ -987,6 +1027,22 @@ export class SurrealWorldStore implements WorldStore {
     return rows
       .map((r) => stripId<PendingCredit>(r))
       .sort((a, b) => a.createdAt - b.createdAt || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0));
+  }
+
+  async getPendingCreditTotals(characterIds: number[]): Promise<Map<number, number>> {
+    const out = new Map<number, number>();
+    if (characterIds.length === 0) return out;
+    const rows = rowList<Record<string, unknown>>(
+      await this.db.query(
+        "SELECT characterId, amount FROM pending_credit WHERE characterId IN $ids",
+        { ids: characterIds },
+      ),
+    );
+    for (const row of rows) {
+      const id = row["characterId"] as number;
+      out.set(id, (out.get(id) ?? 0) + (row["amount"] as number));
+    }
+    return out;
   }
 
   async applyPendingCredits(

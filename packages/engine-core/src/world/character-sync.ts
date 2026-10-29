@@ -59,6 +59,7 @@
 import type {
   AtomicOpResult,
   CharacterSessionLock,
+  CharacterStateMeta,
   CharacterStateRecord,
   InventoryItem,
   ParticipantFence,
@@ -73,6 +74,14 @@ export interface CharacterWorldClient {
   getCharacterState(
     characterId: number,
   ): Promise<CharacterStateRecord | null>;
+  /**
+   * Optional envelope-only read (no state blob). When the client
+   * provides it, the pre-save drift check rides it and the full
+   * record crosses the wire only on real drift.
+   */
+  getCharacterStateMeta?(
+    characterId: number,
+  ): Promise<CharacterStateMeta | null>;
   putCharacterState(
     characterId: number,
     epoch: number,
@@ -358,6 +367,8 @@ export class WorldCharacterSync {
    * per-record puts; batching resumes with a world that has the op.
    */
   private bulkUnsupported = false;
+  /** Same rolling-upgrade fallback for the meta read (see fetchIfDrifted). */
+  private metaUnsupported = false;
 
   constructor(opts: WorldCharacterSyncOptions) {
     this.client = opts.client;
@@ -520,14 +531,14 @@ export class WorldCharacterSync {
         if (known !== undefined) {
           let current: CharacterStateRecord | null;
           try {
-            current = await this.client.getCharacterState(characterId);
+            current = await this.fetchIfDrifted(characterId, known);
           } catch (err) {
             this.log(
               `character ${characterId}: pre-save refresh failed (${(err as Error).message}); save deferred`,
             );
             return false;
           }
-          if (current !== null && current.version !== known) {
+          if (current !== null) {
             const eco = economyOfState(current.state);
             if (eco !== null) this.economy.reconcile(characterId, eco.gold, eco.inventory);
             this.versions.set(characterId, current.version);
@@ -710,6 +721,44 @@ export class WorldCharacterSync {
     }
     this.fenced.delete(characterId);
     return committed;
+  }
+
+  /**
+   * The full world record ONLY when its version differs from
+   * `known` (the drift the pre-save refresh reconciles); null when
+   * the record is unchanged or absent. The drift check rides the
+   * lightweight meta read when the client offers it — the full
+   * state blob (up to 256 KiB) crosses the wire only on real drift.
+   * A world predating the meta op (404/501) flips the sync to full
+   * reads for the session, like the bulk-put fallback.
+   */
+  private async fetchIfDrifted(
+    characterId: number,
+    known: number,
+  ): Promise<CharacterStateRecord | null> {
+    const metaFn = this.metaUnsupported ? undefined : this.client.getCharacterStateMeta;
+    if (metaFn !== undefined) {
+      let meta: CharacterStateMeta | null;
+      try {
+        meta = await metaFn.call(this.client, characterId);
+      } catch (err) {
+        if (
+          err instanceof WorldTransportError &&
+          (err.code === 404 || err.code === 501)
+        ) {
+          this.metaUnsupported = true;
+          this.log(
+            "world does not implement GetCharacterStateMeta; pre-save refresh uses full record reads",
+          );
+          return this.fetchIfDrifted(characterId, known);
+        }
+        throw err;
+      }
+      if (meta === null || meta.version === known) return null;
+      return this.client.getCharacterState(characterId);
+    }
+    const current = await this.client.getCharacterState(characterId);
+    return current !== null && current.version !== known ? current : null;
   }
 
   /**
