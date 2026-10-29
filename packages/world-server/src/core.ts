@@ -40,6 +40,8 @@ import {
   type LiveLeaseRange,
   type MigrationRecord,
   type PutCharacterStateInput,
+  type PutCharacterStateItem,
+  type PutCharacterStateOutcome,
   type PutShardSnapshotInput,
   type RegionInfo,
   type HeartbeatAck,
@@ -586,6 +588,129 @@ export class WorldCoreImpl implements WorldCore {
     await this.store.putCharacterState(record);
     await this.store.storeOpResult(input.opId, record);
     return record;
+  }
+
+  /**
+   * Batched putCharacterState. The per-record ceremony is the single
+   * put's, step for step — dedup, lock fencing (same codes/messages),
+   * the pending-credits drain, version = prior + 1 — but the batch's
+   * reads ride three batched store calls and its writes land in one
+   * batched put plus one batched op-result store. Failures are
+   * per-record outcomes, never thrown, so one fenced record cannot
+   * sink a region's whole save sweep. Only caller-level failures
+   * (unknown region) throw, exactly as the single put.
+   */
+  async putCharacterStates(
+    caller: string,
+    regionId: string,
+    items: PutCharacterStateItem[],
+  ): Promise<PutCharacterStateOutcome[]> {
+    await this.knownRegion(caller, regionId);
+    const outcomes: (PutCharacterStateOutcome | undefined)[] = new Array(items.length);
+    const priors = await this.store.getOpResults([...new Set(items.map((i) => i.opId))]);
+    const fresh: number[] = [];
+    items.forEach((item, ix) => {
+      const prior = priors.get(item.opId);
+      if (prior !== undefined && prior !== null) {
+        outcomes[ix] = {
+          characterId: item.characterId,
+          ok: true,
+          record: prior as CharacterStateRecord,
+        };
+      } else {
+        fresh.push(ix);
+      }
+    });
+    if (fresh.length > 0) {
+      const freshIds = [...new Set(fresh.map((ix) => items[ix]!.characterId))];
+      const locks = await this.store.getCharacterLocks(freshIds);
+      const states = await this.store.getCharacterStates(freshIds);
+      const now = Date.now();
+      const fail = (ix: number, code: number, message: string): void => {
+        outcomes[ix] = { characterId: items[ix]!.characterId, ok: false, code, message };
+      };
+      // opIds already applied inside this batch: a repeat of a
+      // SUCCESS replays its outcome (the single put would find the
+      // stored op result); a repeat of a failure is processed fresh,
+      // as the single put would (nothing was stored for it).
+      const appliedOps = new Map<string, CharacterStateRecord>();
+      // Records built earlier in this batch, per character: a second
+      // put for the same character builds on the first's version,
+      // matching sequential single puts.
+      const built = new Map<number, CharacterStateRecord>();
+      const toWrite: CharacterStateRecord[] = [];
+      const opEntries: Array<{ opId: string; result: unknown }> = [];
+      for (const ix of fresh) {
+        const item = items[ix]!;
+        const replay = appliedOps.get(item.opId);
+        if (replay !== undefined) {
+          outcomes[ix] = { characterId: item.characterId, ok: true, record: replay };
+          continue;
+        }
+        const lock = locks.get(item.characterId) ?? null;
+        if (lock === null) {
+          fail(ix, 409, `character ${item.characterId} is not locked`);
+          continue;
+        }
+        if (lock.regionId !== caller) {
+          fail(ix, 403, `character ${item.characterId} is locked by region ${lock.regionId}`);
+          continue;
+        }
+        if (lock.epoch !== item.epoch) {
+          fail(ix, 409, `stale lock epoch ${item.epoch} for character ${item.characterId} (current ${lock.epoch})`);
+          continue;
+        }
+        if (lock.expiresAt <= now) {
+          fail(ix, 409, `character lock for ${item.characterId} has expired`);
+          continue;
+        }
+        // Same credits drain as the single put (kept per-record: it
+        // is a transactional fold with its own version guard). Its
+        // returned record is the post-drain state — the version base,
+        // exactly as the single put's post-drain read; a record built
+        // earlier in this batch supersedes both store views, and the
+        // batch read covers the no-drain-write case. (Fencing means
+        // no foreign writer can interleave, so the pre-drain batch
+        // read is equivalent to the single put's post-drain read.)
+        const drained = await this.store.applyPendingCredits(item.characterId);
+        const base =
+          built.get(item.characterId) ??
+          drained.record ??
+          states.get(item.characterId) ??
+          null;
+        let state = item.state;
+        if (
+          drained.total > 0 &&
+          state !== null &&
+          typeof state === "object" &&
+          !Array.isArray(state)
+        ) {
+          const carried = (state as Record<string, unknown>)["gold"];
+          state = {
+            ...(state as Record<string, unknown>),
+            gold:
+              (typeof carried === "number" && Number.isFinite(carried) ? carried : 0) +
+              drained.total,
+          };
+        }
+        const record: CharacterStateRecord = {
+          characterId: item.characterId,
+          state,
+          version: (base?.version ?? 0) + 1,
+          epoch: item.epoch,
+          regionId: caller,
+          updatedAt: Date.now(),
+        };
+        built.set(item.characterId, record);
+        toWrite.push(record);
+        opEntries.push({ opId: item.opId, result: record });
+        appliedOps.set(item.opId, record);
+        outcomes[ix] = { characterId: item.characterId, ok: true, record };
+      }
+      if (toWrite.length > 0) await this.store.putCharacterStates(toWrite);
+      if (opEntries.length > 0) await this.store.storeOpResults(opEntries);
+    }
+    return outcomes as PutCharacterStateOutcome[];
   }
 
   async getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null> {

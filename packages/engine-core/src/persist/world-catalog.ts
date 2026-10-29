@@ -11,11 +11,15 @@
  * simulation); this catalog answers world-level questions — which region
  * owns a chunk, where the deserts are — without touching tiles.
  *
- * Verified on Windows: `rocksdb` works; `surrealkv` hangs. The engine's URL
- * parsing mangles paths: "rocksdb://C:/x" writes to a folder "C" under the
- * working directory, and relative paths with ".." resolve elsewhere. The
- * form that lands where intended is "rocksdb:" + an absolute path with
- * forward slashes and no "//" (see rocksdbUrl).
+ * Verified on Windows (WASM-engine era): `rocksdb` works; `surrealkv`
+ * hangs. Re-verified 2026-10-28 on the native `@surrealdb/node` 3.1.0
+ * engine (Linux): `surrealkv:` persists across processes in the same
+ * single-colon absolute-path form, and new catalogs use it (see
+ * surrealkvUrl); the Windows native-engine check is still owed. The
+ * engine's URL parsing mangles paths: "rocksdb://C:/x" writes to a
+ * folder "C" under the working directory, and relative paths with ".."
+ * resolve elsewhere. The form that lands where intended is "<engine>:"
+ * + an absolute path with forward slashes and no "//".
  */
 
 import * as path from "node:path";
@@ -51,6 +55,16 @@ const BATCH = 5000;
 /** RocksDB storage URL for a directory: "rocksdb:" + absolute path (see header). */
 export function rocksdbUrl(dir: string): string {
   return `rocksdb:${path.resolve(dir).split(path.sep).join("/")}`;
+}
+
+/**
+ * SurrealKV storage URL for a directory: "surrealkv:" + absolute path
+ * (same form as rocksdbUrl). SurrealKV is the SurrealDB 3.x durable
+ * embedded engine; catalogs are derived data (regenerable from the
+ * world seed), so new catalogs are written on SurrealKV.
+ */
+export function surrealkvUrl(dir: string): string {
+  return `surrealkv:${path.resolve(dir).split(path.sep).join("/")}`;
 }
 
 /**

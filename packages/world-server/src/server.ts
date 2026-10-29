@@ -8,11 +8,19 @@
  * Environment:
  *   WORLD_PORT              HTTP listen port (default 7780)
  *   WORLD_DATA_DIR          where the embedded database lives (default ./data)
- *   WORLD_DB_URL            default "rocksdb:<WORLD_DATA_DIR>/surreal": SurrealDB
- *                           embedded in this process, durable on disk.
- *                           "mem://" -> embedded, in memory; "ws://..." -> a
- *                           separate SurrealDB server; "mem:" -> the plain JS
- *                           in-memory store (stress runs, NOT durable).
+ *   WORLD_DB_URL            default "surrealkv:<WORLD_DATA_DIR>/surreal":
+ *                           SurrealDB embedded in this process on SurrealKV
+ *                           (the SurrealDB 3.x durable engine), on disk.
+ *                           "mem://" -> embedded SurrealMX, in memory only
+ *                           (volatile — the embedded engine ignores the MX
+ *                           persistence parameters; verified 2026-10-28);
+ *                           "ws://..." -> a separate SurrealDB server — the
+ *                           recommended production shape is the SurrealMX
+ *                           server started by `npm run db` (MX in memory;
+ *                           sync AOL + fsync on every commit + snapshots —
+ *                           the blog's only configuration that survives
+ *                           both process and system crashes); "mem:" -> the plain
+ *                           JS in-memory store (stress runs, NOT durable).
  *   WORLD_DB_NS / WORLD_DB_DB / WORLD_DB_USER / WORLD_DB_PASS
  *   WORLD_DB_CONNECT_TIMEOUT_MS  bound on the SurrealDB connect
  *                                handshake (default 10000; unset or
@@ -55,8 +63,8 @@ import { SurrealWorldStore } from "./surreal-store.js";
 import type { WorldStore } from "./types.js";
 
 const PORT = Number(process.env.WORLD_PORT ?? 7780);
-// The embedded engine wants "rocksdb:" + an absolute path with forward slashes and no "//" (see engine-core world-catalog.ts).
-const DB_URL = process.env.WORLD_DB_URL ?? `rocksdb:${path.resolve(process.env.WORLD_DATA_DIR ?? "./data", "surreal").split(path.sep).join("/")}`;
+// The embedded engine wants "<engine>:" + an absolute path with forward slashes and no "//" (see engine-core world-catalog.ts).
+const DB_URL = process.env.WORLD_DB_URL ?? `surrealkv:${path.resolve(process.env.WORLD_DATA_DIR ?? "./data", "surreal").split(path.sep).join("/")}`;
 const HEARTBEAT_INTERVAL_MS = Number(
   process.env.WORLD_HEARTBEAT_INTERVAL_MS ?? 5000,
 );

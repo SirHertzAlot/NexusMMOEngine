@@ -18,7 +18,7 @@ adapter, never touching the core.
 # zero-config dev (in-memory store, NOT durable)
 npm run server --workspace=@mmo-engine/world-server
 
-# durable dev: terminal 1 — SurrealDB (needs the `surrealdb` binary on PATH)
+# durable dev: terminal 1 — SurrealMX server (needs the `surreal` binary, SurrealDB ≥3.0, on PATH)
 npm run world:db
 # terminal 2 — world server against it
 WORLD_DB_URL=ws://127.0.0.1:8000/rpc WORLD_DB_USER=root WORLD_DB_PASS=root \
@@ -38,7 +38,7 @@ WORLD_URL=http://localhost:7780 WORLD_API_KEY=<secret> REGION_ID=region-1 \
 | Var | Default | Meaning |
 |---|---|---|
 | `WORLD_PORT` | `7780` | HTTP listen port |
-| `WORLD_DB_URL` | `mem:` | `mem:` = in-memory store (dev/stress, not durable); `ws://…` = SurrealDB server (durable) |
+| `WORLD_DB_URL` | `surrealkv:<WORLD_DATA_DIR>/surreal` | unset = embedded SurrealKV (durable); `mem:` = plain JS store (dev/stress, not durable); `mem://…` = embedded SurrealMX (not durable); `ws://…` = SurrealDB server — `npm run db` starts a SurrealMX server (AOL + snapshot durable) |
 | `WORLD_DB_NS` / `WORLD_DB_DB` | `mmo` / `world` | SurrealDB namespace/database |
 | `WORLD_DB_USER` / `WORLD_DB_PASS` | — | SurrealDB credentials |
 | `WORLD_API_KEY` | — | Bootstrap key regions register with; unset = registration disabled |

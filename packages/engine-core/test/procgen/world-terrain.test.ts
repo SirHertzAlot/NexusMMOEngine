@@ -13,7 +13,7 @@ import * as path from "node:path";
 import Database from "better-sqlite3";
 import { decodeWorldMap, HeightGrid, type TerrainTile } from "@mmo-engine/protocol";
 import { TerrainTileStore } from "../../src/persist/terrain-tiles.js";
-import { closeWorldCatalogs, readCatalogSummary, rocksdbUrl } from "../../src/persist/world-catalog.js";
+import { closeWorldCatalogs, readCatalogSummary, surrealkvUrl } from "../../src/persist/world-catalog.js";
 import { classifyBiomes, smoothBiomes, type BiomeInputs } from "../../src/terrain/biomes.js";
 import { thermalErosion } from "../../src/terrain/erosion.js";
 import { glaciate } from "../../src/terrain/glaciers.js";
@@ -525,7 +525,7 @@ describe("bakeWorldTerrain", () => {
     // Same process as the write: the shared connection is reused (the
     // engine can't reopen a store it closed).
     try {
-      const catalog = await readCatalogSummary(rocksdbUrl(catalogDir));
+      const catalog = await readCatalogSummary(surrealkvUrl(catalogDir));
       assert.equal(catalog.chunks, 32 * 32);
       assert.equal(catalog.regions, 4);
       assert.equal(Object.values(catalog.biomes).reduce((a, b) => a + b, 0), 32 * 32);
@@ -537,7 +537,7 @@ describe("bakeWorldTerrain", () => {
       await closeWorldCatalogs();
     }
     // After closing, reconnecting fails fast instead of hanging.
-    await assert.rejects(readCatalogSummary(rocksdbUrl(catalogDir)), /can't reopen/);
+    await assert.rejects(readCatalogSummary(surrealkvUrl(catalogDir)), /can't reopen/);
   });
 });
 

@@ -46,10 +46,12 @@ import {
   HeartbeatSchema,
   InventoryMutateSchema,
   LootGrantSchema,
+  MAX_CHARACTER_STATE_BATCH,
   MAX_CHARACTER_STATE_BYTES,
   MAX_LEDGER_BATCH_BYTES,
   MAX_SNAPSHOT_PAYLOAD_BYTES,
   PutCharacterStateSchema,
+  PutCharacterStatesSchema,
   PutShardSnapshotSchema,
   QueryPresenceSchema,
   RegisterRegionSchema,
@@ -71,6 +73,8 @@ const BODY_BYTES: Record<string, number> = {
   "/rpc/World/PutShardSnapshot": MAX_SNAPSHOT_PAYLOAD_BYTES + ENVELOPE_BYTES,
   "/rpc/World/AppendLedgerEvents": MAX_LEDGER_BATCH_BYTES + ENVELOPE_BYTES,
   "/rpc/World/PutCharacterState": MAX_CHARACTER_STATE_BYTES + ENVELOPE_BYTES,
+  "/rpc/World/PutCharacterStates":
+    MAX_CHARACTER_STATE_BATCH * (MAX_CHARACTER_STATE_BYTES + ENVELOPE_BYTES),
 };
 
 /** Handler for the non-protocol (500) failure: ring record, else stderr. */
@@ -337,6 +341,22 @@ export function createWebrpcRouter(core: WorldCoreImpl, opts: WebrpcRouterOption
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return { character: await core.putCharacterState(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/PutCharacterStates", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = PutCharacterStatesSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      const outcomes = await core.putCharacterStates(regionId, input.regionId, input.inputs);
+      return {
+        outcomes: outcomes.map((o) =>
+          o.ok
+            ? { characterId: o.characterId, ok: true, character: o.record }
+            : { characterId: o.characterId, ok: false, code: o.code, message: o.message },
+        ),
+      };
     }),
   );
 

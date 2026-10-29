@@ -126,7 +126,7 @@ never printed; only its argon2id hash is stored. 8–128 characters.
 | Variable | Default | What it does |
 |---|---|---|
 | `WORLD_PORT` | `7780` | HTTP listen port. |
-| `WORLD_DB_URL` | `mem:` | `mem:` = in-memory store (development, not durable). `ws://…` = a SurrealDB server (durable), e.g. `ws://127.0.0.1:8000/rpc`. |
+| `WORLD_DB_URL` | `surrealkv:<WORLD_DATA_DIR>/surreal` | Unset = embedded SurrealKV (durable). `mem:` = plain JS in-memory store (development, not durable). `mem://…` = embedded SurrealMX (in memory only, not durable). `ws://…` = a SurrealDB server, e.g. the SurrealMX server from `npm run db` (durable via AOL + snapshots), `ws://127.0.0.1:8000/rpc`. |
 | `WORLD_DB_NS` / `WORLD_DB_DB` | `mmo` / `world` | SurrealDB namespace and database. |
 | `WORLD_DB_USER` / `WORLD_DB_PASS` | — | SurrealDB credentials (`root` / `root` with `npm run world:db`). |
 | `WORLD_API_KEY` | unset | The bootstrap key regions register with. Unset = registration disabled. |

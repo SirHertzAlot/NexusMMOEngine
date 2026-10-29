@@ -203,6 +203,8 @@ const UINT = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 export const MAX_SNAPSHOT_PAYLOAD_BYTES = 4 * 1024 * 1024;
 export const MAX_LEDGER_BATCH_BYTES = 1024 * 1024;
 export const MAX_CHARACTER_STATE_BYTES = 256 * 1024;
+/** Entries per PutCharacterStates call (the save-sweep batch cap). */
+export const MAX_CHARACTER_STATE_BATCH = 32;
 
 function jsonBytes(v: unknown): number {
   try {
@@ -268,6 +270,25 @@ export const PutCharacterStateSchema = z
     epoch: EPOCH,
     state: opaque(MAX_CHARACTER_STATE_BYTES, "state"),
     opId: OP_ID,
+  })
+  .strict();
+
+export const PutCharacterStatesSchema = z
+  .object({
+    regionId: REGION_ID,
+    inputs: z
+      .array(
+        z
+          .object({
+            characterId: CHARACTER_ID,
+            epoch: EPOCH,
+            state: opaque(MAX_CHARACTER_STATE_BYTES, "state"),
+            opId: OP_ID,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(MAX_CHARACTER_STATE_BATCH),
   })
   .strict();
 

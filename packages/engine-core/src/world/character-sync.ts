@@ -62,6 +62,7 @@ import type {
   CharacterStateRecord,
   InventoryItem,
   ParticipantFence,
+  PutCharacterStateOutcome,
 } from "@mmo-engine/world-server";
 import type { CharacterState, CharacterStore } from "../characters/store.js";
 import type { SkillSave } from "../stats/mastery.js";
@@ -77,12 +78,41 @@ export interface CharacterWorldClient {
     epoch: number,
     state: unknown,
   ): Promise<CharacterStateRecord>;
+  /**
+   * Optional batched put (the save-sweep fast path). When the client
+   * provides it, prepared saves coalesce into bulk calls; when it
+   * doesn't (older world server, test fakes), saves fall back to
+   * per-record putCharacterState calls on the same schedule.
+   */
+  putCharacterStates?(
+    items: ReadonlyArray<{ characterId: number; epoch: number; state: unknown }>,
+  ): Promise<PutCharacterStateOutcome[]>;
   acquireCharacterLock(
     characterId: number,
     ttlMs: number,
   ): Promise<CharacterSessionLock>;
   releaseCharacterLock(characterId: number, epoch: number): Promise<void>;
 }
+
+/** A prepared put waiting in the coalescing queue. */
+interface PendingPut {
+  characterId: number;
+  epoch: number;
+  state: unknown;
+  resolve: (record: CharacterStateRecord) => void;
+  reject: (err: unknown) => void;
+}
+
+/** How long prepared puts collect before flushing as one batch. */
+export const SAVE_BATCH_WINDOW_MS = 10;
+/** Entries per batched world call — the wire cap (MAX_CHARACTER_STATE_BATCH). */
+export const SAVE_BATCH_MAX = 32;
+/**
+ * Batches in flight at once. The SurrealDB best-practices rule (one
+ * query uses about one core) argues for a small bounded concurrency
+ * of independent batches over one serial queue.
+ */
+export const SAVE_BATCH_IN_FLIGHT = 2;
 
 /**
  * Default session-lock lifetime. Long enough that renewal is a rare
@@ -313,6 +343,21 @@ export class WorldCharacterSync {
   private readonly fenced = new Set<number>();
   /** A save is in flight per character: overlapping cycles skip. */
   private readonly saving = new Set<number>();
+  /**
+   * Prepared puts waiting out the coalescing window (see
+   * enqueuePut): saves are event-driven and arrive in bursts — a
+   * region-wide sweep, a chunk unload — so a short window turns a
+   * burst of single puts into one batched world call.
+   */
+  private pendingPuts: PendingPut[] = [];
+  private putTimer: ReturnType<typeof setTimeout> | null = null;
+  private putsInFlight = 0;
+  /**
+   * Set once a bulk call answers 404/501: the world at the other end
+   * predates the bulk op (rolling upgrade). Saves keep working via
+   * per-record puts; batching resumes with a world that has the op.
+   */
+  private bulkUnsupported = false;
 
   constructor(opts: WorldCharacterSyncOptions) {
     this.client = opts.client;
@@ -453,7 +498,7 @@ export class WorldCharacterSync {
    * character fenced (logged once) and stops further uphill writes;
    * a transport failure only logs — the next cycle retries.
    */
-  async save(characterId: number): Promise<boolean> {
+  async save(characterId: number, opts?: { immediate?: boolean }): Promise<boolean> {
     if (this.fenced.has(characterId)) return false;
     if (!this.held.has(characterId)) return false;
     if (this.saving.has(characterId)) return false;
@@ -493,7 +538,12 @@ export class WorldCharacterSync {
       const payload = worldCharacterPayload(this.store, characterId, this.economy ?? undefined, extras);
       if (payload.state === null && payload.skills === null) return false;
       try {
-        const record = await this.client.putCharacterState(characterId, lock.epoch, payload);
+        const record = await this.enqueuePut(
+          characterId,
+          lock.epoch,
+          payload,
+          opts?.immediate === true,
+        );
         this.versions.set(characterId, record.version);
         if (extras) this.lastExtras.set(characterId, extras);
         if (this.economy) {
@@ -528,6 +578,115 @@ export class WorldCharacterSync {
   }
 
   /**
+   * Queue one prepared put and resolve with the world's stored
+   * record. Puts collect for SAVE_BATCH_WINDOW_MS (or until the
+   * batch fills) and flush as one batched world call, so a burst of
+   * saves costs a constant number of round trips instead of one per
+   * character; an immediate put (logout's final commit) skips the
+   * window. A record the world rejects resolves as a rejection with
+   * the same WorldTransportError the single put would have thrown,
+   * so the caller's fencing/transport handling is unchanged.
+   */
+  private enqueuePut(
+    characterId: number,
+    epoch: number,
+    state: unknown,
+    immediate: boolean,
+  ): Promise<CharacterStateRecord> {
+    return new Promise<CharacterStateRecord>((resolve, reject) => {
+      this.pendingPuts.push({ characterId, epoch, state, resolve, reject });
+      if (immediate || this.pendingPuts.length >= SAVE_BATCH_MAX) {
+        this.pumpPuts();
+      } else if (this.putTimer === null) {
+        this.putTimer = setTimeout(() => {
+          this.putTimer = null;
+          this.pumpPuts();
+        }, SAVE_BATCH_WINDOW_MS);
+        this.putTimer.unref();
+      }
+    });
+  }
+
+  /** Launch batch flushes until the queue drains or the flight cap fills. */
+  private pumpPuts(): void {
+    if (this.putTimer !== null) {
+      clearTimeout(this.putTimer);
+      this.putTimer = null;
+    }
+    while (this.putsInFlight < SAVE_BATCH_IN_FLIGHT && this.pendingPuts.length > 0) {
+      const batch = this.pendingPuts.splice(0, SAVE_BATCH_MAX);
+      this.putsInFlight += 1;
+      void this.flushPuts(batch).finally(() => {
+        this.putsInFlight -= 1;
+        if (this.pendingPuts.length > 0) this.pumpPuts();
+      });
+    }
+  }
+
+  /** Send one batch per record; every entry settles exactly once. */
+  private async flushPutsSingly(batch: PendingPut[]): Promise<void> {
+    for (const entry of batch) {
+      try {
+        entry.resolve(
+          await this.client.putCharacterState(entry.characterId, entry.epoch, entry.state),
+        );
+      } catch (err) {
+        entry.reject(err);
+      }
+    }
+  }
+
+  /** Send one batch; every entry settles exactly once. */
+  private async flushPuts(batch: PendingPut[]): Promise<void> {
+    const bulk = this.bulkUnsupported ? undefined : this.client.putCharacterStates;
+    if (bulk === undefined) {
+      // No bulk method (older world server, test fakes): the same
+      // schedule, per-record calls.
+      await this.flushPutsSingly(batch);
+      return;
+    }
+    let outcomes: PutCharacterStateOutcome[];
+    try {
+      outcomes = await bulk.call(
+        this.client,
+        batch.map((e) => ({ characterId: e.characterId, epoch: e.epoch, state: e.state })),
+      );
+    } catch (err) {
+      if (
+        err instanceof WorldTransportError &&
+        (err.code === 404 || err.code === 501)
+      ) {
+        // The world predates the bulk op: fall back for this batch
+        // and every later one, so saves survive a rolling upgrade.
+        this.bulkUnsupported = true;
+        this.log(
+          "world does not implement PutCharacterStates; saves fall back to per-record puts",
+        );
+        await this.flushPutsSingly(batch);
+        return;
+      }
+      for (const entry of batch) entry.reject(err);
+      return;
+    }
+    const byId = new Map(outcomes.map((o) => [o.characterId, o] as const));
+    for (const entry of batch) {
+      const outcome = byId.get(entry.characterId);
+      if (outcome === undefined) {
+        entry.reject(
+          new WorldTransportError(
+            500,
+            `world returned no outcome for character ${entry.characterId}`,
+          ),
+        );
+      } else if (outcome.ok) {
+        entry.resolve(outcome.record);
+      } else {
+        entry.reject(new WorldTransportError(outcome.code, outcome.message));
+      }
+    }
+  }
+
+  /**
    * Final commit uphill, then release the lock (logout and migration
    * commit). Never throws and never blocks on the world: if the
    * commit or the release cannot land, the local record remains the
@@ -535,7 +694,7 @@ export class WorldCharacterSync {
    * Returns whether the final commit landed.
    */
   async logout(characterId: number): Promise<boolean> {
-    const committed = await this.save(characterId);
+    const committed = await this.save(characterId, { immediate: true });
     const lock = this.held.get(characterId);
     this.held.delete(characterId);
     this.versions.delete(characterId);
