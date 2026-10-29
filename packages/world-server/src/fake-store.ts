@@ -358,7 +358,7 @@ export class MemoryWorldStore implements WorldStore {
     // and applies nothing — the core no longer brackets atomic calls
     // with its own get/store pair.
     const prior = this.ops.get(opId);
-    if (prior !== undefined) return prior as AtomicOpResult;
+    if (prior !== undefined) return prior.result as AtomicOpResult;
     const now = Date.now();
     const ctx: AtomicContext = {
       regionId,
@@ -381,7 +381,7 @@ export class MemoryWorldStore implements WorldStore {
       const rejected: AtomicOpResult = {
         ok: false, opId, op, rejection: outcome.rejection, message: outcome.message,
       };
-      this.ops.set(opId, rejected);
+      this.ops.set(opId, { result: rejected, createdAt: now });
       return rejected;
     }
     const entries: AtomicLedgerEntry[] = outcome.commit.ledger.map((d) => ({
@@ -403,7 +403,7 @@ export class MemoryWorldStore implements WorldStore {
       characters: outcome.commit.records.map((r) => structuredClone(r)),
       ledger: entries.map((e) => ({ ...e })),
     };
-    this.ops.set(opId, committed);
+    this.ops.set(opId, { result: committed, createdAt: now });
     return committed;
   }
 
