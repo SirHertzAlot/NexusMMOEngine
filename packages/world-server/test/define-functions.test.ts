@@ -129,7 +129,15 @@ test(
       };
 
       const before = await snapshot();
-      assert.equal(before.seq, 1, "seed trade advanced the counter to 1");
+      // Since sequence block allocation (fn v3), atomic_meta.seq is
+      // the claim HIGH-WATER mark (the seed trade's store claimed a
+      // 256-seq block), not the last issued seq — the issued seq
+      // lives on the ledger entry itself.
+      assert.equal(
+        (before.ledger as Array<{ seq: number }>)[0]?.seq,
+        1,
+        "seed trade's entry took seq 1",
+      );
       assert.equal(
         (before.ledger as unknown[]).length,
         1,
