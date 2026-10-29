@@ -148,10 +148,8 @@ const digest = (x: DungeonDressing): string => createHash("sha256").update(JSON.
 
 describe("dressDungeon: arrangements", () => {
   it("scatter-only dressing dresses exactly as it did before arrangements", () => {
-    // Pinned from the code before arrangements existed (cases 0, 4, 8, 13).
-    const pinned: [number, string] = [0, "f16ebb1997b93baa"];
-    const all: [number, string][] = [[0, "f16ebb1997b93baa"], [4, "ad28c2390f5f488e"], [8, "28671070cff1032b"], [13, "371f1c5aa448d239"]];
-    assert.ok(pinned);
+    // Pinned from the code before arrangements existed (3922c955, the mainline parent of #377; cases 0, 4, 8, 13).
+    const all: [number, string][] = [[0, "dbadb8e8eca12d78"], [4, "ee30eaff2aac98c7"], [8, "b3193597f3785300"], [13, "64fc097d9a153cb0"]];
     for (const [i, hash] of all) {
       const [seed, theme, rank] = cases[i];
       assert.equal(digest(dressDungeon(make(seed, theme), PART_A_DRESSING, rank)), hash, `case ${i} (${theme} rank ${rank})`);
