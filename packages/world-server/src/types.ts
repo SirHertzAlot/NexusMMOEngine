@@ -742,6 +742,13 @@ export interface WorldStore {
   getCharacterState(characterId: number): Promise<CharacterStateRecord | null>;
   /** Store a character record verbatim (the core assigns its version). */
   putCharacterState(r: CharacterStateRecord): Promise<void>;
+  /**
+   * Batched form of putCharacterState: many records in as few store
+   * round trips as the implementation can manage, with identical
+   * per-record semantics (each record is stored verbatim, overwriting
+   * any prior record for its character). The save-sweep write path.
+   */
+  putCharacterStates(records: CharacterStateRecord[]): Promise<void>;
   /** The character's session lock as stored, or null when unheld. */
   getCharacterLock(characterId: number): Promise<CharacterSessionLock | null>;
   putCharacterLock(l: CharacterSessionLock): Promise<void>;

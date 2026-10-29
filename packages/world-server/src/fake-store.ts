@@ -254,6 +254,10 @@ export class MemoryWorldStore implements WorldStore {
     this.characterStates.set(r.characterId, { ...r });
   }
 
+  async putCharacterStates(records: CharacterStateRecord[]): Promise<void> {
+    for (const r of records) this.characterStates.set(r.characterId, { ...r });
+  }
+
   async getCharacterLock(characterId: number): Promise<CharacterSessionLock | null> {
     const l = this.characterLocks.get(characterId);
     return l ? { ...l } : null;

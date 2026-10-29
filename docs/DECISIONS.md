@@ -2,6 +2,9 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-10-28 — Batched character-state writes at the store layer (Joey's directive: "batching OPs to maximize MX ops").**
+  Evidence: `packages/world-server/PERFORMANCE-BATCH.md`. `putCharacterState`/`putCharacterLock` were still check-then-write on main (2 round trips per record); both are now single `INSERT ... ON DUPLICATE KEY UPDATE` statements, and the new `WorldStore.putCharacterStates` carries a sweep's upserts in one query per 256-statement chunk — measured ~5.5× the old write path at 500 records on embedded SurrealMX (sandbox floor). The SDK array-upsert form was measured and rejected (errors on this SDK/engine combination). Follow-on designed, not yet built: store batch reads + batched op-results, a bulk core op with per-record outcomes, and a coalescing window in `WorldCharacterSync.save` (saves are event-driven; logout flushes immediately).
+
 - **2026-10-28 — SurrealMX adoption: SurrealDB 3.x engines everywhere, MX for the world tier (Joey's directive).**
   Full evidence: `docs/SURREALMX-ADOPTION-REPORT.md`.
   1. **Versions aligned:** `@surrealdb/node` 3.0.3 → ^3.1.0 and the `surrealdb` JS SDK 2.0.8 → ^2.2.0 in the root, world-server, and engine-core manifests. Every embedded `mem://` endpoint (persist worker, data-plane server, store tests, benches) runs on SurrealMX, SurrealDB 3.x's in-memory engine.
