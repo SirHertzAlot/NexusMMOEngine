@@ -109,6 +109,7 @@ DEFINE FIELD IF NOT EXISTS tokenHash ON region TYPE option<string>;
 DEFINE FIELD IF NOT EXISTS tokenIssuedAt ON region TYPE option<int>;
 DEFINE TABLE IF NOT EXISTS op_dedup SCHEMALESS;
 DEFINE TABLE IF NOT EXISTS meta SCHEMALESS;
+DEFINE INDEX IF NOT EXISTS idx_op_dedup_op ON op_dedup FIELDS opId;
 DEFINE INDEX IF NOT EXISTS idx_region_regionId ON region FIELDS regionId UNIQUE;
 DEFINE INDEX IF NOT EXISTS idx_region_tokenHash ON region FIELDS tokenHash;
 -- Slice B. Schemaless: entityState is an arbitrary serialized ECS blob.
