@@ -9,15 +9,31 @@
  * stand-in box, so generate it only where the art is.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { parseArgs } from "node:util";
 import { writeArtOverlay, type CatalogModel } from "./art.js";
 
 const { values: o } = parseArgs({ options: { catalog: { type: "string" }, props: { type: "string" }, out: { type: "string" } } });
-const catalog = resolve(o.catalog ?? "assets/catalog.json");
-const propsFile = resolve(o.props ?? "content/dungeons/props.json");
-const out = resolve(o.out ?? "content/dungeons/props.local.json");
+let repoRoot = process.cwd();
+for (let d = dirname(fileURLToPath(import.meta.url)); d && d !== dirname(d); d = dirname(d)) {
+  if (existsSync(join(d, "assets", "catalog.json")) || (existsSync(join(d, "content")) && existsSync(join(d, "packages")))) {
+    repoRoot = d;
+    break;
+  }
+}
+
+const findPath = (rel: string): string => {
+  if (existsSync(resolve(rel))) return resolve(rel);
+  if (existsSync(join(repoRoot, rel))) return join(repoRoot, rel);
+  return resolve(rel);
+};
+
+const catalog = findPath(o.catalog ?? "assets/catalog.json");
+const propsFile = findPath(o.props ?? "content/dungeons/props.json");
+const out = o.out ? resolve(o.out) : join(repoRoot, "content/dungeons/props.local.json");
 
 const models = (JSON.parse(readFileSync(catalog, "utf8")) as { models: CatalogModel[] }).models;
 const kinds = Object.keys((JSON.parse(readFileSync(propsFile, "utf8")) as { archetypes: Record<string, unknown> }).archetypes).map((k) => k.replace(/^dungeon:/, ""));

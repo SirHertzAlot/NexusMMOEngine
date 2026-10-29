@@ -1,9 +1,10 @@
 {
   "dependencies": {
-    "@surrealdb/node": "^3.0.3",
+    "@mmo-engine/logging": "0.1.0",
+    "@surrealdb/node": "^3.1.0",
     "argon2": "^0.45.1",
     "express": "^5.1.0",
-    "surrealdb": "^2.0.8",
+    "surrealdb": "^2.2.0",
     "zod": "^4.6.5"
   },
   "description": "World server: region registry, migration arbitration, global system of record (SurrealDB). Slices A and B: core, registry, webrpc adapter, migration arbitration.",
@@ -16,8 +17,8 @@
   "name": "@mmo-engine/world-server",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "db": "surreal start --user root --pass root --bind 127.0.0.1:8000 rocksdb:./data/surrealdb",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/logging && tsc -p tsconfig.json",
+    "db": "surreal start --log info --user root --pass root --bind 127.0.0.1:8000 \"mem://./data/surrealmx?aol=sync&snapshot=60s&sync=every\"",
     "server": "npm run build && node dist/src/server.js",
     "sidecar": "npm run build && node dist/src/host-sidecar.js",
     "test": "npm run build && node --test --test-force-exit \"dist/test/**/*.test.js\""

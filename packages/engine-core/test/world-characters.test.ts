@@ -158,6 +158,24 @@ class CoreTransport implements WorldTransport {
               input as never,
             ),
           };
+        case "PutCharacterStates": {
+          const batchInput = input as unknown as {
+            regionId: string;
+            inputs: Parameters<WorldCoreImpl["putCharacterStates"]>[2];
+          };
+          const outcomes = await this.core.putCharacterStates(
+            await this.caller(token),
+            batchInput.regionId,
+            batchInput.inputs,
+          );
+          return {
+            outcomes: outcomes.map((o) =>
+              o.ok
+                ? { characterId: o.characterId, ok: true, character: o.record }
+                : { characterId: o.characterId, ok: false, code: o.code, message: o.message },
+            ),
+          };
+        }
         default:
           throw new WorldTransportError(501, `${method} not implemented by fake transport`);
       }

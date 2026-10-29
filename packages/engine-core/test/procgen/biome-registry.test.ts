@@ -159,8 +159,9 @@ describe("wild creatures", () => {
     const sim = new SimWorld();
     const creatures = new CreatureSystem({ creatures: game.rules.creatures.creatures, bases: game.rules.items.bases });
     const dense = { packsPerKm2: 1e6 / 256 };
-    const wolves = new WildCreatures({
-      registry: registryOf({ forest: { name: "Forest", creatures: { ...dense, table: [{ kind: "wolf", weight: 1 }] } } }),
+    // "wolf" lives in the creature rules now; a kind that never will.
+    const phantoms = new WildCreatures({
+      registry: registryOf({ forest: { name: "Forest", creatures: { ...dense, table: [{ kind: "no-such-creature", weight: 1 }] } } }),
       spawner: creatures, seed: 1, chunkWorldSize: 16, biomeAt: () => "forest",
     });
     const wet = new WildCreatures({
@@ -169,7 +170,7 @@ describe("wild creatures", () => {
     });
     sim.beginTick(1);
     for (let cx = 0; cx < 5; cx++) {
-      wolves.load(sim, cx, 0);
+      phantoms.load(sim, cx, 0);
       wet.load(sim, cx, 0);
     }
     sim.endTick();

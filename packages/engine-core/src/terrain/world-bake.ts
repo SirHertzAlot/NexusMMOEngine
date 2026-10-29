@@ -23,7 +23,7 @@ import { Worker } from "node:worker_threads";
 import type { TerrainTile } from "@mmo-engine/protocol";
 import { TerrainCache } from "../persist/terrain-cache.js";
 import { TerrainTileStore } from "../persist/terrain-tiles.js";
-import { rocksdbUrl, writeWorldCatalog, type CatalogChunk } from "../persist/world-catalog.js";
+import { surrealkvUrl, writeWorldCatalog, type CatalogChunk } from "../persist/world-catalog.js";
 import { LAND, surveyWorld, type Survey } from "./survey.js";
 import { WorldHeights } from "./world-heights.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
@@ -548,7 +548,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
         });
       }
     }
-    await writeWorldCatalog(rocksdbUrl(opts.catalogDir), {
+    await writeWorldCatalog(surrealkvUrl(opts.catalogDir), {
       world: {
         name: spec.name,
         seed: spec.seed,

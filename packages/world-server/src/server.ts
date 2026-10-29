@@ -8,11 +8,19 @@
  * Environment:
  *   WORLD_PORT              HTTP listen port (default 7780)
  *   WORLD_DATA_DIR          where the embedded database lives (default ./data)
- *   WORLD_DB_URL            default "rocksdb:<WORLD_DATA_DIR>/surreal": SurrealDB
- *                           embedded in this process, durable on disk.
- *                           "mem://" -> embedded, in memory; "ws://..." -> a
- *                           separate SurrealDB server; "mem:" -> the plain JS
- *                           in-memory store (stress runs, NOT durable).
+ *   WORLD_DB_URL            default "surrealkv:<WORLD_DATA_DIR>/surreal":
+ *                           SurrealDB embedded in this process on SurrealKV
+ *                           (the SurrealDB 3.x durable engine), on disk.
+ *                           "mem://" -> embedded SurrealMX, in memory only
+ *                           (volatile — the embedded engine ignores the MX
+ *                           persistence parameters; verified 2026-10-28);
+ *                           "ws://..." -> a separate SurrealDB server — the
+ *                           recommended production shape is the SurrealMX
+ *                           server started by `npm run db` (MX in memory;
+ *                           sync AOL + fsync on every commit + snapshots —
+ *                           the blog's only configuration that survives
+ *                           both process and system crashes); "mem:" -> the plain
+ *                           JS in-memory store (stress runs, NOT durable).
  *   WORLD_DB_NS / WORLD_DB_DB / WORLD_DB_USER / WORLD_DB_PASS
  *   WORLD_DB_CONNECT_TIMEOUT_MS  bound on the SurrealDB connect
  *                                handshake (default 10000; unset or
@@ -38,6 +46,16 @@
 import * as path from "node:path";
 import * as argon2 from "argon2";
 import express from "express";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  LogWorkerSupervisor,
+  logWorldMigrationExpired,
+  logWorldMigrationExpiryError,
+  logWorldReapedStaleRegion,
+  logWorldReaperError,
+} from "@mmo-engine/logging/dist/src/logging/index.js";
 import { createWebrpcRouter } from "./adapters/webrpc.js";
 import { WorldCoreImpl } from "./core.js";
 import { MemoryWorldStore } from "./fake-store.js";
@@ -45,8 +63,8 @@ import { SurrealWorldStore } from "./surreal-store.js";
 import type { WorldStore } from "./types.js";
 
 const PORT = Number(process.env.WORLD_PORT ?? 7780);
-// The embedded engine wants "rocksdb:" + an absolute path with forward slashes and no "//" (see engine-core world-catalog.ts).
-const DB_URL = process.env.WORLD_DB_URL ?? `rocksdb:${path.resolve(process.env.WORLD_DATA_DIR ?? "./data", "surreal").split(path.sep).join("/")}`;
+// The embedded engine wants "<engine>:" + an absolute path with forward slashes and no "//" (see engine-core world-catalog.ts).
+const DB_URL = process.env.WORLD_DB_URL ?? `surrealkv:${path.resolve(process.env.WORLD_DATA_DIR ?? "./data", "surreal").split(path.sep).join("/")}`;
 const HEARTBEAT_INTERVAL_MS = Number(
   process.env.WORLD_HEARTBEAT_INTERVAL_MS ?? 5000,
 );
@@ -93,6 +111,21 @@ async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<vo
 }
 
 async function main(): Promise<void> {
+  // SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): the world process
+  // hosts its own ring + worker on the shared dictionary (0x0500-0x05FF).
+  // Boot banners and fatals stay on stdio on purpose; WORLD_LOG=0 starts no
+  // worker (records are then only counted as ring drops).
+  const logRing = new LogRingBuffer();
+  const logSupervisor = new LogWorkerSupervisor({
+    ring: logRing,
+    logDir: process.env.WORLD_LOG_DIR || path.join("data", "logs"),
+  });
+  if (process.env.WORLD_LOG !== "0") await logSupervisor.start();
+  process.on("exit", () => {
+    try { logSupervisor.stopSync(); } catch { /* exiting: nothing left to protect */ }
+  });
+  const logger = new LogProducerClient(LogProducer.WORLD, logRing);
+
   const apiKey = process.env.WORLD_API_KEY;
   const apiKeyHash = apiKey ? await argon2.hash(apiKey) : null;
   if (!apiKey) {
@@ -112,15 +145,15 @@ async function main(): Promise<void> {
 
   const app = express();
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
-  app.use(createWebrpcRouter(core));
+  app.use(createWebrpcRouter(core, { logger }));
 
   // Stale-region reaper: runs on its own timer, never in any tick loop.
   const reaper = setInterval(async () => {
     try {
       const reaped = await core.reapStale();
-      for (const id of reaped) console.log(`[world] reaped stale region ${id}`);
+      for (const id of reaped) logWorldReapedStaleRegion(logger, id);
     } catch (err) {
-      console.error("[world] reaper error", err);
+      logWorldReaperError(logger, err instanceof Error ? `${err.message}` : String(err));
     }
   }, Math.max(1000, Math.floor(HEARTBEAT_TIMEOUT_MS / 3)));
   reaper.unref();
@@ -129,9 +162,9 @@ async function main(): Promise<void> {
   // migration begun before a crash is just an old `begun` row.
   const expirer = setInterval(async () => {
     try {
-      for (const id of await core.expireMigrations()) console.log(`[world] migration ${id} expired`);
+      for (const id of await core.expireMigrations()) logWorldMigrationExpired(logger, id);
     } catch (err) {
-      console.error("[world] migration expiry error", err);
+      logWorldMigrationExpiryError(logger, err instanceof Error ? `${err.message}` : String(err));
     }
   }, Math.max(250, Math.floor(MIGRATION_TIMEOUT_MS / 4)));
   expirer.unref();

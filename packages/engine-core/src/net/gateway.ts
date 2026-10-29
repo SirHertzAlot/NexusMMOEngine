@@ -131,6 +131,7 @@ import { ResidentSystem } from "../residents/index.js";
 import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
 import { RemoveComponentArgsSchema, applyRemoveComponent } from "../admin/remove-component.js";
+import { spawnBots, BotsArgsSchema } from "../admin/bots.js";
 import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
@@ -191,6 +192,23 @@ import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
+import { AtomicSPSCQueue, packCommandToken } from "../lockless-ring.js";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  runLogLevelCommand,
+  logAdminCommandExecuted,
+  logGatewayAuthError,
+  logGatewayHelloPassword,
+  logGatewayHelloMigration,
+  logGatewayHelloToken,
+  logGatewayContainedError,
+  logGatewayCharacterCreated,
+  logGatewayRegisterError,
+  logGatewayRegisterSuccess,
+} from "../logging/index.js";
+import { INTENT_FLAGS } from "../sab-store.js";
 import type { EntityPosition, MigrationHost } from "../world/migration.js";
 import type { WorldCharacterSync } from "../world/character-sync.js";
 import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
@@ -253,6 +271,15 @@ export interface GatewayOptions {
    * Default: the built-in rules (backward compat during migration).
    */
   chatRules?: ChatRules;
+  /**
+   * Lockless SPSC intent queue to the 30Hz Simulation Worker (PR #430 / Phase 2 data-plane topology).
+   * When provided, validated player intent messages are packed into 32-bit tokens
+   * (entity index + action code) and enqueued directly to the worker thread without
+   * heap allocations.
+   */
+  dataPlaneQueue?: AtomicSPSCQueue;
+  /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
+  logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
   /** Missed heartbeats before the client is dropped. Default 3. */
@@ -439,6 +466,8 @@ export interface GatewayOptions {
   };
   /** Centre of the spawn grid, world units. Default (0, 0). */
   spawnPoint?: { x: number; z: number };
+  /** Dungeon gates / respawn anchors (where players respawn if nearer than spawnPoint). */
+  respawnAnchors?: { name: string; x: number; z: number }[];
   /**
    * The spawn point was chosen for this run (the editor's Play menu
    * "Start from"): characters enter there instead of where they were
@@ -850,9 +879,16 @@ export class Gateway {
       | "interest"
       | "worldCharacters"
       | "atomicOps"
+      | "respawnAnchors"
+      | "dataPlaneQueue"
+      | "logger"
     >
   > & { port: number };
+  public readonly logger: LogProducerClient;
   private readonly systems: SimSystem[];
+  public readonly dataPlaneQueue?: AtomicSPSCQueue;
+  private dataPlaneEnqueuedIntents = 0;
+  private dataPlaneDroppedIntents = 0;
   private readonly clock: () => number;
   private readonly loop: TickLoop;
   private readonly tracker = new DeltaTracker();
@@ -900,6 +936,7 @@ export class Gateway {
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
   private readonly spawnPoint: { x: number; z: number };
+  private readonly respawnAnchors: { name: string; x: number; z: number }[];
   private readonly spawnOverridden: boolean;
   private readonly worldInfo: WorldInfo | null;
   private readonly dayClock: DayClock | null;
@@ -1005,6 +1042,8 @@ export class Gateway {
       );
     }
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
+    this.logger = opts.logger ?? new LogProducerClient(LogProducer.GATEWAY, new LogRingBuffer(1024));
+    this.dataPlaneQueue = opts.dataPlaneQueue;
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
     this.parties = new PartyBook(() => this.clock(), opts.partyStore);
@@ -1031,6 +1070,7 @@ export class Gateway {
     this.magic = opts.magic ?? null;
     this.creatures = opts.creatures ?? null;
     this.spawnPoint = opts.spawnPoint ?? { x: 0, z: 0 };
+    this.respawnAnchors = opts.respawnAnchors ?? [];
     this.spawnOverridden = opts.spawnOverridden ?? false;
     this.worldInfo = opts.worldInfo ?? null;
     this.dayClock = opts.dayClock ?? null;
@@ -1089,6 +1129,15 @@ export class Gateway {
   }
 
   /** Rate-limiter diagnostics: dropped excess and abuse disconnects. */
+  /** Data plane queue stats (Phase 2 topology). */
+  get dataPlaneStats(): { hasQueue: boolean; enqueued: number; dropped: number } {
+    return {
+      hasQueue: this.dataPlaneQueue !== undefined,
+      enqueued: this.dataPlaneEnqueuedIntents,
+      dropped: this.dataPlaneDroppedIntents,
+    };
+  }
+
   ingressStats(): { droppedIntents: number; droppedPickups: number; abuseDisconnects: number } {
     return {
       droppedIntents: this.droppedByRateLimitIntents,
@@ -1312,7 +1361,24 @@ export class Gateway {
     if (!s || !s.welcomed || s.playerEntity === null) return "no_player";
     const clean = sanitizeIntent(intent);
     if (clean === null) return "bad_intent";
-    this.world.queueIntent(parseWireEntityId(s.playerEntity).slot, clean);
+    const slot = parseWireEntityId(s.playerEntity).slot;
+    this.world.queueIntent(slot, clean);
+    if (this.dataPlaneQueue) {
+      let actionCode = 0;
+      if (clean.mz > 0.1) actionCode |= INTENT_FLAGS.FORWARD;
+      if (clean.mz < -0.1) actionCode |= INTENT_FLAGS.BACKWARD;
+      if (clean.mx > 0.1) actionCode |= INTENT_FLAGS.RIGHT;
+      if (clean.mx < -0.1) actionCode |= INTENT_FLAGS.LEFT;
+      if (clean.my > 0.1) actionCode |= INTENT_FLAGS.UP;
+      if (clean.my < -0.1) actionCode |= INTENT_FLAGS.DOWN;
+      if ((clean.buttons & 1) !== 0) actionCode |= INTENT_FLAGS.SPRINT;
+      const packedToken = packCommandToken(slot, actionCode);
+      if (this.dataPlaneQueue.enqueue(packedToken)) {
+        this.dataPlaneEnqueuedIntents++;
+      } else {
+        this.dataPlaneDroppedIntents++;
+      }
+    }
     return "ok";
   }
 
@@ -2026,8 +2092,21 @@ export class Gateway {
    */
   respawnPlayer(sim: SimWorld, eid: number): boolean {
     if (!hasComponent(sim.ecs, C.CharacterRef, eid)) return false;
-    const x = this.spawnPoint.x;
-    const z = this.spawnPoint.z;
+    let x = this.spawnPoint.x;
+    let z = this.spawnPoint.z;
+    if (this.respawnAnchors.length > 0) {
+      const px = C.Transform.px[eid];
+      const pz = C.Transform.pz[eid];
+      let bestDistSq = (px - x) ** 2 + (pz - z) ** 2;
+      for (const anchor of this.respawnAnchors) {
+        const dSq = (px - anchor.x) ** 2 + (pz - anchor.z) ** 2;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          x = anchor.x;
+          z = anchor.z;
+        }
+      }
+    }
     const r = applyTeleport(sim, sim.wireId(eid), x, z, this.groundHeightAt ?? null);
     return r.ok;
   }
@@ -2853,7 +2932,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, bots, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2921,6 +3000,22 @@ export class Gateway {
         this.sendError(s, 4003, res.message);
         return;
       }
+    } else if (cmd.command === "bots") {
+      const parsed = BotsArgsSchema.safeParse(cmd.args);
+      if (!parsed.success) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, "malformed bots command");
+        return;
+      }
+      res = spawnBots(parsed.data);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+      this.sendEnvelope(s, MessageType.Admin, encodeControl(res));
+      this.logAdmin(s.username, cmd.command, true);
+      return;
     } else if (cmd.command === "give" && this.atomicOps) {
       // Slice A2 (fleet mode): the grant's commit is async (world
       // tier); the handler answers and logs like the sync path does.
@@ -2965,6 +3060,14 @@ export class Gateway {
       s.interestAll = mode === "all";
       s.interestSet = null; // a full replace of the new view next tick
       res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
+    } else if (cmd.command === "loglevel") {
+      const r = runLogLevelCommand(this.logger.ring, cmd.args);
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
     } else if (cmd.command === "noclip") {
       const parsed = NoclipArgsSchema.safeParse(cmd.args ?? {});
       if (!parsed.success) {
@@ -3318,8 +3421,7 @@ export class Gateway {
     if (this.adminLog.length > ADMIN_LOG_SIZE) {
       this.adminLog.splice(0, this.adminLog.length - ADMIN_LOG_SIZE);
     }
-    // eslint-disable-next-line no-console
-    console.log(`[admin] ${username} ${command} -> ${ok ? "ok" : "rejected"}`);
+    logAdminCommandExecuted(this.logger, username, command, ok ? "ok" : "rejected");
   }
 
   /** Recent admin commands, oldest first (a copy). */
@@ -3813,10 +3915,7 @@ export class Gateway {
     void this.authenticate(s, payload)
       .catch((err: unknown) => {
         // Defense in depth: a store/argon2 failure must not kill the pump.
-        // eslint-disable-next-line no-console
-        console.error(
-          `[gateway] auth error: ${err instanceof Error ? err.message : err}`,
-        );
+        logGatewayAuthError(this.logger, err instanceof Error ? err.message : String(err));
         this.sendErrorAndClose(s, 4004, "internal auth error");
       })
       .finally(() => {
@@ -3892,8 +3991,7 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = this.authSessions.create(s.clientId, username);
-      // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=password`);
+      logGatewayHelloPassword(this.logger, clientLabel);
     } else if (parsed.kind === "migration") {
       const token = await this.handoffArrive(parsed.value.migration, parsed.value.ticket);
       if (!token) {
@@ -3903,8 +4001,7 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = token;
-      // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=migration`);
+      logGatewayHelloMigration(this.logger, clientLabel);
     } else {
       const sess = this.authSessions.get(parsed.value.token);
       if (!sess) {
@@ -3914,8 +4011,7 @@ export class Gateway {
       }
       this.rateLimiter.recordSuccess(s.remoteIp);
       sessionToken = sess.token;
-      // eslint-disable-next-line no-console
-      console.log(`[gateway] hello client=${clientLabel} via=token`);
+      logGatewayHelloToken(this.logger, clientLabel);
     }
 
     await this.joinWithSession(s, sessionToken, parsed.value.characters === true);
@@ -4091,8 +4187,7 @@ export class Gateway {
   /** Run an async handler; a store failure answers 4004 and never kills the pump. */
   private contain(s: ClientSession, what: string, work: Promise<void>): void {
     void work.catch((err: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error(`[gateway] ${what} error: ${err instanceof Error ? err.message : err}`);
+      logGatewayContainedError(this.logger, what, err instanceof Error ? err.message : String(err));
       this.sendError(s, 4004, `internal error (${what})`);
     });
   }
@@ -4131,8 +4226,7 @@ export class Gateway {
       }
       throw err;
     }
-    // eslint-disable-next-line no-console
-    console.log(`[gateway] character created user=${JSON.stringify(s.username)} name=${JSON.stringify(record.name)}`);
+    logGatewayCharacterCreated(this.logger, s.username, record.name);
     await this.sendAccount(s, record.id);
   }
 
@@ -4182,10 +4276,7 @@ export class Gateway {
     void this.registerAccount(s, payload)
       .catch((err: unknown) => {
         // Defense in depth: a store/argon2 failure must not kill the pump.
-        // eslint-disable-next-line no-console
-        console.error(
-          `[gateway] register error: ${err instanceof Error ? err.message : err}`,
-        );
+        logGatewayRegisterError(this.logger, err instanceof Error ? err.message : String(err));
         this.sendErrorAndClose(s, 4004, "internal auth error");
       })
       .finally(() => {
@@ -4262,10 +4353,7 @@ export class Gateway {
     }
     this.rateLimiter.recordSuccess(s.remoteIp);
     const sessionToken = this.authSessions.create(s.clientId, username);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[gateway] register client=${JSON.stringify(client)} user=${JSON.stringify(username)}`,
-    );
+    logGatewayRegisterSuccess(this.logger, JSON.stringify(client), username);
     await this.joinWithSession(s, sessionToken, characters === true);
   }
 
@@ -4404,6 +4492,23 @@ export class Gateway {
     s.lastIntentTick = clientTick;
     const { slot } = parseWireEntityId(entity);
     this.world.queueIntent(slot, intent);
+
+    if (this.dataPlaneQueue) {
+      let actionCode = 0;
+      if (intent.mz > 0.1) actionCode |= INTENT_FLAGS.FORWARD;
+      if (intent.mz < -0.1) actionCode |= INTENT_FLAGS.BACKWARD;
+      if (intent.mx > 0.1) actionCode |= INTENT_FLAGS.RIGHT;
+      if (intent.mx < -0.1) actionCode |= INTENT_FLAGS.LEFT;
+      if (intent.my > 0.1) actionCode |= INTENT_FLAGS.UP;
+      if (intent.my < -0.1) actionCode |= INTENT_FLAGS.DOWN;
+      if ((intent.buttons & 1) !== 0) actionCode |= INTENT_FLAGS.SPRINT;
+      const token = packCommandToken(slot, actionCode);
+      if (this.dataPlaneQueue.enqueue(token)) {
+        this.dataPlaneEnqueuedIntents++;
+      } else {
+        this.dataPlaneDroppedIntents++;
+      }
+    }
   }
 
   // ------------------------------------------------------------ outbound

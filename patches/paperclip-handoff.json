@@ -1,0 +1,66 @@
+{
+  "handoffVersion": "1.0.0",
+  "generatedAt": "2026-10-25T21:14:12.027Z",
+  "sourceAgent": "Argon / Paperclip Improvement Crawler",
+  "targetAgent": "Gemini",
+  "indexDocument": "patches/INDEX.md",
+  "patches": [
+    {
+      "patchId": "PATCH-01",
+      "title": "AVX2 8-Wide FMA Kernel with 64-Bit Hierarchical Alive-Bitset Block Skipping",
+      "specFile": "patches/PATCH-01-avx2-fma-hierarchical-bitset-simd.md",
+      "targetFiles": [
+        "packages/addons/integrate/binding.gyp",
+        "packages/addons/integrate/src/integrate.cc",
+        "packages/addons/integrate/index.d.ts",
+        "packages/engine-core/src/sab-store.ts",
+        "packages/engine-core/src/sim-worker.ts"
+      ]
+    },
+    {
+      "patchId": "PATCH-02",
+      "title": "Morton Z-Order Curve Spatial Hashing & Cache-Line Compaction for Planar SoA",
+      "specFile": "patches/PATCH-02-morton-z-order-spatial-cache-locality.md",
+      "targetFiles": [
+        "packages/engine-core/src/sab-store.ts",
+        "packages/engine-core/src/sim-worker.ts"
+      ]
+    },
+    {
+      "patchId": "PATCH-03",
+      "title": "Dmitry Vyukov Bounded Lock-Free MPSC Ring Queue with Per-Slot Sequence Numbers",
+      "specFile": "patches/PATCH-03-vyukov-mpsc-cacheline-coalesced-ring.md",
+      "targetFiles": [
+        "packages/engine-core/src/lockless-ring.ts",
+        "packages/engine-core/src/data-plane-server.ts"
+      ]
+    },
+    {
+      "patchId": "PATCH-04",
+      "title": "Atomic Dirty-Bitset Coalescing & Vectorized Group-Commit SurrealDB Persistence",
+      "specFile": "patches/PATCH-04-dirty-bitset-group-commit-surreal-ledger.md",
+      "targetFiles": [
+        "packages/engine-core/src/persist-worker.ts"
+      ]
+    },
+    {
+      "patchId": "PATCH-05",
+      "title": "Generational Handle Slab Allocator & ABA-Safe Entity Slot Recycling",
+      "specFile": "patches/PATCH-05-generational-slab-arena-zero-gc-handles.md",
+      "targetFiles": [
+        "packages/engine-core/src/sab-store.ts"
+      ]
+    }
+  ],
+  "verificationCommands": [
+    "npm run build --workspace=@mmo-engine/addon-integrate",
+    "npm test --workspace=@mmo-engine/addon-integrate",
+    "npm run build --workspace=@mmo-engine/engine-core",
+    "npm test --workspace=@mmo-engine/engine-core"
+  ],
+  "paperclipDispatch": {
+    "mode": "local_manifest_and_subagent",
+    "status": "ready_for_gemini_subagent",
+    "note": "PAPERCLIP_API_URL not set in local environment; wrote patches/paperclip-handoff.json for Gemini subagent and Paperclip sync."
+  }
+}

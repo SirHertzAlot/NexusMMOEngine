@@ -258,3 +258,162 @@ export function layOver(anchors: readonly Placed[], radius: number, o: LayOpts =
   const reach = o.reach ?? radius;
   return anchors.map((a) => pose(a.x, a.y, a.rot, radius, reach, a.nx !== undefined && a.ny !== undefined ? { nx: a.nx, ny: a.ny } : undefined));
 }
+
+/**
+ * One item behind each of `anchors` (`-reachOf(a) - reach - gap` along its facing, facing toward the anchor `a.rot`):
+ * pairs benches on the opposite side of dining (`long-table`) and library (`reading-table`) tables.
+ */
+export function layBehind(ctx: ArrangeCtx, anchors: readonly Placed[], radius: number, gap: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  const reach = o.reach ?? radius;
+  const isAnchor = (t: Placed): boolean => anchors.some((a) => Math.abs(a.x - t.x) < 1e-9 && Math.abs(a.y - t.y) < 1e-9);
+  const rest: ArrangeCtx = { ...ctx, taken: ctx.taken.filter((t) => !isAnchor(t)) };
+  for (const a of anchors) {
+    const d = reachOf(a) + reach + gap;
+    const [x, y] = [a.x - Math.cos(a.rot) * d, a.y - Math.sin(a.rot) * d];
+    if (fits(rest, out, x, y, radius, reach)) out.push(pose(x, y, a.rot, radius, reach));
+  }
+  return out;
+}
+
+/**
+ * Symmetrically place up to `count` items into the room's concave corners across the 4 quadrants around `ctx.centre`,
+ * facing diagonally inward toward the room's centre. `seeds` are candidate corner/wall spots from `placeInRegion`.
+ */
+export function layCorners(ctx: ArrangeCtx, seeds: readonly Placed[], radius: number, count: number, gap: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  if (count <= 0) return out;
+  const reach = o.reach ?? radius;
+  const w = ctx.extent?.w ?? 10;
+  const h = ctx.extent?.h ?? 10;
+
+  // Build candidate corner spots both from raymarched seeds and analytical quadrant probes near the room perimeter.
+  const candidates: { x: number; y: number; q: number; score: number }[] = [];
+  const addCandidate = (x: number, y: number, bonus = 0): void => {
+    const dx = x - ctx.centre.x;
+    const dy = y - ctx.centre.y;
+    const dist2 = dx * dx + dy * dy;
+    if (dist2 < 0.5) return;
+    const q = (dx >= 0 ? 1 : 0) + (dy >= 0 ? 2 : 0);
+    candidates.push({ x, y, q, score: bonus + dist2 });
+  };
+
+  for (const s of seeds) addCandidate(s.x, s.y, 100);
+
+
+  const quads: { x: number; y: number; score: number }[][] = [[], [], [], []];
+  for (const c of candidates) quads[c.q]!.push(c);
+  for (const q of quads) q.sort((a, b) => b.score - a.score);
+
+  const order = [0, 3, 1, 2];
+  const minSep = 2 * Math.max(radius, reach) + gap;
+  for (let pass = 0; pass < 8 && out.length < count; pass++) {
+    let added = false;
+    for (const qi of order) {
+      if (out.length >= count) break;
+      for (const cand of quads[qi]!) {
+        const rot = Math.atan2(ctx.centre.y - cand.y, ctx.centre.x - cand.x);
+        if (!fits(ctx, out, cand.x, cand.y, radius, reach)) continue;
+        if (out.some((p) => Math.hypot(p.x - cand.x, p.y - cand.y) < minSep)) continue;
+        out.push(pose(cand.x, cand.y, rot, radius, reach));
+        added = true;
+        break;
+      }
+    }
+    if (!added) break;
+  }
+  return out;
+}
+
+/**
+ * Paired symmetrical columns/statues in two parallel rows at `±span` across the room's long axis, facing inward across
+ * the central nave aisle.
+ */
+export function layColonnade(ctx: ArrangeCtx, radius: number, count: number, gap: number, span: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  if (count <= 0) return out;
+  const reach = o.reach ?? radius;
+  const alongX = (ctx.extent?.w ?? 1) >= (ctx.extent?.h ?? 0);
+  const pitch = 2 * radius + gap;
+  const pairs = Math.max(1, Math.ceil(count / 2));
+
+  for (let i = 0; i < pairs && out.length < count; i++) {
+    const along = (i - (pairs - 1) / 2) * pitch;
+    for (const sign of [-1, 1] as const) {
+      if (out.length >= count) break;
+      const x = alongX ? ctx.centre.x + along : ctx.centre.x + sign * span;
+      const y = alongX ? ctx.centre.y + sign * span : ctx.centre.y + along;
+      const rot = alongX ? (sign > 0 ? -Math.PI / 2 : Math.PI / 2) : (sign > 0 ? Math.PI : 0);
+      if (fits(ctx, out, x, y, radius, reach)) out.push(pose(x, y, rot, radius, reach));
+    }
+  }
+  return out;
+}
+
+/**
+ * Cluster up to `count` items tightly around `anchors` (e.g. barrels/sacks grouped around crates or workbenches).
+ */
+export function layCluster(ctx: ArrangeCtx, anchors: readonly Placed[], radius: number, count: number, gap: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  if (count <= 0 || anchors.length === 0) return out;
+  const reach = o.reach ?? radius;
+  const angles = [0, Math.PI / 2, -Math.PI / 2, Math.PI / 4, -Math.PI / 4, (3 * Math.PI) / 4, (-3 * Math.PI) / 4, Math.PI];
+
+  for (let ring = 1; ring <= 3 && out.length < count; ring++) {
+    for (let ai = 0; ai < anchors.length && out.length < count; ai++) {
+      const a = anchors[ai]!;
+      const dist = Math.max(a.radius, reachOf(a)) + Math.max(radius, reach) + gap + (ring - 1) * (2 * Math.max(radius, reach) + gap);
+      for (let oi = 0; oi < angles.length && out.length < count; oi++) {
+        const theta = a.rot + angles[(oi + ai) % angles.length]!;
+        const x = a.x + Math.cos(theta) * dist;
+        const y = a.y + Math.sin(theta) * dist;
+        const rot = a.rot + ((ai + oi) % 4) * (Math.PI / 2);
+        if (fits(ctx, out, x, y, radius, reach)) {
+          out.push(pose(x, y, rot, radius, reach));
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Settle wide single wall furniture (`hearth`, `serving-counter`, `workbench`, `guard-desk`, `quench-trough`, `pulpit`,
+ * `reliquary`, `smelter`) flush against straight wall runs at `reach` distance with cardinal-snapped orientation,
+ * preferring spots where the wall stays straight across the full width `2 * radius` of the piece.
+ */
+export function layWallFlush(ctx: ArrangeCtx, seeds: readonly Placed[], radius: number, count: number, gap: number, o: LayOpts = {}): Placed[] {
+  const out: Placed[] = [];
+  if (count <= 0) return out;
+  const reach = o.reach ?? radius;
+  const scored: { pos: Placed; run: number }[] = [];
+
+  for (const seed of seeds) {
+    // Snap normal to nearest cardinal axis so architectural furniture never sits crooked against a stair-step corner
+    const rawNx = seed.nx ?? Math.cos(seed.rot);
+    const rawNy = seed.ny ?? Math.sin(seed.rot);
+    const cardinalRot = Math.round(Math.atan2(rawNy, rawNx) / (Math.PI / 2)) * (Math.PI / 2);
+    const nx = Math.cos(cardinalRot);
+    const ny = Math.sin(cardinalRot);
+    const snappedSeed = pose(seed.x, seed.y, cardinalRot, 0.05, reach, { nx, ny });
+    const probes = layRow(ctx, snappedSeed, 0.1, 25, 0, { reach });
+    if (probes.length === 0) continue;
+    const along = probes.map((p) => (p.x - seed.x) * -ny + (p.y - seed.y) * nx);
+    const run = Math.max(...along) - Math.min(...along);
+    const candidate = pose(seed.x, seed.y, cardinalRot, radius, reach, { nx, ny });
+    if (fits(ctx, [], candidate.x, candidate.y, radius, reach)) {
+      scored.push({ pos: candidate, run });
+    }
+  }
+
+  scored.sort((a, b) => b.run - a.run);
+  const minSep = 2 * radius + gap;
+  for (const s of scored) {
+    if (out.length >= count) break;
+    if (!fits(ctx, out, s.pos.x, s.pos.y, radius, reach)) continue;
+    if (out.some((p) => Math.hypot(p.x - s.pos.x, p.y - s.pos.y) < minSep)) continue;
+    out.push(s.pos);
+  }
+  return out;
+}

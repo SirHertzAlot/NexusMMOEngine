@@ -193,7 +193,10 @@ export function GameplayGridsPanel(): React.JSX.Element {
     grids.edit(table, next);
     setStatus(null);
   };
-  const shownRows = viewRows(mine, { search, filters: filterKey ? { [filterKey]: filterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
+  const deferredSearch = React.useDeferredValue(search);
+  const deferredFilterKey = React.useDeferredValue(filterKey);
+  const deferredFilterText = React.useDeferredValue(filterText);
+  const shownRows = viewRows(mine, { search: deferredSearch, filters: deferredFilterKey ? { [deferredFilterKey]: deferredFilterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
   const mainCols = def.columns.filter((c) => !c.nested);
   const nestedCols = def.columns.filter((c) => c.nested);
   const serverCell = (rowId: string, key: string): string | null =>
@@ -254,7 +257,7 @@ export function GameplayGridsPanel(): React.JSX.Element {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Gameplay tables">
         {GAMEPLAY_TABLES.map((t) => (
-          <Button key={t} role="tab" aria-selected={t === table} size="sm" variant={t === table ? "default" : "outline"} onClick={() => { setTable(t); setSelected(new Set()); setIssues([]); setSort(null); setFilterKey(""); }}>
+          <Button key={t} role="tab" aria-selected={t === table} size="sm" variant={t === table ? "default" : "outline"} onClick={() => { setTable(t); setSelected(new Set()); setIssues([]); setSort(null); React.startTransition(() => setFilterKey("")); }}>
             {TABLE_DEFS[t].label}
             {dirty(t) && <span aria-label="unsaved" className="h-2 w-2 rounded-full bg-yellow-400" />}
           </Button>
@@ -263,12 +266,12 @@ export function GameplayGridsPanel(): React.JSX.Element {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Input className="h-8 w-48" placeholder={`Search ${def.label.toLowerCase()}…`} aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Select size="xs" aria-label="Filter column" value={filterKey} onChange={(e) => setFilterKey(e.target.value)}>
+        <Input className="h-8 w-48" placeholder={`Search ${def.label.toLowerCase()}…`} aria-label="Search" value={search} onChange={(e) => React.startTransition(() => setSearch(e.target.value))} />
+        <Select size="xs" aria-label="Filter column" value={filterKey} onChange={(e) => React.startTransition(() => setFilterKey(e.target.value))}>
           <option value="">filter by…</option>
           {def.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
         </Select>
-        {filterKey && <Input className="h-8 w-32" aria-label="Filter text" placeholder="contains" value={filterText} onChange={(e) => setFilterText(e.target.value)} />}
+        {filterKey && <Input className="h-8 w-32" aria-label="Filter text" placeholder="contains" value={filterText} onChange={(e) => React.startTransition(() => setFilterText(e.target.value))} />}
         <Button size="sm" variant="ghost" onClick={() => setDense(!dense)}>{dense ? "Comfortable rows" : "Compact rows"}</Button>
         <span className="text-xs text-muted-foreground">{shownRows.length} of {mine.length} rows{localErrors > 0 ? `, ${localErrors} cell problem${localErrors === 1 ? "" : "s"}` : ""}</span>
         <div className="ml-auto flex items-center gap-2">
@@ -409,7 +412,7 @@ export function ContentBrowserPanel(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Input className="h-8 w-48" aria-label="Search content" placeholder="Search content…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input className="h-8 w-48" aria-label="Search content" placeholder="Search content…" value={q} onChange={(e) => React.startTransition(() => setQ(e.target.value))} />
         {(["all", ...CATALOG_KINDS] as const).map((k) => (
           <Button key={k} size="sm" variant={kind === k ? "default" : "outline"} onClick={() => setKind(k)}>
             {k === "all" ? "All" : KIND_LABEL[k]}

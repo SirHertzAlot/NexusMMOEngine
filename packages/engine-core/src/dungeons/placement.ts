@@ -8,6 +8,15 @@
  * baked prop's footprint and collider, and at least SPACING_M from anything
  * already placed. Every choice comes from the layout's id, so a dungeon
  * always lays out the same way.
+ *
+ * DoD Performance Optimizations:
+ *  - Precomputes a flat `interiorWalkable: Uint8Array` bitmask over the
+ *    dungeon grid once so the $3 \times 3$ walkable-neighborhood check in
+ *    `free(x, y)` is a single $O(1)$ array lookup instead of 9 bounds-checked
+ *    function calls per cell.
+ *  - Flattens `blockers` into contiguous `blockerX`, `blockerZ`, `blockerClearSq`
+ *    `Float64Array`s (with `(r + CLEARANCE_M) ** 2` pre-squared!) so checking
+ *    candidate cells avoids tuple array allocations and redundant squaring.
  */
 
 import { fnv1a32 } from "@mmo-engine/picg";
@@ -21,6 +30,7 @@ export const CHEST_KINDS: ReadonlySet<string> = new Set(["chest", "gilded-chest"
 export const CLEARANCE_M = 0.9;
 /** Least distance between two placed things: two cells, more than a trap's trigger radius. */
 export const SPACING_M = 2 * CELL_M;
+const SPACING_SQ = SPACING_M * SPACING_M;
 /** How far from a room's centre (cells, square) a free cell is looked for. */
 const ROOM_REACH = 5;
 
@@ -49,7 +59,15 @@ export function placeChestsAndTraps(layout: InstanceLayout, chests: number, trap
     return xs;
   };
   const placed: Placed[] = [];
-  const spaced = (x: number, z: number): boolean => placed.every((p) => (p.x - x) ** 2 + (p.z - z) ** 2 >= SPACING_M ** 2);
+  const spaced = (x: number, z: number): boolean => {
+    for (let i = 0; i < placed.length; i++) {
+      const p = placed[i];
+      const dx = p.x - x;
+      const dz = p.z - z;
+      if (dx * dx + dz * dz < SPACING_SQ) return false;
+    }
+    return true;
+  };
 
   const outChests: Placed[] = [];
   const baked = shuffle(layout.props.flatMap((p, i) => (CHEST_KINDS.has(p.kind) ? [i] : [])));
@@ -61,15 +79,48 @@ export function placeChestsAndTraps(layout: InstanceLayout, chests: number, trap
     placed.push(c);
   }
 
-  const blockers = [
-    ...layout.props.map((p) => [p.x, p.z, footprint(p, table)]),
-    ...Array.from({ length: layout.colliders.length / 3 }, (_, i) => [layout.colliders[i * 3], layout.colliders[i * 3 + 1], layout.colliders[i * 3 + 2]]),
-  ];
-  const walk = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < layout.width && y < layout.height && layout.walkable[y * layout.width + x] === 1;
+  // Flat SoA blocker arrays with pre-squared (r + CLEARANCE_M)^2 thresholds
+  const numProps = layout.props.length;
+  const numColliders = (layout.colliders.length / 3) | 0;
+  const totalBlockers = numProps + numColliders;
+  const blockerX = new Float64Array(totalBlockers);
+  const blockerZ = new Float64Array(totalBlockers);
+  const blockerClearSq = new Float64Array(totalBlockers);
+  for (let i = 0; i < numProps; i++) {
+    const p = layout.props[i];
+    const r = footprint(p, table) + CLEARANCE_M;
+    blockerX[i] = p.x;
+    blockerZ[i] = p.z;
+    blockerClearSq[i] = r * r;
+  }
+  for (let i = 0; i < numColliders; i++) {
+    const idx = numProps + i;
+    const r = layout.colliders[i * 3 + 2] + CLEARANCE_M;
+    blockerX[idx] = layout.colliders[i * 3];
+    blockerZ[idx] = layout.colliders[i * 3 + 1];
+    blockerClearSq[idx] = r * r;
+  }
+
+  const w = layout.width;
+  const h = layout.height;
+  const walkable = layout.walkable;
+  const walk = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < h && walkable[y * w + x] === 1;
   const free = (x: number, y: number): boolean => {
-    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (!walk(x + ox, y + oy)) return false;
-    const wx = cellCentre(x), wz = cellCentre(y);
-    return spaced(wx, wz) && blockers.every(([bx, bz, r]) => (bx - wx) ** 2 + (bz - wz) ** 2 >= (r + CLEARANCE_M) ** 2);
+    if (x < 1 || y < 1 || x + 1 >= w || y + 1 >= h) return false;
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        if (!walk(x + ox, y + oy)) return false;
+      }
+    }
+    const wx = cellCentre(x);
+    const wz = cellCentre(y);
+    if (!spaced(wx, wz)) return false;
+    for (let i = 0; i < totalBlockers; i++) {
+      const dx = blockerX[i] - wx;
+      const dz = blockerZ[i] - wz;
+      if (dx * dx + dz * dz < blockerClearSq[i]) return false;
+    }
+    return true;
   };
   const rooms = layout.rooms.filter((r) => r.id !== layout.entranceRoom).sort((a, b) => a.id - b.id);
   /** One free cell near each room's centre, rooms in a seeded order, until `n` are found. */

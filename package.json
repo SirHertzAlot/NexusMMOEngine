@@ -3,6 +3,7 @@
   "devDependencies": {
     "@gltf-transform/cli": "^4.5.1",
     "@types/node": "^25.0.0",
+    "playwright": "^1.64.1",
     "typescript": "^5.6.3"
   },
   "engines": {
@@ -12,12 +13,14 @@
   "private": true,
   "scripts": {
     "bench": "npm run bench --workspace=@mmo-engine/bench",
+    "bench:transport": "node packages/engine-core/dist/src/net/transport-bench.js",
     "bench:e5": "node scripts/bench-e5.mjs",
     "build": "node scripts/build.mjs",
     "client": "npm run dev --workspace=@mmo-engine/client",
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
     "codegen": "node scripts/codegen.mjs",
+    "lint": "node scripts/lint-no-console.mjs",
     "editor": "npm run dev --workspace=@mmo-engine/editor",
     "editor:build": "npm run build --workspace=@mmo-engine/editor",
     "editor:test": "npm test --workspace=@mmo-engine/editor",
@@ -41,6 +44,7 @@
     "valgrind:check": "node scripts/valgrind/check.mjs",
     "valgrind:build-debug": "node scripts/valgrind/build-debug.mjs",
     "valgrind:perf": "npm run build --workspace=@mmo-engine/engine-core && node scripts/valgrind/perf.mjs",
+    "valgrind:helgrind": "node scripts/valgrind/helgrind.mjs",
     "test:addon-physics": "npm run test --workspace=@mmo-engine/addon-physics",
     "test:addon-picg": "npm run test --workspace=@mmo-engine/addon-picg",
     "test:addon-procgen": "npm run test --workspace=@mmo-engine/addon-procgen",
@@ -54,12 +58,14 @@
     "build:native": "node scripts/build-native.mjs",
     "bake:all": "node scripts/bake-all.mjs",
     "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --",
-    "settlement:region": "npm run settlement:region --workspace=@mmo-engine/settlement --"
+    "settlement:region": "npm run settlement:region --workspace=@mmo-engine/settlement --",
+    "crawler:improvements": "node scripts/improvement-crawler.mjs"
   },
   "version": "0.1.0",
   "workspaces": [
     "packages/schema",
     "packages/protocol",
+    "packages/logging",
     "packages/mirror",
     "packages/art",
     "packages/rules",
@@ -94,10 +100,11 @@
     "packages/addons/geometry",
     "packages/addons/perf-probe",
     "packages/build",
-    "packages/playtest"
+    "packages/playtest",
+    "packages/synthesis"
   ],
   "dependencies": {
-    "@surrealdb/node": "^3.0.3",
+    "@surrealdb/node": "^3.1.0",
     "argon2": "^0.45.1"
   },
   "allowScripts": {

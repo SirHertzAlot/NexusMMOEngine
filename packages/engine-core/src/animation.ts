@@ -2,25 +2,38 @@
  * EA21 AnimationSystem: the server's clip decisions.
  *
  * Each tick, for every entity with an Animation component:
- * - a combat move (Action.move) → the move's clip (attack, block, hit);
- * - otherwise, locomotion from velocity → idle, walk, jog, sprint.
+ * - a dead entity (Health <= 0) → death fall;
+ * - a combat move (Action.move) → the move's clip (attack, block, hit, creature bite/claw/pounce/stomp);
+ * - otherwise, locomotion from velocity and locomotion mode → idle, walk, trot, jog, gallop, sprint, swim, fly.
  *
  * The clip is only (re)started when it changes; the client blends and
  * renders from (clipId, startTick, rate, layerMask). Nothing here touches
  * bones — that's the client's job.
  */
 import { addComponent, defineQuery, hasComponent } from "bitecs";
-import { ClipId, Move } from "@mmo-engine/protocol";
+import { ClipId, Move, LocomotionMode } from "@mmo-engine/protocol";
 import * as C from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 
 /** Combat move → clip. */
-const MOVE_CLIPS: Record<number, number> = {
+export const MOVE_CLIPS: Record<number, number> = {
   [Move.SwordA]: ClipId.AttackSwordA,
   [Move.SwordB]: ClipId.AttackSwordB,
   [Move.SwordC]: ClipId.AttackSwordC,
   [Move.Guard]: ClipId.Block,
+  [Move.Roll]: ClipId.Roll,
+  [Move.ShieldBash]: ClipId.ShieldBash,
+  [Move.Bite]: ClipId.Bite,
+  [Move.Claw]: ClipId.Claw,
+  [Move.Pounce]: ClipId.Pounce,
+  [Move.Roar]: ClipId.Roar,
+  [Move.Breath]: ClipId.Breath,
+  [Move.TailWhip]: ClipId.TailWhip,
+  [Move.Stomp]: ClipId.Stomp,
+  [Move.WingBuffet]: ClipId.WingBuffet,
+  [Move.Sting]: ClipId.Sting,
+  [Move.Cleave]: ClipId.Cleave,
 };
 
 /** Layer: attacks play over the base (upper body), locomotion is full body. */
@@ -35,6 +48,12 @@ export class AnimationSystem implements SimSystem {
   step(world: SimWorld, _dt: number): void {
     const tick = world.currentTick;
     for (const eid of animated(world.ecs)) {
+      // Death takes highest priority: dead bodies do not locomote or swing.
+      if (hasComponent(world.ecs, C.Health, eid) && C.Health.current[eid] <= 0) {
+        this.setClip(world, eid, ClipId.DeathFall, tick, 1, LAYER_BASE);
+        continue;
+      }
+
       // Combat moves take priority.
       let clip = 0;
       let layer = LAYER_BASE;
@@ -52,8 +71,14 @@ export class AnimationSystem implements SimSystem {
           }
         }
       }
-      // Locomotion fallback from horizontal speed.
-      if (hasComponent(world.ecs, C.Velocity, eid)) {
+
+      // Locomotion mode and velocity fallback.
+      const mode = hasComponent(world.ecs, C.Locomotion, eid) ? C.Locomotion.mode[eid] : LocomotionMode.Ground;
+      if (mode === LocomotionMode.Swim) {
+        clip = ClipId.Swim;
+      } else if (mode === LocomotionMode.Fly) {
+        clip = ClipId.Fly;
+      } else if (hasComponent(world.ecs, C.Velocity, eid)) {
         const vx = C.Velocity.lx[eid] ?? 0;
         const vz = C.Velocity.lz[eid] ?? 0;
         const speed = Math.hypot(vx, vz);

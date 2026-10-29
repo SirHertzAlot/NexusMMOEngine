@@ -11,7 +11,7 @@ import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
 import { blowRng, Body, BodySystem, BLEEDING_BIT, Injury, NO_JUMP, restoreBody, Wound, type BodySkills } from "../src/body.js";
 import { treatmentSeconds } from "@mmo-engine/rules";
-import { CombatSystem, type Weapon } from "../src/combat.js";
+import { aimFromLookPitch, CombatSystem, type Weapon } from "../src/combat.js";
 import { DeathSystem } from "../src/death.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
 import { loadGameRules } from "../src/rules/boot.js";
@@ -282,9 +282,9 @@ describe("body in combat", () => {
     const combat = new CombatSystem(30, undefined, { hooks, weaponOf: () => SWORD, body: w.body, techniques: () => Object.keys(rules.combat.techniques), skills });
     const systems = [new IntentSystem(), combat, w.body, new IntegrateSystem()];
     let tick = 0;
-    const run = (ticks: number, buttons = 0): void => {
+    const run = (ticks: number, buttons = 0, lookPitch = 0): void => {
       for (let i = 0; i < ticks; i++) {
-        w.sim.queueIntent(e, { mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons });
+        w.sim.queueIntent(e, { mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch, jump: false, buttons });
         w.sim.beginTick(++tick);
         for (const s of systems) s.step(w.sim, DT);
         w.sim.endTick();
@@ -343,6 +343,31 @@ describe("body in combat", () => {
     assert.ok(onHead >= 8, `aimed at the head, landed there ${onHead} times`);
     assert.equal(f.combat.setStance(f.e, null, null), null);
     assert.deepEqual(f.combat.stanceOf(f.e), {});
+  });
+
+  it("derives aim from lookPitch when no explicit stance.aim is locked", () => {
+    const f = fight();
+    const parts = f.body.parts;
+    assert.equal(aimFromLookPitch(0, parts, "torso"), "torso");
+    assert.equal(aimFromLookPitch(-0.35, parts, "torso"), "head");
+    assert.equal(aimFromLookPitch(0.45, parts, "torso", -0.2), "legLeft");
+    assert.equal(aimFromLookPitch(0.45, parts, "torso", 0.2), "legRight");
+    assert.equal(aimFromLookPitch(0.24, parts, "torso", -0.2), "armUpperLeft");
+    assert.equal(aimFromLookPitch(0.24, parts, "torso", 0.2), "armUpperRight");
+
+    skill = rules.skills.max;
+    let onHead = 0;
+    for (let i = 0; i < 12; i++) {
+      C.Health.current[f.t] = 100;
+      C.Transform.pz[f.e] = 0;
+      f.body.respawned(f.sim, f.t, { clearInjuries: true, restoreParts: true });
+      f.run(60, IntentButton.Attack, -0.35);
+      f.run(40, 0, -0.35);
+      for (const h of f.combat.drainHits()) {
+        if (h.part === "head") onHead++;
+      }
+    }
+    assert.ok(onHead >= 8, `pitch-aimed at head, landed ${onHead}/12 times`);
   });
 });
 

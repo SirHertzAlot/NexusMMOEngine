@@ -1,89 +1,36 @@
 {
   "version": 1,
   "clips": [
-    {
-      "id": 1,
-      "name": "idle",
-      "clip": "Idle_Loop",
-      "loop": true,
-      "fade": 0.2
-    },
-    {
-      "id": 2,
-      "name": "walk",
-      "clip": "Walk_Loop",
-      "loop": true,
-      "fade": 0.2
-    },
-    {
-      "id": 3,
-      "name": "jog",
-      "clip": "Jog_Fwd_Loop",
-      "loop": true,
-      "fade": 0.2
-    },
-    {
-      "id": 4,
-      "name": "sprint",
-      "clip": "Sprint_Loop",
-      "loop": true,
-      "fade": 0.2
-    },
-    {
-      "id": 5,
-      "name": "swim",
-      "clip": "Swim_Fwd_Loop",
-      "loop": true,
-      "fade": 0.2
-    },
-    {
-      "id": 6,
-      "name": "airborne",
-      "clip": "Jump_Loop",
-      "loop": true,
-      "fade": 0.15
-    },
-    {
-      "id": 10,
-      "name": "attack sword A",
-      "clip": "Sword_Regular_A",
-      "loop": false,
-      "fade": 0.08
-    },
-    {
-      "id": 11,
-      "name": "attack sword B",
-      "clip": "Sword_Regular_B",
-      "loop": false,
-      "fade": 0.08
-    },
-    {
-      "id": 12,
-      "name": "attack sword C",
-      "clip": "Sword_Regular_C",
-      "loop": false,
-      "fade": 0.08
-    },
-    {
-      "id": 13,
-      "name": "block",
-      "clip": "Idle_Shield_Loop",
-      "loop": true,
-      "fade": 0.12
-    },
-    {
-      "id": 14,
-      "name": "hit",
-      "clip": "Hit_Reaction",
-      "loop": false,
-      "fade": 0.05
-    },
-    {
-      "id": 15,
-      "name": "cast",
-      "clip": "Cast_Spell",
-      "loop": false,
-      "fade": 0.1
-    }
+    { "id": 1, "name": "idle", "clip": "Idle_Loop", "loop": true, "fade": 0.2 },
+    { "id": 2, "name": "walk", "clip": "Walk_Loop", "loop": true, "fade": 0.2 },
+    { "id": 3, "name": "jog", "clip": "Jog_Fwd_Loop", "loop": true, "fade": 0.2 },
+    { "id": 4, "name": "sprint", "clip": "Sprint_Loop", "loop": true, "fade": 0.2 },
+    { "id": 5, "name": "swim", "clip": "Swim_Fwd_Loop", "loop": true, "fade": 0.2 },
+    { "id": 6, "name": "airborne", "clip": "Jump_Loop", "loop": true, "fade": 0.15 },
+    { "id": 7, "name": "trot", "clip": "Trot_Loop", "loop": true, "fade": 0.2 },
+    { "id": 8, "name": "gallop", "clip": "Gallop_Loop", "loop": true, "fade": 0.2 },
+    { "id": 9, "name": "fly", "clip": "Fly_Loop", "loop": true, "fade": 0.2 },
+    { "id": 10, "name": "attack sword A", "clip": "Sword_Regular_A", "loop": false, "fade": 0.08 },
+    { "id": 11, "name": "attack sword B", "clip": "Sword_Regular_B", "loop": false, "fade": 0.08 },
+    { "id": 12, "name": "attack sword C", "clip": "Sword_Regular_C", "loop": false, "fade": 0.08 },
+    { "id": 13, "name": "block", "clip": "Idle_Shield_Loop", "loop": true, "fade": 0.12 },
+    { "id": 14, "name": "hit", "clip": "Hit_Reaction", "loop": false, "fade": 0.05 },
+    { "id": 15, "name": "cast", "clip": "Cast_Spell", "loop": false, "fade": 0.1 },
+    { "id": 16, "name": "roll", "clip": "Roll", "loop": false, "fade": 0.08 },
+    { "id": 17, "name": "shield bash", "clip": "Shield_OneShot", "loop": false, "fade": 0.08 },
+    { "id": 20, "name": "bite", "clip": "Creature_Bite", "loop": false, "fade": 0.08 },
+    { "id": 21, "name": "claw", "clip": "Creature_Claw", "loop": false, "fade": 0.08 },
+    { "id": 22, "name": "pounce", "clip": "Creature_Pounce", "loop": false, "fade": 0.08 },
+    { "id": 23, "name": "roar", "clip": "Creature_Roar", "loop": false, "fade": 0.1 },
+    { "id": 24, "name": "breath", "clip": "Creature_Breath", "loop": false, "fade": 0.1 },
+    { "id": 25, "name": "tail whip", "clip": "Creature_TailWhip", "loop": false, "fade": 0.08 },
+    { "id": 26, "name": "stomp", "clip": "Creature_Stomp", "loop": false, "fade": 0.08 },
+    { "id": 27, "name": "wing buffet", "clip": "Creature_WingBuffet", "loop": false, "fade": 0.08 },
+    { "id": 28, "name": "sting", "clip": "Creature_Sting", "loop": false, "fade": 0.08 },
+    { "id": 29, "name": "cleave", "clip": "Creature_Cleave", "loop": false, "fade": 0.08 },
+    { "id": 40, "name": "graze", "clip": "Creature_Graze_Loop", "loop": true, "fade": 0.25 },
+    { "id": 41, "name": "sleep", "clip": "Creature_Sleep_Loop", "loop": true, "fade": 0.3 },
+    { "id": 42, "name": "threaten", "clip": "Creature_Threaten_Loop", "loop": true, "fade": 0.15 },
+    { "id": 43, "name": "death fall", "clip": "Creature_DeathFall", "loop": false, "fade": 0.1 }
   ]
 }

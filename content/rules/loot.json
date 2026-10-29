@@ -22,6 +22,54 @@
         { "base": "axe", "chance": 0.15 },
         { "base": "mace", "chance": 0.1 }
       ]
+    },
+    "orc-spoils": {
+      "entries": [
+        { "base": "axe", "chance": 0.35 },
+        { "base": "greatsword", "chance": 0.2 },
+        { "base": "shield", "chance": 0.2 },
+        { "base": "dried-meat", "chance": 0.5, "count": [1, 2] }
+      ]
+    },
+    "troll-spoils": {
+      "entries": [
+        { "base": "mace", "chance": 0.3 },
+        { "base": "greatsword", "chance": 0.25 },
+        { "base": "cuirass", "chance": 0.15 },
+        { "base": "dried-meat", "chance": 0.6, "count": [2, 4] }
+      ]
+    },
+    "beast-spoils": {
+      "entries": [
+        { "base": "dried-meat", "chance": 0.75, "count": [1, 3] },
+        { "base": "waterskin", "chance": 0.3 }
+      ]
+    },
+    "undead-spoils": {
+      "entries": [
+        { "base": "sword", "chance": 0.25 },
+        { "base": "spear", "chance": 0.2 },
+        { "base": "bow", "chance": 0.15 },
+        { "base": "ring", "chance": 0.1 }
+      ]
+    },
+    "demon-spoils": {
+      "entries": [
+        { "base": "dagger", "chance": 0.3 },
+        { "base": "greatsword", "chance": 0.2 },
+        { "base": "amulet", "chance": 0.15 },
+        { "base": "ring", "chance": 0.15 }
+      ]
+    },
+    "boss-spoils": {
+      "entries": [
+        { "base": "greatsword", "chance": 0.4 },
+        { "base": "staff", "chance": 0.4 },
+        { "base": "cuirass", "chance": 0.3 },
+        { "base": "amulet", "chance": 0.35 },
+        { "base": "ring", "chance": 0.35 },
+        { "base": "key", "chance": 1 }
+      ]
     }
   }
 }

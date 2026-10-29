@@ -284,7 +284,7 @@ export function App(): React.JSX.Element {
   const activeView = ws.views.find((v) => v.id === view) ?? ws.views[0];
 
   function pickWorkspace(id: WorkspaceId): void {
-    setWorkspace(id);
+    React.startTransition(() => setWorkspace(id));
     const next = WORKSPACES.find((w) => w.id === id) ?? WORKSPACES[0];
     setView(next.views[0].id);
     setPlayMenu(false);
@@ -597,7 +597,8 @@ export function App(): React.JSX.Element {
   }, []);
 
   return (
-    <div
+    
+        <div
       className="flex h-screen flex-col"
       style={{
         background: "var(--m3-surface)",
@@ -661,8 +662,10 @@ export function App(): React.JSX.Element {
         />
       )}
 
-      <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
+      
+        <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
         {/* left dock */}
+        
         <div
           ref={leftRef}
           className={`flex-none ${docks.left ? "hidden md:block" : "hidden"}`}
@@ -701,8 +704,10 @@ export function App(): React.JSX.Element {
         )}
 
         {/* center: viewport tabs + panel + bottom dock */}
+        
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <div
+          
+        <div
             className="flex h-9 flex-none items-center gap-0.5 rounded-xl px-1.5"
             role="tablist"
             aria-label="Views"
@@ -736,7 +741,8 @@ export function App(): React.JSX.Element {
             </span>
           </div>
 
-          <div
+          
+        <div
             className="m3-scroll relative min-h-0 flex-1 overflow-auto rounded-xl p-3"
             style={{
               background: "var(--m3-surface-1)",
@@ -757,7 +763,8 @@ export function App(): React.JSX.Element {
               onReset={() => setBottomH(144)}
             />
           )}
-          <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
+          
+        <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
             <DockPanel
               tabs={[
                 { id: "output", label: "Output", icon: "terminal" },
@@ -794,6 +801,7 @@ export function App(): React.JSX.Element {
           />
         )}
         {/* right dock */}
+        
         <div
           ref={rightRef}
           className={`flex-none ${docks.right ? "hidden lg:block" : "hidden"}`}
@@ -815,7 +823,8 @@ export function App(): React.JSX.Element {
             }
           >
             {playing ? (
-              <div className="flex flex-col gap-2">
+              
+        <div className="flex flex-col gap-2">
                 <p
                   className="rounded-xl px-3 py-2 text-xs font-medium"
                   style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
@@ -1040,7 +1049,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
 
   return (
     <>
-    <div
+    
+        <div
       className="flex h-12 flex-none items-center gap-1.5 px-3"
       style={{ background: "var(--m3-surface-0)" }}
     >
@@ -1189,7 +1199,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       </span>
       {dialog === "shortcuts" && (
         <ShellDialog title="Keyboard Shortcuts" onClose={() => setDialog(null)}>
-          <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13px]">
+          
+        <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-[13px]">
             {[
               ["Ctrl K", "Command search"],
               ["Ctrl Shift S", "Save layout as…"],
@@ -1219,7 +1230,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
         </ShellDialog>
       )}
     </div>
-    <div
+    
+        <div
       className="flex h-10 flex-none items-center px-3"
       style={{ background: "var(--m3-surface-0)", borderTop: "1px solid var(--m3-surface-2)" }}
     >
@@ -1343,7 +1355,8 @@ function Toolbar(props: {
   }, []);
 
   return (
-    <div
+    
+        <div
       className="relative flex h-[52px] flex-none items-center gap-1 px-3"
       style={{
         background: "var(--m3-surface)",
@@ -1352,7 +1365,8 @@ function Toolbar(props: {
           : "1px solid var(--m3-outline-variant)",
       }}
     >
-      <div
+      
+        <div
         className="absolute inset-0"
         onContextMenu={(e) => {
           if ((e.target as HTMLElement).closest("button, input")) return;
@@ -1405,7 +1419,9 @@ function Toolbar(props: {
 
       {/* play cluster — segmented mode + split Play, always centered.
           Tertiary so play state reads at a glance (§3.2, §3.5). */}
-      <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1.5 md:flex">
+      
+        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1.5 md:flex">
+        
         <div
           className="flex h-10 items-center overflow-hidden rounded-full text-sm font-medium"
           role="group"
@@ -1428,6 +1444,7 @@ function Toolbar(props: {
             );
           })}
         </div>
+        
         <div
           className="flex h-10 items-center overflow-hidden rounded-full text-sm font-semibold"
           style={{ background: "var(--m3-tertiary-container)", color: "var(--m3-on-tertiary-container)" }}
@@ -1492,7 +1509,8 @@ function Toolbar(props: {
         </span>}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      
+        <div className="ml-auto flex items-center gap-2">
         <StatusChip live={pmState === "running"}>{pmState === "running" ? "Playing" : pmState === "starting" ? "Starting…" : "Server idle"}</StatusChip>
         {show("modules") && <span
           className="hidden h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs lg:inline-flex"
@@ -1570,7 +1588,8 @@ function Toolbar(props: {
       {props.playMenu && (
         <>
           <span className="fixed inset-0 z-40" onClick={props.onClosePlayMenu} aria-hidden="true" />
-          <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
+          
+        <div className="absolute left-1/2 top-[52px] z-50 -translate-x-1/2">
             <PlayMenu setup={props.playSetup} onChange={props.onPlaySetup} onPlay={props.onPlay} onClose={props.onClosePlayMenu} />
           </div>
         </>
@@ -1730,12 +1749,14 @@ function CommandPalette({ onClose, onGo, onPlay, onStop, commands: shell }: {
   return (
     <>
       <span className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" style={{ background: "rgba(0,0,0,.4)" }} />
-      <div
+      
+        <div
         className="fixed left-1/2 top-24 z-50 w-[32rem] max-w-[90vw] overflow-hidden rounded-2xl"
         role="dialog"
         aria-label="Command search"
         style={{ background: "var(--m3-surface-3)", boxShadow: "0 6px 16px rgba(0,0,0,.5)" }}
       >
+        
         <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: "var(--m3-outline-variant)" }}>
           <MIcon name="search" size={20} />
           <input
@@ -1834,7 +1855,8 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
   }
   if (props.workspace === "scenes") {
     return (
-      <div className="flex flex-col gap-0.5">
+      
+        <div className="flex flex-col gap-0.5">
         <OwnedFiles
           kind="scene"
           onOpen={(name) => {
@@ -1852,7 +1874,8 @@ function LeftTree(props: { workspace: WorkspaceId; view: string; onView: (v: str
 /** The workspace's views as a list, with a line on where its content lives. */
 function ViewListTree(props: { view: string; onView: (v: string) => void; views: Workspace["views"]; hint: string }): React.JSX.Element {
   return (
-    <div>
+    
+        <div>
       <SelectableList
         navigation
         size="lg"
@@ -1874,7 +1897,8 @@ function DebugTree(): React.JSX.Element {
   const t = useTree();
   const { entityId, autoRefresh, pmState } = playUiStore.use();
   return (
-    <div className="flex flex-col gap-0.5">
+    
+        <div className="flex flex-col gap-0.5">
       <TreeItem
         icon="dns" label="Owned server" trailing={pmState}
         hasKids expanded={t.open.includes("server")} onToggle={() => t.toggle("server")}
@@ -1885,7 +1909,8 @@ function DebugTree(): React.JSX.Element {
           Start and Stop live in the Play mode panel; this dock mirrors its state and overlays.
         </p>
       )}
-      <div className="flex items-center gap-2 py-1.5 pl-11 pr-1.5">
+      
+        <div className="flex items-center gap-2 py-1.5 pl-11 pr-1.5">
         <input
           value={entityId}
           onChange={(e) => setPlayEntityId(e.target.value)}
@@ -1966,7 +1991,8 @@ function TickTimingsPanel(): React.JSX.Element {
     );
   }
   return (
-    <div className="px-3">
+    
+        <div className="px-3">
       <p className="text-xs font-medium">Tick timings ({timings.ticks} ticks)</p>
       <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
         p50 {timings.p50.toFixed(1)}ms · p99 {timings.p99.toFixed(1)}ms
@@ -1995,7 +2021,8 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
   const t = useTree();
   const RULES = ["appearance", "body", "combat", "creatures", "death", "disciplines", "gathering", "ingress", "items", "loot", "movement", "needs", "skills", "social", "spells", "stats"];
   const folder = (id: string, label: string, icon: string, kids: React.ReactNode): React.JSX.Element => (
-    <div key={id}>
+    
+        <div key={id}>
       <TreeItem
         icon={icon} label={label} mono
         hasKids expanded={t.open.includes(id)} onToggle={() => t.toggle(id)}
@@ -2017,7 +2044,8 @@ function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void 
     />
   );
   return (
-    <div className="flex flex-col gap-0.5">
+    
+        <div className="flex flex-col gap-0.5">
       {folder("rules", "content/rules", "folder", (
         <>
           {RULES.map((r) => file(`content/rules/${r}.json`, `${r}.json`, ["gameplay", ["creatures", "items", "combat", "body", "movement", "skills", "social"].includes(r) ? "tables" : undefined]))}
@@ -2083,8 +2111,10 @@ function GameplayDetails(): React.JSX.Element {
   const report = usePendingChanges();
   const icon = { edit: "edit", add: "add_circle", remove: "remove_circle", error: "error" } as const;
   return (
-    <div className="flex flex-col gap-3">
-      <div
+    
+        <div className="flex flex-col gap-3">
+      
+        <div
         className="rounded-xl p-2.5 text-[12.5px]"
         style={{ background: "var(--m3-success-container)", color: "#d7f8c3" }}
       >
@@ -2112,6 +2142,40 @@ function GameplayDetails(): React.JSX.Element {
   );
 }
 
+function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-3 text-xs">
+      <div>
+        <p className="text-sm font-semibold">{selection.label}</p>
+        <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
+          {selection.kind} · {selection.id}
+        </p>
+      </div>
+      <span className="w-fit rounded-md px-2 py-1 text-[11px] font-medium" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>
+        Selected from {selection.source.replace("-", " ")}
+      </span>
+      {selection.components.length === 0 ? (
+        <p style={{ color: "var(--m3-on-surface-variant)" }}>no details for {selection.kind} {selection.id} — pick something else.</p>
+      ) : (
+        selection.components.map((component) => (
+          <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>
+            <p className="mb-2 font-medium">{component.name}</p>
+            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 font-mono text-[11px]">
+              {component.fields.map((field) => (
+                <React.Fragment key={field.key}>
+                  <dt style={{ color: "var(--m3-on-surface-variant)" }}>{field.key}</dt>
+                  <dd className="text-right">{field.value}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          </section>
+        ))
+      )}
+    </div>
+  );
+}
+
+
 function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string }): React.JSX.Element {
   const selection = useEditorSelection();
   if (selection && isSelectionVisible(selection, workspace, view)) return <SelectionDetails selection={selection} />;
@@ -2125,38 +2189,6 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
   if (workspace === "artaudio" && view === "scale") return <ScaleNote />;
   if (workspace === "gameplay") return <GameplayDetails />;
 
-  function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
-    return (
-      <div className="flex flex-col gap-3 text-xs">
-        <div>
-          <p className="text-sm font-semibold">{selection.label}</p>
-          <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
-            {selection.kind} · {selection.id}
-          </p>
-        </div>
-        <span className="w-fit rounded-md px-2 py-1 text-[11px] font-medium" style={{ background: "var(--m3-secondary-container)", color: "var(--m3-on-secondary-container)" }}>
-          Selected from {selection.source.replace("-", " ")}
-        </span>
-        {selection.components.length === 0 ? (
-          <p style={{ color: "var(--m3-on-surface-variant)" }}>no details for {selection.kind} {selection.id} — pick something else.</p>
-        ) : (
-          selection.components.map((component) => (
-            <section key={component.name} className="rounded-lg p-2.5" style={{ background: "var(--m3-surface-2)" }}>
-              <p className="mb-2 font-medium">{component.name}</p>
-              <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 font-mono text-[11px]">
-                {component.fields.map((field) => (
-                  <React.Fragment key={field.key}>
-                    <dt style={{ color: "var(--m3-on-surface-variant)" }}>{field.key}</dt>
-                    <dd className="text-right">{field.value}</dd>
-                  </React.Fragment>
-                ))}
-              </dl>
-            </section>
-          ))
-        )}
-      </div>
-    );
-  }
   return (
     <EmptyState
       icon="tune"

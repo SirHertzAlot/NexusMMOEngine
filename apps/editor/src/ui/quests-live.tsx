@@ -54,7 +54,7 @@ export function QuestsPanel(): React.JSX.Element {
       </div>
       {rows.length === 0 && <p className="text-sm" style={dim}>No quests are authored yet. Add one in the Story editor.</p>}
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[260px_1fr]">
-        <ul className="flex flex-col gap-1 rounded-xl p-2" style={{ background: "var(--m3-surface-2)" }} aria-label="Quests">
+        <ul className="flex flex-col gap-1 rounded-xl p-2" style={{ background: "var(--m3-surface-2)", containIntrinsicSize: "0 500px", contentVisibility: "auto" }} aria-label="Quests">
           {rows.map((r) => (
             <li key={r.id}>
               <button
@@ -103,7 +103,7 @@ export function QuestsTree({ onView }: { onView: (v: string) => void }): React.J
     onView("quests");
   };
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-0.5" style={{ containIntrinsicSize: "0 500px", contentVisibility: "auto" }}>
       {(rows ?? []).map((r) => (
         <TreeItem
           key={r.id}

@@ -50,7 +50,7 @@ describe("settlement fortification bake", () => {
       if (p.world) assert.ok(inWorld(p.world[0], p.world[1]), `${p.kind} inside the world`);
       for (const pt of p.polyline ?? []) assert.ok(inWorld(pt[0], pt[1]), "polyline inside the world");
     }
-    const runs = bake.placements.filter((p) => p.kind === "wall-run");
+    const runs = bake.placements.filter((p: { kind: string }) => p.kind === "wall-run");
     assert.equal(runs.length, 4);
     // Round-trips through JSON — it persists as world meta.
     const roundTripped = JSON.parse(JSON.stringify(bake)) as typeof bake;
@@ -63,7 +63,7 @@ describe("settlement fortification bake", () => {
     const bakes = bakeSettlementFortifications(survey, { budget: 40, doctrine: "roman", era: 1, profile: "roman" });
     assert.ok(bakes.length >= 1);
     const log = bakes[0].buildLog;
-    assert.ok(log.some((l) => l.step === 0), "doctrine steps present");
+    assert.ok(log.some((l: { step: number }) => l.step === 0), "doctrine steps present");
     assert.equal(bakes[0].exposures.siege, 0);
   });
 });

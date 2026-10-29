@@ -32,7 +32,7 @@ import { HeadlessClient } from "../net/headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "../net/auth-harness.js";
 
 const game = loadGameRules();
-const content = loadDungeonContent();
+const content = loadDungeonContent(undefined, false);
 
 /** A 24 × 12 layout: an entrance room, a corridor, a boss room with two spawns, one spawn by the entrance. */
 function fixture(id = "grim-abc", theme = "grim", rank = 1): Record<string, unknown> {
@@ -625,6 +625,40 @@ describe("dungeon instance", () => {
       assert.equal(results[0].outcome, want);
     }
   });
+
+  it("ends with died outcome when a member is killed, drops all run loot, and tells the member", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characterStore = new MemoryCharacterStore();
+    const rec = await characterStore.create("alice", "Alice", "{}", 1);
+    const results: InstanceResult[] = [];
+    const inst = new DungeonInstance({
+      id: "run-death-test", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [{ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }],
+      credentialStore: await makeCredentialStore(), characterStore,
+      lootPool: [100, 101],
+      onEnd: (r) => results.push(r),
+      clock: () => Date.now(), transport: "ws",
+    });
+    const port = await inst.start();
+    closers.push(() => inst.close());
+    const c = new HeadlessClient();
+    closers.push(() => c.close());
+    await c.connect(`ws://127.0.0.1:${port}`);
+    const welcome = await c.hello("t", { token: inst.admit({ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }) });
+    const avatar = inst.world.resolveWireId(BigInt(welcome.player_entity));
+    (inst as unknown as { loot: { characterId: number; def: number }[] }).loot.push({ characterId: rec.id, def: 100 });
+    const onDeath = (inst as unknown as { onDeath(s: SimWorld, ev: object): void }).onDeath.bind(inst);
+    C.Health.current[avatar] = 0;
+    onDeath(inst.world, { tick: 1, target: avatar, state: "dead" });
+    await until(() => results.length === 1);
+    assert.equal(results[0].outcome, "died");
+    assert.equal(results[0].loot.length, 0);
+    await until(() => ctl(c).some((m) => m.op === "ended"));
+    const ended = ctl(c).find((m) => m.op === "ended");
+    assert.ok(ended, "ended message received");
+    assert.equal(ended.outcome, "died");
+    assert.equal(ended.items, 0);
+  });
 });
 
 describe("instance manager", () => {
@@ -746,12 +780,17 @@ describe("instance manager", () => {
     }
     inst.end("cleared");
     assert.equal(trained.length, 3);
-    for (const [c, s, d, k] of trained) {
+    for (const [c, s, d] of trained) {
       assert.equal(c, trained[0][0]);
       assert.equal(s, "cutting");
       assert.equal(d, 0.5);
-      assert.equal(k, trained[0][3]);
     }
+    // The repeat-falloff key is the victim's kind: the instance spawns a
+    // skeleton and two goblins, so two keys, two uses sharing the goblin's.
+    const keys = new Map<number, number>();
+    for (const t of trained) keys.set(t[3], (keys.get(t[3]) ?? 0) + 1);
+    assert.equal(keys.size, 2, `one key per victim kind, got ${[...keys].join(", ")}`);
+    assert.deepEqual([...keys.values()].sort(), [1, 2]);
   });
 
   it("refuses a party outside its size", async () => {

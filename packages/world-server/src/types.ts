@@ -270,6 +270,25 @@ export interface PutCharacterStateInput {
   opId: string;
 }
 
+/** One entry of a batched character-state write (regionId is batch-level). */
+export interface PutCharacterStateItem {
+  characterId: number;
+  /** The caller's session-lock epoch (see AcquireCharacterLock). */
+  epoch: number;
+  state: unknown;
+  opId: string;
+}
+
+/**
+ * Per-record outcome of a batched character-state write. A record that
+ * fails its fencing or validation checks reports its own code/message
+ * (identical to what the single put would have thrown) without
+ * sinking the rest of the batch.
+ */
+export type PutCharacterStateOutcome =
+  | { characterId: number; ok: true; record: CharacterStateRecord }
+  | { characterId: number; ok: false; code: number; message: string };
+
 export interface GetCharacterStateInput {
   regionId: string;
   characterId: number;
@@ -679,6 +698,10 @@ export interface WorldStore {
   /** Idempotency: stored result for opId, or null. */
   getOpResult(opId: string): Promise<unknown | null>;
   storeOpResult(opId: string, result: unknown): Promise<void>;
+  /** Batched getOpResult: stored results by opId, absent key = none. */
+  getOpResults(opIds: string[]): Promise<Map<string, unknown>>;
+  /** Batched storeOpResult: one round trip per chunk where possible. */
+  storeOpResults(entries: ReadonlyArray<{ opId: string; result: unknown }>): Promise<void>;
   getRegistryVersion(): Promise<number>;
   bumpRegistryVersion(): Promise<void>;
 
@@ -742,8 +765,19 @@ export interface WorldStore {
   getCharacterState(characterId: number): Promise<CharacterStateRecord | null>;
   /** Store a character record verbatim (the core assigns its version). */
   putCharacterState(r: CharacterStateRecord): Promise<void>;
+  /**
+   * Batched form of putCharacterState: many records in as few store
+   * round trips as the implementation can manage, with identical
+   * per-record semantics (each record is stored verbatim, overwriting
+   * any prior record for its character). The save-sweep write path.
+   */
+  putCharacterStates(records: CharacterStateRecord[]): Promise<void>;
+  /** Batched getCharacterState: records by characterId, absent key = none. */
+  getCharacterStates(characterIds: number[]): Promise<Map<number, CharacterStateRecord>>;
   /** The character's session lock as stored, or null when unheld. */
   getCharacterLock(characterId: number): Promise<CharacterSessionLock | null>;
+  /** Batched getCharacterLock: locks by characterId, absent key = unheld. */
+  getCharacterLocks(characterIds: number[]): Promise<Map<number, CharacterSessionLock>>;
   putCharacterLock(l: CharacterSessionLock): Promise<void>;
   deleteCharacterLock(characterId: number): Promise<void>;
   /**
@@ -860,6 +894,18 @@ export interface WorldCore {
    * and carry its epoch. Idempotent on opId.
    */
   putCharacterState(caller: string, input: PutCharacterStateInput): Promise<CharacterStateRecord>;
+  /**
+   * Batched form of putCharacterState: the whole batch's reads ride a
+   * constant number of store round trips and its writes land in one
+   * batched store call. Per-record ceremony (dedup, fencing, credits
+   * drain, version assignment) matches the single put exactly; a
+   * record's failure is reported in its outcome, not thrown.
+   */
+  putCharacterStates(
+    caller: string,
+    regionId: string,
+    items: PutCharacterStateItem[],
+  ): Promise<PutCharacterStateOutcome[]>;
   /** A character's stored record, version included; null when none. */
   getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null>;
   /**

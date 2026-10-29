@@ -48,6 +48,8 @@ dist-app/
 world-preview.png
 
 # Terrain surface textures (CC0, fetched by `npm run surfaces:fetch`, never committed)
+paperclip_snippets/
+paperclip_update.ps1
 apps/client/public/surfaces/
 
 # Codebase snapshot dumps (copies of the repo itself; regenerate, never commit)
@@ -73,3 +75,7 @@ packages/engine-core/content/wildlife/*.local.json
 
 # Dungeon prop art overlay: names licensed catalog models (npm run dungeon:art); local only
 content/dungeons/props.local.json
+
+# Graphify indexing caches and reports
+graphify-out/
+packages/graphify-out/

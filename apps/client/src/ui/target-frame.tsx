@@ -5,6 +5,7 @@
  * nothing was targeted), or what they clicked; it follows the mirror's
  * Health rows every frame, so a hit shows the moment it lands.
  */
+import * as React from "react";
 
 import { Bar } from "./meter.js";
 import { t } from "../i18n.js";
@@ -13,7 +14,7 @@ export interface TargetFrameProps {
   target: { name: string; hp: number; maxHp: number } | null;
 }
 
-export function TargetFrame({ target }: TargetFrameProps): React.ReactElement | null {
+function TargetFrameImpl({ target }: TargetFrameProps): React.ReactElement | null {
   if (!target) return null;
   return (
     <div className="pointer-events-none absolute left-1/2 top-4 w-64 -translate-x-1/2 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm">
@@ -22,3 +23,6 @@ export function TargetFrame({ target }: TargetFrameProps): React.ReactElement | 
     </div>
   );
 }
+
+export const TargetFrame = React.memo(TargetFrameImpl);
+TargetFrame.displayName = "TargetFrame";

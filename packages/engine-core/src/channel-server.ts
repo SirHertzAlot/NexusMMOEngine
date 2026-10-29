@@ -109,7 +109,12 @@ export interface EdgeRelay {
   edgeGone(): void;
 }
 
-export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHooks, metrics: CoreMetrics, relay?: EdgeRelay) {
+/** Concatenate two Prometheus text expositions (metric names are disjoint: mmo_log_* vs the core registry). */
+function joinExpositions(a: string, b: string): string {
+  return a.endsWith("\n") || a === "" ? a + b : a + "\n" + b;
+}
+
+export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHooks, metrics: CoreMetrics, relay?: EdgeRelay, extraMetrics?: () => string) {
   return async (p: ChannelPacket): Promise<unknown> => {
     const relayed = relay?.handle(p);
     if (relayed !== undefined) return relayed;
@@ -148,7 +153,7 @@ export function createCoreChannelHandler(host: CoreChannelHost, mythic: MythicHo
       }
       case "metrics.get":
         metrics.tick.set(host.serverTick);
-        return metrics.registry.scrape();
+        return extraMetrics ? joinExpositions(metrics.registry.scrape(), extraMetrics()) : metrics.registry.scrape();
       default:
         throw new Error(`unknown packet type ${p.type}`);
     }
@@ -161,8 +166,8 @@ export function pushTick(push: (type: string, payload: unknown) => void, t: Gate
 }
 
 /** Serve the channel on `port` (loopback) and stream the host's ticks to every edge. */
-export async function startCoreChannel(host: CoreChannelHost, port: number, mythic: MythicHooks = {}, metrics: CoreMetrics = createCoreMetrics(), relay?: EdgeRelay): Promise<CoreChannel> {
-  const server = await serveChannel(port, createCoreChannelHandler(host, mythic, metrics, relay), "127.0.0.1",
+export async function startCoreChannel(host: CoreChannelHost, port: number, mythic: MythicHooks = {}, metrics: CoreMetrics = createCoreMetrics(), relay?: EdgeRelay, extraMetrics?: () => string): Promise<CoreChannel> {
+  const server = await serveChannel(port, createCoreChannelHandler(host, mythic, metrics, relay, extraMetrics), "127.0.0.1",
     { metrics: metrics.channel, log: netLogger("core") }, () => relay?.edgeGone());
   let open = true;
   host.addTickListener((t) => {

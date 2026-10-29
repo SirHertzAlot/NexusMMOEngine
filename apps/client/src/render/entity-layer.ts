@@ -90,6 +90,66 @@ interface TrackedMesh {
   heldJson?: string;
   /** Live weapon meshes, per hand (shared geometry/material — never disposed). */
   weapons?: { main?: THREE.Object3D; off?: THREE.Object3D };
+  /** Cached look colours for the first-person hand/forearm viewmodel. */
+  skinColor?: string;
+  sleeveColor?: string;
+  cuffColor?: string;
+  /** Rest position of the character's Head bone in root-local space. */
+  headRest?: THREE.Vector3;
+  /** Half-height from BodyConfig for body-part raycast normalization. */
+  halfY?: number;
+}
+
+/**
+ * Pure helper: classify which anatomical body part a 3D raycast hit point
+ * (`hitX, hitY, hitZ`) lands on relative to an entity at (`entityX, entityY, entityZ`)
+ * facing `entityYaw`.
+ */
+export function classifyAimedBodyPart(
+  hitX: number,
+  hitY: number,
+  hitZ: number,
+  entityX: number,
+  entityY: number,
+  entityZ: number,
+  entityYaw = 0,
+  bottomY = entityY - 0.5,
+  height = 1.0,
+): string {
+  const safeHeight = Math.max(0.4, height);
+  const u = (hitY - bottomY) / safeHeight;
+  if (u >= 0.76) return "head";
+  const dx = hitX - entityX;
+  const dz = hitZ - entityZ;
+  const rx = -Math.cos(entityYaw);
+  const rz = Math.sin(entityYaw);
+  const lat = dx * rx + dz * rz;
+  if (u < 0.44) {
+    return lat < 0 ? "legLeft" : "legRight";
+  }
+  if (Math.abs(lat) > 0.18) {
+    return lat < 0 ? "armUpperLeft" : "armUpperRight";
+  }
+  return "torso";
+}
+
+export interface PlayerRenderSample {
+  vx: number;
+  vy: number;
+  vz: number;
+  mode: number;
+  grounded: boolean;
+  move: number;
+  moveElapsed: number;
+  headBoneOffset: { x: number; y: number; z: number } | null;
+  mainHeld: string | null;
+  offHeld: string | null;
+  skinColor: string | null;
+  sleeveColor: string | null;
+  cuffColor: string | null;
+}
+
+{
 }
 
 /** Nameplate height above a character's feet, and full-visibility range. */
@@ -141,7 +201,7 @@ export class EntityLayer {
   private readonly lowRows = new Map<bigint, { from: TransformRow; fromBody: BodyConfigRow | null; t: TransformRow; b: BodyConfigRow | null }>();
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
-  private readonly syntyProps: SyntyProps;
+  readonly syntyProps: SyntyProps;
   /** Rig data per art model (null: the model is not a quadruped); disposed with the layer. */
   private readonly animalTemplates = new Map<number, AnimalTemplate | null>();
   /** The modular character kit; null until loaded (or when the art isn't served). */
@@ -159,6 +219,26 @@ export class EntityLayer {
   private readonly playerPos = new THREE.Vector3();
   private readonly lastPlayerPos = new THREE.Vector3(8, 2, 8);
   private hoveredWireId: bigint | null = null;
+  private hoveredBodyPart: string | null = null;
+  private hoveredHitDistance = Infinity;
+  private readonly headBoneDelta = { x: 0, y: 0, z: 0 };
+  private readonly tmpBonePos = new THREE.Vector3();
+  private readonly tmpRootInv = new THREE.Matrix4();
+  readonly playerSample: PlayerRenderSample = {
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    mode: 0,
+    grounded: true,
+    move: 0,
+    moveElapsed: 0,
+    headBoneOffset: null,
+    mainHeld: null,
+    offHeld: null,
+    skinColor: null,
+    sleeveColor: null,
+    cuffColor: null,
+  };
   /** Hit flashes: wire id -> flash end, performance.now() seconds (see setFlashes). */
   private flashes: ReadonlyMap<bigint, number> = new Map();
   private quality: QualitySettings | null = null;
@@ -225,15 +305,71 @@ export class EntityLayer {
 
   /** Hover highlight: the nearest entity mesh or batched prop under the ray (terrain excluded). */
   hover(raycaster: THREE.Raycaster): void {
-    const hit = raycaster.intersectObjects([...this.pickMap.keys()], false)[0];
+    const pickRoots: THREE.Object3D[] = [];
+    for (const [obj, wid] of this.pickMap) {
+      if (this.lastPlayerWireId !== null && wid === this.lastPlayerWireId) continue;
+      pickRoots.push(obj);
+    }
+    const hits = raycaster.intersectObjects(pickRoots, true);
+    let hit: THREE.Intersection | undefined;
+    let hitWid: bigint | null = null;
+    for (let i = 0; i < hits.length; i++) {
+      const h = hits[i]!;
+      if (h.object instanceof THREE.Sprite) continue;
+      let cur: THREE.Object3D | null = h.object;
+      while (cur && !this.pickMap.has(cur)) cur = cur.parent;
+      if (cur) {
+        hit = h;
+        hitWid = this.pickMap.get(cur) ?? null;
+        break;
+      }
+    }
     const prop = this.props.pick(raycaster);
     this.hoveredWireId =
-      prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hit ? this.pickMap.get(hit.object) ?? null : null;
+      prop && (!hit || prop.distance < hit.distance) ? prop.wireId : hitWid;
+    if (prop && (!hit || prop.distance < hit.distance)) {
+      this.hoveredBodyPart = null;
+      this.hoveredHitDistance = prop.distance;
+    } else if (hit && hitWid !== null) {
+      this.hoveredHitDistance = hit.distance;
+      const tr = this.meshes.get(hitWid);
+      if (tr) {
+        const pos = tr.object.position;
+        const yaw = tr.yaw ?? 0;
+        const halfY = tr.halfY ?? 0.5;
+        const bottomY = tr.character ? pos.y : pos.y - halfY;
+        const height = tr.character ? 1.8 : Math.max(0.5, halfY * 2);
+        this.hoveredBodyPart = classifyAimedBodyPart(
+          hit.point.x,
+          hit.point.y,
+          hit.point.z,
+          pos.x,
+          pos.y,
+          pos.z,
+          yaw,
+          bottomY,
+          height,
+        );
+      } else {
+        this.hoveredBodyPart = "torso";
+      }
+    } else {
+      this.hoveredBodyPart = null;
+      this.hoveredHitDistance = Infinity;
+    }
   }
 
   /** The entity under the cursor at the last hover() (a batched prop's or a mesh's wire id). */
   get hovered(): bigint | null {
     return this.hoveredWireId;
+  }
+
+  get hoveredPart(): string | null {
+    return this.hoveredBodyPart;
+  }
+
+  get hoveredDistance(): number {
+    return this.hoveredHitDistance;
   }
 
   /** Entities flash red until their entry's time (performance.now() seconds); the map is read, never copied. */
@@ -392,7 +528,7 @@ export class EntityLayer {
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
         this.group.add(obj);
-        tracked = { object: obj, shaped: e.body !== undefined };
+        tracked = { object: obj, shaped: e.body !== undefined, halfY: e.body?.halfY };
         this.meshes.set(wid, tracked);
         this.pickMap.set(obj, wid);
         // Spawn portal for newly-spawned entities; one that only came
@@ -417,6 +553,7 @@ export class EntityLayer {
         this.group.add(obj);
         tracked.object = obj;
         tracked.shaped = true;
+        tracked.halfY = e.body.halfY;
         this.pickMap.set(obj, wid);
       }
 
@@ -428,7 +565,8 @@ export class EntityLayer {
         this.dressAsCharacter(wid, tracked, e.appearance.look);
       }
       // Held weapons ride in the appearance JSON next to the look.
-      if (e.appearance && tracked.character) this.updateHeld(tracked, e.appearance.look);
+      // Held weapons ride in the appearance JSON next to the look.
+      if (e.appearance) this.updateHeld(tracked, e.appearance.look);
 
       if (!e.transform) continue;
 
@@ -475,7 +613,37 @@ export class EntityLayer {
       }
 
       const isPlayer = playerWireId !== null && wid === playerWireId;
-      if (isPlayer) this.player = this.playerPos.copy(tracked.object.position);
+      if (isPlayer) {
+        this.player = this.playerPos.copy(tracked.object.position);
+        const s = this.playerSample;
+        s.vx = e.velocity?.lx ?? 0;
+        s.vy = e.velocity?.ly ?? 0;
+        s.vz = e.velocity?.lz ?? 0;
+        s.mode = e.locomotion?.mode ?? 0;
+        s.grounded = s.mode === 0 && Math.abs(s.vy) < 0.08;
+        s.move = e.action?.move ?? 0;
+        s.moveElapsed = e.action && e.action.move !== 0 ? Math.max(0, (clock.tick - e.action.started) / Math.max(1, clock.tickHz)) : 0;
+        s.mainHeld = tracked.held?.main ?? null;
+        s.offHeld = tracked.held?.off ?? null;
+        s.skinColor = tracked.skinColor ?? null;
+        s.sleeveColor = tracked.sleeveColor ?? null;
+        s.cuffColor = tracked.cuffColor ?? null;
+        const headBone = tracked.character?.bones.get("Head");
+        if (headBone && tracked.character) {
+          tracked.character.root.updateWorldMatrix(true, true);
+          this.tmpRootInv.copy(tracked.character.root.matrixWorld).invert();
+          this.tmpBonePos.setFromMatrixPosition(headBone.matrixWorld).applyMatrix4(this.tmpRootInv);
+          if (!tracked.headRest) {
+            tracked.headRest = this.tmpBonePos.clone();
+          }
+          this.headBoneDelta.x = this.tmpBonePos.x - tracked.headRest.x;
+          this.headBoneDelta.y = this.tmpBonePos.y - tracked.headRest.y;
+          this.headBoneDelta.z = this.tmpBonePos.z - tracked.headRest.z;
+          s.headBoneOffset = this.headBoneDelta;
+        } else {
+          s.headBoneOffset = null;
+        }
+      }
       this.updatePlate(tracked, wid, isPlayer, names);
       if ((this.flashes.get(wid) ?? 0) > now) {
         highlight(tracked.object, "hit");
@@ -541,14 +709,21 @@ export class EntityLayer {
    * or the entity goes away (see detachWeapons).
    */
   private updateHeld(tracked: TrackedMesh, lookJson: string): void {
-    if (!tracked.character) return;
+    // Parse held items and look colours before checking tracked.character so FPS rig always has them.
     if (tracked.heldJson !== lookJson) {
       tracked.heldJson = lookJson;
       const held = heldOf(lookJson);
       tracked.held = held.main || held.off ? held : undefined;
+      const parsedLook = parseLook(lookJson);
+      if (parsedLook?.colours) {
+        tracked.skinColor = parsedLook.colours.skin;
+        tracked.sleeveColor = parsedLook.colours.primary;
+        tracked.cuffColor = parsedLook.colours.leatherPrimary ?? parsedLook.colours.secondary;
+      }
       this.detachWeapons(tracked);
     }
     const want = tracked.held;
+    if (!tracked.character || !want) return;
     if (!want) return;
     tracked.weapons ??= {};
     this.attachHeld(tracked, "main", want.main, "Hand_R");

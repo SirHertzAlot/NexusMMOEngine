@@ -6,6 +6,12 @@ regional state; the edge/core split and world server support client ingress
 and region coordination. The React Three Fiber client mirrors authoritative
 state and is never the source of truth.
 
+**Engine Wiki:** the complete hierarchical technical manual and guides live in [`docs/WIKI.md`](docs/WIKI.md) and the [`docs/wiki/`](docs/wiki/README.md) hub.
+
+**Developer Tooling & Interactive REPL:** modern Markdown editing with Yank Note (purocean/yn), in-note test execution, and live telemetry data apps live in [docs/wiki/10-developer-tooling-and-yank-note.md](docs/wiki/10-developer-tooling-and-yank-note.md).
+
+**Business Analysis & Strategy:** comprehensive competitive engine evaluations (vs. UE5, Unity DOTS, Bevy, SpatialOS, WoW), verified empirical benchmarks, strategic SWOT, and cloud hosting unit economics live in [docs/business-analysis/README.md](docs/business-analysis/README.md).
+
 **Documentation:** the full index is [`docs/README.md`](docs/README.md);
 start with [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md). Full
 engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).

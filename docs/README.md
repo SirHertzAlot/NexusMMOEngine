@@ -9,6 +9,7 @@ or planned.
 
 | Doc | What it is |
 |---|---|
+| [WIKI.md](WIKI.md) ([wiki/](wiki/README.md)) | Master hierarchical technical manual: architecture, engine/game decoupling, ECS, native C++ addons, networking, synthesis |
 | [GETTING-STARTED.md](GETTING-STARTED.md) | Fresh clone to a playable world: prerequisites, `npm start`, editor, world server, troubleshooting |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit: the tick, the ECS, replication, persistence, streaming |
 | [CONFIGURATION.md](CONFIGURATION.md) | Environment variables and data files for the server, world, client, and art tools |

@@ -126,6 +126,8 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
+import { HybridDataPlaneServer } from "./data-plane-server.js";
+import { DATA_PLANE_ENTITY_CAPACITY } from "./sab-store.js";
 import {
   Gateway,
   despawnSessionlessAvatars,
@@ -202,7 +204,7 @@ import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
-import { DEFAULT_DUNGEON_CONTENT } from "./dungeons/content.js";
+import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
@@ -236,6 +238,29 @@ import { loadLessons } from "./residents/lessons.js";
 import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
+import {
+  LogProducer,
+  LogProducerClient,
+  LogRingBuffer,
+  LogWorkerSupervisor,
+  logCharacterSyncLog,
+  logNavmeshWarn,
+  logRecallShardLog,
+  logRulesReloaded,
+  logServerShutdownSave,
+  logServerModuleLog,
+  logShardShipperLog,
+  logSocialSyncLog,
+  logStreamWarn,
+  logWildlifeDebugLog,
+  logWorldClientError,
+  logWorldDungeonReportError,
+  logWorldDungeonReported,
+  logWorldMigrationAckError,
+  logWorldMigrationEvent,
+  logWorldMigrationObserveError,
+  logWorldPresenceSyncError,
+} from "./logging/index.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
 
@@ -294,6 +319,19 @@ if (!Number.isInteger(STREAM_RADIUS) || STREAM_RADIUS < 0) {
 }
 
 async function main(): Promise<void> {
+  // SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): one ring, one worker thread.
+  // Steady-state events go through the ring; boot banners and fatal errors stay on
+  // stdio on purpose (they must be visible even when the log worker is not up).
+  // MMO_LOG=0 starts no worker: events are then only counted as ring drops.
+  const logRing = new LogRingBuffer();
+  const logSupervisor = new LogWorkerSupervisor({ ring: logRing, logDir: process.env.MMO_LOG_DIR || path.join(DATA_DIR, "logs") });
+  if (process.env.MMO_LOG !== "0") await logSupervisor.start();
+  // Every exit path (signal handler, fatal, normal) drains the ring before the process ends.
+  process.on("exit", () => {
+    try { logSupervisor.stopSync(); } catch { /* exiting: nothing left to protect */ }
+  });
+  const gatewayLog = new LogProducerClient(LogProducer.GATEWAY, logRing);
+  const worldLog = new LogProducerClient(LogProducer.WORLD, logRing);
   // ---- rules first: a bad rules file stops us before the world loads ----
   let game: GameRules;
   try {
@@ -347,6 +385,8 @@ async function main(): Promise<void> {
     saveEveryTicks: SAVE_EVERY_TICKS,
     keepSnapshots: persistenceSettings.settings.keepSnapshots,
     walSizeLimitBytes: persistenceSettings.settings.walLimitMb * 1024 * 1024,
+    // Saves and checkpoint diagnostics become records (0x0302-0x0304, PERSIST).
+    logProducer: new LogProducerClient(LogProducer.PERSIST, logRing),
   });
   // A world baked from a spec carries its own seed: scatter, navmesh keys,
   // and anything generated later must agree with its baked terrain.
@@ -403,13 +443,13 @@ async function main(): Promise<void> {
         entityCount: sim.liveEntityCount,
       }),
       onError: (err, ctx) =>
-        console.warn(`[server] world ${ctx}: ${(err as Error).message}`),
+        logWorldClientError(worldLog, String(ctx), (err as Error).message),
       // Region migration (slice B): acks carry registry changes and
       // hand-off outcomes for the coordinator (built after the gateway
       // exists, below; it reads this ref once assigned).
       onAck: (ack) => {
         void migrationCoordinator?.onAck(ack).catch((err: unknown) =>
-          console.warn(`[server] migration ack: ${(err as Error).message}`));
+          logWorldMigrationAckError(worldLog, (err as Error).message));
       },
     });
     await worldClient.start();
@@ -430,7 +470,7 @@ async function main(): Promise<void> {
         client: worldClient,
         store,
         ledger: itemLedger,
-        log: (line) => console.log(`[server] ${line}`),
+        log: (line) => logRecallShardLog(worldLog, `[server] ${line}`),
         // Node stocks (PL3a) go into gathering.db before the gathering system opens it, below.
         seedPlaces: (places) => {
           const nodes = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
@@ -478,6 +518,8 @@ async function main(): Promise<void> {
       chunkWorldSize: CHUNK_SIZE,
       worker: true,
       onLoaded: (cx, cz) => obstacles.tileLoaded(cx, cz),
+      // Worker fallbacks and bake failures become ring records (0x0602).
+      warn: (message) => logNavmeshWarn(worldLog, message),
     }),
     onNavBackend: (navBackend: any, obstacles: any, chunkNavmesh: any) => {
       navBackendRef = navBackend;
@@ -653,6 +695,10 @@ async function main(): Promise<void> {
     bounds,
     pinned: area,
     loadRadius: STREAM_RADIUS,
+    // Runtime warnings become ring records (0x0601/0x0602) instead of stderr.
+    warn: (message) => (message.startsWith("[navmesh]")
+      ? logNavmeshWarn(worldLog, message)
+      : logStreamWarn(worldLog, message)),
   });
   // Streamer warm/adopt runs after assembly (below): it registers terrain
   // colliders, which need the physics module's terrainColliders hook.
@@ -778,7 +824,8 @@ async function main(): Promise<void> {
     } else {
       const wild = new WildCreatures({
         registry: biomes,
-        log: process.env.MMO_WILDLIFE_LOG === "1" ? (l) => console.log(l) : undefined,
+        // Debug seam (MMO_WILDLIFE_LOG=1): ring records at DEBUG instead of stdout.
+        log: process.env.MMO_WILDLIFE_LOG === "1" ? (l) => logWildlifeDebugLog(worldLog, l) : undefined,
         extraPlan: wildlifeTable
           ? (cx, cz) => planWildlifeChunk(wildlifeTable, {
               seed: ecologySeed32(worldSeed), cx, cz, chunkWorldSize: CHUNK_SIZE, biomeAt,
@@ -980,7 +1027,7 @@ async function main(): Promise<void> {
     // Social limits (EG9): the reloader only watches after the gateway exists.
     gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);
-    console.log(`[rules] reloaded: ${g.summary}`);
+    logRulesReloaded(worldLog, g.summary);
   });
   // Quests and dialog (P1): the gateway's "quest" extension and a system
   // checking places and bags; kills come through the death hook below.
@@ -1225,7 +1272,7 @@ async function main(): Promise<void> {
   };
   const moduleCtx: ServerModuleContext = {
     sim,
-    log: (m) => console.log(m),
+    log: (m) => logServerModuleLog(worldLog, m),
     // Slices 2-6: modules read their bootstrap config from here.
     config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig },
   };
@@ -1304,7 +1351,7 @@ async function main(): Promise<void> {
           parties: partyStore,
           social: socialStore,
           reload: (kind) => gw.reloadSocial(kind),
-          log: (line) => console.log(`[server] ${line}`),
+          log: (line) => logSocialSyncLog(worldLog, `[server] ${line}`),
         })
       : null;
   await socialSync?.boot();
@@ -1362,17 +1409,42 @@ async function main(): Promise<void> {
               }
             },
           },
-          log: (line) => console.log(`[server] ${line}`),
+          log: (line) => logCharacterSyncLog(worldLog, `[server] ${line}`),
         })
       : null;
   const atomicOps = worldCharacters && worldClient?.registered
     ? new WorldAtomicOps({ client: worldClient, fences: worldCharacters })
     : null;
   if (atomicOps) atomicOpsRef.ops = atomicOps;
+  // PR #430 / Phase 2: MMO_DATA_PLANE flag switches production boot to 3-thread data plane topology.
+  const DATA_PLANE_MODE = process.env.MMO_DATA_PLANE === "1" || process.env.MMO_DATA_PLANE === "true";
+  let dataPlaneServer: HybridDataPlaneServer | null = null;
+  if (DATA_PLANE_MODE) {
+    dataPlaneServer = new HybridDataPlaneServer({
+      entityCapacity: DATA_PLANE_ENTITY_CAPACITY,
+      spawnWorkers: true,
+      spawnPersistWorker: true,
+      simAutoStart: true,
+      simMode: "fused-intents",
+      decodeMovementIntents: true,
+      // The sim worker shares this process's log ring (SAB + exact capacity);
+      // its budget overruns become records instead of stdio formatting.
+      logRingSab: logRing.sab,
+      logRingCapacity: logRing.capacity,
+    });
+    await dataPlaneServer.startWorkers();
+    console.log(
+      `[server] 3-thread data-plane topology ENABLED (MMO_DATA_PLANE=1): Gateway -> SPSC Queue -> 30Hz SimWorker -> PersistWorker`,
+    );
+  } else {
+    console.log(`[server] in-process simulation loop active (rollback path; MMO_DATA_PLANE=0)`);
+  }
+
   // E3b: with MMO_EDGE=1 the players' sockets are the edge's, relayed over the core channel (started below).
   const toEdge: { push: EdgePush } = { push: () => {} };
   const edgeRelay = EDGE_MODE ? new ChannelTransport((type, payload) => toEdge.push(type, payload), coreChannelPort()) : null;
   const gw: Gateway = new Gateway({
+    ...(dataPlaneServer ? { dataPlaneQueue: dataPlaneServer.gatewayInputQueue } : {}),
     port: PORT,
     ...(edgeRelay ? { transport: edgeRelay } : {}),
     scale,
@@ -1419,6 +1491,7 @@ async function main(): Promise<void> {
       entities: () => creaturesOf().entities(),
     },
     spawnPoint: spawn,
+    respawnAnchors: Object.values(loadDungeonContent(process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
     // "Start from": characters enter at the chosen point, not where they were saved.
     spawnOverridden: spawnOverride !== null,
     // Baked worlds: extent + coarse map for the client's far horizon.
@@ -1474,11 +1547,11 @@ async function main(): Promise<void> {
       host: gw.migrationHost(),
       chunkRange,
       chunkSize: CHUNK_SIZE,
-      log: (line) => console.log(`[server] ${line}`),
+      logProducer: worldLog,
     });
     migrationCoordinator = migration;
     const coordinator = migration;
-    coordinator.onEvent((e) => console.log(`[server] migration ${e.kind} ${e.entityId} ${e.migrationId}`));
+    coordinator.onEvent((e) => logWorldMigrationEvent(worldLog, String(e.kind), String(e.entityId)));
     gw.setMigrationAcceptor((id, verify) => coordinator.accept(id, false, verify));
     if (worldClient.registered) {
       await coordinator.refreshRegistry().catch(() => {});
@@ -1487,7 +1560,7 @@ async function main(): Promise<void> {
       const borderKey = process.env.WORLD_API_KEY ?? "";
       migrationTimer = setInterval(() => {
         void coordinator.observe(gw.migrationPositions()).catch((err: unknown) =>
-          console.warn(`[server] migration observe: ${(err as Error).message}`));
+          logWorldMigrationObserveError(worldLog, (err as Error).message));
         if (borderKey) {
           gw.setBorders(
             { regionId: worldClient!.regionId, key: borderKey, rect: toRect(chunkRange) },
@@ -1501,7 +1574,7 @@ async function main(): Promise<void> {
       presenceTimer = setInterval(() => {
         if (worldClient?.registered) {
           void gw.syncPresence().catch((err: unknown) =>
-            console.warn(`[server] presence sync: ${(err as Error).message}`));
+            logWorldPresenceSyncError(worldLog, (err as Error).message));
         }
       }, 30_000);
       presenceTimer.unref();
@@ -1518,7 +1591,7 @@ async function main(): Promise<void> {
         client: worldClient,
         ledger: itemLedger,
         snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
-        log: (line) => console.log(`[server] ${line}`),
+        log: (line) => logShardShipperLog(worldLog, `[server] ${line}`),
         // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
         places: () => ({ resource_nodes: gatheringStore.allNodes(), place_records: placesStore.all() }),
       })
@@ -1564,11 +1637,11 @@ async function main(): Promise<void> {
           void flushInstanceResults(instanceResults, (results) => worldClient.reportDungeonResults(results)).then(
             ({ reported }) => {
               dungeonFlushInFlight = false;
-              if (reported > 0) console.log(`[server] reported ${reported} dungeon run(s) to the world`);
+              if (reported > 0) logWorldDungeonReported(worldLog, reported);
             },
             (err: unknown) => {
               dungeonFlushInFlight = false;
-              console.warn(`[server] dungeon report: ${(err as Error).message}`);
+              logWorldDungeonReportError(worldLog, (err as Error).message);
             },
           );
         }
@@ -1596,7 +1669,7 @@ async function main(): Promise<void> {
 
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
-      console.log(`[server] shutdown save on ${signal}: tick ${result.tick}`);
+      logServerShutdownSave(worldLog, signal, result.tick);
       // Runs still going report now, so their loot is in the ledger flush below.
       dungeons.endAll();
       gw.saveCharacters();
@@ -1604,6 +1677,7 @@ async function main(): Promise<void> {
       itemLedger.close();
       sessionStore.close();
       void coreChannel?.close();
+      if (dataPlaneServer) void dataPlaneServer.close();
       // Best-effort deregister; the world's stale-region reaper is the
       // backstop if this doesn't land before exit.
       if (migrationTimer) clearInterval(migrationTimer);
@@ -1619,7 +1693,7 @@ async function main(): Promise<void> {
   // players come through it, so it must bind; otherwise it serves the edge
   // beside the player port, and a core that cannot bind it still serves players.
   const channelPort = coreChannelPort();
-  const coreChannel = await startCoreChannel(gw, channelPort, {}, undefined, edgeRelay ?? undefined).catch((err: Error) => {
+  const coreChannel = await startCoreChannel(gw, channelPort, {}, undefined, edgeRelay ?? undefined, () => logSupervisor.metrics.renderLogMetrics()).catch((err: Error) => {
     if (edgeRelay) throw new Error(`MMO_EDGE=1 needs the core channel on 127.0.0.1:${channelPort}: ${err.message}`);
     console.warn(`[server] core channel not serving on 127.0.0.1:${channelPort}: ${err.message}`);
     return null;

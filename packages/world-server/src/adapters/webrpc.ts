@@ -18,6 +18,11 @@
  */
 import { json, Router, type Request, type Response } from "express";
 import { z } from "zod";
+import {
+  LogProducerClient,
+  logWorldWebserviceInternalError,
+  stdioError,
+} from "@mmo-engine/logging/dist/src/logging/index.js";
 import { WorldCoreImpl } from "../core.js";
 import {
   AbortMigrationSchema,
@@ -41,10 +46,12 @@ import {
   HeartbeatSchema,
   InventoryMutateSchema,
   LootGrantSchema,
+  MAX_CHARACTER_STATE_BATCH,
   MAX_CHARACTER_STATE_BYTES,
   MAX_LEDGER_BATCH_BYTES,
   MAX_SNAPSHOT_PAYLOAD_BYTES,
   PutCharacterStateSchema,
+  PutCharacterStatesSchema,
   PutShardSnapshotSchema,
   QueryPresenceSchema,
   RegisterRegionSchema,
@@ -66,9 +73,19 @@ const BODY_BYTES: Record<string, number> = {
   "/rpc/World/PutShardSnapshot": MAX_SNAPSHOT_PAYLOAD_BYTES + ENVELOPE_BYTES,
   "/rpc/World/AppendLedgerEvents": MAX_LEDGER_BATCH_BYTES + ENVELOPE_BYTES,
   "/rpc/World/PutCharacterState": MAX_CHARACTER_STATE_BYTES + ENVELOPE_BYTES,
+  "/rpc/World/PutCharacterStates":
+    MAX_CHARACTER_STATE_BATCH * (MAX_CHARACTER_STATE_BYTES + ENVELOPE_BYTES),
 };
 
-function sendError(res: Response, err: unknown): void {
+/** Handler for the non-protocol (500) failure: ring record, else stderr. */
+type InternalErrorHandler = (err: unknown) => void;
+
+function makeInternalError(logger?: LogProducerClient): InternalErrorHandler {
+  if (!logger) return (err) => stdioError("[world] internal error", err);
+  return (err) => logWorldWebserviceInternalError(logger, err instanceof Error ? err.message : String(err));
+}
+
+function sendError(res: Response, err: unknown, onInternal: InternalErrorHandler): void {
   if (err instanceof WorldError) {
     res.status(err.code).json({ code: err.code, msg: err.message });
     return;
@@ -81,7 +98,7 @@ function sendError(res: Response, err: unknown): void {
     res.status(400).json({ code: 400, msg: `invalid argument: ${msg}` });
     return;
   }
-  console.error("[world] internal error", err);
+  onInternal(err);
   res.status(500).json({ code: 500, msg: "internal error" });
 }
 
@@ -92,7 +109,13 @@ function bearerToken(req: Request): string | null {
   return m ? m[1] : null;
 }
 
-export function createWebrpcRouter(core: WorldCoreImpl): Router {
+export interface WebrpcRouterOptions {
+  /** Log-ring producer for 500 diagnostics (docs/SAB-LOGGING-LAYER-SPEC.md §2.4). */
+  logger?: LogProducerClient;
+}
+
+export function createWebrpcRouter(core: WorldCoreImpl, opts: WebrpcRouterOptions = {}): Router {
+  const onInternalError = makeInternalError(opts.logger);
   const r = Router();
   r.use((req, res, next) => {
     if (!req.is("application/json")) {
@@ -112,7 +135,7 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       const lease = await core.registerRegion(input);
       res.json({ lease });
     } catch (err) {
-      sendError(res, err);
+      sendError(res, err, onInternalError);
     }
   });
 
@@ -126,7 +149,7 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       const report = await core.reportHostResources(input);
       res.json({ report });
     } catch (err) {
-      sendError(res, err);
+      sendError(res, err, onInternalError);
     }
   });
 
@@ -157,7 +180,7 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       }
       res.json(await fn(regionId));
     } catch (err) {
-      sendError(res, err);
+      sendError(res, err, onInternalError);
     }
   }
 
@@ -318,6 +341,22 @@ export function createWebrpcRouter(core: WorldCoreImpl): Router {
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return { character: await core.putCharacterState(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/PutCharacterStates", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = PutCharacterStatesSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      const outcomes = await core.putCharacterStates(regionId, input.regionId, input.inputs);
+      return {
+        outcomes: outcomes.map((o) =>
+          o.ok
+            ? { characterId: o.characterId, ok: true, character: o.record }
+            : { characterId: o.characterId, ok: false, code: o.code, message: o.message },
+        ),
+      };
     }),
   );
 

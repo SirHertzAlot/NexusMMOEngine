@@ -29,6 +29,7 @@ import type { ChunkDataSource } from "../procgen/chunk-source.js";
 import { heightsFingerprint } from "../procgen/chunk-source.js";
 import type { NavmeshTileKey, NavmeshTileRegistry } from "../persist/navmesh.js";
 import type { BakeTileConfig, NavigationBackend } from "./backend.js";
+import { stdioWarn } from "../logging/index.js";
 import {
   bakeChunkLayers,
   bakeChunkTile,
@@ -87,7 +88,7 @@ export class ChunkNavmesh {
       ? { ...DEFAULT_BAKE_CONFIG, cellSize: TILE_CACHE_SETTINGS.cellSize, ...opts.bakeConfig }
       : { ...DEFAULT_BAKE_CONFIG, ...opts.bakeConfig };
     this.scratch = new Float32Array(opts.source.chunkSamples);
-    this.warn = opts.warn ?? ((m) => console.warn(m));
+    this.warn = opts.warn ?? stdioWarn;
     if (opts.worker) {
       if (!opts.registryDir) throw new Error("ChunkNavmesh: `registryDir` is required with `worker`");
       this.startWorker(opts.registryDir);

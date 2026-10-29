@@ -14,6 +14,7 @@
  */
 
 import { HttpBodyTooLarge, type HttpRequest, type HttpResponse } from "./transport.js";
+import { LogProducerClient, logNetRpcInternalError, stdioError } from "../logging/index.js";
 
 export class RpcError extends Error {
   constructor(readonly code: number, message: string) {
@@ -37,6 +38,11 @@ export interface RpcServerOptions {
   authenticate: (token: string) => RpcCaller | null;
   /** Largest JSON body accepted, bytes. */
   maxBodyBytes?: number;
+  /**
+   * Log-ring producer for 500 diagnostics (docs/SAB-LOGGING-LAYER-SPEC.md
+   * §2.4). Without one they print to stderr, as before.
+   */
+  logger?: LogProducerClient;
 }
 
 const BEARER = /^Bearer\s+(\S+)$/;
@@ -120,7 +126,11 @@ export class RpcServer {
   private fail(res: HttpResponse, err: unknown): void {
     const code = err instanceof RpcError ? err.code : 500;
     const msg = err instanceof RpcError ? err.message : "internal error";
-    if (code === 500) console.error("[rpc] internal error", err);
+    if (code === 500) {
+      const detail = err instanceof Error ? err.message : String(err);
+      if (this.opts.logger) logNetRpcInternalError(this.opts.logger, detail);
+      else stdioError("[rpc] internal error", err);
+    }
     if (res.done) {
       res.abort();
       return;

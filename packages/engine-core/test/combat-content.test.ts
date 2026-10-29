@@ -50,7 +50,11 @@ describe("combat content on the server", () => {
   afterEach(() => setCombatMoves({ version: 1, moves: [...DEFAULT_COMBAT_MOVES] }));
 
   it("the repo's moves.json loads", () => {
-    assert.match(loadCombatContent()!, /combat: 8 moves/);
+    // Count from the file itself: content moves (natural weapon moves from
+    // procgen) may grow without the arithmetic being interesting.
+    const moves = (JSON.parse(readFileSync(DEFAULT_COMBAT_FILE, "utf8")) as { moves: unknown[] }).moves.length;
+    assert.ok(moves >= DEFAULT_COMBAT_MOVES.length, "the file defines at least the built-ins");
+    assert.match(loadCombatContent()!, new RegExp(`^combat: ${moves} moves \\(`));
   });
 
   it("a missing file keeps the built-in moves; a bad one stops the server with the problem named", () => {

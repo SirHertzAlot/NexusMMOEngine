@@ -196,12 +196,18 @@ export function parseDungeonContent(rules: unknown, entrances: unknown, props?: 
   return { rules: r.data, entrances: e.data.entrances, props: { ...p.data, archetypes }, looks: lk.data, artAssets: ar.data.assets, artScales: ar.data.scales };
 }
 
-export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT): DungeonContent {
+export function loadDungeonContent(dir: string = DEFAULT_DUNGEON_CONTENT, includeOverlay = true): DungeonContent {
   const missing = DUNGEON_FILES.filter((f) => !existsSync(join(dir, f)));
   if (missing.length === DUNGEON_FILES.length) return EMPTY_DUNGEON_CONTENT;
   if (missing.length > 0) {
     throw new Error(`dungeon content: ${missing.join(", ")}: no such file (dungeon content is both files or none)`);
   }
   const read = (f: string): unknown => JSON.parse(readFileSync(join(dir, f), "utf8"));
-  return parseDungeonContent(read("instances.json"), read("entrances.json"), existsSync(join(dir, "props.json")) ? read("props.json") : undefined, existsSync(join(dir, "looks.json")) ? read("looks.json") : undefined, existsSync(join(dir, "props.local.json")) ? read("props.local.json") : undefined);
+  return parseDungeonContent(
+    read("instances.json"),
+    read("entrances.json"),
+    existsSync(join(dir, "props.json")) ? read("props.json") : undefined,
+    existsSync(join(dir, "looks.json")) ? read("looks.json") : undefined,
+    includeOverlay && existsSync(join(dir, "props.local.json")) ? read("props.local.json") : undefined,
+  );
 }
