@@ -122,6 +122,8 @@ export class PersistenceWorkerRuntime {
   private timer: ReturnType<typeof setInterval> | null = null;
   private draining = false;
   private connected = false;
+  private closed = false;
+  private stopping: Promise<void> | null = null;
 
   constructor(config: PersistWorkerConfig) {
     const entityCapacity = config.entityCapacity ?? DATA_PLANE_ENTITY_CAPACITY;
@@ -270,6 +272,7 @@ export class PersistenceWorkerRuntime {
     this.draining = true;
     let processed = 0;
     try {
+      if (this.closed) return 0;
       const batch: PersistTransaction[] = [];
       while (batch.length < maxBatch) {
         const tx = this.persistQueue.dequeue();
@@ -334,8 +337,13 @@ export class PersistenceWorkerRuntime {
     }, this.pollIntervalMs);
   }
 
-  /** Stop polling and close the embedded SurrealDB instance. */
-  public async stop(): Promise<void> {
+  /** Stop polling and close the embedded SurrealDB instance. Every call shares the one close. */
+  public stop(): Promise<void> {
+    if (!this.stopping) this.stopping = this.closeDatabase();
+    return this.stopping;
+  }
+
+  private async closeDatabase(): Promise<void> {
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
@@ -344,6 +352,8 @@ export class PersistenceWorkerRuntime {
       await new Promise((r) => setTimeout(r, 2));
     }
     await this.drainPendingTransactions();
+    // Later drains return at once, so no query reaches the connection while it closes.
+    this.closed = true;
     if (this.connected) {
       await this.db.close();
       this.connected = false;
@@ -376,9 +386,11 @@ if (!isMainThread && workerData && workerData.sharedMemory instanceof SharedArra
         parentPort?.postMessage({ type: "drained", count });
       });
     } else if (msg?.type === "stop") {
+      // Close the port rather than process.exit(): exiting tears the thread down under the
+      // native engine, which can abort the whole process. Closed, the thread ends on its own.
       void runtime.stop().then(() => {
         parentPort?.postMessage({ type: "stopped" });
-        process.exit(0);
+        parentPort?.close();
       });
     }
   });
