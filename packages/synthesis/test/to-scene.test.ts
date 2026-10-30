@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { validateScene } from "@mmo-engine/scene";
-import { synthesizeAssembly, synthesisToScene } from "../src/index.js";
+import { synthesizeAssembly, synthesisToScene, yawDegrees } from "../src/index.js";
 
 const ruleSet = JSON.parse(readFileSync(join(process.cwd(), "..", "..", "content", "synthesis", "dungeon-rules.json"), "utf8"));
 
@@ -36,5 +36,11 @@ describe("synthesisToScene", () => {
     const doc = synthesisToScene(out, { name: "t-room", assets: { [ref]: "catalog-model" } });
     assert.equal(doc.nodes[0].components?.Structure?.asset, "catalog-model");
     assert.equal(doc.nodes[1].components?.Structure?.asset, out.placements[1].assetRef === ref ? "catalog-model" : "");
+  });
+
+  it("reads a part's yaw from its quaternion, and keeps it on the node", () => {
+    const quarter = Math.SQRT1_2; // 90 degrees about +Y
+    assert.ok(Math.abs(yawDegrees([0, quarter, 0, quarter]) - 90) < 1e-9);
+    assert.ok(Math.abs(yawDegrees([0, 0, 0, 1])) < 1e-9);
   });
 });
