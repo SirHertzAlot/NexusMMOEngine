@@ -135,7 +135,7 @@ export function bakeDungeons(o: BakeOptions): BakeResult {
     writeFileSync(join(o.out, file), JSON.stringify(f));
     let shell: IndexEntry["shell"];
     if (o.shell) {
-      const sh = dungeonShell(d, o.shell.geo, o.shell.options);
+      const sh = dungeonShell(d, o.shell.geo, { ...o.shell.options, laidRooms: interiors?.map((r) => r.room) ?? [] });
       const bytes = encodePcgMesh({ positions: sh.positions, indices: sh.indices, materials: [...SHELL_PARTS], triangleMaterials: Uint32Array.from(sh.parts) });
       shell = { file: `${f.id}.shell.pcgm`, triangles: sh.stats.triangles, vertices: sh.stats.vertices, bytes: bytes.byteLength };
       writeFileSync(join(o.out, shell.file), bytes);

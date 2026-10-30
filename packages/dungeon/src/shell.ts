@@ -10,6 +10,8 @@
  * - Each room's own cells are extruded again to its taller ceiling, by
  *   size (small, medium, large).
  * - Pool cells sink below the floor as basins.
+ * - A room a laid interior walls (`laidRooms`) has no wall of its own on its
+ *   closed edges: the interior's walls stand there.
  * - Everything is subtracted from a block of rock around the dungeon, and
  *   the block's outside is dropped: what remains is the inside surface,
  *   every triangle facing into the space you walk in, tagged floor, wall,
@@ -33,6 +35,11 @@ export interface ShellOptions {
   roomHeight?: { s: number; m: number; l: number };
   /** How far pool basins sink below the floor, metres. */
   poolDepth?: number;
+  /**
+   * Rooms a laid interior walls (interiors.ts). Their closed edges get no shell wall, since the interior's walls stand
+   * there. Absent or empty: the shell walls every room.
+   */
+  laidRooms?: readonly number[];
 }
 
 export const SHELL_DEFAULTS: Required<ShellOptions> = {
@@ -40,6 +47,7 @@ export const SHELL_DEFAULTS: Required<ShellOptions> = {
   corridorHeight: 4,
   roomHeight: { s: 5, m: 6, l: 8 },
   poolDepth: 1.2,
+  laidRooms: [],
 };
 
 /** What each triangle is. */
@@ -94,6 +102,12 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     walk[i] = d.grid[i] === CELL.floor || d.grid[i] === CELL.pool ? 1 : 0;
     pool[i] = d.grid[i] === CELL.pool ? 1 : 0;
   }
+  // The laid rooms, and the height their interior walls stand. Their cells tell closesLaidRoom which faces to leave out.
+  const laidRooms = new Set(o.laidRooms);
+  const laidHeight = new Map<number, number>();
+  for (const r of d.rooms) if (laidRooms.has(r.id)) laidHeight.set(r.id, o.roomHeight[r.size]);
+  const laid = new Int32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) if (walk[i] && laidHeight.has(d.roomId[i])) laid[i] = d.roomId[i];
   const floor = geo.cellsToPolygons(walk, W, H, { cell });
   if (floor.rings.length === 0) throw new Error("dungeonShell: the layout has no floor");
 
@@ -134,6 +148,33 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
 
   // Keep the inside surface; name each triangle by its origin and its facing.
   const src = solid.positions;
+  // A wall face on a grid line closes a laid room when, along its whole length, a laid cell of that room is on one side and
+  // rock or void is on the other, and it stays under the room's height. The face is left out: the interior's wall stands there.
+  const ON_LINE = 1e-4;
+  const cellOf = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= H ? -1 : y * W + x);
+  const laidAt = (i: number): number => (i >= 0 ? laid[i] : -1);
+  const rockAt = (i: number): boolean => i < 0 || walk[i] === 0;
+  const closedBy = (a: number, b: number): number => (laidAt(a) >= 0 && rockAt(b) ? laidAt(a) : laidAt(b) >= 0 && rockAt(a) ? laidAt(b) : -1);
+  const gridLine = (v: number[]): number => {
+    const k = Math.round(v[0] / cell);
+    return v.every((u) => Math.abs(u - k * cell) < ON_LINE) ? k : NaN;
+  };
+  const closesLaidRoom = (a: number, b: number, c: number): boolean => {
+    const xs = [src[a], src[b], src[c]], ys = [src[a + 1], src[b + 1], src[c + 1]], zs = [src[a + 2], src[b + 2], src[c + 2]];
+    const kx = gridLine(xs), kz = gridLine(zs);
+    if (Number.isNaN(kx) === Number.isNaN(kz)) return false; // a wall face lies on exactly one grid line
+    const alongZ = !Number.isNaN(kx);
+    const across = (s: number): number => (alongZ ? closedBy(cellOf(kx - 1, s), cellOf(kx, s)) : closedBy(cellOf(s, kz - 1), cellOf(s, kz)));
+    const run = alongZ ? zs : xs;
+    const first = Math.floor((Math.min(...run) + ON_LINE) / cell), last = Math.ceil((Math.max(...run) - ON_LINE) / cell) - 1;
+    let room = -1;
+    for (let s = first; s <= last; s++) {
+      const r = across(s);
+      if (r < 0 || (room >= 0 && r !== room)) return false;
+      room = r;
+    }
+    return room >= 0 && Math.min(...ys) >= -ON_LINE && Math.max(...ys) <= (laidHeight.get(room) ?? 0) + ON_LINE;
+  };
   const keep: number[] = [];
   const parts: number[] = [];
   for (let t = 0; t < solid.tags.length; t++) {
@@ -150,6 +191,7 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     else if (up > 0.7) part = "floor";
     else if (up < -0.7) part = "ceiling";
     else part = "wall";
+    if (part === "wall" && laidHeight.size > 0 && closesLaidRoom(a, b, c)) continue;
     keep.push(t);
     parts.push(SHELL_PARTS.indexOf(part));
   }
