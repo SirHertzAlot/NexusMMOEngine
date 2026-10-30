@@ -1,0 +1,7 @@
+{
+  "name": "@mmo-engine/economy",
+  "version": "0.1.0",
+  "private": true,
+  "main": "server.js",
+  "types": "server.js"
+}
