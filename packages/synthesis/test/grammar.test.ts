@@ -90,7 +90,7 @@ describe("placeInterior", () => {
 
   it("puts a doorway in place of one outer wall, centred on its cell", () => {
     const placements = placeInterior(grammarOf(["..", ".."], [{ side: "S", index: 1 }]), PLAIN, RULES, 1);
-    assert.equal(count(placements, "wall"), 7);
+    assert.equal(count(placements, "wall"), 9, "seven full walls, and two segments either side of the door");
     assert.equal(count(placements, "door"), 1);
     const door = placements.find((p) => p.category === "door")!;
     assert.deepEqual([door.transform.pos[0], door.transform.pos[2]], [2.5, 5]);
@@ -142,6 +142,36 @@ describe("placeInterior", () => {
   });
 });
 
+describe("doorway gaps", () => {
+  it("flanks each door with a wall segment, leaving the opening the doorway's width", () => {
+    const placements = placeInterior(grammarOf(["..", ".."], [{ side: "S", index: 1 }]), PLAIN, RULES, 1);
+    // The south wall of the doorway's cell sits at x 0 to 5; the other cell's south wall is at x -2.5.
+    const segments = placements.filter((p) => p.category === "wall" && p.transform.pos[2] === 5 && p.transform.pos[0] > 0);
+    assert.equal(segments.length, 2);
+    assert.deepEqual(segments.map((p) => p.transform.pos[0]).sort((a, b) => a - b), [0.625, 4.375]);
+    for (const s of segments) assert.deepEqual(s.size, [1.25, 4, 0.5]);
+  });
+
+  it("leaves no segment when the doorway is as wide as its cell", () => {
+    const wide = InteriorGrammarSchema.parse({
+      format: INTERIOR_GRAMMAR_FORMAT,
+      id: "test-room",
+      plan: ["..", ".."],
+      doors: [{ side: "S", index: 1 }],
+      doorwayM: 5,
+    });
+    const placements = placeInterior(wide, PLAIN, RULES, 1);
+    assert.equal(count(placements, "wall"), 7);
+    assert.equal(count(placements, "door"), 1);
+    assert.deepEqual(placements.find((p) => p.category === "door")!.size, [5, 4, 0.5]);
+  });
+
+  it("rejects a doorway wider than its cell", () => {
+    const result = InteriorGrammarSchema.safeParse({ format: INTERIOR_GRAMMAR_FORMAT, id: "test-room", plan: [".."], doorwayM: 6 });
+    assert.equal(result.success, false);
+  });
+});
+
 describe("interior edge and base cases", () => {
   const base = { format: INTERIOR_GRAMMAR_FORMAT, id: "test-room" };
 
@@ -171,7 +201,7 @@ describe("interior edge and base cases", () => {
     assert.equal(count(corridor, "floor"), 5);
     assert.equal(count(corridor, "wall"), 12, "5 west, 5 east, 1 north, 1 south");
     const cut = placeInterior(grammarOf([".", ".", ".", ".", "."], [{ side: "W", index: 2 }]), PLAIN, RULES, 1);
-    assert.equal(count(cut, "wall"), 11);
+    assert.equal(count(cut, "wall"), 13, "eleven full walls, and two segments either side of the door");
     assert.equal(count(cut, "door"), 1);
   });
 
@@ -183,7 +213,7 @@ describe("interior edge and base cases", () => {
 
   it("cuts two doorways on one corner cell, each on the side it names", () => {
     const placements = placeInterior(grammarOf(["..", ".."], [{ side: "N", index: 0 }, { side: "W", index: 0 }]), PLAIN, RULES, 1);
-    assert.equal(count(placements, "wall"), 6);
+    assert.equal(count(placements, "wall"), 10, "six full walls, and four segments beside the two doors");
     assert.equal(count(placements, "door"), 2);
     const doors = placements
       .filter((p) => p.category === "door")
@@ -225,7 +255,7 @@ describe("interior edge and base cases", () => {
     }
   });
 
-  it("walls exactly the floor edges that face off the plan, less the doorways, for random plans", () => {
+  it("walls every floor edge that faces off the plan, with a doorway's wall split in two, for random plans", () => {
     let state = 20261030;
     const next = (n: number): number => {
       state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
@@ -267,7 +297,7 @@ describe("interior edge and base cases", () => {
       const placements = placeInterior(grammarOf(plan, doors), PLAIN, RULES, trial + 1);
       assert.equal(count(placements, "floor"), floors, `trial ${trial}: floors`);
       assert.equal(count(placements, "door"), doors.length, `trial ${trial}: doors`);
-      assert.equal(count(placements, "wall") + count(placements, "door"), edges, `trial ${trial}: walls`);
+      assert.equal(count(placements, "wall"), edges + doors.length, `trial ${trial}: walls`);
       for (const p of placements) {
         for (const v of [...p.transform.pos, ...p.transform.rot, ...p.transform.scale, ...p.size]) {
           assert.ok(Number.isFinite(v), `trial ${trial}: non-finite value`);

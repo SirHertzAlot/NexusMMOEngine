@@ -36,6 +36,8 @@ export const InteriorGrammarSchema = z
     cellM: z.number().positive().max(50).default(5),
     /** Height of walls and doorways, metres. */
     wallHeightM: z.number().positive().max(30).default(4),
+    /** Width of a doorway's opening, metres. The wall either side of it fills the rest of the cell's edge. */
+    doorwayM: z.number().positive().max(50).default(2.5),
     /** The plan, row 0 at the north (-z) edge: "." a floor cell, "#" solid. */
     plan: z.array(z.string().min(1).max(MAX_PLAN_CELLS).regex(/^[.#]+$/)).min(1).max(MAX_PLAN_CELLS),
     /** Doorways in the outer wall: a side, and the cell along it counted from the west (N, S) or north (E, W) end. */
@@ -47,6 +49,9 @@ export const InteriorGrammarSchema = z
     g.plan.forEach((row, r) => {
       if (row.length !== width) ctx.addIssue({ code: "custom", path: ["plan", r], message: `plan row ${r} is ${row.length} cells, row 0 is ${width}` });
     });
+    if (g.doorwayM > g.cellM) {
+      ctx.addIssue({ code: "custom", path: ["doorwayM"], message: `doorway ${g.doorwayM} m is wider than its ${g.cellM} m cell` });
+    }
     if (!g.plan.some((row) => row.includes("."))) {
       ctx.addIssue({ code: "custom", path: ["plan"], message: "plan has no floor cell" });
     }
@@ -132,9 +137,10 @@ const fit = (native: number, wanted: number): number => (native > 0 ? wanted / n
 
 /**
  * Put a grammar's plan into the world: a floor part per floor cell, a wall
- * part on every floor edge that faces off the plan, and a door part where the
- * grammar cuts a doorway. Each part is scaled to its cell or wall, and its
- * size is that cell or wall even when the asset is flat. Floor centres sit at
+ * part on every floor edge that faces off the plan. A doorway cuts a gap in
+ * its wall: a door part fills the opening, with a wall segment either side.
+ * Each part is scaled to its cell, wall or segment, and its size is that
+ * extent even when the asset is flat. Floor centres sit at
  * y = 0; walls at half their height. Every part the plan needs is named before
  * any is placed, so a style with a gap fails before it lays anything.
  */
@@ -144,7 +150,9 @@ export function placeInterior(
   ruleSet: LearnedRuleSet,
   seed: number,
 ): SynthesizedPlacement[] {
-  const { plan, cellM, wallHeightM } = grammar;
+  const { plan, cellM, wallHeightM, doorwayM } = grammar;
+  // Each wall segment beside a doorway: the rest of the cell's edge, split evenly either side.
+  const segM = (cellM - doorwayM) / 2;
   const cols = plan[0].length;
   const rows = plan.length;
   const doorways = new Set(grammar.doors.map((d) => cellKey(doorwayCell(plan, d), d.side)));
@@ -158,7 +166,14 @@ export function placeInterior(
 
   const needed = new Set<Feature>(["floor"]);
   for (const cell of floorCells) {
-    for (const side of facesOff(cell)) needed.add(doorways.has(cellKey(cell, side)) ? "door" : "wall");
+    for (const side of facesOff(cell)) {
+      if (!doorways.has(cellKey(cell, side))) {
+        needed.add("wall");
+      } else {
+        needed.add("door");
+        if (segM > 0) needed.add("wall");
+      }
+    }
   }
   const parts = Object.values(ruleSet.parts).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const lists = new Map<Feature, PartDef[]>();
@@ -199,14 +214,30 @@ export function placeInterior(
     const floor = pick("floor");
     place(floor, [cellM, floor.bounds.size[1], cellM], [centreX(cell.c), 0, centreZ(cell.r)], 0);
     for (const side of facesOff(cell)) {
-      const wall = pick(doorways.has(cellKey(cell, side)) ? "door" : "wall");
       const { c: dc, r: dr } = SIDE_STEP[side];
-      place(
-        wall,
-        [cellM, wallHeightM, wall.bounds.size[2]],
-        [centreX(cell.c) + (dc * cellM) / 2, wallHeightM / 2, centreZ(cell.r) + (dr * cellM) / 2],
-        WALL_YAW[side],
-      );
+      const edgeX = centreX(cell.c) + (dc * cellM) / 2;
+      const edgeZ = centreZ(cell.r) + (dr * cellM) / 2;
+      if (!doorways.has(cellKey(cell, side))) {
+        const wall = pick("wall");
+        place(wall, [cellM, wallHeightM, wall.bounds.size[2]], [edgeX, wallHeightM / 2, edgeZ], WALL_YAW[side]);
+        continue;
+      }
+      // A doorway: a door fills the opening, with a wall segment either side of it.
+      const door = pick("door");
+      place(door, [doorwayM, wallHeightM, door.bounds.size[2]], [edgeX, wallHeightM / 2, edgeZ], WALL_YAW[side]);
+      if (segM <= 0) continue;
+      // The edge runs along x on a north or south side, and along z on an east or west one.
+      const alongX = dc === 0;
+      for (const sign of [-1, 1]) {
+        const offset = sign * (doorwayM / 2 + segM / 2);
+        const wall = pick("wall");
+        place(
+          wall,
+          [segM, wallHeightM, wall.bounds.size[2]],
+          [edgeX + (alongX ? offset : 0), wallHeightM / 2, edgeZ + (alongX ? 0 : offset)],
+          WALL_YAW[side],
+        );
+      }
     }
   }
   return out;

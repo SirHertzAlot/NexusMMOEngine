@@ -822,7 +822,7 @@
         "Structure": {
           "kind": "door",
           "asset": "",
-          "width": 5,
+          "width": 2.5,
           "depth": 0.5,
           "height": 4
         }
@@ -830,7 +830,57 @@
     },
     {
       "id": "part-33",
-      "name": "SM_Env_Tiles",
+      "name": "SM_Env_Wall",
+      "transform": {
+        "position": [
+          -1.875,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 1.25,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-34",
+      "name": "SM_Env_Wall_Quarter_01",
+      "transform": {
+        "position": [
+          1.875,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 1.25,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-35",
+      "name": "SM_Env_Tiles_Texture_03",
       "transform": {
         "position": [
           5,
@@ -854,8 +904,8 @@
       }
     },
     {
-      "id": "part-34",
-      "name": "SM_Env_Wall_Quarter_01",
+      "id": "part-36",
+      "name": "SM_Env_Wall",
       "transform": {
         "position": [
           5,
@@ -879,8 +929,8 @@
       }
     },
     {
-      "id": "part-35",
-      "name": "SM_Prop_Wall_Banner",
+      "id": "part-37",
+      "name": "SM_Env_Wall_Pillar_Large_Round_01",
       "transform": {
         "position": [
           7.5,
