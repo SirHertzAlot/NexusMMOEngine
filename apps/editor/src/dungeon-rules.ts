@@ -39,6 +39,7 @@ export const RUN_SECTIONS: readonly FieldSectionSpec[] = [
       { key: "chestsPerRun", label: "Chests per run", ...count(64), help: "Placed in the lowest-id rooms past the entrance." },
       { key: "chestLootRolls", label: "Rolls per chest (min–max)", kind: "pair" },
       { key: "chestOpenRadiusM", label: "Chest open distance (m)", ...metres },
+      { key: "veinNodes", label: "Resource veins are gatherable", kind: "bool", help: "Off: the run's veins stay walls only." },
     ],
   },
   {

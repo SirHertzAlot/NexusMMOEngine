@@ -43,6 +43,7 @@ import { propMesh } from "./prop-mesh.js";
 import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { BreakSystem, breakDefsOf, ChestSystem } from "../interact/index.js";
+import { GatheringSystem } from "../gathering/index.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout, LayoutProp } from "./pool.js";
 import { placeChestsAndTraps } from "./placement.js";
@@ -138,12 +139,18 @@ export class DungeonInstance {
   /** Chests placed for the run, in room-id order (`chest-0`, …). */
   readonly chests: InstanceChest[] = [];
   private readonly chestSystem: ChestSystem;
+  /** The run's resource nodes (its baked veins), when the rules switch them on; the gateway finds it among the systems. */
+  private readonly gathering: GatheringSystem | null;
   /** How many chests were open at the last state push (a change pushes the state at once). */
   private openChests = 0;
   /** Each chest's facing (chests[i]), kept for the open model that replaces it. */
   private readonly chestYaw: number[] = [];
   /** Traps armed for the run, in room-id order (`trap-0`, …). */
   readonly traps: InstanceTrap[] = [];
+  /** Resource nodes the run's veins spawned (0 when the rules switch them off). */
+  get resourceNodes(): number {
+    return this.gathering?.size ?? 0;
+  }
   readonly creatures: CreatureSystem;
   readonly startedAt: number;
   private readonly members = new Map<number, InstanceMember>();
@@ -193,6 +200,15 @@ export class DungeonInstance {
     );
     const director: SimSystem = { name: "dungeon-director", step: () => this.direct() };
     // Chests are entities opened with E (interact, 0x27): the opener's rolls from the chest pool join the run's loot.
+    this.gathering = opts.rules.veinNodes
+      ? new GatheringSystem({
+          reachM: opts.game.rules.gathering.reachM,
+          cooldownMs: opts.game.rules.gathering.cooldownSeconds * 1000,
+          pouchMax: opts.game.rules.gathering.pouchMax,
+          trainPerTier: opts.game.rules.gathering.trainDifficultyPerTier,
+          now: this.now,
+        })
+      : null;
     this.chestSystem = new ChestSystem({
       reachM: opts.rules.chestOpenRadiusM,
       drop: (_s, _table, _x, _z, owner) => this.rollChest(owner),
@@ -226,7 +242,7 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), breaks, this.chestSystem, new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), breaks, this.chestSystem, ...(this.gathering ? [this.gathering] : []), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
@@ -444,6 +460,12 @@ export class DungeonInstance {
       this.chests.push(chest);
       this.chestYaw.push(p.prop === undefined ? 0 : this.opts.layout.props[p.prop]!.yaw);
     });
+    if (this.gathering) {
+      this.opts.layout.veins.forEach((v, i) => {
+        const eid = this.spawnVein(v.x, v.z);
+        this.gathering!.register(eid, `vein-${i}`, { kind: v.kind, material: v.kind, tier: v.tier, skill: "mining", stock: 3, regrowHours: 0, halfX: 0.5, halfZ: 0.5 });
+      });
+    }
     const rules = this.opts.game.rules.creatures.creatures;
     const fallback = this.opts.rules.fallbackCreature;
     for (const sp of this.opts.layout.spawns) {
@@ -571,6 +593,17 @@ export class DungeonInstance {
   }
 
   /** A chest stands in its room: the props table's chest model when there is one, else a bare marker the interaction still finds. */
+  /** A vein stands in its wall: a bare marker the gather finds (its model is the dressing's, when one exists). */
+  private spawnVein(x: number, z: number): number {
+    const eid = this.world.spawn();
+    addComponent(this.world.ecs, C.Transform, eid);
+    C.Transform.px[eid] = x;
+    C.Transform.pz[eid] = z;
+    C.Transform.qw[eid] = 1;
+    C.Transform.sx[eid] = C.Transform.sy[eid] = C.Transform.sz[eid] = 1;
+    return eid;
+  }
+
   private spawnChest(x: number, z: number, baked?: LayoutProp): number {
     if (this.opts.props) {
       const eid = this.spawnProp(baked ?? { kind: "chest", x, z, yaw: 0, scale: 1, radius: 0 });

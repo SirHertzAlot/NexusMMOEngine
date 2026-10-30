@@ -55,6 +55,17 @@ export interface LayoutSpawn {
   species: string;
 }
 
+/** A resource vein the bake put in a room's wall, metres in the instance's space. */
+export interface LayoutVein {
+  /** The seam the vein belongs to (the bake's vein id, e.g. "iron-seam"). */
+  kind: string;
+  /** Its tier: how hard its ore is to work (the bake's dressing). */
+  tier: number;
+  x: number;
+  z: number;
+  room: number;
+}
+
 export interface InstanceLayout {
   id: string;
   name: string;
@@ -78,6 +89,8 @@ export interface InstanceLayout {
   shell?: string;
   /** Everything baked to stand in the rooms: layout props, the dressing's furniture, torches. */
   props: LayoutProp[];
+  /** The dressing's resource veins (gatherable when the run's rules switch them on). */
+  veins: LayoutVein[];
 }
 
 interface DungeonFileLike {
@@ -92,7 +105,11 @@ interface DungeonFileLike {
   boss: number;
   spawns: { x: number; y: number; tier: number; room: number }[];
   grids: { grid: string };
-  dressing?: { rank: number; props?: { kind: string; x: number; y: number; rot?: number; radius?: number }[] };
+  dressing?: {
+    rank: number;
+    props?: { kind: string; x: number; y: number; rot?: number; radius?: number }[];
+    resources?: { kind: string; tier: number; x: number; y: number; room: number }[];
+  };
   props?: { kind: string; x: number; y: number; rot?: number; scale?: number; dx?: number; dy?: number }[];
   torches?: { x: number; y: number; dx: number; dy: number }[];
   colliders?: { x: number; y: number; r: number }[];
@@ -137,6 +154,7 @@ export function readLayout(json: unknown): InstanceLayout {
     spawns: f.spawns.map((s) => ({ x: cellCentre(s.x), z: cellCentre(s.y), tier: s.tier, room: s.room, species: species.get(`${s.x},${s.y}`) ?? "" })),
     colliders,
     props,
+    veins: (f.dressing?.resources ?? []).map((v) => ({ kind: v.kind, tier: v.tier, x: v.x * CELL_M, z: v.y * CELL_M, room: v.room })),
   };
 }
 
