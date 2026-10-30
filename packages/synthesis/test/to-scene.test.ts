@@ -43,4 +43,20 @@ describe("synthesisToScene", () => {
     assert.ok(Math.abs(yawDegrees([0, quarter, 0, quarter]) - 90) < 1e-9);
     assert.ok(Math.abs(yawDegrees([0, 0, 0, 1])) < 1e-9);
   });
+
+  it("sizes each Structure from the part's size in metres, not its scale", () => {
+    const out = synthesizeAssembly({
+      ruleSet,
+      seed: 9913,
+      site: { bounds: { min: [-22, 0, -22], max: [22, 14, 22] } },
+      blueprint: { archetype: "multi-level-descent" },
+      budget: { maxParts: 10, maxGrowthAttempts: 200 },
+    });
+    const doc = synthesisToScene(out, { name: "t-room" });
+    const [w, h, d] = out.placements[0].size;
+    const structure = doc.nodes[0].components?.Structure;
+    assert.equal(structure?.width, Math.round(Math.abs(w) * 1000) / 1000);
+    assert.equal(structure?.height, Math.round(Math.abs(h) * 1000) / 1000);
+    assert.equal(structure?.depth, Math.round(Math.abs(d) * 1000) / 1000);
+  });
 });

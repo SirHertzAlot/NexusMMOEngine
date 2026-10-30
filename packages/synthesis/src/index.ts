@@ -11,3 +11,4 @@ export * from "./synthesizer.js";
 export * from "./mechanisms.js";
 export * from "./wfc-bridge.js";
 export * from "./to-scene.js";
+export * from "./grammar.js";

@@ -15,15 +15,19 @@ export function yawDegrees([x, y, z, w]: QuatTuple): number {
   return (Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z)) * 180) / Math.PI;
 }
 
+/** Round to millimetres, the precision a scene file keeps. */
+const mm = (v: number): number => Math.round(v * 1000) / 1000;
+
 /**
  * A synthesized room as a scene document. Each placed part becomes a Structure
  * node, so the server spawns the room the way it spawns any scene (MMO_SCENE).
- * A part keeps its yaw (the scene's rotation about Y, in degrees). Tilt is dropped:
- * a scene node turns about the vertical axis only.
+ * A part keeps its yaw (the scene's rotation about Y, in degrees) and its size
+ * in metres. Tilt is dropped: a scene node turns about the vertical axis only.
+ * Takes any output with placements, so a grammar's placements export the same way.
  */
-export function synthesisToScene(out: SynthesisOutput, o: SceneExportOptions): SceneDoc {
+export function synthesisToScene(out: Pick<SynthesisOutput, "placements">, o: SceneExportOptions): SceneDoc {
   const nodes: SceneNode[] = out.placements.map((p, i) => {
-    const [sx, sy, sz] = p.transform.scale;
+    const [w, h, d] = p.size;
     return {
       id: `part-${i}`,
       name: p.partId,
@@ -32,9 +36,9 @@ export function synthesisToScene(out: SynthesisOutput, o: SceneExportOptions): S
         Structure: {
           kind: p.category || p.partId,
           asset: o.assets?.[p.assetRef] ?? "",
-          width: Math.abs(sx),
-          depth: Math.abs(sz),
-          height: Math.abs(sy),
+          width: mm(Math.abs(w)),
+          depth: mm(Math.abs(d)),
+          height: mm(Math.abs(h)),
         },
       },
     };
