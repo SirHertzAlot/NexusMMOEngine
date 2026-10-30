@@ -308,6 +308,42 @@ describe("interior edge and base cases", () => {
   });
 });
 
+describe("openings and open archways", () => {
+  it("opens a doorway given by cell and side, on the face it names", () => {
+    const placements = placeInterior(grammarOf(["..", ".."], [{ side: "E", c: 1, r: 0 }]), PLAIN, RULES, 1);
+    const door = placements.find((p) => p.category === "door")!;
+    assert.deepEqual([door.transform.pos[0], door.transform.pos[2]], [5, -2.5]);
+    assert.equal(count(placements, "wall"), 9, "seven full walls, and two segments either side of the door");
+  });
+
+  it("leaves an open archway bare when the style's door category is empty", () => {
+    const arch = InteriorStyleSchema.parse({ id: "arch", categories: { door: "" } });
+    const placements = placeInterior(grammarOf(["..", ".."], [{ side: "S", index: 1 }]), arch, RULES, 1);
+    assert.equal(count(placements, "door"), 0);
+    assert.equal(count(placements, "wall"), 9, "the walls either side of the opening stay");
+  });
+
+  it("rejects a cell-and-side doorway that does not open from a floor cell", () => {
+    const result = InteriorGrammarSchema.safeParse({
+      format: INTERIOR_GRAMMAR_FORMAT,
+      id: "test-room",
+      plan: ["#.", ".."],
+      doors: [{ side: "N", c: 0, r: 0 }],
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects the same face given twice, once by index and once by cell", () => {
+    const result = InteriorGrammarSchema.safeParse({
+      format: INTERIOR_GRAMMAR_FORMAT,
+      id: "test-room",
+      plan: ["..", ".."],
+      doors: [{ side: "S", index: 1 }, { side: "S", c: 1, r: 1 }],
+    });
+    assert.equal(result.success, false);
+  });
+});
+
 describe("interior content", () => {
   it("parses every grammar and style, and each grammar is named after its file", () => {
     for (const file of readdirSync(join(contentDir, "grammars"))) {

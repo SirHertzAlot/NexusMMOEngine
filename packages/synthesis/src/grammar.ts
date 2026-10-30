@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { z } from "zod";
 import { DeterministicRng } from "./synthesizer.js";
 import type { LearnedRuleSet, PartDef, SynthesizedPlacement, Vec3Tuple } from "./types.js";
@@ -27,6 +26,12 @@ interface Door {
 
 const Id = z.string().regex(/^[a-z][a-z0-9-]*$/);
 const SideSchema = z.enum(["N", "S", "E", "W"]);
+/** A doorway: a bounding-box side and index (from the west or north end), or a cell and the side it opens onto. */
+const DoorSchema = z.union([
+  z.object({ side: SideSchema, index: z.number().int().min(0) }),
+  z.object({ side: SideSchema, c: z.number().int().min(0), r: z.number().int().min(0) }),
+]);
+type DoorSpec = z.infer<typeof DoorSchema>;
 
 export const InteriorGrammarSchema = z
   .object({
@@ -40,8 +45,8 @@ export const InteriorGrammarSchema = z
     doorwayM: z.number().positive().max(50).default(2.5),
     /** The plan, row 0 at the north (-z) edge: "." a floor cell, "#" solid. */
     plan: z.array(z.string().min(1).max(MAX_PLAN_CELLS).regex(/^[.#]+$/)).min(1).max(MAX_PLAN_CELLS),
-    /** Doorways in the outer wall: a side, and the cell along it counted from the west (N, S) or north (E, W) end. */
-    doors: z.array(z.object({ side: SideSchema, index: z.number().int().min(0) })).default([]),
+    /** Doorways: each opens a floor cell's edge onto the side it names. */
+    doors: z.array(DoorSchema).default([]),
   })
   .superRefine((g, ctx) => {
     if (g.plan.length === 0) return;
@@ -58,18 +63,20 @@ export const InteriorGrammarSchema = z
     const seen = new Set<string>();
     g.doors.forEach((d, i) => {
       const path = ["doors", i];
-      if (!doorwayOnSide(g.plan, d)) {
-        ctx.addIssue({ code: "custom", path, message: `doorway ${d.side}${d.index} is past the end of its side` });
+      const label = "index" in d ? `${d.side}${d.index}` : `${d.side} of cell ${d.c},${d.r}`;
+      if ("index" in d && !doorwayOnSide(g.plan, d)) {
+        ctx.addIssue({ code: "custom", path, message: `doorway ${label} is past the end of its side` });
         return;
       }
-      const key = cellKey(doorwayCell(g.plan, d), d.side);
+      const cell = doorCell(g.plan, d);
+      const key = cellKey(cell, d.side);
       if (seen.has(key)) {
-        ctx.addIssue({ code: "custom", path, message: `doorway ${d.side}${d.index} is listed twice` });
+        ctx.addIssue({ code: "custom", path, message: `doorway ${label} is listed twice` });
         return;
       }
       seen.add(key);
-      if (!isOuterDoorway(g.plan, d)) {
-        ctx.addIssue({ code: "custom", path, message: `doorway ${d.side}${d.index} is not on a floor cell of the outer wall` });
+      if (!isOpening(g.plan, cell, d.side)) {
+        ctx.addIssue({ code: "custom", path, message: `doorway ${label} does not open from a floor cell` });
       }
     });
   });
@@ -77,7 +84,7 @@ export type InteriorGrammar = z.infer<typeof InteriorGrammarSchema>;
 
 export const InteriorStyleSchema = z.object({
   id: Id,
-  /** Part category per feature; a feature left out uses its own name as the category. */
+  /** Part category per feature; a feature left out uses its own name as the category. A door category of "" leaves the opening bare: an open archway. */
   categories: z
     .object({ floor: z.string(), wall: z.string(), door: z.string() })
     .partial()
@@ -101,7 +108,6 @@ const SIDE_STEP: Record<Side, Cell> = {
 const SIDE_ORDER: Side[] = ["N", "S", "W", "E"];
 /** A wall's front turns into the room: a part's front is +z at yaw 0, so a north wall (room to the south) takes 0. */
 const WALL_YAW: Record<Side, number> = { N: 0, S: Math.PI, W: Math.PI / 2, E: -Math.PI / 2 };
-const UP = new THREE.Vector3(0, 1, 0);
 
 const cellAt = (plan: string[], { c, r }: Cell): string | undefined => plan[r]?.[c];
 const isFloor = (plan: string[], cell: Cell): boolean => cellAt(plan, cell) === ".";
@@ -126,10 +132,14 @@ function doorwayCell(plan: string[], door: Door): Cell {
   }
 }
 
-/** True when the doorway's cell is floor and its outer edge faces off the plan. */
-function isOuterDoorway(plan: string[], door: Door): boolean {
-  const cell = doorwayCell(plan, door);
-  return isFloor(plan, cell) && !isFloor(plan, step(cell, door.side));
+/** The floor cell a doorway opens from: a bounding-box side and index, or the cell as given. */
+function doorCell(plan: string[], door: DoorSpec): Cell {
+  return "index" in door ? doorwayCell(plan, door) : { c: door.c, r: door.r };
+}
+
+/** True when the cell is floor and its edge on `side` leads off the floor: the place a wall or an opening goes. */
+function isOpening(plan: string[], cell: Cell, side: Side): boolean {
+  return isFloor(plan, cell) && !isFloor(plan, step(cell, side));
 }
 
 /** Scale that stretches a part's native extent to the wanted one; a flat asset (zero extent) keeps scale 1. */
@@ -155,7 +165,8 @@ export function placeInterior(
   const segM = (cellM - doorwayM) / 2;
   const cols = plan[0].length;
   const rows = plan.length;
-  const doorways = new Set(grammar.doors.map((d) => cellKey(doorwayCell(plan, d), d.side)));
+  const doorways = new Set(grammar.doors.map((d) => cellKey(doorCell(plan, d), d.side)));
+  const openDoors = style.categories.door === "";
   const floorCells: Cell[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -170,7 +181,7 @@ export function placeInterior(
       if (!doorways.has(cellKey(cell, side))) {
         needed.add("wall");
       } else {
-        needed.add("door");
+        if (!openDoors) needed.add("door");
         if (segM > 0) needed.add("wall");
       }
     }
@@ -200,12 +211,11 @@ export function placeInterior(
   const place = (def: PartDef, target: Vec3Tuple, pos: Vec3Tuple, yaw: number): void => {
     const [sx, sy, sz] = def.bounds.size;
     const scale: Vec3Tuple = [fit(sx, target[0]), fit(sy, target[1]), fit(sz, target[2])];
-    const q = new THREE.Quaternion().setFromAxisAngle(UP, yaw);
     out.push({
       partId: def.id,
       assetRef: def.assetRef,
       category: def.category,
-      transform: { pos, rot: [q.x, q.y, q.z, q.w], scale },
+      transform: { pos, rot: [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)], scale },
       size: [...target],
     });
   };
@@ -222,9 +232,11 @@ export function placeInterior(
         place(wall, [cellM, wallHeightM, wall.bounds.size[2]], [edgeX, wallHeightM / 2, edgeZ], WALL_YAW[side]);
         continue;
       }
-      // A doorway: a door fills the opening, with a wall segment either side of it.
-      const door = pick("door");
-      place(door, [doorwayM, wallHeightM, door.bounds.size[2]], [edgeX, wallHeightM / 2, edgeZ], WALL_YAW[side]);
+      // A doorway: a door fills the opening (an open archway is left bare), with a wall segment either side.
+      if (!openDoors) {
+        const door = pick("door");
+        place(door, [doorwayM, wallHeightM, door.bounds.size[2]], [edgeX, wallHeightM / 2, edgeZ], WALL_YAW[side]);
+      }
       if (segM <= 0) continue;
       // The edge runs along x on a north or south side, and along z on an east or west one.
       const alongX = dc === 0;
