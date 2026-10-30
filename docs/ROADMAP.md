@@ -226,7 +226,7 @@ one propagates to every panel: audit in the project library
 | M7 | `useDocument` (draft, saved copy, dirty by value, undo and redo) for flow, story and dungeon | ✅ | #207, in main with #209; flow gained Undo and Redo |
 | M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | ✅ | #210: `useTableDrafts` for the rules tables and gameplay grids, plus `sameValue` |
 | M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 🚧 | Audit done; added a uniform `create` route to `files-host.ts` (POST /api/editor/files/:kind {name}, template-driven + validated, refused on conflict/invalid — no more hand-rolled `PUT {name}`). 10/10 files-host tests green, editor tsc clean. Remaining stragglers: import/export (missing `doc-io.ts`) and the client `useDocumentLifecycle` (new/import/export/load/retry) hook. |
-| M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 📋 | |
+| M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | 🚧 | `readJsonOr400` replaces 9 hand-rolled parses, each keeping its own empty-body rule and 400 message. Open: 3 sites (`/api/editor/server/...` body, tables save, build profile save) keep their own error handling. |
 | M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
 
 ## 1g. Designer access (editor gap audit)
@@ -869,3 +869,4 @@ Newest first. One line per merged PR or decision.
   - Sacred producer client (`LogProducerClient`): unrolled, allocation-free in-place SAB emission achieving **83.9ns latency** (11.92M records/s single-threaded) and **13.72M records/s throughput** across 4 concurrent threads.
   - Migrated Gateway subsystem: all 9 legacy `console.*` calls replaced with typed binary emissions; 0 `console.*` calls remain in `gateway.ts`. All Phase 0 gates PASS.
 - **2026-10-29**: fix(editor): deep links survive a cold load (view ids with dots such as `flow.graph` now parse, and a view a module has not contributed yet keeps its link); `npm run editor` builds `@mmo-engine/build` first.
+- **2026-10-30**: refactor(editor): M10 in progress. `host.ts` reads nine JSON request bodies through a shared `readJsonOr400` helper; the editor suite passes 887/887.

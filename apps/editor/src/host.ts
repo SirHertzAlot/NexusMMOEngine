@@ -491,6 +491,20 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+/** Read the body as JSON for a route that answers 400 when it is not.
+ * An empty body is `emptyBody` when one is given, otherwise a 400. Returns
+ * undefined after the 400 has been sent (JSON.parse never yields undefined). */
+async function readJsonOr400(req: IncomingMessage, res: ServerResponse, emptyBody?: unknown): Promise<unknown> {
+  const raw = await readBody(req);
+  if (raw === "" && emptyBody !== undefined) return emptyBody;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
+    return undefined;
+  }
+}
+
 /** Check whether `url` matches `pattern`. */
 function routeMatches(url: string, pattern: string | RegExp): RegExpMatchArray | null {
   if (typeof pattern === "string") {
@@ -1267,13 +1281,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           if (url === "/api/editor/dungeons/bake" && req.method === "POST") {
-            let body: unknown;
-            try {
-              body = JSON.parse((await readBody(req)) || "{}") as unknown;
-            } catch {
-              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-              return;
-            }
+            const body = await readJsonOr400(req, res, {});
+            if (body === undefined) return;
             sendJson(res, 200, { ok: true, ...(await runBake(repoRoot, dataDir, (body ?? {}) as object)) });
             return;
           }
@@ -1303,13 +1312,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           if (url === "/api/editor/build/run" && req.method === "POST") {
-            let body: unknown;
-            try {
-              body = JSON.parse((await readBody(req)) || "{}") as unknown;
-            } catch {
-              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-              return;
-            }
+            const body = await readJsonOr400(req, res, {});
+            if (body === undefined) return;
             const profile = (body as { profile?: unknown }).profile;
             if (typeof profile !== "string" || !profile) {
               sendJson(res, 400, { ok: false, error: "body.profile must be a profile name" });
@@ -1339,13 +1343,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             }
           }
           if (url === "/api/editor/build/deploy" && req.method === "POST") {
-            let body: unknown;
-            try {
-              body = JSON.parse((await readBody(req)) || "{}") as unknown;
-            } catch {
-              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-              return;
-            }
+            const body = await readJsonOr400(req, res, {});
+            if (body === undefined) return;
             const port = (body as { port?: unknown }).port;
             if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) {
               sendJson(res, 400, { ok: false, error: "body.port must be a TCP port" });
@@ -1380,13 +1379,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           if (url === "/api/editor/hud/layout" && req.method === "PUT") {
-            let body: unknown;
-            try {
-              body = JSON.parse((await readBody(req)) || "{}") as unknown;
-            } catch {
-              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-              return;
-            }
+            const body = await readJsonOr400(req, res, {});
+            if (body === undefined) return;
             const layout = (body as { layout?: unknown }).layout;
             if (!layout || typeof layout !== "object") {
               sendJson(res, 400, { ok: false, error: "body.layout must be a HUD layout" });
@@ -1418,13 +1412,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             if (dungeonRoute[2] === "/patch" && req.method === "PUT") {
-              let body: { patch?: unknown };
-              try {
-                body = JSON.parse(await readBody(req)) as { patch?: unknown };
-              } catch {
-                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-                return;
-              }
+              const body = (await readJsonOr400(req, res)) as { patch?: unknown } | undefined;
+              if (body === undefined) return;
               try {
                 sendJson(res, 200, { ok: true, ...savePatch(dataDir, id, body.patch) });
               } catch (err) {
@@ -1452,13 +1441,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           if (url === "/api/editor/pcg/doc" && req.method === "PUT") {
-            let body: { file?: unknown; doc?: unknown };
-            try {
-              body = JSON.parse(await readBody(req)) as { file?: unknown; doc?: unknown };
-            } catch {
-              sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-              return;
-            }
+            const body = (await readJsonOr400(req, res)) as { file?: unknown; doc?: unknown } | undefined;
+            if (body === undefined) return;
             if (typeof body.file !== "string" || body.doc === undefined) {
               sendJson(res, 400, { ok: false, error: 'need a JSON body shaped like {"file": …, "doc": …}' });
               return;
@@ -1651,12 +1635,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
             const u = new URL(url, "http://localhost");
             let body: unknown = {};
             if (req.method === "POST") {
-              try {
-                body = JSON.parse((await readBody(req)) || "{}") as unknown;
-              } catch {
-                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-                return;
-              }
+              const parsed = await readJsonOr400(req, res, {});
+              if (parsed === undefined) return;
+              body = parsed;
             }
             dbCore ??= await openDatabaseCore(repoRoot, dataDir);
             const reply = await handleDatabase(
@@ -1693,13 +1674,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             if (req.method === "PUT") {
-              let parsed: unknown;
-              try {
-                parsed = JSON.parse(await readBody(req)) as unknown;
-              } catch {
-                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-                return;
-              }
+              const parsed = await readJsonOr400(req, res);
+              if (parsed === undefined) return;
               if (typeof parsed !== "object" || parsed === null || !("content" in parsed)) {
                 sendJson(res, 400, { ok: false, error: 'need a JSON body shaped like {"content": …}' });
                 return;
@@ -1735,13 +1711,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
               return;
             }
             if (req.method === "POST" || req.method === "PUT") {
-              let body: { content?: unknown; files?: unknown };
-              try {
-                body = JSON.parse(await readBody(req)) as typeof body;
-              } catch {
-                sendJson(res, 400, { ok: false, error: "request body is not valid JSON" });
-                return;
-              }
+              const body = (await readJsonOr400(req, res)) as { content?: unknown; files?: unknown } | undefined;
+              if (body === undefined) return;
               if (req.method === "POST" && sub === "check") {
                 sendJson(res, 200, { ok: true, issues: await checkStory(repoRoot, body.files as Parameters<typeof checkStory>[1]) });
                 return;
