@@ -598,11 +598,12 @@ export class WorldCharacterSync {
       if (immediate || this.pendingPuts.length >= SAVE_BATCH_MAX) {
         this.pumpPuts();
       } else if (this.putTimer === null) {
+        // Ref'd on purpose: a queued save must flush even when nothing else
+        // holds the event loop open (an unref'd window let the save stall).
         this.putTimer = setTimeout(() => {
           this.putTimer = null;
           this.pumpPuts();
         }, SAVE_BATCH_WINDOW_MS);
-        this.putTimer.unref();
       }
     });
   }
