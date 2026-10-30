@@ -36,7 +36,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && tsc -p tsconfig.json && vite build",
-    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/rules && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/modules && node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/settlement && node ../../scripts/dep-build.mjs @mmo-engine/engine-core && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/dungeon && npm run build:deps --workspace=@mmo-engine/client && npm run build:lib --workspace=@mmo-engine/client",
+    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/build && node ../../scripts/dep-build.mjs @mmo-engine/rules && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/modules && node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/settlement && node ../../scripts/dep-build.mjs @mmo-engine/engine-core && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/dungeon && npm run build:deps --workspace=@mmo-engine/client && npm run build:lib --workspace=@mmo-engine/client",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",

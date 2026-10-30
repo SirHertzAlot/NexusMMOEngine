@@ -3007,7 +3007,7 @@ export class Gateway {
         this.sendError(s, 4003, "malformed bots command");
         return;
       }
-      res = { kind: "admin", command: "bots", ...spawnBots(parsed.data) };
+      res = { kind: "admin", command: cmd.command, ...spawnBots(parsed.data) };
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);

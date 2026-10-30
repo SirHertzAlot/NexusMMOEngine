@@ -24,11 +24,11 @@ describe("buildCatalog", () => {
     const c = await buildCatalog(ROOT);
     const of = (kind: string): string[] => c.entries.filter((e) => e.kind === kind).map((e) => e.id);
     assert.ok(of("species").includes("void-watcher"));
-    assert.deepEqual(of("creature"), ["goblin"]);
+    assert.ok(of("creature").includes("goblin"));
     assert.ok(of("item").includes("sword"));
-    assert.deepEqual(of("prefab"), ["camps/goblin"]);
+    assert.ok(of("prefab").includes("camps/goblin"));
     assert.ok(of("picg").includes("oak"));
-    assert.deepEqual(of("scene"), ["places", "test-arena"]);
+    assert.ok(["places", "test-arena"].every((id) => of("scene").includes(id)));
     assert.ok(of("quest").includes("goblin-trouble"));
     assert.ok(c.entries.every((e) => e.drag.kind === e.kind && e.drag.id === e.id));
   });

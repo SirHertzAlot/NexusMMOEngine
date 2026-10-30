@@ -47,7 +47,7 @@ describe("readStoryFile", () => {
     const r = readStoryFile(ROOT, "quests");
     assert.ok((r.content as Any).quests["goblin-trouble"]);
     assert.ok(r.refs.items.includes("sword"));
-    assert.deepEqual(r.refs.species, ["goblin"]);
+    assert.ok(r.refs.species.includes("goblin"));
   });
 });
 

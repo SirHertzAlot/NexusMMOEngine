@@ -1,5 +1,6 @@
 #include <napi.h>
 #include "fast_path.h"
+#include <cmath>
 #include <unordered_set>
 #include <vector>
 
