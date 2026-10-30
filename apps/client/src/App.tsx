@@ -723,7 +723,7 @@ export function App(): React.ReactElement {
   if (client && (run?.phase === "entering" || run?.phase === "leaving")) {
     return (
       <div className="relative h-full w-full bg-background">
-        <React.Suspense fallback={<div className="flex h-full items-center justify-center text-muted-foreground">Loading dungeon transit…</div>}>
+        <React.Suspense fallback={<div className="flex h-full items-center justify-center text-muted-foreground">{t("loading.dungeonTransit")}</div>}>
           <DungeonTransit run={run} />
         </React.Suspense>
       </div>
@@ -833,14 +833,14 @@ export function App(): React.ReactElement {
         ) : null}
         {run?.phase === "in" && (
           <div className="absolute left-1/2 top-24 z-10 -translate-x-1/2">
-            <React.Suspense fallback={<div className="flex items-center justify-center p-2 text-muted-foreground text-sm">Loading dungeon HUD…</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center p-2 text-muted-foreground text-sm">{t("loading.dungeonHud")}</div>}>
               <DungeonHud run={run} />
             </React.Suspense>
           </div>
         )}
         {run?.phase === "ended" && (
           <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2">
-            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading dungeon result…</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.dungeonResult")}</div>}>
               <DungeonResult run={run} onLeave={() => void leaveDungeon()} />
             </React.Suspense>
           </div>
@@ -848,8 +848,8 @@ export function App(): React.ReactElement {
         {isDead && run?.phase !== "ended" && (
           <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center bg-red-950/40 backdrop-grayscale">
             <div className="rounded-lg border border-red-500/40 bg-black/85 px-6 py-4 text-center text-red-200 shadow-2xl">
-              <div className="text-xl font-bold uppercase tracking-widest text-red-400">You Died</div>
-              <div className="mt-1 text-xs text-red-300/80">Respawning at the gates...</div>
+              <div className="text-xl font-bold uppercase tracking-widest text-red-400">{t("dungeon.youDied")}</div>
+              <div className="mt-1 text-xs text-red-300/80">{t("dungeon.respawningAtGates")}</div>
             </div>
           </div>
         )}
@@ -948,7 +948,7 @@ export function App(): React.ReactElement {
         />
         {shop && bag && (
           <HudSlot id="vendor-panel" className="z-10">
-            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading vendor…</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.vendor")}</div>}>
               <VendorPanel
                 shop={shop}
                 gold={gold}
@@ -964,7 +964,7 @@ export function App(): React.ReactElement {
           <HudSlot id="bag-panel" className="z-10">
             <div>
             <PouchPanel materials={pouch} />
-            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading bag…</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.bag")}</div>}>
               <BagPanel
                 bag={bag}
                 hands={hands}
@@ -983,14 +983,14 @@ export function App(): React.ReactElement {
         )}
         {questsOpen && quests && (
           <HudSlot id="quest-log" className="z-10">
-            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading quest log…</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.questLog")}</div>}>
               <QuestLogPanel quests={quests} onAbandon={(id) => client?.quest({ kind: "quest", op: "abandon", quest: id })} />
             </React.Suspense>
           </HudSlot>
         )}
         {sheetOpen && sheet && (
           <HudSlot id="character-sheet" className="z-10">
-            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">Loading character sheet…</div>}>
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.characterSheet")}</div>}>
               <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
             </React.Suspense>
           </HudSlot>

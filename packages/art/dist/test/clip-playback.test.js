@@ -8,7 +8,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ClipId } from "@mmo-engine/protocol";
 import { DEFAULT_CLIP_MAP, LAYER_BASE, LAYER_UPPER, checkClipMap, clampRate, crossfadeWeights, indexClipMap, layersOf, nextClipId, parseClipMap, planClip, playhead, secondsSince, } from "../src/character/index.js";
-import { CLIP_NAMES } from "@mmo-engine/protocol";
 const map = indexClipMap(DEFAULT_CLIP_MAP);
 const row = (over = {}) => ({
     clipId: ClipId.Walk,
@@ -20,11 +19,9 @@ const row = (over = {}) => ({
 describe("clip map", () => {
     it("the default map is valid and covers every named clip id", () => {
         assert.deepEqual(checkClipMap(DEFAULT_CLIP_MAP), []);
-        for (const id of Object.values(ClipId)) {
-            if (id !== ClipId.None && CLIP_NAMES[id]) {
+        for (const id of Object.values(ClipId))
+            if (id !== ClipId.None)
                 assert.ok(map.has(id), `clip id ${id}`);
-            }
-        }
     });
     it("the shipped content/animation/clips.json is a valid map for every named clip id", () => {
         const file = fileURLToPath(new URL("../../../../content/animation/clips.json", import.meta.url));
@@ -59,7 +56,7 @@ describe("clip map", () => {
         assert.equal(checkClipMap({ version: 1 })[0].field, "clips");
     });
     it("proposes the next free id", () => {
-        assert.equal(nextClipId(DEFAULT_CLIP_MAP), ClipId.Cast + 1);
+        assert.equal(nextClipId(DEFAULT_CLIP_MAP), Math.max(...Object.values(ClipId)) + 1);
         assert.equal(nextClipId({ version: 1, clips: [] }), 1);
     });
 });

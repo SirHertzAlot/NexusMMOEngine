@@ -868,3 +868,4 @@ Newest first. One line per merged PR or decision.
   - Single-source code dictionary (`log-codes.ts`) generating `log-api.ts`, `log-formatters.ts`, and `log_codes.h`.
   - Sacred producer client (`LogProducerClient`): unrolled, allocation-free in-place SAB emission achieving **83.9ns latency** (11.92M records/s single-threaded) and **13.72M records/s throughput** across 4 concurrent threads.
   - Migrated Gateway subsystem: all 9 legacy `console.*` calls replaced with typed binary emissions; 0 `console.*` calls remain in `gateway.ts`. All Phase 0 gates PASS.
+- **2026-10-29**: fix(editor): deep links survive a cold load (view ids with dots such as `flow.graph` now parse, and a view a module has not contributed yet keeps its link); `npm run editor` builds `@mmo-engine/build` first.

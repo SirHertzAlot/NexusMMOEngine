@@ -74,7 +74,7 @@ describe("clip map", () => {
   });
 
   it("proposes the next free id", () => {
-    assert.equal(nextClipId(DEFAULT_CLIP_MAP), ClipId.Cast + 1);
+    assert.equal(nextClipId(DEFAULT_CLIP_MAP), Math.max(...Object.values(ClipId)) + 1);
     assert.equal(nextClipId({ version: 1, clips: [] }), 1);
   });
 });
