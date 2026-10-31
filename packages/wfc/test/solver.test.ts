@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { gridProblem, pairsWithin, pointsProblem, solve, WfcError, type GridTile, type WfcOption, type WfcProblem } from "../src/index.js";
+import { gridProblem, mulberry32, pairsWithin, pointsProblem, solve, WfcError, type GridTile, type WfcOption, type WfcProblem } from "../src/index.js";
 
 const digest = (a: Int32Array): string => createHash("sha256").update(new Uint8Array(a.buffer)).digest("hex").slice(0, 16);
 
@@ -80,6 +80,55 @@ describe("solve", () => {
       const total = Array.from(r.assignment).reduce((s, x) => s + cost[x], 0);
       assert.ok(total >= 9 && total <= 11, `seed ${seed}: ${total}`);
     }
+  });
+
+  it("keeps counts and budgets exact through backtracking, on random problems with a known answer", () => {
+    // Each problem's bounds bracket a hidden answer that meets the edge rule, so one exists. Every
+    // solution returned must meet every bound, and nearly all of them should solve.
+    const cost = [0, 1, 2, 3];
+    const options: WfcOption[] = cost.map((_, i) => ({ id: `o${i}` }));
+    const n = 10;
+    const trySolve = (p: WfcProblem, seed: number) => {
+      try {
+        return solve(p, { seed });
+      } catch (e) {
+        assert.ok(e instanceof WfcError, `seed ${seed}: ${e}`);
+        return null;
+      }
+    };
+    let solved = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const rng = mulberry32(seed);
+      const hidden: number[] = [];
+      for (let s = 0; s < n; s++) {
+        const x = Math.floor(rng() * 4);
+        hidden.push(x === 3 && hidden[s - 1] === 3 ? 0 : x);
+      }
+      const count = (...xs: number[]) => hidden.filter((x) => xs.includes(x)).length;
+      const around = (v: number): [number, number] => [Math.max(0, v - Math.floor(rng() * 2)), v + Math.floor(rng() * 2)];
+      const [rareMin, rareMax] = around(count(3));
+      const [cheapMin, cheapMax] = around(count(0, 1));
+      const [costMin, costMax] = around(hidden.reduce((sum, x) => sum + cost[x], 0));
+      const p: WfcProblem = {
+        options,
+        slots: n,
+        edges: Array.from({ length: n - 1 }, (_, i) => ({ a: i, b: i + 1, rule: "apart" })),
+        rules: { apart: (_x, _y, xi, yi) => !(xi === 3 && yi === 3) },
+        counts: [{ options: [3], min: rareMin, max: rareMax }, { options: [0, 1], min: cheapMin, max: cheapMax }],
+        budgets: [{ cost, min: costMin, max: costMax }],
+      };
+      const r = trySolve(p, seed);
+      if (!r) continue;
+      solved++;
+      const ids = Array.from(r.assignment);
+      const rare = ids.filter((x) => x === 3).length, cheap = ids.filter((x) => x <= 1).length;
+      const total = ids.reduce((sum, x) => sum + cost[x], 0);
+      assert.ok(rare >= rareMin && rare <= rareMax, `seed ${seed}: ${rare} rare`);
+      assert.ok(cheap >= cheapMin && cheap <= cheapMax, `seed ${seed}: ${cheap} cheap`);
+      assert.ok(total >= costMin && total <= costMax, `seed ${seed}: cost ${total}`);
+      for (let s = 0; s + 1 < n; s++) assert.ok(ids[s] !== 3 || ids[s + 1] !== 3, `seed ${seed}: two rares at ${s}`);
+    }
+    assert.ok(solved >= 54, `solved ${solved} of 60`);
   });
 
   it("meets needs: an option only where its neighbours can support it", () => {
