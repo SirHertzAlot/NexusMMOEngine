@@ -318,6 +318,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Biome registry: scatter sets and creature tables per biome | ✅ | 〃 Phase 5: `content/biomes.json`; `MMO_WILD_CREATURES=1` spawns packs per chunk (#96) |
 | W1 | WFC solver (`packages/wfc`) | ✅ | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
 | W2 | Formations: WFC decides what, scatter and the raymarcher decide where | ✅ | 〃 |
+| W3 | WFC solver: count and budget checks kept incrementally | ✅ | Settlement generation 36x faster at population 2000; output unchanged (#486) |
 | D1 | Dungeon layouts, `dungeon:bake` | ✅ | 〃 |
 | D2 | Dungeon dressing: archetypes, interiors, resource veins | ✅ | 〃 |
 | S1 (species) | Species ecology and spawn tables | ✅ | 〃 |
@@ -892,3 +893,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-31**: F5 (cosmetic client ragdolls, roadmap slice 1) scoped. The server cost is the life message that already exists. The client has no physics library yet, so its cost is not measured; the option is the person's call (decision 6). Scope: [`RAGDOLL-COST-GATE.md`](RAGDOLL-COST-GATE.md#f5-cosmetic-deaths-on-the-client-scope-only).
 - **2026-10-31**: Started F3 (keep each world under the contact cap). The addon will report Jolt's contact-cap errors for each step, and a bench will measure where a crowd fills the cap through the addon, in three scenarios (settle, awake, apart), at the budget and beyond. Stacked on #492.
 - **2026-10-31**: F3 (contact cap) measured through the addon. Full rigs first fill the cap at about 636 awake and 920 apart, light rigs at about 1,458 and 1,882; the budget sits 12 to 19 times below. Past the cap, bodies fall through the floor. The addon reports a full cap on each step (`lastStepErrors()`). With sleep off, the budget's rigs cost more than 4 ms. Scope: [`RAGDOLL-COST-GATE.md`](RAGDOLL-COST-GATE.md#through-the-addon-f3-contact-cap).
+- **2026-10-31**: W3 (WFC solver: count and budget checks kept incrementally, #486). `remove()` and `undo()` update the tallies, so each propagation step no longer rescans every slot. Settlement population 2000 went from 25.5 s to 0.7 s; the generator output is unchanged (15 configurations hash-identical).

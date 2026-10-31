@@ -419,6 +419,15 @@ class Search {
   /** Slots decided since the last onDecided pass. */
   private decidedQueue: number[] = [];
   contradiction = -1;
+  /** Per count group, per slot: domain options the group takes, and options it does not (what globals() counts). */
+  private readonly takes: Int32Array[] = [];
+  private readonly others: Int32Array[] = [];
+  /** Per count group: slots that can take it, and slots full of it, kept as tallies. */
+  private readonly possibleN: number[] = [];
+  private readonly fixedN: number[] = [];
+  /** Per budget, per slot: the cheapest and the dearest option left in the domain. */
+  private readonly lo: Float64Array[] = [];
+  private readonly hi: Float64Array[] = [];
 
   constructor(private readonly c: Compiled, readonly rng: () => number) {
     const { N, K, w, wlogw } = c;
@@ -429,6 +438,16 @@ class Search {
     this.noise = new Float64Array(N);
     this.queue = new Int32Array(N);
     this.queued = new Uint8Array(N);
+    for (let g = 0; g < c.counts.length; g++) {
+      this.takes.push(new Int32Array(N));
+      this.others.push(new Int32Array(N));
+      this.possibleN.push(0);
+      this.fixedN.push(0);
+    }
+    for (let b = 0; b < c.budgets.length; b++) {
+      this.lo.push(new Float64Array(N));
+      this.hi.push(new Float64Array(N));
+    }
     for (let s = 0; s < N; s++) {
       for (let x = 0; x < K; x++) {
         const i = s * K + x;
@@ -443,6 +462,60 @@ class Search {
       if (this.size[s] === 0) this.contradiction = s;
       if (this.size[s] > 1) this.heap.push(this.entropy(s), s);
       else if (this.size[s] === 1 && c.onDecided) this.decidedQueue.push(s);
+    }
+    for (let s = 0; s < N; s++) for (let x = 0; x < K; x++) if (this.dom[s * K + x]) this.tallyCounts(s, x, 1);
+    for (let b = 0; b < c.budgets.length; b++) for (let s = 0; s < N; s++) this.recomputeBounds(b, s);
+  }
+
+  /** Adds (d = 1) or takes away (d = -1) option x at slot s from each count group's tallies. */
+  private tallyCounts(s: number, x: number, d: number): void {
+    const counts = this.c.counts;
+    for (let gi = 0; gi < counts.length; gi++) {
+      const g = counts[gi];
+      if (g.inSlot && !g.inSlot[s]) continue;
+      const takes = this.takes[gi], others = this.others[gi];
+      const wasAny = takes[s] > 0, wasFixed = wasAny && others[s] === 0;
+      if (g.member[x]) takes[s] += d;
+      else others[s] += d;
+      const isAny = takes[s] > 0, isFixed = isAny && others[s] === 0;
+      this.possibleN[gi] += (isAny ? 1 : 0) - (wasAny ? 1 : 0);
+      this.fixedN[gi] += (isFixed ? 1 : 0) - (wasFixed ? 1 : 0);
+    }
+  }
+
+  /** Recomputes a slot's cheapest and dearest option for budget bi from its domain. */
+  private recomputeBounds(bi: number, s: number): void {
+    const { K } = this.c;
+    const cost = this.c.budgets[bi].cost;
+    let l = Infinity, h = -Infinity;
+    for (let x = 0; x < K; x++)
+      if (this.dom[s * K + x]) {
+        l = Math.min(l, cost[x]);
+        h = Math.max(h, cost[x]);
+      }
+    this.lo[bi][s] = l;
+    this.hi[bi][s] = h;
+  }
+
+  /** Option x left slot s: a budget's bounds move only when x was one of them. */
+  private shrinkBounds(s: number, x: number): void {
+    const budgets = this.c.budgets;
+    for (let bi = 0; bi < budgets.length; bi++) {
+      const b = budgets[bi];
+      if (b.inSlot && !b.inSlot[s]) continue;
+      const c = b.cost[x];
+      if (c === this.lo[bi][s] || c === this.hi[bi][s]) this.recomputeBounds(bi, s);
+    }
+  }
+
+  /** Option x came back to slot s: the bounds only widen. */
+  private growBounds(s: number, x: number): void {
+    const budgets = this.c.budgets;
+    for (let bi = 0; bi < budgets.length; bi++) {
+      const b = budgets[bi];
+      if (b.inSlot && !b.inSlot[s]) continue;
+      this.lo[bi][s] = Math.min(this.lo[bi][s], b.cost[x]);
+      this.hi[bi][s] = Math.max(this.hi[bi][s], b.cost[x]);
     }
   }
 
@@ -460,6 +533,8 @@ class Search {
     const K = this.c.K, i = s * K + x;
     if (!this.dom[i]) return true;
     this.dom[i] = 0;
+    this.tallyCounts(s, x, -1);
+    this.shrinkBounds(s, x);
     this.size[s]--;
     this.sumW[s] -= this.c.w[i];
     this.sumWL[s] -= this.c.wlogw[i];
@@ -489,7 +564,10 @@ class Search {
     while (this.trailLen > to) {
       const i = this.trail[--this.trailLen];
       const s = (i / K) | 0;
+      const x = i - s * K;
       this.dom[i] = 1;
+      this.tallyCounts(s, x, 1);
+      this.growBounds(s, x);
       this.size[s]++;
       this.sumW[s] += this.c.w[i];
       this.sumWL[s] += this.c.wlogw[i];
@@ -643,19 +721,9 @@ class Search {
   private globals(): boolean {
     const { N, K, counts, budgets } = this.c;
     const dom = this.dom, size = this.size;
-    for (const g of counts) {
-      let fixed = 0, possible = 0;
-      for (let s = 0; s < N; s++) {
-        if (g.inSlot && !g.inSlot[s]) continue;
-        let any = false, all = true;
-        for (let x = 0; x < K; x++) {
-          if (!dom[s * K + x]) continue;
-          if (g.member[x]) any = true;
-          else all = false;
-        }
-        if (any) possible++;
-        if (any && all) fixed++;
-      }
+    for (let gi = 0; gi < counts.length; gi++) {
+      const g = counts[gi], takes = this.takes[gi], others = this.others[gi];
+      const fixed = this.fixedN[gi], possible = this.possibleN[gi];
       if (fixed > g.max || possible < g.min) {
         this.contradiction = 0;
         return false;
@@ -664,35 +732,25 @@ class Search {
         // Full: nothing else may take the group.
         for (let s = 0; s < N; s++) {
           if (g.inSlot && !g.inSlot[s]) continue;
-          let all = true;
-          for (let x = 0; x < K; x++) if (dom[s * K + x] && !g.member[x]) all = false;
-          if (all) continue;
+          if (others[s] === 0 || takes[s] === 0) continue;
           for (let x = 0; x < K; x++) if (g.member[x] && !this.remove(s, x)) return false;
         }
       } else if (possible === g.min && fixed < possible) {
         // Exactly enough candidates left: every one of them must take the group.
         for (let s = 0; s < N; s++) {
           if (g.inSlot && !g.inSlot[s]) continue;
-          let any = false;
-          for (let x = 0; x < K; x++) if (dom[s * K + x] && g.member[x]) any = true;
-          if (!any) continue;
+          if (takes[s] === 0 || others[s] === 0) continue;
           for (let x = 0; x < K; x++) if (!g.member[x] && !this.remove(s, x)) return false;
         }
       }
     }
-    for (const b of budgets) {
-      const lo = new Float64Array(N), hi = new Float64Array(N);
+    for (let bi = 0; bi < budgets.length; bi++) {
+      const b = budgets[bi], lo = this.lo[bi], hi = this.hi[bi];
       let sumLo = 0, sumHi = 0;
       for (let s = 0; s < N; s++) {
         if (b.inSlot && !b.inSlot[s]) continue;
-        let l = Infinity, h = -Infinity;
-        for (let x = 0; x < K; x++)
-          if (dom[s * K + x]) {
-            l = Math.min(l, b.cost[x]);
-            h = Math.max(h, b.cost[x]);
-          }
-        lo[s] = l; hi[s] = h;
-        sumLo += l; sumHi += h;
+        sumLo += lo[s];
+        sumHi += hi[s];
       }
       if (sumLo > b.max + 1e-9 || sumHi < b.min - 1e-9) {
         this.contradiction = 0;
@@ -700,10 +758,14 @@ class Search {
       }
       for (let s = 0; s < N; s++) {
         if ((b.inSlot && !b.inSlot[s]) || size[s] === 1) continue;
+        // Read before this slot's removals below, which move its live bounds.
+        const loS = lo[s], hiS = hi[s];
+        // The dearest option can only break the ceiling and the cheapest only the floor: skip slots where neither can.
+        if (!(sumLo - loS + hiS > b.max + 1e-9) && !(sumHi - hiS + loS < b.min - 1e-9)) continue;
         for (let x = 0; x < K; x++) {
           if (!dom[s * K + x]) continue;
           const c = b.cost[x];
-          if (sumLo - lo[s] + c > b.max + 1e-9 || sumHi - hi[s] + c < b.min - 1e-9) {
+          if (sumLo - loS + c > b.max + 1e-9 || sumHi - hiS + c < b.min - 1e-9) {
             if (!this.remove(s, x)) return false;
           }
         }
