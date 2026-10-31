@@ -169,6 +169,29 @@ The capped columns admit 48 full or 120 light rigs, so every row above those cou
 
 **Decision (recommended).** Threads stay opt-in per world, and the default stays one thread. The engine can use a pool for worlds of 64 full rigs or more, or 120 light rigs. The 4 ms cap does not need one. Whether the engine uses threads at all is the person's call.
 
+## F5: cosmetic deaths on the client (scope only)
+
+Roadmap "Ragdoll slice 1". Not measured, and not built. The server cost is zero: the server already sends the life message on a death. The client cost is unknown, because no client package depends on a physics library.
+
+- **What exists.** `LifeMessage` (`packages/protocol/src/items.ts`) carries the target, its state, the killer, the cause and the body part. The client handles it in `apps/client/src/render/combat-feedback.ts`. The protocol also defines a death-fall clip (`ClipId.DeathFall`, `packages/protocol/src/animation.ts`), which nothing in `apps/client` references yet.
+- **What is missing.** A client physics option, and a direction for the fall. The life message has no direction, so a ragdoll would start from the death pose with no push. The hit message (0x16) may carry where a blow came from; that is not checked here. Otherwise a field costs a few bytes per death.
+
+Options, for decision 6:
+
+- **A. A JavaScript physics library in `apps/client`**, for example cannon-es or Rapier's JavaScript build. Quickest to measure. The client's rig may differ from the server's, which is fine for looks. Adds a second engine and its bundle size.
+- **B. Jolt compiled to WebAssembly**, from the vendored `third_party/JoltPhysics` (MIT). The same engine and rig layout as the server's addon. More work: a new build target, and the size of the WebAssembly.
+- **C. No ragdoll.** Keep the deaths as they are. Zero cost, and no physical fall.
+
+Recommended: A for the first measurement, since it gives the client number soonest. B only if the look needs the server's exact rigs.
+
+Measurement plan, once an option is chosen:
+
+- Headless Chromium through Playwright, as in the client captures, with N cosmetic ragdolls in view at once: 1, 10, 50 and 100.
+- Frame time with and without the ragdolls (median over 5 s), and the bundle size added, gzipped.
+- A chart and a GIF of a crowd of falls. The GIF shows motion, so it goes with the media outside the repo, in `/mnt/project-files/marketing/physics/`.
+
+Proposed client budget, not decided: 12% of the frame, the same share as the server budget. At 60 fps that is about 2 ms.
+
 ## Findings
 
 1. **Most of the cost is per rig.** Rigs 4 m apart, with no contact between
@@ -247,7 +270,7 @@ should be:
 - **Phase 4, CharacterVirtual.** Its own cost gate, using the same method, before
   any gameplay code (roadmap row C).
 
-Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is in PR #490, ready for review, stacked on #489 (below). F4 is measured through the addon (below), in its own PR stacked on #490. F3 is not measured yet. F5 is still scope only.
+Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is in PR #490, ready for review, stacked on #489 (below). F4 is measured through the addon (below), in its own PR stacked on #490. F3 is not measured yet. F5 has a scope section below and no measurement: the client needs a physics option first.
 
 ## Open decisions
 
@@ -261,6 +284,7 @@ Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, me
 4. **Threads, shards, or one thread.** Recommended: threads opt-in per world (F4), default one thread. Shards (F6) are not started.
 5. **The contact cap.** Keep 10,240 and limit crowds, or raise it at a cost
    (142 ms at 1,000 awake rigs)?
+6. **Client physics for cosmetic deaths.** A JavaScript library (A), Jolt as WebAssembly (B), or no ragdoll (C)? Recommended: A, measured first. The fall's direction is a separate question (see F5).
 
 ## Not measured
 
