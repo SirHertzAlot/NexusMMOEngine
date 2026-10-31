@@ -227,7 +227,7 @@ one propagates to every panel: audit in the project library
 | M8 | Per-table drafts for the rules and gameplay grids, and the rules editor's dirty check, on one hook | ✅ | #210: `useTableDrafts` for the rules tables and gameplay grids, plus `sameValue` |
 | M9 | Repeated workflows (new, rename, duplicate, delete; import and export; load and retry) | 🚧 | Audit done; added a uniform `create` route to `files-host.ts` (POST /api/editor/files/:kind {name}, template-driven + validated, refused on conflict/invalid — no more hand-rolled `PUT {name}`). 10/10 files-host tests green, editor tsc clean. Remaining stragglers: import/export (missing `doc-io.ts`) and the client `useDocumentLifecycle` (new/import/export/load/retry) hook. |
 | M10 | `host.ts` request-body reads (23 hand-rolled) on a shared route table | ✅ | `readJsonOr400` and `readJsonBody` read every JSON body in `host.ts`. Routes keep their own empty-body rule; the server start body stays lenient (empty or bad JSON uses the defaults). |
-| M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | 📋 | |
+| M11 | `previews.tsx` mock panels (about 3,000 lines) split and moved onto the shared components | ✅ | Nothing left to split: the mock previews were removed in the editor port (`previews.tsx` is gone from main). Closed without new code. |
 
 ## 1g. Designer access (editor gap audit)
 
@@ -871,3 +871,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-29**: fix(editor): deep links survive a cold load (view ids with dots such as `flow.graph` now parse, and a view a module has not contributed yet keeps its link); `npm run editor` builds `@mmo-engine/build` first.
 - **2026-10-30**: refactor(editor): M10 in progress. `host.ts` reads nine JSON request bodies through a shared `readJsonOr400` helper; the editor suite passes 887/887.
 - **2026-10-30**: refactor(editor): M10 complete. Every JSON request body in `host.ts` goes through `readJsonOr400` or `readJsonBody`. Two routes now answer 400 with the shared message where they used to fail with a 500 (rules tables save) or a parser message (build profile save). The editor suite passes 887/887.
+- **2026-10-30**: docs(roadmap): M11 closed without code. `previews.tsx` and its mock panels were removed in the editor port, so there is nothing to split.
