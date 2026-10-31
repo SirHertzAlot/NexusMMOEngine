@@ -15,6 +15,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -24,7 +25,8 @@ import { encodeGif } from "../../../scripts/gif-encoder.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, "../../..");
-const artifactDir = "C:/Users/user/.gemini/antigravity/brain/03e6cfec-d960-47a4-b624-994e499172e8";
+const artifactDir = process.env.SYNTHESIS_ARTIFACTS ?? path.join(os.tmpdir(), "synthesis-artifacts");
+fs.mkdirSync(artifactDir, { recursive: true });
 
 async function main() {
   console.log("[Playtest] 1. Loading learned dungeon rules and synthesizing Multi-Level Descent room...");
@@ -46,6 +48,7 @@ async function main() {
   // Launch Playwright with WebGL acceleration
   console.log("[Playtest] 2. Launching Chromium with WebGL rendering...");
   const browser = await chromium.launch({
+    executablePath: process.env.SYNTHESIS_CHROMIUM,
     headless: true,
     args: [
       "--enable-webgl",

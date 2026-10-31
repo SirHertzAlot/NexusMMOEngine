@@ -12,6 +12,7 @@ import { dungeonColliders, type Collider } from "./collision.js";
 import type { Dungeon } from "./generate.js";
 import type { DungeonDressing } from "./dress.js";
 import type { Population } from "./populate.js";
+import type { RoomInterior } from "./interiors.js";
 
 export const DUNGEON_FORMAT = "mmo-dungeon/1";
 
@@ -30,6 +31,8 @@ export type DungeonFile = Omit<Dungeon, GridName> & {
   dressing?: DungeonDressing;
   /** Who lives there (species per room, and at each spawn point), when the bake populated it. */
   population?: Population;
+  /** The room interiors the interior grammar laid (interiors.ts), when the bake laid them. */
+  interiors?: RoomInterior[];
 };
 
 const b64 = (a: Uint8Array | Int16Array): string => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString("base64");
@@ -52,7 +55,7 @@ export function layoutHash(d: Dungeon): string {
   return h.digest("hex");
 }
 
-export function encodeDungeon(d: Dungeon, dressing?: DungeonDressing, population?: Population): DungeonFile {
+export function encodeDungeon(d: Dungeon, dressing?: DungeonDressing, population?: Population, interiors?: RoomInterior[]): DungeonFile {
   const hash = layoutHash(d);
   const { grid, roomId, corridor, doorway, lake, distance, ...rest } = d;
   return {
@@ -64,12 +67,13 @@ export function encodeDungeon(d: Dungeon, dressing?: DungeonDressing, population
     colliders: dungeonColliders(d, dressing),
     ...(dressing ? { dressing } : {}),
     ...(population ? { population } : {}),
+    ...(interiors ? { interiors } : {}),
   };
 }
 
 export function decodeDungeon(f: DungeonFile): Dungeon {
   if (f.format !== DUNGEON_FORMAT) throw new Error(`not a ${DUNGEON_FORMAT} file (format: ${String(f.format)})`);
-  const { grids, format: _format, id: _id, hash: _hash, colliders: _colliders, dressing: _dressing, population: _population, ...rest } = f;
+  const { grids, format: _format, id: _id, hash: _hash, colliders: _colliders, dressing: _dressing, population: _population, interiors: _interiors, ...rest } = f;
   const d: Dungeon = {
     ...rest,
     grid: fromB64U8(grids.grid),

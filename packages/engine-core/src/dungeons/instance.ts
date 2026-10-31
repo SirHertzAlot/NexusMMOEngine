@@ -47,6 +47,7 @@ import { GatheringSystem } from "../gathering/index.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout, LayoutProp } from "./pool.js";
 import { placeChestsAndTraps } from "./placement.js";
+import { interiorSpawns } from "./interiors.js";
 import { DungeonWallSystem } from "./walls.js";
 
 export type InstanceOutcome = "cleared" | "timeout" | "abandoned" | "died";
@@ -261,6 +262,7 @@ export class DungeonInstance {
     });
     this.mountAssets();
     this.spawnProps();
+    this.spawnInteriors();
     this.populate();
   }
 
@@ -349,6 +351,32 @@ export class DungeonInstance {
   /** Where the run's chests and traps go (placement.ts): free cells clear of the dressing, the same for a layout every time. */
   private placement(): ReturnType<typeof placeChestsAndTraps> {
     return (this.placedCache ??= placeChestsAndTraps(this.opts.layout, Math.max(0, this.opts.rules.chestsPerRun), Math.max(0, this.opts.rules.trapsPerRun), this.opts.props));
+  }
+
+  /**
+   * The room interiors (interiors.ts): each part a static entity written like the shell's, carrying the AssetRef of its
+   * model. The walkable grid keeps the collision, so no body. Every field is written, since a recycled slot still holds
+   * the entity that died there.
+   */
+  private spawnInteriors(): void {
+    const T = C.Transform;
+    for (const s of interiorSpawns(this.opts.layout)) {
+      const eid = this.world.spawn();
+      addComponent(this.world.ecs, C.Transform, eid);
+      T.px[eid] = s.x;
+      T.py[eid] = s.y;
+      T.pz[eid] = s.z;
+      T.qx[eid] = s.rot[0];
+      T.qy[eid] = s.rot[1];
+      T.qz[eid] = s.rot[2];
+      T.qw[eid] = s.rot[3];
+      T.sx[eid] = s.scale[0];
+      T.sy[eid] = s.scale[1];
+      T.sz[eid] = s.scale[2];
+      addComponent(this.world.ecs, C.AssetRef, eid);
+      C.AssetRef.assetHash[eid] = s.assetHash;
+      C.AssetRef.variant[eid] = 0;
+    }
   }
 
   /** One prop's entity (-1: its kind has no table entry). */

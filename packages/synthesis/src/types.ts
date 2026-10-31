@@ -207,6 +207,8 @@ export interface SynthesizedPlacement {
   assetRef: string;
   category: string;
   transform: TransformData;
+  /** The part's extent in metres, along its own axes before yaw: its native bounds times its scale. */
+  size: Vec3Tuple;
 }
 
 export interface SynthesisReport {

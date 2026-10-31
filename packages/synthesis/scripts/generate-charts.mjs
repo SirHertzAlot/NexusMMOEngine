@@ -1,15 +1,18 @@
 import fs from "node:fs";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { chromium } from "playwright";
 
-const artifactDir = "C:\\Users\\user\\.gemini\\antigravity\\brain\\03e6cfec-d960-47a4-b624-994e499172e8";
-const rulesPath = "content/synthesis/dungeon-rules.json";
+const artifactDir = process.env.SYNTHESIS_ARTIFACTS ?? path.join(os.tmpdir(), "synthesis-artifacts");
+fs.mkdirSync(artifactDir, { recursive: true });
+const rulesPath = fileURLToPath(new URL("../../../content/synthesis/dungeon-rules.json", import.meta.url));
 
 async function generateCharts() {
   const rules = JSON.parse(fs.readFileSync(rulesPath, "utf-8"));
   const stats = rules.stats;
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.SYNTHESIS_CHROMIUM });
 
   // Chart 1: Decomposition Metrics & Category Distribution
   {
@@ -598,4 +601,7 @@ async function generateCharts() {
   console.log("All charts generated successfully!");
 }
 
-generateCharts().catch(console.error);
+generateCharts().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

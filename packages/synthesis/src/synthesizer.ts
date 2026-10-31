@@ -300,6 +300,7 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
         rot: quantizeQuat(rot),
         scale: [Math.round(scale.x * 100) / 100, Math.round(scale.y * 100) / 100, Math.round(scale.z * 100) / 100],
       },
+      size: [sx * scale.x, sy * scale.y, sz * scale.z],
     });
 
     for (const s of partDef.sockets) {
@@ -1271,6 +1272,7 @@ export function synthesizeAssembly(problem: SynthesisProblem): SynthesisOutput {
           partId: bPartDef.id,
           assetRef: bPartDef.assetRef,
           category: bPartDef.category,
+          size: [...bPartDef.bounds.size],
           transform: {
             pos: quantizeVec3(candidatePos),
             rot: quantizeQuat(rot),

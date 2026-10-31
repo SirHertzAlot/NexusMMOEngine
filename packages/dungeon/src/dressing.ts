@@ -65,6 +65,8 @@ export const ArchetypeSchema = z.strictObject({
   contents: z.array(ContentSchema).default([]),
   /** The share of the room's floor the inventory may fill (default 0.6): dense rooms (a crypt, a library) raise it. */
   fill: z.number().min(0.1).max(0.9).optional(),
+  /** An interior style (content/synthesis/styles): the grammar lays the room's walls and floor with it. */
+  style: z.string().regex(/^[a-z][a-z0-9-]*$/).optional(),
 });
 
 export const VeinSchema = z.strictObject({
@@ -149,7 +151,7 @@ export const BUILTIN_DRESSING: Dressing = {
       c("candle-stand", "corner", 0.15, [2, 4], { arrange: "corners", gap: 0.5 }),
       c("urn", "corner", 0.2, [2, 4], { arrange: "corners", gap: 0.5 }),
       c("bone-pile", "corner", 0.3, [1, 3], flat),
-    ], { themes: ["grim", "ancient", "frost"], minSize: 7, weight: 2, fill: 0.5 }),
+    ], { themes: ["grim", "ancient", "frost"], minSize: 7, weight: 2, fill: 0.5, style: "crypt-arch" }),
     tomb: a(["combat", "elite"], [
       // A grand tomb: one great sarcophagus on its dais in the middle, ringed by candles and statues.
       c("grand-sarcophagus", "centre", 0.6, [1, 1], { reach: 0.9 }),

@@ -1,0 +1,957 @@
+{
+  "version": 1,
+  "name": "interior-crypt-hall",
+  "kind": "arena",
+  "nodes": [
+    {
+      "id": "part-0",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          -5,
+          0,
+          -12.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-1",
+      "name": "SM_Env_Basement_Ceiling",
+      "transform": {
+        "position": [
+          -5,
+          2,
+          -15
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-2",
+      "name": "SM_Env_Wall_Archway",
+      "transform": {
+        "position": [
+          -7.5,
+          2,
+          -12.5
+        ],
+        "rotation": [
+          0,
+          89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-3",
+      "name": "SM_Env_Tiles_Texture",
+      "transform": {
+        "position": [
+          0,
+          0,
+          -12.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-4",
+      "name": "SM_Env_Wall_Wood_Beams",
+      "transform": {
+        "position": [
+          0,
+          2,
+          -15
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-5",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          5,
+          0,
+          -12.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-6",
+      "name": "SM_Env_Wall_End",
+      "transform": {
+        "position": [
+          5,
+          2,
+          -15
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-7",
+      "name": "SM_Env_Wall_End_Coner_Outer",
+      "transform": {
+        "position": [
+          7.5,
+          2,
+          -12.5
+        ],
+        "rotation": [
+          0,
+          -89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-8",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          -5,
+          0,
+          -7.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-9",
+      "name": "SM_Prop_Wall_Banner",
+      "transform": {
+        "position": [
+          -7.5,
+          2,
+          -7.5
+        ],
+        "rotation": [
+          0,
+          89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-10",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          0,
+          0,
+          -7.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-11",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          5,
+          0,
+          -7.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-12",
+      "name": "SM_Env_Wall",
+      "transform": {
+        "position": [
+          7.5,
+          2,
+          -7.5
+        ],
+        "rotation": [
+          0,
+          -89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-13",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          -5,
+          0,
+          -2.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-14",
+      "name": "SM_Env_Wall",
+      "transform": {
+        "position": [
+          -7.5,
+          2,
+          -2.5
+        ],
+        "rotation": [
+          0,
+          89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-15",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          0,
+          0,
+          -2.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-16",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          5,
+          0,
+          -2.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-17",
+      "name": "SM_Env_Basement_Support_Wall",
+      "transform": {
+        "position": [
+          7.5,
+          2,
+          -2.5
+        ],
+        "rotation": [
+          0,
+          -89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-18",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          -5,
+          0,
+          2.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-19",
+      "name": "SM_Env_Wall_Quarter",
+      "transform": {
+        "position": [
+          -7.5,
+          2,
+          2.5
+        ],
+        "rotation": [
+          0,
+          89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-20",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          0,
+          0,
+          2.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-21",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          5,
+          0,
+          2.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-22",
+      "name": "SM_Env_Basement_Support_Pole",
+      "transform": {
+        "position": [
+          7.5,
+          2,
+          2.5
+        ],
+        "rotation": [
+          0,
+          -89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-23",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          -5,
+          0,
+          7.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-24",
+      "name": "SM_Env_Wall_DoorFrame_Double_Round",
+      "transform": {
+        "position": [
+          -7.5,
+          2,
+          7.5
+        ],
+        "rotation": [
+          0,
+          89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-25",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          0,
+          0,
+          7.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-26",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          5,
+          0,
+          7.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-27",
+      "name": "SM_Env_Wall",
+      "transform": {
+        "position": [
+          7.5,
+          2,
+          7.5
+        ],
+        "rotation": [
+          0,
+          -89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-28",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          -5,
+          0,
+          12.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-29",
+      "name": "SM_Env_Wall_Curved_Roof",
+      "transform": {
+        "position": [
+          -5,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-30",
+      "name": "SM_Env_Wall_Pillar_Large_Round_01_Base",
+      "transform": {
+        "position": [
+          -7.5,
+          2,
+          12.5
+        ],
+        "rotation": [
+          0,
+          89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-31",
+      "name": "SM_Env_Tiles",
+      "transform": {
+        "position": [
+          0,
+          0,
+          12.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-32",
+      "name": "SM_Env_Door_Frame",
+      "transform": {
+        "position": [
+          0,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "door",
+          "asset": "",
+          "width": 2.5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-33",
+      "name": "SM_Env_Wall",
+      "transform": {
+        "position": [
+          -1.875,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 1.25,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-34",
+      "name": "SM_Env_Wall_Quarter_01",
+      "transform": {
+        "position": [
+          1.875,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 1.25,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-35",
+      "name": "SM_Env_Tiles_Texture_03",
+      "transform": {
+        "position": [
+          5,
+          0,
+          12.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "floor",
+          "asset": "",
+          "width": 5,
+          "depth": 5,
+          "height": 0.2
+        }
+      }
+    },
+    {
+      "id": "part-36",
+      "name": "SM_Env_Wall",
+      "transform": {
+        "position": [
+          5,
+          2,
+          15
+        ],
+        "rotation": [
+          0,
+          180,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    },
+    {
+      "id": "part-37",
+      "name": "SM_Env_Wall_Pillar_Large_Round_01",
+      "transform": {
+        "position": [
+          7.5,
+          2,
+          12.5
+        ],
+        "rotation": [
+          0,
+          -89.99999999999999,
+          0
+        ]
+      },
+      "components": {
+        "Structure": {
+          "kind": "wall",
+          "asset": "",
+          "width": 5,
+          "depth": 0.5,
+          "height": 4
+        }
+      }
+    }
+  ]
+}
