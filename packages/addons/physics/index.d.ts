@@ -91,7 +91,32 @@ export declare class PhysicsWorld {
   addTerrain(key: bigint, originX: number, originZ: number, spacing: number, samples: Float32Array, friction: number): boolean;
   removeTerrain(key: bigint): void;
   terrainCount(): number;
+
+  /**
+   * Server ragdolls: Jolt's Ragdoll, one per id, in the same physics system as
+   * the bodies. `ids` are u64 wire ids; `pos` holds 3 floats per id, the root
+   * where each rig is dropped. A full rig costs 5 budget units, a light rig 2;
+   * the default budget is 240 (48 full or 120 light rigs). Throws RangeError
+   * when the batch would exceed the budget, repeats an id or reuses one already
+   * present, or the rig kind is unknown. A refused batch changes nothing.
+   */
+  addRagdolls(ids: BigUint64Array, rigKind: number, pos: Float32Array): void;
+  /** Removes rigs; unknown ids are ignored. */
+  removeRagdolls(ids: BigUint64Array): void;
+  /** Writes each rig's root position into pos (3 floats per id); NaN if unknown. */
+  copyRagdollRoots(ids: BigUint64Array, pos: Float32Array): void;
+  ragdollCount(): number;
+  ragdollUnits(): number;
+  ragdollBudget(): number;
+  /** A lower budget refuses new rigs; rigs already present stay. */
+  setRagdollBudget(units: number): void;
   destroy(): void;
 }
+
+/** Rig kinds for PhysicsWorld.addRagdolls: 11 bodies, or 5 with no arms. */
+export declare const RagdollRig: Readonly<{
+  Full: 0;
+  Light: 1;
+}>;
 
 export declare function createWorld(): PhysicsWorld;
