@@ -3,7 +3,7 @@
 Roadmap: section 5, "Ragdoll cost gate" (🚧) and the slice rows under it.
 Measured with `npm run bench:ragdoll`; results in
 [`ragdoll-cost-results.json`](ragdoll-cost-results.json). No gameplay code
-in this work. The budget is not set yet.
+in this work. The budget is 4 ms per tick, chosen on 2026-10-31.
 
 ## The question
 
@@ -18,8 +18,8 @@ ragdolls takes 110 ms per step, more than three 33 ms ticks. At that size the
 physics. With the cap lifted it is 142 ms. Even 512 full rigs take 64 ms, 191%
 of a tick.
 
-The budget decides what fits. In one world, a 2 ms slice (6% of a tick) holds
-24 awake full rigs or 65 light ones.
+The budget is 4 ms per tick (12% of a tick). In one world, that holds
+48 awake full rigs or 116 light ones. The budget does not change the answer above: 1,000 full rigs still take 110 ms.
 
 The earlier figure of 13.8 ms for 256 awake rigs was one substep. The engine
 runs two. The real figure is 25.2 ms, 76% of a tick.
@@ -89,7 +89,7 @@ figures are the step alone, not the rest of the game's tick:
 |:---|---:|---:|---:|---:|
 | 1 ms (3%) | 12 | 35 | 17 | 14 |
 | 2 ms (6%) | 24 | 65 | 30 | 33 |
-| 4 ms (12%) | 48 | 116 | 53 | 76 |
+| 4 ms (12%), chosen | 48 | 116 | 53 | 76 |
 
 Whole-tick fill (no budget left for anything else): full awake rigs reach
 33.3 ms at about 310 rigs; light rigs at about 900.
@@ -136,7 +136,7 @@ Whole-tick fill (no budget left for anything else): full awake rigs reach
 | Fix | Measured effect | Cost or risk | Decision |
 |:---|:---|:---|:---|
 | **F1.** Light rig for crowds | About 3 times cheaper per rig at 256 to 1,000 rigs (34 to 37 µs against 98 to 124 µs) | No arms. Art and gameplay must accept it | Which rig, for which rigs |
-| **F2.** Cap server-simulated rigs per world | 32 full rigs 2.7 ms (8%); 64 rigs 5.2 ms (16%); 128 rigs 11.6 ms (35%) | Other players' deaths need F5 | Cap size, set from the budget |
+| **F2.** Cap server-simulated rigs per world | 32 full rigs 2.7 ms (8%); 64 rigs 5.2 ms (16%); 128 rigs 11.6 ms (35%) | Other players' deaths need F5 | Cap size, set from the 4 ms budget (about 48 full or 116 light rigs per world) |
 | **F3.** Keep each world under the contact cap | At 512 full rigs the cap does not fill and the cost is valid (64 ms) | Bigger crowds need F5 or F6 | Enforce in code, and say what happens at the cap |
 | **F4.** Four-thread job pool | 1.9 times at 256 awake (25.2 to 13.0 ms); 2.4 times at 512 (63.7 to 26.8 ms) | Determinism: the addon's test must pass with threads | Accept threads, or keep one thread |
 | **F5.** Cosmetic ragdolls on clients, for other players' deaths | Zero server cost: the server sends the death event and the client shows the body | Client cost not measured here. Not authoritative, so fine for looks only | Recommended. Measure the client budget |
@@ -153,7 +153,7 @@ should be:
    the server nothing. Measure the client budget separately.
 2. **Server-side rigs only where gameplay needs the physics**: a corpse someone
    can hit, a body that blocks a path. Light rigs for crowds, and full rigs for a
-   few dozen at most, inside a budget the person sets (F1, F2).
+   few dozen at most, inside the 4 ms budget (F1, F2).
 3. **Keep each world under the contact cap (F3).** Decide threads (F4) after the
    determinism test, and sharding (F6) only if real play needs more rigs than one
    world holds.
@@ -164,7 +164,7 @@ should be:
 
 - **Phase 0, this PR.** The bench, the sweep, this scope, and the roadmap rows.
   No gameplay.
-- **Phase 1, decisions and two measurements.** The budget, the rig fidelity, and
+- **Phase 1, decisions and two measurements.** The rig fidelity, and
   cosmetic or authoritative. Then F7 (a bench flag for the sleep threshold) and
   the addon's determinism test with a thread pool.
 - **Phase 2, first slice.** Light rigs for crowds, a cap per world, and cosmetic
@@ -176,7 +176,7 @@ should be:
 
 ## Open decisions
 
-1. **Budget.** How many milliseconds per 30 Hz tick may the ragdoll slice use?
+1. **Budget, set.** The person chose 4 ms per tick on 2026-10-31.
    1 ms (3%) holds 12 awake full rigs or 35 light ones. 2 ms (6%) holds 24 or
    65. 4 ms (12%) holds 48 or 116.
 2. **Authoritative or cosmetic.** Server-simulated ragdolls for everyone, or
@@ -208,7 +208,7 @@ should be:
   the 1,000-rig apart case fits. The counts measured in the first sweep did not
   reach the edge, so they are unaffected.
 - **Hardware.** Run `npm run bench:ragdoll` on the target server hardware before
-  the budget is set.
+  the first slice ships.
 
 ## Reproduce
 
