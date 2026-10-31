@@ -239,6 +239,21 @@ class WsSocket implements WireSocket {
   }
 }
 
+/**
+ * A peer's address as text, the same on both transports. uWebSockets.js
+ * writes an IPv4 peer on a dual-stack listener as an expanded IPv6 address
+ * ("0000:0000:0000:0000:0000:ffff:7f00:0001") and Node as "::ffff:127.0.0.1".
+ * Both come out as the dotted address.
+ */
+export function peerText(raw: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw);
+  if (mapped) return mapped[1];
+  const expanded = /^(?:0{1,4}:){5}ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(raw);
+  if (!expanded) return raw;
+  const ip = parseInt(expanded[1], 16) * 0x10000 + parseInt(expanded[2], 16);
+  return [ip >>> 24, (ip >>> 16) & 0xff, (ip >>> 8) & 0xff, ip & 0xff].join(".");
+}
+
 function toBytes(data: WebSocket.RawData): Uint8Array {
   if (data instanceof Uint8Array) return data; // Buffer extends Uint8Array
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
@@ -331,7 +346,7 @@ export class WsTransport implements Transport {
     });
     const wss = new WebSocketServer({ server, maxPayload: handlers.maxMessageBytes ?? MAX_MESSAGE_BYTES });
     wss.on("connection", (ws: WebSocket, req: IncomingMessage) =>
-      handlers.connection(new WsSocket(ws, req.socket.remoteAddress ?? "unknown", this.registry)),
+      handlers.connection(new WsSocket(ws, peerText(req.socket.remoteAddress ?? "unknown"), this.registry)),
     );
     this.server = server;
     this.wss = wss;
@@ -605,7 +620,7 @@ export class UwsTransport implements Transport {
       maxBackpressure: 64 << 20,
       closeOnBackpressureLimit: false,
       upgrade: (res: UwsResponse, req: UwsRequest, context: unknown) => {
-        const data: UwsSocketData = { ip: decoder.decode(res.getRemoteAddressAsText()), socket: null };
+        const data: UwsSocketData = { ip: peerText(decoder.decode(res.getRemoteAddressAsText())), socket: null };
         res.upgrade(
           data,
           req.getHeader("sec-websocket-key"),

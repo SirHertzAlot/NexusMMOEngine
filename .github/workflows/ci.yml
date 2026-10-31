@@ -51,3 +51,37 @@ jobs:
         run: |
           # The spec reporter prints each failing test's error after its file.
           awk '/failing tests:/{n=80} n&&n--' "$RUNNER_TEMP/test.log" | head -n 400
+
+  # Temporary, to find out why the protocol parity test dies on the runner.
+  # Remove this job with the fix.
+  parity-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build codec and protocol
+        run: |
+          npm run install --workspace=@mmo-engine/addon-codec
+          npm run build --workspace=@mmo-engine/protocol
+
+      - name: Parity test, and where it dies
+        run: |
+          node -p "process.version + ' ' + process.arch"
+          grep -o -w -E 'avx2|fma|bmi2|avx512f' /proc/cpuinfo | sort | uniq -c
+          cat /proc/sys/kernel/randomize_va_space
+          cd packages/protocol
+          node dist/test/fast-path-parity.test.js 2>&1 | tail -n 60
+          echo "exit=${PIPESTATUS[0]}"
+          sudo apt-get install -y gdb > /dev/null 2>&1 || echo "gdb install failed"
+          gdb -batch -ex 'set disable-randomization off' -ex run -ex bt -ex 'x/6i $pc' \
+            --args node dist/test/fast-path-parity.test.js 2>&1 | tail -n 80
