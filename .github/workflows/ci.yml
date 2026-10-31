@@ -7,6 +7,8 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    # A hang fails the job here instead of holding the runner for hours.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -17,6 +19,14 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      # npm ci does not run the addons' install scripts, so without this the
+      # native bindings are missing and the tests that load them fail. The
+      # codec is not a workspace, so the workspace run skips it.
+      - name: Native addons
+        run: |
+          npm run install --workspaces --if-present
+          npm --prefix packages/addons/codec run install
 
       - name: no-console guard (SAB logging layer)
         run: npm run lint
@@ -32,4 +42,14 @@ jobs:
             && echo "codegen reproducible"
 
       - name: Test
-        run: npm test
+        # Keep the log so a failure can print the failing tests below.
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      - name: Failing tests
+        if: failure()
+        run: |
+          # The spec reporter prints each failing test's error after its file.
+          awk '/failing tests:/{n=80} n&&n--' "$RUNNER_TEMP/test.log" | head -n 400
