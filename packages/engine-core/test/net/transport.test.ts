@@ -13,6 +13,7 @@ import {
   createTransport,
   HttpBodyTooLarge,
   loadUws,
+  peerText,
   type HttpHandler,
   type Transport,
   type WireSocket,
@@ -34,6 +35,16 @@ async function connect(port: number): Promise<WebSocket> {
 }
 
 const kinds = loadUws() ? (["uws", "ws"] as const) : (["ws"] as const);
+
+describe("peerText", () => {
+  it("gives an IPv4 peer its dotted address, whichever form the transport wrote it in", () => {
+    assert.equal(peerText("0000:0000:0000:0000:0000:ffff:7f00:0001"), "127.0.0.1");
+    assert.equal(peerText("::ffff:203.0.113.7"), "203.0.113.7");
+    assert.equal(peerText("127.0.0.1"), "127.0.0.1");
+    assert.equal(peerText("2001:db8::1"), "2001:db8::1");
+    assert.equal(peerText("unknown"), "unknown");
+  });
+});
 
 describe("transport", () => {
   it("auto takes uWebSockets.js when it loads", () => {
