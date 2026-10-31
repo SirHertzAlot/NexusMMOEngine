@@ -110,6 +110,11 @@ export declare class PhysicsWorld {
   ragdollBudget(): number;
   /** A lower budget refuses new rigs; rigs already present stay. */
   setRagdollBudget(units: number): void;
+  /** Jolt's point-velocity sleep threshold in m/s (default 0.03). A larger value lets resting bodies sleep sooner. */
+  sleepThreshold(): number;
+  setSleepThreshold(metresPerSecond: number): void;
+  /** Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
+  ragdollActiveBodies(): number;
   destroy(): void;
 }
 

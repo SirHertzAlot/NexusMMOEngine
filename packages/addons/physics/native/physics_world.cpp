@@ -609,6 +609,29 @@ struct mj_physics_world {
   int ragdollUnits() const { return mRagdollUnits; }
   int ragdollBudget() const { return mRagdollBudget; }
   void setRagdollBudget(int units) { mRagdollBudget = units < 0 ? 0 : units; }
+  // Jolt's point-velocity sleep threshold (m/s), applied to every body.
+  float sleepThreshold() {
+    return mSystem->GetPhysicsSettings().mPointVelocitySleepThreshold;
+  }
+  void setSleepThreshold(float metresPerSecond) {
+    JPH::PhysicsSettings settings = mSystem->GetPhysicsSettings();
+    settings.mPointVelocitySleepThreshold = metresPerSecond;
+    mSystem->SetPhysicsSettings(settings);
+  }
+  // Ragdoll bodies Jolt is simulating now (a sleeping body does not count).
+  int ragdollActiveBodies() {
+    const JPH::BodyInterface &bodies = mSystem->GetBodyInterface();
+    int active = 0;
+    for (const auto &entry : mRagdolls) {
+      const JPH::Ragdoll *rig = entry.second.ragdoll.GetPtr();
+      for (size_t i = 0; i < rig->GetBodyCount(); ++i) {
+        if (bodies.IsActive(rig->GetBodyID(static_cast<int>(i)))) {
+          ++active;
+        }
+      }
+    }
+    return active;
+  }
 
 private:
   BPLayerInterfaceImpl mBroadPhaseLayerInterface;
@@ -746,6 +769,20 @@ int mj_physics_ragdoll_units(mj_physics_world_t *world) {
 
 int mj_physics_ragdoll_budget(mj_physics_world_t *world) {
   return world == nullptr ? 0 : world->ragdollBudget();
+}
+
+float mj_physics_sleep_threshold(mj_physics_world_t *world) {
+  return world == nullptr ? 0.0f : world->sleepThreshold();
+}
+
+void mj_physics_set_sleep_threshold(mj_physics_world_t *world, float metres_per_second) {
+  if (world != nullptr) {
+    world->setSleepThreshold(metres_per_second);
+  }
+}
+
+int mj_physics_ragdoll_active_bodies(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->ragdollActiveBodies();
 }
 
 void mj_physics_set_ragdoll_budget(mj_physics_world_t *world, int units) {
