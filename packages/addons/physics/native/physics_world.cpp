@@ -423,12 +423,16 @@ struct mj_physics_world {
     if (sub_steps < 1)
       sub_steps = 1;
     const float sub_dt = dt / static_cast<float>(sub_steps);
+    uint32_t errors = 0;
     for (int s = 0; s < sub_steps; ++s) {
       // One Jolt Update per substep with a single collision step:
       // the fixed-timestep pattern Jolt's docs recommend.
-      mSystem->Update(sub_dt, 1, mTempAllocator.get(), mJobSystem.get());
+      errors |= static_cast<uint32_t>(
+          mSystem->Update(sub_dt, 1, mTempAllocator.get(), mJobSystem.get()));
     }
+    mLastStepErrors = errors;
   }
+  uint32_t lastStepErrors() const { return mLastStepErrors; }
 
   void copyResults(int n, const uint64_t *entity_ids, const int32_t *eids,
                    float *px, float *py, float *pz, float *qx, float *qy,
@@ -617,7 +621,8 @@ struct mj_physics_world {
     float *w = out;
     for (int i = 0; i < n; ++i) {
       const JPH::Ragdoll *rig = mRagdolls.at(ids[i]).ragdoll.GetPtr();
-      for (int b = 0; b < rig->GetBodyCount(); ++b) {
+      const int body_count = static_cast<int>(rig->GetBodyCount());
+      for (int b = 0; b < body_count; ++b) {
         const JPH::BodyID body = rig->GetBodyID(b);
         const JPH::RVec3 p = bi.GetPosition(body);
         const JPH::Quat q = bi.GetRotation(body);
@@ -705,6 +710,8 @@ private:
   int mRagdollUnits = 0;
   int mRagdollBudget = kRagdollDefaultBudget;
   uint32_t mNextRagdollGroup = 1;
+  // Jolt's EPhysicsUpdateError bits from the last step(), OR-ed over substeps.
+  uint32_t mLastStepErrors = 0;
 };
 
 // --- C ABI -----------------------------------------------------------------
@@ -759,6 +766,10 @@ void mj_physics_step(mj_physics_world_t *world, float dt, int sub_steps) {
   if (world == nullptr)
     return;
   world->step(dt, sub_steps);
+}
+
+uint32_t mj_physics_last_step_errors(mj_physics_world_t *world) {
+  return world == nullptr ? 0u : world->lastStepErrors();
 }
 
 void mj_physics_copy_results(mj_physics_world_t *world, int n,

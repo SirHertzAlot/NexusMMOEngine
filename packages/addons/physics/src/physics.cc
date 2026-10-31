@@ -165,6 +165,7 @@ public:
             InstanceMethod("ragdollUnits", &PhysicsWorldWrap::RagdollUnits),
             InstanceMethod("ragdollBudget", &PhysicsWorldWrap::RagdollBudget),
             InstanceMethod("setRagdollBudget", &PhysicsWorldWrap::SetRagdollBudget),
+            InstanceMethod("lastStepErrors", &PhysicsWorldWrap::LastStepErrors),
             InstanceMethod("sleepThreshold", &PhysicsWorldWrap::SleepThreshold),
             InstanceMethod("setSleepThreshold", &PhysicsWorldWrap::SetSleepThreshold),
             InstanceMethod("ragdollActiveBodies", &PhysicsWorldWrap::RagdollActiveBodies),
@@ -719,6 +720,15 @@ private:
       return;
     }
     mj_physics_set_ragdoll_budget(mWorld, static_cast<int>(units));
+  }
+
+  // lastStepErrors(): Jolt's update errors for the last step(), OR-ed over its
+  // substeps, as UpdateError bits. Zero when every contact was kept.
+  Napi::Value LastStepErrors(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_last_step_errors(mWorld));
   }
 
   static bool CheckedKey(Napi::Env env, Napi::Value value, uint64_t *out) {
