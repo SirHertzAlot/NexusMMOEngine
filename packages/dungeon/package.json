@@ -10,7 +10,7 @@
     "mmo-dungeon-bake": "dist/src/cli.js"
   },
   "scripts": {
-    "build": "node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/placement && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/picg && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/wfc && node ../../scripts/dep-build.mjs @mmo-engine/placement && node ../../scripts/dep-build.mjs @mmo-engine/species && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/synthesis && tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
     "dungeon:bake": "npm run build && node dist/src/cli.js",
     "dungeon:art": "npm run build && node dist/src/art-cli.js"
@@ -21,7 +21,8 @@
     "@mmo-engine/placement": "0.1.0",
     "@mmo-engine/species": "0.1.0",
     "@mmo-engine/picg": "0.1.0",
-    "@mmo-engine/addon-geometry": "0.1.0"
+    "@mmo-engine/addon-geometry": "0.1.0",
+    "@mmo-engine/synthesis": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
