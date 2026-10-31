@@ -394,7 +394,7 @@ function InterestPanel({ client }: { client: MirrorClient }): React.JSX.Element 
     }
     return cells;
   }, [client.interestSectors, cx, cz]);
-  const sectors = React.useMemo(() => [...client.interestSectors].filter((s) => s !== "g").length, [client.interestSectors]);
+  const sectors = [...client.interestSectors].filter((s) => s !== "g").length;
   return (
     <div className="flex flex-col gap-2 text-xs">
       <Button
