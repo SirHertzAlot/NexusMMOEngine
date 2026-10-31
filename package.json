@@ -16,6 +16,7 @@
     "bench:transport": "node packages/engine-core/dist/src/net/transport-bench.js",
     "bench:e5": "node scripts/bench-e5.mjs",
     "bench:ragdoll": "node packages/addons/physics/bench/run-ragdoll-cost.mjs",
+    "bench:ragdoll:addon": "node packages/addons/physics/bench/addon-ragdoll-cost.mjs",
     "build": "node scripts/build.mjs",
     "client": "npm run dev --workspace=@mmo-engine/client",
     "start": "node scripts/start.mjs",

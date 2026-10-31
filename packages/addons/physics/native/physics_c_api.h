@@ -123,6 +123,41 @@ void mj_physics_remove_terrain(mj_physics_world_t *world, uint64_t key);
 
 int mj_physics_terrain_count(mj_physics_world_t *world);
 
+/*
+ * Server ragdolls: Jolt's own Ragdoll (capsule parts joined by swing-twist
+ * joints), one per id, in the same physics system as the bodies above.
+ * rig_kind: MJ_RAGDOLL_FULL (11 bodies) or MJ_RAGDOLL_LIGHT (5 bodies, no
+ * arms). Each world has a budget in units: a full rig costs 5, a light rig
+ * 2, and the default budget (240) holds 48 full rigs or 120 light ones, the
+ * 4 ms per tick budget from the cost gate. pos holds n*3 floats, the root of
+ * each rig; a rig is dropped from there.
+ * mj_physics_add_ragdolls returns MJ_RAGDOLL_OK, or a refusal code. A refused
+ * batch changes nothing: over budget, a duplicate id (already present or
+ * repeated in the batch), or an unknown rig_kind.
+ * Removal is idempotent; unknown ids are ignored. mj_physics_copy_ragdoll_roots
+ * writes the root position of each id (n*3 floats), NaN for an unknown id.
+ */
+#define MJ_RAGDOLL_FULL 0
+#define MJ_RAGDOLL_LIGHT 1
+
+#define MJ_RAGDOLL_OK 1
+#define MJ_RAGDOLL_OVER_BUDGET 0
+#define MJ_RAGDOLL_DUPLICATE (-1)
+#define MJ_RAGDOLL_BAD_KIND (-2)
+#define MJ_RAGDOLL_INTERNAL (-3)
+
+int mj_physics_add_ragdolls(mj_physics_world_t *world, int n,
+                            const uint64_t *ids, int rig_kind,
+                            const float *pos);
+void mj_physics_remove_ragdolls(mj_physics_world_t *world, int n,
+                                const uint64_t *ids);
+int mj_physics_ragdoll_count(mj_physics_world_t *world);
+int mj_physics_ragdoll_units(mj_physics_world_t *world);
+int mj_physics_ragdoll_budget(mj_physics_world_t *world);
+void mj_physics_set_ragdoll_budget(mj_physics_world_t *world, int units);
+void mj_physics_copy_ragdoll_roots(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *pos);
+
 #ifdef __cplusplus
 }
 #endif
