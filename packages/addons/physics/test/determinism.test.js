@@ -48,6 +48,10 @@ test('thread pool of 4: same scene in 3 fresh processes => identical fingerprint
   assert.strictEqual(c, a, 'thread pool process 3 diverged from process 1');
 });
 
+test('0 and 4 threads give the same bits on this scene', () => {
+  assert.strictEqual(probe(4), probe(0), 'the thread pool changed the bits of the single-threaded run');
+});
+
 test('fingerprint is a full-precision hex digest covering rigs, not rounded text', () => {
   const out = probe(0);
   const fp = out.split('fp=')[1];
