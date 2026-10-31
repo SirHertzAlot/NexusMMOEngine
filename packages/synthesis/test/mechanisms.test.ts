@@ -281,8 +281,8 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
   it("isConnectingTwoFloors enforces floor connectivity for stairs and pillars", () => {
     // 1. Single floor level: stairs and pillars must be rejected
     const singleFloorRoom = [
-      { partId: "floor_1", assetRef: "a", category: "floor", transform: { pos: [0, 0, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
-      { partId: "floor_2", assetRef: "a", category: "floor", transform: { pos: [0, 0, 5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+      { partId: "floor_1", assetRef: "a", category: "floor", transform: { pos: [0, 0, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] }, size: [1, 1, 1] as [number, number, number] },
+      { partId: "floor_2", assetRef: "a", category: "floor", transform: { pos: [0, 0, 5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] }, size: [1, 1, 1] as [number, number, number] },
     ];
 
     const freestandingPillar = {
@@ -290,6 +290,7 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
       assetRef: "p",
       category: "pillar",
       transform: { pos: [0, 1.75, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+      size: [1, 1, 1] as [number, number, number],
     };
     assert.equal(isConnectingTwoFloors(freestandingPillar, singleFloorRoom), false, "Pillar on single floor must be rejected");
 
@@ -298,13 +299,14 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
       assetRef: "s",
       category: "stairs",
       transform: { pos: [0, 1.75, 2.5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+      size: [1, 1, 1] as [number, number, number],
     };
     assert.equal(isConnectingTwoFloors(disconnectedStairs, singleFloorRoom), false, "Stairs on single floor must be rejected");
 
     // 2. Two floor levels: ground (y=0) and upper loft (y=3.5)
     const twoFloorRoom = [
       ...singleFloorRoom,
-      { partId: "loft_floor_1", assetRef: "a", category: "floor", transform: { pos: [0, 3.5, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+      { partId: "loft_floor_1", assetRef: "a", category: "floor", transform: { pos: [0, 3.5, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] }, size: [1, 1, 1] as [number, number, number] },
     ];
 
     // Pillar supporting loft deck from ground floor
@@ -313,6 +315,7 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
       assetRef: "p",
       category: "pillar",
       transform: { pos: [0, 1.75, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+      size: [1, 1, 1] as [number, number, number],
     };
     assert.equal(isConnectingTwoFloors(connectedPillar, twoFloorRoom), true, "Pillar connecting ground to upper loft must be accepted");
 
@@ -322,13 +325,14 @@ describe("Dungeon Combination Puzzles & Collision Traps", () => {
       assetRef: "s",
       category: "stairs",
       transform: { pos: [0, 1.75, 2.5] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] },
+      size: [1, 1, 1] as [number, number, number],
     };
     assert.equal(isConnectingTwoFloors(connectedStairs, twoFloorRoom), true, "Stairs connecting ground floor to loft must be accepted");
 
     // 3. Pillar holding up an overhead roof/ceiling arch
     const roomWithCeiling = [
       ...singleFloorRoom,
-      { partId: "ceiling_arch_1", assetRef: "c", category: "ceiling", transform: { pos: [0, 3.5, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] } },
+      { partId: "ceiling_arch_1", assetRef: "c", category: "ceiling", transform: { pos: [0, 3.5, 0] as [number, number, number], rot: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number] }, size: [1, 1, 1] as [number, number, number] },
     ];
     assert.equal(
       isConnectingTwoFloors(freestandingPillar, roomWithCeiling),

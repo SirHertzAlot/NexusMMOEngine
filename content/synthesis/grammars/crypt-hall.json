@@ -1,0 +1,8 @@
+{
+  "format": "mmo-interior-grammar/1",
+  "id": "crypt-hall",
+  "cellM": 5,
+  "wallHeightM": 4,
+  "plan": ["...", "...", "...", "...", "...", "..."],
+  "doors": [{ "side": "S", "index": 1 }]
+}
