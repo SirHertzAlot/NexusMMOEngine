@@ -1,10 +1,13 @@
 import fs from "node:fs";
+import os from "node:os";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { chromium } from "playwright";
 import { synthesizeAssembly } from "../dist/src/synthesizer.js";
 
-const artifactDir = "C:\\Users\\user\\.gemini\\antigravity\\brain\\03e6cfec-d960-47a4-b624-994e499172e8";
-const rulesPath = "content/synthesis/dungeon-rules.json";
+const artifactDir = process.env.SYNTHESIS_ARTIFACTS ?? path.join(os.tmpdir(), "synthesis-artifacts");
+fs.mkdirSync(artifactDir, { recursive: true });
+const rulesPath = fileURLToPath(new URL("../../../content/synthesis/dungeon-rules.json", import.meta.url));
 
 const ruleSet = JSON.parse(fs.readFileSync(rulesPath, "utf-8"));
 
@@ -54,7 +57,7 @@ const archetypes = [
 ];
 
 async function main() {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.SYNTHESIS_CHROMIUM });
 
   for (const arch of archetypes) {
     const t0 = Date.now();
@@ -642,4 +645,7 @@ async function main() {
   console.log("All archetype renders completed successfully!");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

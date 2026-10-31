@@ -1,0 +1,253 @@
+{
+  "tickHz": 30,
+  "substeps": 2,
+  "scenario": "resting: rigs 0.9 m apart, sleep on, 5 s warm-up, 2 s measured",
+  "repeats": 3,
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "node": "v22.22.0"
+  },
+  "results": [
+    {
+      "label": "full rigs, no cap (before)",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 16,
+      "accepted": 16,
+      "units": 80,
+      "budgetUnits": 1000000000,
+      "stepMs": 0.9584535000000187,
+      "runsMs": [
+        0.958,
+        0.948,
+        1.332
+      ]
+    },
+    {
+      "label": "full rigs, no cap (before)",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 64,
+      "accepted": 64,
+      "units": 320,
+      "budgetUnits": 1000000000,
+      "stepMs": 4.50889699999999,
+      "runsMs": [
+        5.906,
+        4.401,
+        4.509
+      ]
+    },
+    {
+      "label": "full rigs, no cap (before)",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 128,
+      "accepted": 128,
+      "units": 640,
+      "budgetUnits": 1000000000,
+      "stepMs": 10.453994500000022,
+      "runsMs": [
+        11.343,
+        10.454,
+        10.185
+      ]
+    },
+    {
+      "label": "full rigs, no cap (before)",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 256,
+      "accepted": 256,
+      "units": 1280,
+      "budgetUnits": 1000000000,
+      "stepMs": 25.173278499999924,
+      "runsMs": [
+        24.157,
+        25.173,
+        25.387
+      ]
+    },
+    {
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 16,
+      "accepted": 16,
+      "units": 80,
+      "budgetUnits": 240,
+      "stepMs": 0.9390895000000086,
+      "runsMs": [
+        0.91,
+        0.939,
+        1.314
+      ]
+    },
+    {
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 64,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "stepMs": 4.987451000000021,
+      "runsMs": [
+        5.057,
+        4.987,
+        3.589
+      ]
+    },
+    {
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "stepMs": 3.6066680000000133,
+      "runsMs": [
+        4.979,
+        3.599,
+        3.607
+      ]
+    },
+    {
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 256,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "stepMs": 3.647591499999976,
+      "runsMs": [
+        4.676,
+        3.495,
+        3.648
+      ]
+    },
+    {
+      "label": "light rigs, no cap",
+      "rig": "light",
+      "budget": "uncapped",
+      "requested": 16,
+      "accepted": 16,
+      "units": 32,
+      "budgetUnits": 1000000000,
+      "stepMs": 0.3455760000000083,
+      "runsMs": [
+        0.343,
+        0.346,
+        0.347
+      ]
+    },
+    {
+      "label": "light rigs, no cap",
+      "rig": "light",
+      "budget": "uncapped",
+      "requested": 64,
+      "accepted": 64,
+      "units": 128,
+      "budgetUnits": 1000000000,
+      "stepMs": 1.7273010000000113,
+      "runsMs": [
+        1.697,
+        1.727,
+        2.102
+      ]
+    },
+    {
+      "label": "light rigs, no cap",
+      "rig": "light",
+      "budget": "uncapped",
+      "requested": 128,
+      "accepted": 128,
+      "units": 256,
+      "budgetUnits": 1000000000,
+      "stepMs": 3.782803999999942,
+      "runsMs": [
+        3.636,
+        3.783,
+        5.015
+      ]
+    },
+    {
+      "label": "light rigs, no cap",
+      "rig": "light",
+      "budget": "uncapped",
+      "requested": 256,
+      "accepted": 256,
+      "units": 512,
+      "budgetUnits": 1000000000,
+      "stepMs": 8.179268499999921,
+      "runsMs": [
+        7.82,
+        10.095,
+        8.179
+      ]
+    },
+    {
+      "label": "light rigs, capped (after)",
+      "rig": "light",
+      "budget": "default",
+      "requested": 16,
+      "accepted": 16,
+      "units": 32,
+      "budgetUnits": 240,
+      "stepMs": 0.34321399999999613,
+      "runsMs": [
+        0.351,
+        0.343,
+        0.34
+      ]
+    },
+    {
+      "label": "light rigs, capped (after)",
+      "rig": "light",
+      "budget": "default",
+      "requested": 64,
+      "accepted": 64,
+      "units": 128,
+      "budgetUnits": 240,
+      "stepMs": 1.6969729999999856,
+      "runsMs": [
+        1.71,
+        1.697,
+        1.595
+      ]
+    },
+    {
+      "label": "light rigs, capped (after)",
+      "rig": "light",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 120,
+      "units": 240,
+      "budgetUnits": 240,
+      "stepMs": 3.3733115,
+      "runsMs": [
+        3.373,
+        3.366,
+        3.551
+      ]
+    },
+    {
+      "label": "light rigs, capped (after)",
+      "rig": "light",
+      "budget": "default",
+      "requested": 256,
+      "accepted": 120,
+      "units": 240,
+      "budgetUnits": 240,
+      "stepMs": 3.446517500000027,
+      "runsMs": [
+        3.4,
+        3.447,
+        4.434
+      ]
+    }
+  ]
+}

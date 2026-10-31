@@ -1,0 +1,4 @@
+{
+  "id": "crypt",
+  "categories": { "floor": "floor", "wall": "wall", "door": "door" }
+}

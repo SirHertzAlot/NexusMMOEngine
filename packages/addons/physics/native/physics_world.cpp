@@ -25,6 +25,7 @@
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
@@ -35,12 +36,17 @@
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/Ragdoll/Ragdoll.h>
 #include <Jolt/RegisterTypes.h>
+#include <Jolt/Skeleton/Skeleton.h>
 
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -118,6 +124,140 @@ public:
 
 } // namespace
 
+// --- Server ragdolls --------------------------------------------------------
+// Jolt's own Ragdoll: capsule parts joined by swing-twist joints. These are the
+// two rigs the cost bench measures; bench/ragdoll-cost.cpp keeps its own copy of
+// the same tables, so keep the two in step. Offsets are metres in the rig frame.
+
+struct RagdollAnchor {
+  float x, y, z;
+};
+
+struct RagdollPart {
+  const char *name;
+  int parent;  // index into the rig; -1 for the root
+  float halfHeight;
+  float radius;
+  RagdollAnchor parentAnchor;
+  RagdollAnchor childAnchor;
+};
+
+constexpr RagdollPart kFullRigParts[] = {
+    {"Pelvis", -1, 0.07f, 0.14f, {0, 0, 0}, {0, 0, 0}},
+    {"Spine", 0, 0.14f, 0.12f, {0, 0.21f, 0}, {0, -0.26f, 0}},
+    {"Head", 1, 0.06f, 0.11f, {0, 0.26f, 0}, {0, -0.17f, 0}},
+    {"UpperArmL", 1, 0.13f, 0.05f, {0.19f, 0.20f, 0}, {0, 0.18f, 0}},
+    {"LowerArmL", 3, 0.12f, 0.04f, {0, -0.18f, 0}, {0, 0.16f, 0}},
+    {"UpperArmR", 1, 0.13f, 0.05f, {-0.19f, 0.20f, 0}, {0, 0.18f, 0}},
+    {"LowerArmR", 5, 0.12f, 0.04f, {0, -0.18f, 0}, {0, 0.16f, 0}},
+    {"UpperLegL", 0, 0.12f, 0.07f, {0.10f, -0.15f, 0}, {0, 0.19f, 0}},
+    {"LowerLegL", 7, 0.12f, 0.06f, {0, -0.19f, 0}, {0, 0.18f, 0}},
+    {"UpperLegR", 0, 0.12f, 0.07f, {-0.10f, -0.15f, 0}, {0, 0.19f, 0}},
+    {"LowerLegR", 9, 0.12f, 0.06f, {0, -0.19f, 0}, {0, 0.18f, 0}},
+};
+
+// The same torso and head, no arms, and each leg one capsule.
+constexpr RagdollPart kLightRigParts[] = {
+    {"Pelvis", -1, 0.07f, 0.14f, {0, 0, 0}, {0, 0, 0}},
+    {"Spine", 0, 0.14f, 0.12f, {0, 0.21f, 0}, {0, -0.26f, 0}},
+    {"Head", 1, 0.06f, 0.11f, {0, 0.26f, 0}, {0, -0.17f, 0}},
+    {"LegL", 0, 0.20f, 0.07f, {0.10f, -0.15f, 0}, {0, 0.27f, 0}},
+    {"LegR", 0, 0.20f, 0.07f, {-0.10f, -0.15f, 0}, {0, 0.27f, 0}},
+};
+
+// Budget units. A full rig costs 5 and a light rig 2, so the default budget of
+// 240 holds 48 full rigs or 120 light ones: the cost gate's 4 ms per tick (the
+// bench measured 48 full and 116 light rigs there).
+constexpr int kRagdollFullUnits = 5;
+constexpr int kRagdollLightUnits = 2;
+constexpr int kRagdollDefaultBudget = 240;
+
+constexpr float kRagdollDegrees = 3.14159265358979f / 180.0f;
+
+const RagdollPart *RigParts(int rig_kind, int *count) {
+  if (rig_kind == MJ_RAGDOLL_LIGHT) {
+    *count = static_cast<int>(sizeof(kLightRigParts) / sizeof(kLightRigParts[0]));
+    return kLightRigParts;
+  }
+  *count = static_cast<int>(sizeof(kFullRigParts) / sizeof(kFullRigParts[0]));
+  return kFullRigParts;
+}
+
+// One capsule per part, shared by every ragdoll of that rig kind.
+std::vector<JPH::Ref<JPH::Shape>> MakeRagdollShapes(const RagdollPart *parts,
+                                                    int count) {
+  std::vector<JPH::Ref<JPH::Shape>> shapes;
+  for (int i = 0; i < count; ++i) {
+    shapes.emplace_back(
+        new JPH::CapsuleShape(parts[i].halfHeight, parts[i].radius));
+  }
+  return shapes;
+}
+
+// Settings for one ragdoll with its root at `root` (x, y, z). Returns nullptr
+// if Jolt cannot stabilise the rig; the caller refuses the add in that case.
+JPH::Ref<JPH::RagdollSettings> MakeRagdollSettings(
+    const RagdollPart *parts, int count,
+    const std::vector<JPH::Ref<JPH::Shape>> &shapes, const float *root) {
+  JPH::Ref<JPH::RagdollSettings> settings = new JPH::RagdollSettings;
+  settings->mSkeleton = new JPH::Skeleton;
+  for (int i = 0; i < count; ++i) {
+    settings->mSkeleton->AddJoint(
+        parts[i].name, parts[i].parent < 0 ? "" : parts[parts[i].parent].name);
+  }
+  settings->mSkeleton->CalculateParentJointIndices();
+  settings->mParts.resize(static_cast<size_t>(count));
+
+  std::vector<JPH::RVec3> position(static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i) {
+    const RagdollPart &spec = parts[i];
+    if (spec.parent < 0) {
+      position[i] = JPH::RVec3(root[0], root[1], root[2]);
+    } else {
+      position[i] =
+          position[spec.parent] +
+          JPH::Vec3(spec.parentAnchor.x - spec.childAnchor.x,
+                    spec.parentAnchor.y - spec.childAnchor.y,
+                    spec.parentAnchor.z - spec.childAnchor.z);
+    }
+
+    JPH::RagdollSettings::Part &part = settings->mParts[i];
+    part.SetShape(shapes[i].GetPtr());
+    part.mPosition = position[i];
+    part.mRotation = JPH::Quat::sIdentity();
+    part.mMotionType = JPH::EMotionType::Dynamic;
+    part.mObjectLayer = Layers::MOVING;
+    part.mAllowSleeping = true;
+
+    if (spec.parent >= 0) {
+      JPH::Ref<JPH::SwingTwistConstraintSettings> joint =
+          new JPH::SwingTwistConstraintSettings;
+      joint->mSpace = JPH::EConstraintSpace::LocalToBodyCOM;
+      joint->mPosition1 = JPH::RVec3(spec.parentAnchor.x, spec.parentAnchor.y,
+                                     spec.parentAnchor.z);
+      joint->mTwistAxis1 = JPH::Vec3::sAxisY();
+      joint->mPlaneAxis1 = JPH::Vec3::sAxisX();
+      joint->mPosition2 = JPH::RVec3(spec.childAnchor.x, spec.childAnchor.y,
+                                     spec.childAnchor.z);
+      joint->mTwistAxis2 = JPH::Vec3::sAxisY();
+      joint->mPlaneAxis2 = JPH::Vec3::sAxisX();
+      joint->mNormalHalfConeAngle = 45.0f * kRagdollDegrees;
+      joint->mPlaneHalfConeAngle = 30.0f * kRagdollDegrees;
+      joint->mTwistMinAngle = -30.0f * kRagdollDegrees;
+      joint->mTwistMaxAngle = 30.0f * kRagdollDegrees;
+      part.mToParent = joint;
+    }
+  }
+
+  if (!settings->Stabilize()) {
+    return nullptr;
+  }
+  settings->DisableParentChildCollisions();
+  settings->CalculateBodyIndexToConstraintIndex();
+  settings->CalculateConstraintIndexToBodyIdxPair();
+  return settings;
+}
+
 // --- Native world ------------------------------------------------------------
 
 struct mj_physics_world {
@@ -132,15 +272,19 @@ struct mj_physics_world {
     uint8_t motion_type;
   };
 
-  mj_physics_world() {
+  // threads 0: one thread, the default. threads > 0: a Jolt thread pool of
+  // that many workers. Jolt's internal job threads are never visible to JS.
+  explicit mj_physics_world(int threads) {
     InitJoltOnce();
     mTempAllocator =
         std::make_unique<JPH::TempAllocatorImpl>(kTempAllocatorBytes);
-    // Single-threaded job system: maximum determinism, no per-world
-    // thread-pool overhead. A thread pool is a future tuning knob if
-    // physics ever shows up in tick profiles (see README).
-    mJobSystem =
-        std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
+    if (threads > 0) {
+      mJobSystem = std::make_unique<JPH::JobSystemThreadPool>(
+          JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, threads);
+    } else {
+      mJobSystem =
+          std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
+    }
     mSystem = std::make_unique<JPH::PhysicsSystem>();
     mSystem->Init(kMaxBodies, kNumBodyMutexes, kMaxBodyPairs,
                   kMaxContactConstraints, mBroadPhaseLayerInterface,
@@ -279,12 +423,16 @@ struct mj_physics_world {
     if (sub_steps < 1)
       sub_steps = 1;
     const float sub_dt = dt / static_cast<float>(sub_steps);
+    uint32_t errors = 0;
     for (int s = 0; s < sub_steps; ++s) {
       // One Jolt Update per substep with a single collision step:
       // the fixed-timestep pattern Jolt's docs recommend.
-      mSystem->Update(sub_dt, 1, mTempAllocator.get(), mJobSystem.get());
+      errors |= static_cast<uint32_t>(
+          mSystem->Update(sub_dt, 1, mTempAllocator.get(), mJobSystem.get()));
     }
+    mLastStepErrors = errors;
   }
+  uint32_t lastStepErrors() const { return mLastStepErrors; }
 
   void copyResults(int n, const uint64_t *entity_ids, const int32_t *eids,
                    float *px, float *py, float *pz, float *qx, float *qy,
@@ -377,15 +525,193 @@ struct mj_physics_world {
 
   int terrainCount() const { return static_cast<int>(mTerrain.size()); }
 
+  // --- Server ragdolls (see the C API in physics_c_api.h) ---------------------
+
+  ~mj_physics_world() {
+    // Rigs leave the system before it goes; their bodies are freed with them.
+    for (auto &entry : mRagdolls) {
+      entry.second.ragdoll->RemoveFromPhysicsSystem();
+    }
+    mRagdolls.clear();
+  }
+
+  int addRagdolls(int n, const uint64_t *ids, int rig_kind, const float *pos) {
+    if (rig_kind != MJ_RAGDOLL_FULL && rig_kind != MJ_RAGDOLL_LIGHT) {
+      return MJ_RAGDOLL_BAD_KIND;
+    }
+    const int units_each =
+        rig_kind == MJ_RAGDOLL_FULL ? kRagdollFullUnits : kRagdollLightUnits;
+
+    // Check the whole batch before changing anything.
+    std::unordered_set<uint64_t> batch;
+    for (int i = 0; i < n; ++i) {
+      if (mRagdolls.count(ids[i]) != 0 || !batch.insert(ids[i]).second) {
+        return MJ_RAGDOLL_DUPLICATE;
+      }
+    }
+    if (mRagdollUnits + n * units_each > mRagdollBudget) {
+      return MJ_RAGDOLL_OVER_BUDGET;
+    }
+
+    int count = 0;
+    const RagdollPart *parts = RigParts(rig_kind, &count);
+    std::vector<JPH::Ref<JPH::Shape>> &shapes = mRagdollShapes[rig_kind];
+    if (shapes.empty()) {
+      shapes = MakeRagdollShapes(parts, count);
+    }
+
+    std::vector<uint64_t> added;
+    added.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+      JPH::Ref<JPH::RagdollSettings> settings =
+          MakeRagdollSettings(parts, count, shapes, pos + 3 * i);
+      JPH::Ref<JPH::Ragdoll> ragdoll;
+      if (settings.GetPtr() != nullptr) {
+        // Each ragdoll gets its own collision group, so rigs never share one.
+        ragdoll = settings->CreateRagdoll(
+            static_cast<JPH::CollisionGroup::GroupID>(mNextRagdollGroup++), 0,
+            mSystem.get());
+      }
+      if (ragdoll.GetPtr() == nullptr) {
+        // All or nothing: undo this batch's rigs before reporting the failure.
+        removeRagdolls(static_cast<int>(added.size()), added.data());
+        return MJ_RAGDOLL_INTERNAL;
+      }
+      ragdoll->AddToPhysicsSystem(JPH::EActivation::Activate);
+      mRagdolls.emplace(ids[i], RagdollRecord{ragdoll, units_each});
+      mRagdollUnits += units_each;
+      added.push_back(ids[i]);
+    }
+    return MJ_RAGDOLL_OK;
+  }
+
+  void removeRagdolls(int n, const uint64_t *ids) {
+    for (int i = 0; i < n; ++i) {
+      auto it = mRagdolls.find(ids[i]);
+      if (it == mRagdolls.end()) {
+        continue;  // idempotent
+      }
+      it->second.ragdoll->RemoveFromPhysicsSystem();
+      mRagdollUnits -= it->second.units;
+      mRagdolls.erase(it);  // the last reference frees the rig's bodies
+    }
+  }
+
+  // Floats per body in copyRagdollBodies: position, rotation (x y z w), linear
+  // velocity and angular velocity.
+  static constexpr int kRagdollBodyFloats = 13;
+
+  // Writes every body of each rig in ids order, in Jolt's body order, and
+  // returns the floats written. An unknown id, or a buffer too small for all the
+  // bodies, returns -1 and writes nothing.
+  int copyRagdollBodies(int n, const uint64_t *ids, float *out,
+                        int capacity) const {
+    int needed = 0;
+    for (int i = 0; i < n; ++i) {
+      auto it = mRagdolls.find(ids[i]);
+      if (it == mRagdolls.end()) {
+        return -1;
+      }
+      needed += it->second.ragdoll->GetBodyCount() * kRagdollBodyFloats;
+    }
+    if (needed > capacity) {
+      return -1;
+    }
+    const JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    float *w = out;
+    for (int i = 0; i < n; ++i) {
+      const JPH::Ragdoll *rig = mRagdolls.at(ids[i]).ragdoll.GetPtr();
+      const int body_count = static_cast<int>(rig->GetBodyCount());
+      for (int b = 0; b < body_count; ++b) {
+        const JPH::BodyID body = rig->GetBodyID(b);
+        const JPH::RVec3 p = bi.GetPosition(body);
+        const JPH::Quat q = bi.GetRotation(body);
+        const JPH::Vec3 lv = bi.GetLinearVelocity(body);
+        const JPH::Vec3 av = bi.GetAngularVelocity(body);
+        *w++ = static_cast<float>(p.GetX());
+        *w++ = static_cast<float>(p.GetY());
+        *w++ = static_cast<float>(p.GetZ());
+        *w++ = q.GetX();
+        *w++ = q.GetY();
+        *w++ = q.GetZ();
+        *w++ = q.GetW();
+        *w++ = lv.GetX();
+        *w++ = lv.GetY();
+        *w++ = lv.GetZ();
+        *w++ = av.GetX();
+        *w++ = av.GetY();
+        *w++ = av.GetZ();
+      }
+    }
+    return needed;
+  }
+
+  void copyRagdollRoots(int n, const uint64_t *ids, float *pos) const {
+    const JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    for (int i = 0; i < n; ++i) {
+      auto it = mRagdolls.find(ids[i]);
+      if (it == mRagdolls.end()) {
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        pos[3 * i] = pos[3 * i + 1] = pos[3 * i + 2] = nan;
+        continue;
+      }
+      // Body 0 is the root part, in the order the settings list the parts.
+      const JPH::RVec3 p = bi.GetPosition(it->second.ragdoll->GetBodyID(0));
+      pos[3 * i] = static_cast<float>(p.GetX());
+      pos[3 * i + 1] = static_cast<float>(p.GetY());
+      pos[3 * i + 2] = static_cast<float>(p.GetZ());
+    }
+  }
+
+  int ragdollCount() const { return static_cast<int>(mRagdolls.size()); }
+  int ragdollUnits() const { return mRagdollUnits; }
+  int ragdollBudget() const { return mRagdollBudget; }
+  void setRagdollBudget(int units) { mRagdollBudget = units < 0 ? 0 : units; }
+  // Jolt's point-velocity sleep threshold (m/s), applied to every body.
+  float sleepThreshold() {
+    return mSystem->GetPhysicsSettings().mPointVelocitySleepThreshold;
+  }
+  void setSleepThreshold(float metresPerSecond) {
+    JPH::PhysicsSettings settings = mSystem->GetPhysicsSettings();
+    settings.mPointVelocitySleepThreshold = metresPerSecond;
+    mSystem->SetPhysicsSettings(settings);
+  }
+  // Ragdoll bodies Jolt is simulating now (a sleeping body does not count).
+  int ragdollActiveBodies() {
+    const JPH::BodyInterface &bodies = mSystem->GetBodyInterface();
+    int active = 0;
+    for (const auto &entry : mRagdolls) {
+      const JPH::Ragdoll *rig = entry.second.ragdoll.GetPtr();
+      for (size_t i = 0; i < rig->GetBodyCount(); ++i) {
+        if (bodies.IsActive(rig->GetBodyID(static_cast<int>(i)))) {
+          ++active;
+        }
+      }
+    }
+    return active;
+  }
+
 private:
   BPLayerInterfaceImpl mBroadPhaseLayerInterface;
   ObjectVsBroadPhaseLayerFilterImpl mObjectVsBroadPhaseLayerFilter;
   ObjectLayerPairFilterImpl mObjectLayerPairFilter;
   std::unique_ptr<JPH::TempAllocatorImpl> mTempAllocator;
-  std::unique_ptr<JPH::JobSystemSingleThreaded> mJobSystem;
+  std::unique_ptr<JPH::JobSystem> mJobSystem;
   std::unique_ptr<JPH::PhysicsSystem> mSystem;
   std::unordered_map<uint64_t, BodyRecord> mBodies;
   std::unordered_map<uint64_t, JPH::BodyID> mTerrain;
+
+  struct RagdollRecord {
+    JPH::Ref<JPH::Ragdoll> ragdoll;
+    int units;
+  };
+  std::unordered_map<uint64_t, RagdollRecord> mRagdolls;
+  std::vector<JPH::Ref<JPH::Shape>> mRagdollShapes[2];  // by rig kind
+  int mRagdollUnits = 0;
+  int mRagdollBudget = kRagdollDefaultBudget;
+  uint32_t mNextRagdollGroup = 1;
+  // Jolt's EPhysicsUpdateError bits from the last step(), OR-ed over substeps.
+  uint32_t mLastStepErrors = 0;
 };
 
 // --- C ABI -----------------------------------------------------------------
@@ -393,7 +719,11 @@ private:
 extern "C" {
 
 mj_physics_world_t *mj_physics_create(void) {
-  return new mj_physics_world();
+  return new mj_physics_world(0);
+}
+
+mj_physics_world_t *mj_physics_create_with_threads(int threads) {
+  return new mj_physics_world(threads);
 }
 
 void mj_physics_destroy(mj_physics_world_t *world) { delete world; }
@@ -438,6 +768,10 @@ void mj_physics_step(mj_physics_world_t *world, float dt, int sub_steps) {
   world->step(dt, sub_steps);
 }
 
+uint32_t mj_physics_last_step_errors(mj_physics_world_t *world) {
+  return world == nullptr ? 0u : world->lastStepErrors();
+}
+
 void mj_physics_copy_results(mj_physics_world_t *world, int n,
                              const uint64_t *entity_ids, const int32_t *eids,
                              float *px, float *py, float *pz, float *qx,
@@ -472,6 +806,73 @@ void mj_physics_remove_terrain(mj_physics_world_t *world, uint64_t key) {
 
 int mj_physics_terrain_count(mj_physics_world_t *world) {
   return world == nullptr ? 0 : world->terrainCount();
+}
+
+int mj_physics_add_ragdolls(mj_physics_world_t *world, int n,
+                            const uint64_t *ids, int rig_kind,
+                            const float *pos) {
+  if (world == nullptr) {
+    return MJ_RAGDOLL_INTERNAL;
+  }
+  if (n <= 0) {
+    return MJ_RAGDOLL_OK;
+  }
+  return world->addRagdolls(n, ids, rig_kind, pos);
+}
+
+void mj_physics_remove_ragdolls(mj_physics_world_t *world, int n,
+                                const uint64_t *ids) {
+  if (world != nullptr && n > 0) {
+    world->removeRagdolls(n, ids);
+  }
+}
+
+int mj_physics_ragdoll_count(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->ragdollCount();
+}
+
+int mj_physics_ragdoll_units(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->ragdollUnits();
+}
+
+int mj_physics_ragdoll_budget(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->ragdollBudget();
+}
+
+float mj_physics_sleep_threshold(mj_physics_world_t *world) {
+  return world == nullptr ? 0.0f : world->sleepThreshold();
+}
+
+void mj_physics_set_sleep_threshold(mj_physics_world_t *world, float metres_per_second) {
+  if (world != nullptr) {
+    world->setSleepThreshold(metres_per_second);
+  }
+}
+
+int mj_physics_ragdoll_active_bodies(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->ragdollActiveBodies();
+}
+
+void mj_physics_set_ragdoll_budget(mj_physics_world_t *world, int units) {
+  if (world != nullptr) {
+    world->setRagdollBudget(units);
+  }
+}
+
+void mj_physics_copy_ragdoll_roots(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *pos) {
+  if (world != nullptr && n > 0) {
+    world->copyRagdollRoots(n, ids, pos);
+  }
+}
+
+int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *out,
+                                   int capacity) {
+  if (world == nullptr || n < 0 || capacity < 0) {
+    return -1;
+  }
+  return world->copyRagdollBodies(n, ids, out, capacity);
 }
 
 } // extern "C"

@@ -35,6 +35,8 @@ export interface AddBodiesDescriptor {
 }
 
 export declare class PhysicsWorld {
+  /** Use createWorld(); the argument is the threads option. */
+  constructor(threads?: number);
   addBodies(desc: AddBodiesDescriptor): void;
   removeBodies(entityIds: BigUint64Array): void;
   /**
@@ -91,7 +93,67 @@ export declare class PhysicsWorld {
   addTerrain(key: bigint, originX: number, originZ: number, spacing: number, samples: Float32Array, friction: number): boolean;
   removeTerrain(key: bigint): void;
   terrainCount(): number;
+
+  /**
+   * Server ragdolls: Jolt's Ragdoll, one per id, in the same physics system as
+   * the bodies. `ids` are u64 wire ids; `pos` holds 3 floats per id, the root
+   * where each rig is dropped. A full rig costs 5 budget units, a light rig 2;
+   * the default budget is 240 (48 full or 120 light rigs). Throws RangeError
+   * when the batch would exceed the budget, repeats an id or reuses one already
+   * present, or the rig kind is unknown. A refused batch changes nothing.
+   */
+  addRagdolls(ids: BigUint64Array, rigKind: number, pos: Float32Array): void;
+  /** Removes rigs; unknown ids are ignored. */
+  removeRagdolls(ids: BigUint64Array): void;
+  /** Writes each rig's root position into pos (3 floats per id); NaN if unknown. */
+  copyRagdollRoots(ids: BigUint64Array, pos: Float32Array): void;
+  /**
+   * Writes every body of each rig, in ids order: 13 floats per body (position,
+   * rotation x y z w, linear velocity, angular velocity). Returns the floats
+   * written. Throws a RangeError, and writes nothing, for an unknown id or an out
+   * that is too short for all the bodies.
+   */
+  copyRagdollBodies(ids: BigUint64Array, out: Float32Array): number;
+  ragdollCount(): number;
+  ragdollUnits(): number;
+  ragdollBudget(): number;
+  /** A lower budget refuses new rigs; rigs already present stay. */
+  setRagdollBudget(units: number): void;
+  /** Jolt's point-velocity sleep threshold in m/s (default 0.03). A larger value lets resting bodies sleep sooner. */
+  sleepThreshold(): number;
+  setSleepThreshold(metresPerSecond: number): void;
+  /** Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
+  ragdollActiveBodies(): number;
+  /**
+   * Jolt's update errors for the last step(), OR-ed over its substeps, as
+   * UpdateError bits. 0 when every contact was kept. A set ContactConstraintsFull
+   * bit means the contact cap was full: Jolt dropped contacts that step.
+   */
+  lastStepErrors(): number;
   destroy(): void;
 }
 
-export declare function createWorld(): PhysicsWorld;
+/** Rig kinds for PhysicsWorld.addRagdolls: 11 bodies, or 5 with no arms. */
+export declare const RagdollRig: Readonly<{
+  Full: 0;
+  Light: 1;
+}>;
+
+/** Bits of PhysicsWorld.lastStepErrors(). */
+export declare const UpdateError: Readonly<{
+  ManifoldCacheFull: 1;
+  BodyPairCacheFull: 2;
+  ContactConstraintsFull: 4;
+}>;
+
+/** Options for createWorld. */
+export interface WorldOptions {
+  /**
+   * Jolt job threads. 0 (the default) runs the simulation on one thread. 1 to
+   * 64 starts a Jolt thread pool of that size. The README's Determinism section
+   * says what each choice guarantees.
+   */
+  threads?: number;
+}
+
+export declare function createWorld(options?: WorldOptions): PhysicsWorld;

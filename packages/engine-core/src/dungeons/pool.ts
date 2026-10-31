@@ -55,6 +55,36 @@ export interface LayoutSpawn {
   species: string;
 }
 
+/** A resource vein the bake put in a room's wall, metres in the instance's space. */
+export interface LayoutVein {
+  /** The seam the vein belongs to (the bake's vein id, e.g. "iron-seam"). */
+  kind: string;
+  /** Its tier: how hard its ore is to work (the bake's dressing). */
+  tier: number;
+  x: number;
+  z: number;
+  room: number;
+}
+
+/** One part of a room's interior: a model the grammar placed (content/synthesis). */
+export interface LayoutPlacement {
+  /** The model the part draws (its catalog asset id). */
+  assetRef: string;
+  /** Offset from the room's origin, metres. */
+  pos: [number, number, number];
+  /** Rotation quaternion, x y z w. */
+  rot: [number, number, number, number];
+  /** Scale per axis, metres. */
+  scale: [number, number, number];
+}
+
+/** A room's interior: its parts stand about the origin, a point in the instance's space (metres). */
+export interface LayoutInterior {
+  room: number;
+  origin: [number, number];
+  placements: LayoutPlacement[];
+}
+
 export interface InstanceLayout {
   id: string;
   name: string;
@@ -78,6 +108,10 @@ export interface InstanceLayout {
   shell?: string;
   /** Everything baked to stand in the rooms: layout props, the dressing's furniture, torches. */
   props: LayoutProp[];
+  /** The dressing's resource veins (gatherable when the run's rules switch them on). */
+  veins: LayoutVein[];
+  /** The room interiors the bake laid (the interior grammar's walls and floors); absent: none laid. */
+  interiors?: LayoutInterior[];
 }
 
 interface DungeonFileLike {
@@ -92,11 +126,16 @@ interface DungeonFileLike {
   boss: number;
   spawns: { x: number; y: number; tier: number; room: number }[];
   grids: { grid: string };
-  dressing?: { rank: number; props?: { kind: string; x: number; y: number; rot?: number; radius?: number }[] };
+  dressing?: {
+    rank: number;
+    props?: { kind: string; x: number; y: number; rot?: number; radius?: number }[];
+    resources?: { kind: string; tier: number; x: number; y: number; room: number }[];
+  };
   props?: { kind: string; x: number; y: number; rot?: number; scale?: number; dx?: number; dy?: number }[];
   torches?: { x: number; y: number; dx: number; dy: number }[];
   colliders?: { x: number; y: number; r: number }[];
   population?: { spawns: { x: number; y: number; species: string }[] };
+  interiors?: { room: number; origin: [number, number]; placements: { assetRef: string; transform: { pos: [number, number, number]; rot: [number, number, number, number]; scale: [number, number, number] } }[] }[];
 }
 
 export const cellCentre = (c: number): number => (c + 0.5) * CELL_M;
@@ -137,6 +176,12 @@ export function readLayout(json: unknown): InstanceLayout {
     spawns: f.spawns.map((s) => ({ x: cellCentre(s.x), z: cellCentre(s.y), tier: s.tier, room: s.room, species: species.get(`${s.x},${s.y}`) ?? "" })),
     colliders,
     props,
+    veins: (f.dressing?.resources ?? []).map((v) => ({ kind: v.kind, tier: v.tier, x: v.x * CELL_M, z: v.y * CELL_M, room: v.room })),
+    interiors: (f.interiors ?? []).map((r) => ({
+      room: r.room,
+      origin: r.origin,
+      placements: r.placements.map((p) => ({ assetRef: p.assetRef, pos: p.transform.pos, rot: p.transform.rot, scale: p.transform.scale })),
+    })),
   };
 }
 

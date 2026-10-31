@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "interiors": {
+    "crypt-hall": { "grammar": "crypt-hall", "style": "crypt", "seed": 1 }
+  }
+}

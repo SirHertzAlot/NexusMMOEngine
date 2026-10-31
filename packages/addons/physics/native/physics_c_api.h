@@ -49,6 +49,9 @@ typedef struct mj_physics_world mj_physics_world_t;
 #define MJ_SYNC_TELEPORT 0x01 // dynamic bodies: force-set transform
 
 mj_physics_world_t *mj_physics_create(void);
+/* The same world on a Jolt thread pool of `threads` workers. 0 gives the
+ * single-threaded job system that mj_physics_create uses. */
+mj_physics_world_t *mj_physics_create_with_threads(int threads);
 void mj_physics_destroy(mj_physics_world_t *world);
 
 // Bulk-add bodies. All arrays have `n` elements; vector arrays are
@@ -122,6 +125,63 @@ int mj_physics_add_terrain(mj_physics_world_t *world, uint64_t key,
 void mj_physics_remove_terrain(mj_physics_world_t *world, uint64_t key);
 
 int mj_physics_terrain_count(mj_physics_world_t *world);
+
+/*
+ * Server ragdolls: Jolt's own Ragdoll (capsule parts joined by swing-twist
+ * joints), one per id, in the same physics system as the bodies above.
+ * rig_kind: MJ_RAGDOLL_FULL (11 bodies) or MJ_RAGDOLL_LIGHT (5 bodies, no
+ * arms). Each world has a budget in units: a full rig costs 5, a light rig
+ * 2, and the default budget (240) holds 48 full rigs or 120 light ones, the
+ * 4 ms per tick budget from the cost gate. pos holds n*3 floats, the root of
+ * each rig; a rig is dropped from there.
+ * mj_physics_add_ragdolls returns MJ_RAGDOLL_OK, or a refusal code. A refused
+ * batch changes nothing: over budget, a duplicate id (already present or
+ * repeated in the batch), or an unknown rig_kind.
+ * Removal is idempotent; unknown ids are ignored. mj_physics_copy_ragdoll_roots
+ * writes the root position of each id (n*3 floats), NaN for an unknown id.
+ */
+#define MJ_RAGDOLL_FULL 0
+#define MJ_RAGDOLL_LIGHT 1
+
+#define MJ_RAGDOLL_OK 1
+#define MJ_RAGDOLL_OVER_BUDGET 0
+#define MJ_RAGDOLL_DUPLICATE (-1)
+#define MJ_RAGDOLL_BAD_KIND (-2)
+#define MJ_RAGDOLL_INTERNAL (-3)
+
+int mj_physics_add_ragdolls(mj_physics_world_t *world, int n,
+                            const uint64_t *ids, int rig_kind,
+                            const float *pos);
+void mj_physics_remove_ragdolls(mj_physics_world_t *world, int n,
+                                const uint64_t *ids);
+int mj_physics_ragdoll_count(mj_physics_world_t *world);
+int mj_physics_ragdoll_units(mj_physics_world_t *world);
+int mj_physics_ragdoll_budget(mj_physics_world_t *world);
+void mj_physics_set_ragdoll_budget(mj_physics_world_t *world, int units);
+/* Point-velocity sleep threshold for the whole world, in metres per second.
+ * Jolt's default is 0.03. A larger value lets resting bodies sleep sooner. */
+void mj_physics_set_sleep_threshold(mj_physics_world_t *world, float metres_per_second);
+float mj_physics_sleep_threshold(mj_physics_world_t *world);
+/* Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
+int mj_physics_ragdoll_active_bodies(mj_physics_world_t *world);
+void mj_physics_copy_ragdoll_roots(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *pos);
+/* Writes every body of each rig in ids order, 13 floats per body: position (3),
+ * rotation x y z w (4), linear velocity (3), angular velocity (3). Returns the
+ * floats written, or -1 with nothing written if an id is unknown or out holds
+ * fewer than the total (capacity floats). */
+int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *out,
+                                   int capacity);
+
+/* Jolt's update errors for the last mj_physics_step call, OR-ed over its
+ * substeps: a bit set for each of the MJ_UPDATE_* flags below. Zero means every
+ * contact was kept. When MJ_UPDATE_CONTACT_CONSTRAINTS_FULL is set, Jolt has
+ * dropped contacts for that step (the contact cap of 10,240 is full). */
+#define MJ_UPDATE_MANIFOLD_CACHE_FULL 1u
+#define MJ_UPDATE_BODY_PAIR_CACHE_FULL 2u
+#define MJ_UPDATE_CONTACT_CONSTRAINTS_FULL 4u
+uint32_t mj_physics_last_step_errors(mj_physics_world_t *world);
 
 #ifdef __cplusplus
 }

@@ -20,6 +20,8 @@ import { dressDungeon } from "./dress.js";
 import type { Dressing } from "./dressing.js";
 import { populateDungeon } from "./populate.js";
 import type { Roster } from "@mmo-engine/species";
+import type { InteriorStyle, LearnedRuleSet } from "@mmo-engine/synthesis";
+import { roomInteriors } from "./interiors.js";
 
 export const INDEX_FORMAT = "mmo-dungeon-index/1";
 
@@ -42,6 +44,8 @@ export interface BakeOptions {
   dress?: { dressing: Dressing; rank: [number, number] };
   /** Populate each dungeon from a roster (which species holds each room), at the dressing's rank, else one in `rank` (default 1). */
   populate?: { roster: Roster; rank?: [number, number] };
+  /** Lay each dressed room's interior from its archetype's style (interiors.ts). Needs `dress`. */
+  interiors?: { ruleSet: LearnedRuleSet; styles: Record<string, InteriorStyle> };
   /**
    * Prebake each dungeon's shell (shell.ts) as `<id>.shell.pcgm`, so an
    * instance loads its geometry as one buffer instead of building it.
@@ -57,6 +61,8 @@ export interface IndexEntry {
   theme: string;
   seed: number;
   rooms: number;
+  /** Rooms laid with an interior (absent: none laid). */
+  interiors?: number;
   /** The dressing's rank (absent: not dressed). */
   rank?: number;
   /** Resource veins in its walls. */
@@ -121,12 +127,15 @@ export function bakeDungeons(o: BakeOptions): BakeResult {
     const rank = r0 + (deriveSeed(seed, 0x52414e4b) % (r1 - r0 + 1));
     const dressing = o.dress ? dressDungeon(d, o.dress.dressing, rank, deriveSeed(seed, 0x44524553)) : undefined;
     const population = o.populate ? populateDungeon(d, o.populate.roster, rank, dressing?.archetypes ?? null, deriveSeed(seed, 0x504f5055)) : undefined;
-    const f = encodeDungeon(d, dressing, population);
+    const interiors = o.interiors && o.dress && dressing
+      ? roomInteriors(d, dressing.archetypes, o.dress.dressing, o.interiors.styles, o.interiors.ruleSet, deriveSeed(seed, 0x494e5445))
+      : undefined;
+    const f = encodeDungeon(d, dressing, population, interiors);
     const file = `${f.id}.dungeon.json`;
     writeFileSync(join(o.out, file), JSON.stringify(f));
     let shell: IndexEntry["shell"];
     if (o.shell) {
-      const sh = dungeonShell(d, o.shell.geo, o.shell.options);
+      const sh = dungeonShell(d, o.shell.geo, { ...o.shell.options, laidRooms: interiors?.map((r) => r.room) ?? [] });
       const bytes = encodePcgMesh({ positions: sh.positions, indices: sh.indices, materials: [...SHELL_PARTS], triangleMaterials: Uint32Array.from(sh.parts) });
       shell = { file: `${f.id}.shell.pcgm`, triangles: sh.stats.triangles, vertices: sh.stats.vertices, bytes: bytes.byteLength };
       writeFileSync(join(o.out, shell.file), bytes);
@@ -135,6 +144,7 @@ export function bakeDungeons(o: BakeOptions): BakeResult {
       id: f.id, file, hash, name: d.name, theme, seed: d.seed, rooms,
       ...(dressing || population ? { rank } : {}),
       ...(dressing ? { veins: dressing.resources.length } : {}),
+      ...(interiors ? { interiors: interiors.length } : {}),
       ...(population ? { boss: population.rooms[d.boss] || undefined, dwellers: population.spawns.length } : {}),
       floorTiles: d.stats.floorTiles, width: d.width, height: d.height,
       ...(shell ? { shell } : {}),

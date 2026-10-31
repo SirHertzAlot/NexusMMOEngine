@@ -1,0 +1,348 @@
+{
+  "tickHz": 30,
+  "substeps": 2,
+  "scenario": "resting: 0.9 m grid, sleep on, 20 s warm-up, 2 s measured; wake check: 16 light rigs settled 20 s, a 5 kg sphere dropped 2 m onto the middle rig",
+  "defaultThreshold": 0.03,
+  "repeats": 3,
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "node": "v22.22.0"
+  },
+  "results": [
+    {
+      "threshold": 0.03,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 165,
+      "awakeAt10s": 154,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 15,
+      "stepMs": 0.001039499999990312,
+      "meanStepMs": 0.0028915833333324295,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.03,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 528,
+      "awakeAt10s": 528,
+      "awakeAt20s": 528,
+      "awakeAfterMeasure": 528,
+      "timeToAsleepS": null,
+      "stepMs": 3.5810034999997242,
+      "meanStepMs": 3.719545733333295,
+      "runsMs": [
+        3.555,
+        3.581,
+        3.689
+      ]
+    },
+    {
+      "threshold": 0.03,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 70,
+      "awakeAt10s": 70,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 13,
+      "stepMs": 0.0010270000000076607,
+      "meanStepMs": 0.0029662666666666836,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.03,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 550,
+      "awakeAt10s": 550,
+      "awakeAt20s": 550,
+      "awakeAfterMeasure": 550,
+      "timeToAsleepS": null,
+      "stepMs": 3.326143000000002,
+      "meanStepMs": 3.3626954333333363,
+      "runsMs": [
+        3.326,
+        3.432,
+        3.32
+      ]
+    },
+    {
+      "threshold": 0.1,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 154,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "stepMs": 0.0010289999999884003,
+      "meanStepMs": 0.003144083333331575,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.1,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 528,
+      "awakeAt10s": 528,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 16,
+      "stepMs": 0.001083500000049753,
+      "meanStepMs": 0.0014635333333747743,
+      "runsMs": [
+        0.001,
+        0.002,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.1,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 70,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 7,
+      "stepMs": 0.0010450000000048476,
+      "meanStepMs": 0.0038334166666653385,
+      "runsMs": [
+        0.002,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.1,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 545,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 10,
+      "stepMs": 0.0010880000000383916,
+      "meanStepMs": 0.00179603333333489,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.3,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "stepMs": 0.0010219999999989682,
+      "meanStepMs": 0.0030179500000001506,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.3,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "stepMs": 0.001090500000003658,
+      "meanStepMs": 0.0018740333333340687,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.3,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "stepMs": 0.0010329999999996176,
+      "meanStepMs": 0.003289349999999776,
+      "runsMs": [
+        0.001,
+        0.002,
+        0.001
+      ]
+    },
+    {
+      "threshold": 0.3,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "stepMs": 0.0010719999999935226,
+      "meanStepMs": 0.001319816666664053,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.002
+      ]
+    },
+    {
+      "threshold": 1,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 4,
+      "stepMs": 0.001170500000004182,
+      "meanStepMs": 0.003359700000000506,
+      "runsMs": [
+        0.002,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "threshold": 1,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 175,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 8,
+      "stepMs": 0.0011144999999999072,
+      "meanStepMs": 0.0019133500000047359,
+      "runsMs": [
+        0.001,
+        0.002,
+        0.001
+      ]
+    },
+    {
+      "threshold": 1,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "stepMs": 0.0010249999999984993,
+      "meanStepMs": 0.0027845499999999152,
+      "runsMs": [
+        0.001,
+        0.002,
+        0.001
+      ]
+    },
+    {
+      "threshold": 1,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "stepMs": 0.0010779999999996903,
+      "meanStepMs": 0.0014187166666671895,
+      "runsMs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    }
+  ],
+  "wakes": [
+    {
+      "threshold": 0.03,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 70,
+      "movedMetres": 0.007380893298522323
+    },
+    {
+      "threshold": 0.1,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 55,
+      "movedMetres": 0.003013329643345521
+    },
+    {
+      "threshold": 0.3,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 5,
+      "movedMetres": 0.2854128690585936
+    },
+    {
+      "threshold": 1,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 5,
+      "movedMetres": 0.191134800048827
+    }
+  ]
+}
