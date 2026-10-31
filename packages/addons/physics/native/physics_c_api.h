@@ -155,6 +155,12 @@ int mj_physics_ragdoll_count(mj_physics_world_t *world);
 int mj_physics_ragdoll_units(mj_physics_world_t *world);
 int mj_physics_ragdoll_budget(mj_physics_world_t *world);
 void mj_physics_set_ragdoll_budget(mj_physics_world_t *world, int units);
+/* Point-velocity sleep threshold for the whole world, in metres per second.
+ * Jolt's default is 0.03. A larger value lets resting bodies sleep sooner. */
+void mj_physics_set_sleep_threshold(mj_physics_world_t *world, float metres_per_second);
+float mj_physics_sleep_threshold(mj_physics_world_t *world);
+/* Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
+int mj_physics_ragdoll_active_bodies(mj_physics_world_t *world);
 void mj_physics_copy_ragdoll_roots(mj_physics_world_t *world, int n,
                                    const uint64_t *ids, float *pos);
 

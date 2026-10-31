@@ -122,6 +122,30 @@ The tables above call Jolt directly. This is the path the engine runs: the addon
   the awake figures above still come from the bench. A fully awake world at the
   cap is the case the 48-rig budget assumes.
 
+## Through the addon: F7 (sleep threshold)
+
+The addon takes a sleep threshold (`setSleepThreshold`, in m/s; Jolt's default is 0.03) and counts the ragdoll bodies still awake (`ragdollActiveBodies`). `npm run bench:sleep:addon` settles a resting crowd on the 0.9 m grid for 20 s at each threshold, records when it is all asleep, then times 2 s. Crowds at the cap:
+
+| Threshold | 48 full rigs | 120 light rigs | Step once settled |
+|:---|:---|:---|:---|
+| 0.03 (default) | never; 528 of 528 awake at 20 s | never; 550 of 600 awake | 3.58 ms and 3.33 ms, awake |
+| 0.1 m/s | asleep at 16 s | asleep at 10 s | under 0.01 ms |
+| 0.3 m/s | asleep at 1 s | asleep at 1 s | under 0.01 ms |
+| 1.0 m/s | asleep at 8 s | asleep at 1 s | under 0.01 ms |
+
+Smaller crowds fall asleep sooner: 16 full rigs at 15 s and 16 light rigs at 13 s at the default, and at 6 to 7 s at 0.1 m/s. Sleep times and awake counts come from the first of three runs; step times are medians of three.
+
+Wake check: 16 light rigs settled for 20 s, then a 5 kg sphere dropped 2 m onto the middle rig.
+
+- At every threshold tested, the rig woke when the sphere landed.
+- At 0.3 m/s at most 5 bodies woke at once (one rig's worth), and the rig moved 28.5 cm. At 0.03 m/s, where the rigs were asleep, it woke 70 of 80 bodies and the rig moved 7 mm. These are one sample each: the test establishes that the rig wakes, not how far it moves.
+
+What it means:
+
+- The 4 ms budget is an awake budget. A settled crowd costs under 0.01 ms; a default crowd does not fall asleep within 20 s, so at the cap it costs about 3.5 ms a tick.
+- A larger threshold trades fidelity for that cost. A body slower than the threshold for 0.5 s is put to sleep, so slow motion can freeze. And in this scene, at 0.3 m/s no more than one rig woke, but at the default 70 of 80 bodies did. Both need a look in the client before a default changes.
+- Recommendation: keep 0.03 as the default for now. The person picks the value after a client look. 0.3 m/s is the one that puts a capped crowd to sleep within a second.
+
 ## Findings
 
 1. **Most of the cost is per rig.** Rigs 4 m apart, with no contact between
@@ -169,7 +193,7 @@ The tables above call Jolt directly. This is the path the engine runs: the addon
 | **F4.** Four-thread job pool | 1.9 times at 256 awake (25.2 to 13.0 ms); 2.4 times at 512 (63.7 to 26.8 ms) | Determinism: the addon's test must pass with threads | Accept threads, or keep one thread |
 | **F5.** Cosmetic ragdolls on clients, for other players' deaths | Zero server cost: the server sends the death event and the client shows the body | Client cost not measured here. Not authoritative, so fine for looks only | Recommended. Measure the client budget |
 | **F6.** Shard the world: several single-threaded worlds across cores | Not measured. Each world stays under the cap, and the work scales with cores | An addon change for more than one world. Must stay off the JS thread. Collisions across shards | Architecture decision |
-| **F7.** Test a larger point-velocity sleep threshold | Not measured. Aimed at finding 5 | Sleeping bodies stop reacting; pile behaviour needs a look | Measure next, with a bench flag |
+| **F7.** Larger point-velocity sleep threshold | At 0.3 m/s a capped crowd sleeps within a second and costs under 0.01 ms once settled. At the default it does not sleep within 20 s and costs 3.3 to 3.6 ms a tick. Through the addon, above | A body slower than the threshold for 0.5 s freezes. A hit reached only its own rig at 0.3 m/s in one test. Needs a client look | Default unchanged. The person picks the value |
 
 ## Recommendation
 
@@ -202,7 +226,7 @@ should be:
 - **Phase 4, CharacterVirtual.** Its own cost gate, using the same method, before
   any gameplay code (roadmap row C).
 
-Status: F1 and F2 are in draft PR #489, stacked on #488 (slice 2, measured through the addon above). F3 is not measured yet. F7 and F4 come next; F5 is still scope only.
+Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is measured through the addon (below). F3 is not measured yet. F4 is next; F5 is still scope only.
 
 ## Open decisions
 

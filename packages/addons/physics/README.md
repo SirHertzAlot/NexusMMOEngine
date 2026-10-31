@@ -113,6 +113,7 @@ holds 3 floats per id: the root where each rig is dropped.
   set the budget; a lower budget refuses new rigs and keeps the ones present.
 - Rigs step with the bodies and sleep as Jolt decides: the production
   configuration (sleep on, the addon's defaults).
+- `sleepThreshold()` and `setSleepThreshold(metresPerSecond)` set Jolt's point-velocity sleep threshold for the whole world (default 0.03 m/s; a larger value lets resting bodies sleep sooner). `ragdollActiveBodies()` counts the ragdoll bodies still simulating. Measured in the sleep bench below.
 - **Not yet covered:** the determinism fingerprint does not include rigs, and
   the thread pool stays off. Both are the next slices.
 
@@ -179,6 +180,8 @@ runs three counts once and writes no file. Needs a C++17 compiler (`$CXX`, or
 background.
 
 The addon path, the one the engine runs, has its own bench: `npm run bench:ragdoll:addon` (repo root) builds a resting world through this addon's rig API, with the budget on and off, and writes `docs/addon-ragdoll-results.json`. The sweep and what it shows are in [the scope doc](../../../docs/RAGDOLL-COST-GATE.md#through-the-addon-f1-and-f2).
+
+The sleep threshold has its own sweep: `npm run bench:sleep:addon` (repo root) settles a resting crowd for 20 s at each threshold, times 2 s, and checks that a sphere wakes a sleeping rig. It writes `docs/addon-sleep-threshold-results.json`.
 
 ## License
 
