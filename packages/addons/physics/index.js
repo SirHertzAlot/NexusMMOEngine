@@ -34,8 +34,13 @@ const SyncFlags = Object.freeze({ None: 0, Teleport: 0x01 });
 // Server ragdoll rigs for addRagdolls(ids, rigKind, pos): see index.d.ts.
 const RagdollRig = Object.freeze({ Full: 0, Light: 1 });
 
-function createWorld() {
-  return new PhysicsWorld();
+// createWorld({ threads }): threads 0 (the default) runs one thread; 1 to 64
+// starts a Jolt thread pool of that size. See the README's Determinism section.
+function createWorld(options = {}) {
+  if (options === null || typeof options !== 'object') {
+    throw new TypeError('createWorld(options): options must be an object, e.g. { threads: 4 }');
+  }
+  return new PhysicsWorld(options.threads === undefined ? 0 : options.threads);
 }
 
 module.exports = {

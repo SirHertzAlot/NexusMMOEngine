@@ -35,6 +35,8 @@ export interface AddBodiesDescriptor {
 }
 
 export declare class PhysicsWorld {
+  /** Use createWorld(); the argument is the threads option. */
+  constructor(threads?: number);
   addBodies(desc: AddBodiesDescriptor): void;
   removeBodies(entityIds: BigUint64Array): void;
   /**
@@ -105,6 +107,13 @@ export declare class PhysicsWorld {
   removeRagdolls(ids: BigUint64Array): void;
   /** Writes each rig's root position into pos (3 floats per id); NaN if unknown. */
   copyRagdollRoots(ids: BigUint64Array, pos: Float32Array): void;
+  /**
+   * Writes every body of each rig, in ids order: 13 floats per body (position,
+   * rotation x y z w, linear velocity, angular velocity). Returns the floats
+   * written. Throws a RangeError, and writes nothing, for an unknown id or an out
+   * that is too short for all the bodies.
+   */
+  copyRagdollBodies(ids: BigUint64Array, out: Float32Array): number;
   ragdollCount(): number;
   ragdollUnits(): number;
   ragdollBudget(): number;
@@ -124,4 +133,14 @@ export declare const RagdollRig: Readonly<{
   Light: 1;
 }>;
 
-export declare function createWorld(): PhysicsWorld;
+/** Options for createWorld. */
+export interface WorldOptions {
+  /**
+   * Jolt job threads. 0 (the default) runs the simulation on one thread. 1 to
+   * 64 starts a Jolt thread pool of that size. The README's Determinism section
+   * says what each choice guarantees.
+   */
+  threads?: number;
+}
+
+export declare function createWorld(options?: WorldOptions): PhysicsWorld;

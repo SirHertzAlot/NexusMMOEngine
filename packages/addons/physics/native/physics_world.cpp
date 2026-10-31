@@ -25,6 +25,7 @@
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
@@ -271,15 +272,19 @@ struct mj_physics_world {
     uint8_t motion_type;
   };
 
-  mj_physics_world() {
+  // threads 0: one thread, the default. threads > 0: a Jolt thread pool of
+  // that many workers. Jolt's internal job threads are never visible to JS.
+  explicit mj_physics_world(int threads) {
     InitJoltOnce();
     mTempAllocator =
         std::make_unique<JPH::TempAllocatorImpl>(kTempAllocatorBytes);
-    // Single-threaded job system: maximum determinism, no per-world
-    // thread-pool overhead. A thread pool is a future tuning knob if
-    // physics ever shows up in tick profiles (see README).
-    mJobSystem =
-        std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
+    if (threads > 0) {
+      mJobSystem = std::make_unique<JPH::JobSystemThreadPool>(
+          JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, threads);
+    } else {
+      mJobSystem =
+          std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
+    }
     mSystem = std::make_unique<JPH::PhysicsSystem>();
     mSystem->Init(kMaxBodies, kNumBodyMutexes, kMaxBodyPairs,
                   kMaxContactConstraints, mBroadPhaseLayerInterface,
@@ -588,6 +593,54 @@ struct mj_physics_world {
     }
   }
 
+  // Floats per body in copyRagdollBodies: position, rotation (x y z w), linear
+  // velocity and angular velocity.
+  static constexpr int kRagdollBodyFloats = 13;
+
+  // Writes every body of each rig in ids order, in Jolt's body order, and
+  // returns the floats written. An unknown id, or a buffer too small for all the
+  // bodies, returns -1 and writes nothing.
+  int copyRagdollBodies(int n, const uint64_t *ids, float *out,
+                        int capacity) const {
+    int needed = 0;
+    for (int i = 0; i < n; ++i) {
+      auto it = mRagdolls.find(ids[i]);
+      if (it == mRagdolls.end()) {
+        return -1;
+      }
+      needed += it->second.ragdoll->GetBodyCount() * kRagdollBodyFloats;
+    }
+    if (needed > capacity) {
+      return -1;
+    }
+    const JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    float *w = out;
+    for (int i = 0; i < n; ++i) {
+      const JPH::Ragdoll *rig = mRagdolls.at(ids[i]).ragdoll.GetPtr();
+      for (int b = 0; b < rig->GetBodyCount(); ++b) {
+        const JPH::BodyID body = rig->GetBodyID(b);
+        const JPH::RVec3 p = bi.GetPosition(body);
+        const JPH::Quat q = bi.GetRotation(body);
+        const JPH::Vec3 lv = bi.GetLinearVelocity(body);
+        const JPH::Vec3 av = bi.GetAngularVelocity(body);
+        *w++ = static_cast<float>(p.GetX());
+        *w++ = static_cast<float>(p.GetY());
+        *w++ = static_cast<float>(p.GetZ());
+        *w++ = q.GetX();
+        *w++ = q.GetY();
+        *w++ = q.GetZ();
+        *w++ = q.GetW();
+        *w++ = lv.GetX();
+        *w++ = lv.GetY();
+        *w++ = lv.GetZ();
+        *w++ = av.GetX();
+        *w++ = av.GetY();
+        *w++ = av.GetZ();
+      }
+    }
+    return needed;
+  }
+
   void copyRagdollRoots(int n, const uint64_t *ids, float *pos) const {
     const JPH::BodyInterface &bi = mSystem->GetBodyInterface();
     for (int i = 0; i < n; ++i) {
@@ -638,7 +691,7 @@ private:
   ObjectVsBroadPhaseLayerFilterImpl mObjectVsBroadPhaseLayerFilter;
   ObjectLayerPairFilterImpl mObjectLayerPairFilter;
   std::unique_ptr<JPH::TempAllocatorImpl> mTempAllocator;
-  std::unique_ptr<JPH::JobSystemSingleThreaded> mJobSystem;
+  std::unique_ptr<JPH::JobSystem> mJobSystem;
   std::unique_ptr<JPH::PhysicsSystem> mSystem;
   std::unordered_map<uint64_t, BodyRecord> mBodies;
   std::unordered_map<uint64_t, JPH::BodyID> mTerrain;
@@ -659,7 +712,11 @@ private:
 extern "C" {
 
 mj_physics_world_t *mj_physics_create(void) {
-  return new mj_physics_world();
+  return new mj_physics_world(0);
+}
+
+mj_physics_world_t *mj_physics_create_with_threads(int threads) {
+  return new mj_physics_world(threads);
 }
 
 void mj_physics_destroy(mj_physics_world_t *world) { delete world; }
@@ -796,6 +853,15 @@ void mj_physics_copy_ragdoll_roots(mj_physics_world_t *world, int n,
   if (world != nullptr && n > 0) {
     world->copyRagdollRoots(n, ids, pos);
   }
+}
+
+int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *out,
+                                   int capacity) {
+  if (world == nullptr || n < 0 || capacity < 0) {
+    return -1;
+  }
+  return world->copyRagdollBodies(n, ids, out, capacity);
 }
 
 } // extern "C"

@@ -49,6 +49,9 @@ typedef struct mj_physics_world mj_physics_world_t;
 #define MJ_SYNC_TELEPORT 0x01 // dynamic bodies: force-set transform
 
 mj_physics_world_t *mj_physics_create(void);
+/* The same world on a Jolt thread pool of `threads` workers. 0 gives the
+ * single-threaded job system that mj_physics_create uses. */
+mj_physics_world_t *mj_physics_create_with_threads(int threads);
 void mj_physics_destroy(mj_physics_world_t *world);
 
 // Bulk-add bodies. All arrays have `n` elements; vector arrays are
@@ -163,6 +166,13 @@ float mj_physics_sleep_threshold(mj_physics_world_t *world);
 int mj_physics_ragdoll_active_bodies(mj_physics_world_t *world);
 void mj_physics_copy_ragdoll_roots(mj_physics_world_t *world, int n,
                                    const uint64_t *ids, float *pos);
+/* Writes every body of each rig in ids order, 13 floats per body: position (3),
+ * rotation x y z w (4), linear velocity (3), angular velocity (3). Returns the
+ * floats written, or -1 with nothing written if an id is unknown or out holds
+ * fewer than the total (capacity floats). */
+int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
+                                   const uint64_t *ids, float *out,
+                                   int capacity);
 
 #ifdef __cplusplus
 }
