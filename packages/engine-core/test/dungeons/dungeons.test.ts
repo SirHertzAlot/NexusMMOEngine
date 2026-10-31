@@ -514,6 +514,33 @@ describe("dungeon instance", () => {
     assert.ok(loot.every((d) => [11, 12].includes(d)), "chest rolls come from the chest pool");
   });
 
+  it("spawns the baked veins as resource nodes when the rules switch them on, and none when off", async () => {
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    const veined = { ...fixture(), dressing: { rank: 1, resources: [{ kind: "iron-seam", tier: 1, x: 3, y: 4, nx: 0, ny: -1, room: 0 }, { kind: "gold-vein", tier: 2, x: 19, y: 3, nx: 0, ny: 1, room: 1 }] } };
+    const layout = readLayout(veined);
+    assert.deepEqual(layout.veins, [
+      { kind: "iron-seam", tier: 1, x: 3 * CELL_M, z: 4 * CELL_M, room: 0 },
+      { kind: "gold-vein", tier: 2, x: 19 * CELL_M, z: 3 * CELL_M, room: 1 },
+    ]);
+    const on = new DungeonInstance({
+      id: "run-veins-on", entrance: "barrow-gate", layout, rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      onEnd: () => {}, now: () => 1, clock: () => Date.now(), transport: "ws",
+    });
+    await on.start();
+    closers.push(() => on.close());
+    assert.equal(on.resourceNodes, 2, "each vein is a node");
+    const off = new DungeonInstance({
+      id: "run-veins-off", entrance: "barrow-gate", layout: readLayout(veined), rules: { ...content.rules, veinNodes: false }, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      onEnd: () => {}, now: () => 1, clock: () => Date.now(), transport: "ws",
+    });
+    await off.start();
+    closers.push(() => off.close());
+    assert.equal(off.resourceNodes, 0, "the switch off leaves the veins as walls");
+  });
+
   it("the run state names each chest and whether it is opened", async () => {
     SimWorld.resetEntityCursorForTesting();
     const characters = new MemoryCharacterStore();

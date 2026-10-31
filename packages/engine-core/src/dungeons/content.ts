@@ -54,6 +54,8 @@ export const InstanceRulesSchema = z.strictObject({
   chestsPerRun: z.number().int().min(0).max(64),
   /** Loot rolls from the chest pool per chest opened. */
   chestLootRolls: range,
+  /** Whether the run's baked resource veins are gatherable nodes (off: the veins are walls only). */
+  veinNodes: z.boolean().default(true),
   /** How close a member must stand to open a chest, metres. */
   chestOpenRadiusM: z.number().positive().max(100),
   /**
@@ -151,6 +153,7 @@ export const DEFAULT_INSTANCE_RULES: InstanceRules = {
   chestsPerRun: 3,
   chestLootRolls: [1, 2],
   chestOpenRadiusM: 3,
+  veinNodes: true,
   commit: "on-report",
   wallBodyRadiusM: 0.4,
   teleportStepM: 8,
