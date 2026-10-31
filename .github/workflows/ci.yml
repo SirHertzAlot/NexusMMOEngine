@@ -33,3 +33,15 @@ jobs:
 
       - name: Test
         run: npm test
+        env:
+          # Diagnostic: record each Node process that exits non-zero (see scripts/exit-trace.cjs).
+          NODE_OPTIONS: "--require ${{ github.workspace }}/scripts/exit-trace.cjs --trace-exit"
+          EXIT_TRACE_LOG: "${{ runner.temp }}/exit-trace.log"
+
+      - name: Exit diagnostic
+        if: failure()
+        run: |
+          node -v
+          cat "$EXIT_TRACE_LOG" || echo "No Node process exited non-zero."
+        env:
+          EXIT_TRACE_LOG: "${{ runner.temp }}/exit-trace.log"
