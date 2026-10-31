@@ -42,6 +42,18 @@ jobs:
         if: failure()
         run: |
           node -v
+          echo "--- non-zero exits recorded by scripts/exit-trace.cjs ---"
           cat "$EXIT_TRACE_LOG" || echo "No Node process exited non-zero."
+          echo "--- codec addon ---"
+          ls -la packages/addons/codec/build/Release || true
+          node -e "require('./packages/addons/codec/index.js'); console.log('codec addon loads')" 2>&1 | head -n 12 || true
+          echo "--- uWebSockets.js ---"
+          (cd packages/engine-core && node -e "require('uWebSockets.js'); console.log('uWebSockets.js loads')" 2>&1 | head -n 5) || true
+          echo "--- failing test files, run alone ---"
+          grep -o ' /[^ ]*\.test\.js' "$EXIT_TRACE_LOG" 2>/dev/null | tr -d ' ' | sort -u | while read -r file; do
+            echo "== $file"
+            node "$file" 2>&1 | tail -n 150
+            echo "exit=${PIPESTATUS[0]}"
+          done
         env:
           EXIT_TRACE_LOG: "${{ runner.temp }}/exit-trace.log"
