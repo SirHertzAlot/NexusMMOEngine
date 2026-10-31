@@ -202,7 +202,7 @@ should be:
 - **Phase 4, CharacterVirtual.** Its own cost gate, using the same method, before
   any gameplay code (roadmap row C).
 
-Status: F1 and F2 are in a draft PR stacked on #488 (slice 2, measured through the addon above). F3 is not measured yet. F7 and F4 come next; F5 is still scope only.
+Status: F1 and F2 are in draft PR #489, stacked on #488 (slice 2, measured through the addon above). F3 is not measured yet. F7 and F4 come next; F5 is still scope only.
 
 ## Open decisions
 
