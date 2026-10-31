@@ -1238,6 +1238,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       <nav
         className="m3-scroll flex min-w-0 flex-1 items-center justify-center gap-px overflow-x-auto px-2"
         aria-label="Workspaces"
+        style={{ contentVisibility: "auto" }}
       >
         {WORKSPACES.map((w) => {
           const on = w.id === workspace;

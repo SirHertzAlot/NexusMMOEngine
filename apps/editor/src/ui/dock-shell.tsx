@@ -8,6 +8,7 @@ import { WorkspacePicker } from "./workspace-picker.js";
 import { LayoutProvider } from "./layout-provider.js";
 import { AdminConsole } from "./AdminConsole.js";
 import { AppearanceEditor } from "./AppearanceEditor.js";
+import { EntityInspector } from "./EntityInspector.js";
 import { DockPanel } from "./components.js";
 
 export function DockShell({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -78,12 +79,23 @@ export function DockShell({ children }: { children: React.ReactNode }): React.JS
               <DockPanel
                 tabs={[
                   { id: "appearance", label: "Appearance & Equipment", icon: "🎨" },
+              { id: "entities", label: "Entity Inspector", icon: "🔍" },
                 ]}
                 active={bottomTab}
                 onTab={setBottomTab}
               >
-                <AppearanceEditor />
-              </DockPanel>
+            <AppearanceEditor />
+            {/* Entity Inspector dock pane (EA2) */}
+          <DockPanel
+            tabs={[
+              { id: "entities", label: "Entity Inspector", icon: "🔍" },
+            ]}
+            active={bottomTab}
+            onTab={setBottomTab}
+          >
+            <EntityInspector />
+          </DockPanel>
+          </DockPanel>
             </div>
           )}
         </div>
