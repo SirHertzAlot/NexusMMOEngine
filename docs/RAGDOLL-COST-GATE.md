@@ -19,7 +19,7 @@ physics. With the cap lifted it is 142 ms. Even 512 full rigs take 64 ms, 191%
 of a tick.
 
 The budget is 4 ms per tick (12% of a tick). In one world, that holds
-48 awake full rigs or 116 light ones. The budget does not change the answer above: 1,000 full rigs still take 110 ms.
+48 awake full rigs or 116 light ones on the bench. Through the addon, the cap admits 48 full rigs or 120 light rigs (see below). The budget does not change the answer above: 1,000 full rigs still take 110 ms.
 
 The earlier figure of 13.8 ms for 256 awake rigs was one substep. The engine
 runs two. The real figure is 25.2 ms, 76% of a tick.
@@ -94,6 +94,34 @@ figures are the step alone, not the rest of the game's tick:
 Whole-tick fill (no budget left for anything else): full awake rigs reach
 33.3 ms at about 310 rigs; light rigs at about 900.
 
+## Through the addon: F1 and F2
+
+The tables above call Jolt directly. This is the path the engine runs: the addon's rig API with the budget in place. `npm run bench:ragdoll:addon` builds a resting world (sleep on, two substeps, the addon's limits) for each configuration at each count, in its own process, and reports the median of 3 step times.
+
+| Requested | Full, no cap (before) | Full, capped (F2) | Light, no cap (F1) | Light, capped (F1 + F2) |
+|---:|---:|---:|---:|---:|
+| 16 | 0.96 ms | 0.94 ms | 0.35 ms | 0.34 ms |
+| 64 | 4.51 ms | 4.99 ms | 1.73 ms | 1.70 ms |
+| 128 | 10.45 ms | 3.61 ms | 3.78 ms | 3.37 ms |
+| 256 | 25.17 ms | 3.65 ms | 8.18 ms | 3.45 ms |
+
+- **Accepted.** The cap admits 48 full rigs (240 units at 5 each) or 120 light
+  rigs (240 units at 2 each). A batch past the cap is refused, and the spawner
+  adds only what fits.
+- **Budget reconciled.** The bench's awake column gave 48 full and 116 light
+  rigs at 4 ms. The cap's 120 light rigs is the unit model's answer, about 3%
+  above that estimate. Through the addon, 120 light rigs take about 3.4 ms, under
+  the 4 ms budget.
+- **Light rigs.** Below the cap, capped and uncapped light rigs run the same
+  scene, so their lines coincide. Uncapped at 256 requested they take 8.2 ms,
+  about a third of the full rigs' 25.2 ms.
+- **The 64-rig point.** The capped full case at 64 and at 128 requested is the
+  same 48 rigs. Its runs split between about 3.6 and 5.0 ms, and the cause is not
+  known. The 128 and 256 medians agree at about 3.6 ms; read those.
+- **Not measured through the addon: sleep off.** The addon keeps sleep on, so
+  the awake figures above still come from the bench. A fully awake world at the
+  cap is the case the 48-rig budget assumes.
+
 ## Findings
 
 1. **Most of the cost is per rig.** Rigs 4 m apart, with no contact between
@@ -136,7 +164,7 @@ Whole-tick fill (no budget left for anything else): full awake rigs reach
 | Fix | Measured effect | Cost or risk | Decision |
 |:---|:---|:---|:---|
 | **F1.** Light rig for crowds | About 3 times cheaper per rig at 256 to 1,000 rigs (34 to 37 µs against 98 to 124 µs) | No arms. Art and gameplay must accept it | Which rig, for which rigs |
-| **F2.** Cap server-simulated rigs per world | 32 full rigs 2.7 ms (8%); 64 rigs 5.2 ms (16%); 128 rigs 11.6 ms (35%) | Other players' deaths need F5 | Cap size, set from the 4 ms budget (about 48 full or 116 light rigs per world) |
+| **F2.** Cap server-simulated rigs per world | 32 full rigs 2.7 ms (8%); 64 rigs 5.2 ms (16%); 128 rigs 11.6 ms (35%). Through the addon, capped: 3.6 ms at 128 and 256 full rigs | Other players' deaths need F5 | Cap size, set from the 4 ms budget: 48 full or 120 light rigs per world |
 | **F3.** Keep each world under the contact cap | At 512 full rigs the cap does not fill and the cost is valid (64 ms) | Bigger crowds need F5 or F6 | Enforce in code, and say what happens at the cap |
 | **F4.** Four-thread job pool | 1.9 times at 256 awake (25.2 to 13.0 ms); 2.4 times at 512 (63.7 to 26.8 ms) | Determinism: the addon's test must pass with threads | Accept threads, or keep one thread |
 | **F5.** Cosmetic ragdolls on clients, for other players' deaths | Zero server cost: the server sends the death event and the client shows the body | Client cost not measured here. Not authoritative, so fine for looks only | Recommended. Measure the client budget |
@@ -174,11 +202,13 @@ should be:
 - **Phase 4, CharacterVirtual.** Its own cost gate, using the same method, before
   any gameplay code (roadmap row C).
 
+Status: F1 and F2 are in draft PR #489, stacked on #488 (slice 2, measured through the addon above). F3 is not measured yet. F7 and F4 come next; F5 is still scope only.
+
 ## Open decisions
 
 1. **Budget, set.** The person chose 4 ms per tick on 2026-10-31.
    1 ms (3%) holds 12 awake full rigs or 35 light ones. 2 ms (6%) holds 24 or
-   65. 4 ms (12%) holds 48 or 116.
+   65. 4 ms (12%) holds 48 full rigs or 120 light ones through the cap (the bench estimated 116).
 2. **Authoritative or cosmetic.** Server-simulated ragdolls for everyone, or
    cosmetic on clients for other players? Recommended: cosmetic for others.
 3. **Rig fidelity.** The full rig, the light rig, or full up close and light far
@@ -196,6 +226,7 @@ should be:
 - Server hardware. This container is 4 vCPU at 2.1 GHz and shared.
 - The engine's real world. The bench floor is one box, with no terrain, no static
   colliders and no other bodies.
+- Awake crowds through the addon. The addon keeps sleep on, so the awake figures come from the bench.
 - Networking.
 
 ## Caveats
@@ -204,6 +235,7 @@ should be:
   container, times moved by up to about 35%. The same 256-rig awake case measured
   13.8 ms in the first sweep (one substep) and 16.4 ms in this sweep's one-substep run (`main`). Read ratios
   within one sweep. Treat absolute milliseconds as about ±30%.
+- **Addon sweep spread.** Single runs in the addon sweep sat up to about 40% above their median. The 64-rig point in the addon table is the clearest case.
 - **The floor.** The first sweep used a floor with a 50 m half-width, and this one uses a 200 m half-width (400 m across) so
   the 1,000-rig apart case fits. The counts measured in the first sweep did not
   reach the edge, so they are unaffected.
@@ -220,3 +252,10 @@ npm run bench:ragdoll -- --quick   # three counts, one repeat; no file
 Build the addon first (`npx node-gyp rebuild` in `packages/addons/physics`). The
 bench is `packages/addons/physics/bench/ragdoll-cost.cpp`, and its runner is
 `packages/addons/physics/bench/run-ragdoll-cost.mjs`.
+
+Through the addon, the path the engine runs (after the addon builds):
+
+```
+npm run bench:ragdoll:addon              # full sweep, 3 repeats; writes docs/addon-ragdoll-results.json
+npm run bench:ragdoll:addon -- --quick   # one repeat; no file
+```

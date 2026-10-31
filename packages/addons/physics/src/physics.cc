@@ -22,6 +22,7 @@
 #include <napi.h>
 
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -156,6 +157,13 @@ public:
             InstanceMethod("addTerrain", &PhysicsWorldWrap::AddTerrain),
             InstanceMethod("removeTerrain", &PhysicsWorldWrap::RemoveTerrain),
             InstanceMethod("terrainCount", &PhysicsWorldWrap::TerrainCount),
+            InstanceMethod("addRagdolls", &PhysicsWorldWrap::AddRagdolls),
+            InstanceMethod("removeRagdolls", &PhysicsWorldWrap::RemoveRagdolls),
+            InstanceMethod("copyRagdollRoots", &PhysicsWorldWrap::CopyRagdollRoots),
+            InstanceMethod("ragdollCount", &PhysicsWorldWrap::RagdollCount),
+            InstanceMethod("ragdollUnits", &PhysicsWorldWrap::RagdollUnits),
+            InstanceMethod("ragdollBudget", &PhysicsWorldWrap::RagdollBudget),
+            InstanceMethod("setRagdollBudget", &PhysicsWorldWrap::SetRagdollBudget),
         });
     exports.Set("PhysicsWorld", ctor);
     return exports;
@@ -476,6 +484,132 @@ private:
     if (!requireLive(env))
       return env.Undefined();
     return Napi::Number::New(env, mj_physics_terrain_count(mWorld));
+  }
+
+  // addRagdolls(ids: BigUint64Array, rigKind: number, pos: Float32Array)
+  // pos holds 3 floats per id: where each rig's root is dropped. Throws a
+  // RangeError if the batch would exceed the world's ragdoll budget, repeats an
+  // id or reuses one already present, or the rig kind is unknown. A refused
+  // batch changes nothing.
+  void AddRagdolls(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    if (info.Length() < 3 || !info[1].IsNumber()) {
+      Napi::TypeError::New(env, "addRagdolls(ids, rigKind, pos)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    const uint64_t *ids = CheckedU64(env, info[0], "ids", 0);
+    if (!ids)
+      return;
+    const size_t len = info[0].As<Napi::TypedArray>().ElementLength();
+    const float *pos = CheckedF32(env, info[2], "pos", 3 * len);
+    if (!pos)
+      return;
+    const int rig_kind = info[1].As<Napi::Number>().Int32Value();
+    const int status = mj_physics_add_ragdolls(
+        mWorld, static_cast<int>(len), ids, rig_kind, pos);
+    switch (status) {
+    case MJ_RAGDOLL_OK:
+      return;
+    case MJ_RAGDOLL_OVER_BUDGET:
+      Napi::RangeError::New(
+          env, "ragdoll budget exceeded: " +
+                   std::to_string(mj_physics_ragdoll_units(mWorld)) + " of " +
+                   std::to_string(mj_physics_ragdoll_budget(mWorld)) +
+                   " units in use")
+          .ThrowAsJavaScriptException();
+      return;
+    case MJ_RAGDOLL_DUPLICATE:
+      Napi::RangeError::New(
+          env, "ragdoll id is already present or repeated in the batch")
+          .ThrowAsJavaScriptException();
+      return;
+    case MJ_RAGDOLL_BAD_KIND:
+      Napi::RangeError::New(
+          env, "unknown rig kind: use RagdollRig.Full or RagdollRig.Light")
+          .ThrowAsJavaScriptException();
+      return;
+    default:
+      Napi::Error::New(env, "could not build a ragdoll rig")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+  }
+
+  // removeRagdolls(ids: BigUint64Array). Unknown ids are ignored.
+  void RemoveRagdolls(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    const uint64_t *ids = CheckedU64(env, info[0], "ids", 0);
+    if (!ids)
+      return;
+    const size_t len = info[0].As<Napi::TypedArray>().ElementLength();
+    mj_physics_remove_ragdolls(mWorld, static_cast<int>(len), ids);
+  }
+
+  // copyRagdollRoots(ids: BigUint64Array, pos: Float32Array): writes each rig's
+  // root position into pos (3 floats per id). An unknown id gives NaN.
+  void CopyRagdollRoots(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    if (info.Length() < 2) {
+      Napi::TypeError::New(env, "copyRagdollRoots(ids, pos)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    const uint64_t *ids = CheckedU64(env, info[0], "ids", 0);
+    if (!ids)
+      return;
+    const size_t len = info[0].As<Napi::TypedArray>().ElementLength();
+    float *pos = CheckedF32Mut(env, info[1], "pos", 3 * len);
+    if (!pos)
+      return;
+    mj_physics_copy_ragdoll_roots(mWorld, static_cast<int>(len), ids, pos);
+  }
+
+  Napi::Value RagdollCount(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_ragdoll_count(mWorld));
+  }
+
+  Napi::Value RagdollUnits(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_ragdoll_units(mWorld));
+  }
+
+  Napi::Value RagdollBudget(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_ragdoll_budget(mWorld));
+  }
+
+  // setRagdollBudget(units: number). A lower budget refuses new rigs; rigs
+  // already present stay.
+  void SetRagdollBudget(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+      Napi::TypeError::New(env, "setRagdollBudget(units)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    const double units = info[0].As<Napi::Number>().DoubleValue();
+    if (!(units >= 0.0) || units > 2147483647.0 || std::floor(units) != units) {
+      Napi::RangeError::New(env, "ragdoll budget must be a whole number >= 0")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    mj_physics_set_ragdoll_budget(mWorld, static_cast<int>(units));
   }
 
   static bool CheckedKey(Napi::Env env, Napi::Value value, uint64_t *out) {

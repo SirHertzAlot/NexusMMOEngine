@@ -95,6 +95,27 @@ world.destroy();                          // explicit; idempotent
 - `destroy()` is explicit and idempotent; the C++ finalizer tears the
   world down as a backstop if the caller forgets.
 
+### Server ragdolls
+
+`addRagdolls(ids, rigKind, pos)` adds Jolt `Ragdoll`s (capsule parts joined by
+swing-twist joints) to the same physics system as the bodies. `RagdollRig.Full`
+is 11 bodies; `RagdollRig.Light` is 5 (no arms, one capsule per leg). `pos`
+holds 3 floats per id: the root where each rig is dropped.
+
+- **Budget.** Each world has a budget in units. A full rig costs 5 and a light
+  rig 2. The default budget of 240 holds 48 full rigs or 120 light ones, which
+  is the cost gate's 4 ms per tick (see the bench below). A batch that would
+  exceed the budget throws a `RangeError` and changes nothing. So does a
+  repeated or already present id, and an unknown rig kind.
+- `removeRagdolls(ids)` is idempotent. `copyRagdollRoots(ids, pos)` writes each
+  rig's root position (NaN for an unknown id). `ragdollCount()`,
+  `ragdollUnits()`, `ragdollBudget()` and `setRagdollBudget(units)` report and
+  set the budget; a lower budget refuses new rigs and keeps the ones present.
+- Rigs step with the bodies and sleep as Jolt decides: the production
+  configuration (sleep on, the addon's defaults).
+- **Not yet covered:** the determinism fingerprint does not include rigs, and
+  the thread pool stays off. Both are the next slices.
+
 ## Determinism
 
 Jolt is deterministic given **the same binary and the same
@@ -156,6 +177,8 @@ time (`sleep0.1`). It writes `docs/ragdoll-cost-results.json`. `-- --quick`
 runs three counts once and writes no file. Needs a C++17 compiler (`$CXX`, or
 `c++`); Linux and macOS. A full run takes a while, so start it in the
 background.
+
+The addon path, the one the engine runs, has its own bench: `npm run bench:ragdoll:addon` (repo root) builds a resting world through this addon's rig API, with the budget on and off, and writes `docs/addon-ragdoll-results.json`. The sweep and what it shows are in [the scope doc](../../../docs/RAGDOLL-COST-GATE.md#through-the-addon-f1-and-f2).
 
 ## License
 
