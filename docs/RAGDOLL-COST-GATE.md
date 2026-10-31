@@ -146,6 +146,29 @@ What it means:
 - A larger threshold trades fidelity for that cost. A body slower than the threshold for 0.5 s is put to sleep, so slow motion can freeze. And in this scene, at 0.3 m/s no more than one rig woke, but at the default 70 of 80 bodies did. Both need a look in the client before a default changes.
 - Recommendation: keep 0.03 as the default for now. The person picks the value after a client look. 0.3 m/s is the one that puts a capped crowd to sleep within a second.
 
+## Through the addon: F4 (threads and determinism)
+
+`createWorld({ threads })` runs the world on a Jolt thread pool of that size. The default, 0, keeps one thread. `npm run bench:threads:addon` runs the resting sweep on 0 and 4 threads, median of 3. Results: [`addon-ragdoll-threads-results.json`](addon-ragdoll-threads-results.json).
+
+Each cell is step time on one thread, then on four, with the speed-up in brackets:
+
+| Rigs requested | Full, no cap | Full, capped | Light, capped |
+|---:|:---|:---|:---|
+| 16 | 0.93 / 1.22 ms (0.77×) | 0.96 / 1.13 ms (0.85×) | 0.35 / 0.80 ms (0.44×) |
+| 64 | 4.56 / 3.36 ms (1.36×) | 3.72 / 2.74 ms (1.36×) | 1.68 / 1.66 ms (1.02×) |
+| 128 | 10.50 / 6.96 ms (1.51×) | 3.62 / 3.04 ms (1.19×) | 3.52 / 2.73 ms (1.29×) |
+| 256 | 25.61 / 13.20 ms (1.94×) | 3.64 / 3.30 ms (1.10×) | 3.43 / 2.93 ms (1.17×) |
+
+The capped columns admit 48 full or 120 light rigs, so every row above those counts is the same world. On four threads the same 48 rigs measured 2.7 to 3.3 ms across rows, which is the spread this container gives.
+
+- **The pool pays off in big worlds.** From 64 full rigs, and from 120 light rigs, four threads are faster. Uncapped, 256 full rigs take 13.2 ms against 25.6 ms.
+- **At the cap the gain is small, and not needed.** 48 full rigs take 3.6 to 3.7 ms on one thread and 2.7 to 3.3 ms on four. Both fit the 4 ms budget, so the cap does not need threads.
+- **Small worlds get slower.** At 16 rigs the pool adds 0.2 to 0.3 ms a step for full rigs and about 0.45 ms for light ones: the cost of waking and joining the workers each step. A pool has to be chosen per world, by size.
+- **The result did not change with the thread count, on this scene.** Fresh processes at 0 threads and at 4 threads each give the same bits, and the two thread counts give the same bits as each other. The scene has six dynamic bodies, 32 rig bodies and 240 steps (`test/determinism.test.js`). Jolt's architecture notes promise determinism for the same call order and binary, not for every thread count, so this holds for the scene the test runs and no wider.
+- **Caveats.** The container has 4 vCPUs, shared, so the pool competes with the JS thread. On server hardware with more cores the gain could be larger, and with fewer it is worse. Each world owns its pool, so one world means four native threads. A pool shared across worlds is not built.
+
+**Decision (recommended).** Threads stay opt-in per world, and the default stays one thread. The engine can use a pool for worlds of 64 full rigs or more, or 120 light rigs. The 4 ms cap does not need one. Whether the engine uses threads at all is the person's call.
+
 ## Findings
 
 1. **Most of the cost is per rig.** Rigs 4 m apart, with no contact between
@@ -190,7 +213,7 @@ What it means:
 | **F1.** Light rig for crowds | About 3 times cheaper per rig at 256 to 1,000 rigs (34 to 37 µs against 98 to 124 µs) | No arms. Art and gameplay must accept it | Which rig, for which rigs |
 | **F2.** Cap server-simulated rigs per world | 32 full rigs 2.7 ms (8%); 64 rigs 5.2 ms (16%); 128 rigs 11.6 ms (35%). Through the addon, capped: 3.6 ms at 128 and 256 full rigs | Other players' deaths need F5 | Cap size, set from the 4 ms budget: 48 full or 120 light rigs per world |
 | **F3.** Keep each world under the contact cap | At 512 full rigs the cap does not fill and the cost is valid (64 ms) | Bigger crowds need F5 or F6 | Enforce in code, and say what happens at the cap |
-| **F4.** Four-thread job pool | 1.9 times at 256 awake (25.2 to 13.0 ms); 2.4 times at 512 (63.7 to 26.8 ms) | Determinism: the addon's test must pass with threads | Accept threads, or keep one thread |
+| **F4.** Four-thread job pool | Through the addon: 1.9 times at 256 uncapped full rigs (25.6 to 13.2 ms); 1.1 to 1.4 times at the cap; 16-rig worlds slower (0.44 to 0.85 times) | Determinism: the same bits at 0 and 4 threads on the test scene. Each world owns its pool | Opt-in per world, default one thread. A pool from about 64 full or 120 light rigs |
 | **F5.** Cosmetic ragdolls on clients, for other players' deaths | Zero server cost: the server sends the death event and the client shows the body | Client cost not measured here. Not authoritative, so fine for looks only | Recommended. Measure the client budget |
 | **F6.** Shard the world: several single-threaded worlds across cores | Not measured. Each world stays under the cap, and the work scales with cores | An addon change for more than one world. Must stay off the JS thread. Collisions across shards | Architecture decision |
 | **F7.** Larger point-velocity sleep threshold | At 0.3 m/s a capped crowd sleeps within a second and costs under 0.01 ms once settled. At the default it does not sleep within 20 s and costs 3.3 to 3.6 ms a tick. Through the addon, above | A body slower than the threshold for 0.5 s freezes. A hit reached only its own rig at 0.3 m/s in one test. Needs a client look | Default unchanged. The person picks the value |
@@ -206,9 +229,7 @@ should be:
 2. **Server-side rigs only where gameplay needs the physics**: a corpse someone
    can hit, a body that blocks a path. Light rigs for crowds, and full rigs for a
    few dozen at most, inside the 4 ms budget (F1, F2).
-3. **Keep each world under the contact cap (F3).** Decide threads (F4) after the
-   determinism test, and sharding (F6) only if real play needs more rigs than one
-   world holds.
+3. **Keep each world under the contact cap (F3).** Threads (F4) are opt-in per world, for large worlds only, and sharding (F6) only if real play needs more rigs than one world holds.
 4. **Measure the sleep threshold (F7)** before deciding whether resting piles are
    a problem.
 
@@ -226,7 +247,7 @@ should be:
 - **Phase 4, CharacterVirtual.** Its own cost gate, using the same method, before
   any gameplay code (roadmap row C).
 
-Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is measured through the addon (below). F3 is not measured yet. F4 is next; F5 is still scope only.
+Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is in PR #490, ready for review, stacked on #489 (below). F4 is measured through the addon (below), in its own PR stacked on #490. F3 is not measured yet. F5 is still scope only.
 
 ## Open decisions
 
@@ -237,7 +258,7 @@ Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, me
    cosmetic on clients for other players? Recommended: cosmetic for others.
 3. **Rig fidelity.** The full rig, the light rig, or full up close and light far
    away?
-4. **Threads, shards, or one thread.** The determinism question (F4, F6).
+4. **Threads, shards, or one thread.** Recommended: threads opt-in per world (F4), default one thread. Shards (F6) are not started.
 5. **The contact cap.** Keep 10,240 and limit crowds, or raise it at a cost
    (142 ms at 1,000 awake rigs)?
 

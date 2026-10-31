@@ -160,6 +160,7 @@ public:
             InstanceMethod("addRagdolls", &PhysicsWorldWrap::AddRagdolls),
             InstanceMethod("removeRagdolls", &PhysicsWorldWrap::RemoveRagdolls),
             InstanceMethod("copyRagdollRoots", &PhysicsWorldWrap::CopyRagdollRoots),
+            InstanceMethod("copyRagdollBodies", &PhysicsWorldWrap::CopyRagdollBodies),
             InstanceMethod("ragdollCount", &PhysicsWorldWrap::RagdollCount),
             InstanceMethod("ragdollUnits", &PhysicsWorldWrap::RagdollUnits),
             InstanceMethod("ragdollBudget", &PhysicsWorldWrap::RagdollBudget),
@@ -172,9 +173,37 @@ public:
     return exports;
   }
 
+  // Jolt thread pools are capped at 64 workers. 0 keeps the single thread.
+  static constexpr int kMaxThreads = 64;
+
+  // The optional threads of createWorld({ threads }). Returns nullptr after
+  // throwing a JS TypeError or RangeError, so no world is made for a bad value.
+  static mj_physics_world_t *WorldFromArgs(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    int threads = 0;
+    if (info.Length() > 0 && !info[0].IsUndefined()) {
+      if (!info[0].IsNumber()) {
+        Napi::TypeError::New(env,
+                             "createWorld({ threads }): threads must be a number")
+            .ThrowAsJavaScriptException();
+        return nullptr;
+      }
+      const double v = info[0].As<Napi::Number>().DoubleValue();
+      if (!std::isfinite(v) || v != std::floor(v) || v < 0.0 ||
+          v > static_cast<double>(kMaxThreads)) {
+        Napi::RangeError::New(
+            env, "createWorld({ threads }): threads must be an integer from 0 to 64")
+            .ThrowAsJavaScriptException();
+        return nullptr;
+      }
+      threads = static_cast<int>(v);
+    }
+    return mj_physics_create_with_threads(threads);
+  }
+
   explicit PhysicsWorldWrap(const Napi::CallbackInfo &info)
       : Napi::ObjectWrap<PhysicsWorldWrap>(info),
-        mWorld(mj_physics_create()) {}
+        mWorld(WorldFromArgs(info)) {}
 
   // Finalizer backstop: explicit destroy() is preferred, but a
   // forgotten world must still tear down its Jolt PhysicsSystem.
@@ -572,6 +601,47 @@ private:
     if (!pos)
       return;
     mj_physics_copy_ragdoll_roots(mWorld, static_cast<int>(len), ids, pos);
+  }
+
+  // copyRagdollBodies(ids: BigUint64Array, out: Float32Array): number. Writes 13
+  // floats per body of each rig, in ids order (see index.d.ts), and returns the
+  // floats written. An unknown id, or an out too short for all of them, throws a
+  // RangeError and writes nothing.
+  Napi::Value CopyRagdollBodies(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    if (info.Length() < 2) {
+      Napi::TypeError::New(env, "copyRagdollBodies(ids, out)")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    if (!info[0].IsTypedArray() ||
+        info[0].As<Napi::TypedArray>().TypedArrayType() !=
+            napi_biguint64_array) {
+      Napi::TypeError::New(env, "ids must be a BigUint64Array")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    if (!info[1].IsTypedArray() ||
+        info[1].As<Napi::TypedArray>().TypedArrayType() != napi_float32_array) {
+      Napi::TypeError::New(env, "out must be a Float32Array")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    // An empty typed array may have no data pointer. That is fine: with no ids,
+    // or no room, the C side never reads or writes through it.
+    const Napi::BigUint64Array ids = info[0].As<Napi::BigUint64Array>();
+    Napi::Float32Array out = info[1].As<Napi::Float32Array>();
+    const int written = mj_physics_copy_ragdoll_bodies(
+        mWorld, static_cast<int>(ids.ElementLength()), ids.Data(), out.Data(),
+        static_cast<int>(out.ElementLength()));
+    if (written < 0) {
+      Napi::RangeError::New(env, "copyRagdollBodies: an id is unknown, or out is too short for every body of those rigs")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    return Napi::Number::New(env, written);
   }
 
   Napi::Value RagdollCount(const Napi::CallbackInfo &info) {

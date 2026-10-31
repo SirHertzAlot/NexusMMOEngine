@@ -108,14 +108,18 @@ holds 3 floats per id: the root where each rig is dropped.
   exceed the budget throws a `RangeError` and changes nothing. So does a
   repeated or already present id, and an unknown rig kind.
 - `removeRagdolls(ids)` is idempotent. `copyRagdollRoots(ids, pos)` writes each
-  rig's root position (NaN for an unknown id). `ragdollCount()`,
+  rig's root position (NaN for an unknown id). `copyRagdollBodies(ids, out)`
+  writes every body of each rig: 13 floats per body (position, rotation
+  x y z w, linear velocity, angular velocity), in ids order. It returns the
+  floats written, and throws a `RangeError` with nothing written for an unknown
+  id or a short `out`. `ragdollCount()`,
   `ragdollUnits()`, `ragdollBudget()` and `setRagdollBudget(units)` report and
   set the budget; a lower budget refuses new rigs and keeps the ones present.
 - Rigs step with the bodies and sleep as Jolt decides: the production
   configuration (sleep on, the addon's defaults).
 - `sleepThreshold()` and `setSleepThreshold(metresPerSecond)` set Jolt's point-velocity sleep threshold for the whole world (default 0.03 m/s; a larger value lets resting bodies sleep sooner). `ragdollActiveBodies()` counts the ragdoll bodies still simulating. Measured in the sleep bench below.
-- **Not yet covered:** the determinism fingerprint does not include rigs, and
-  the thread pool stays off. Both are the next slices.
+- **Not yet covered:** the engine's real world (terrain and other bodies) and
+  server hardware. Both are in the cost gate's not-measured list.
 
 ## Determinism
 
@@ -125,17 +129,24 @@ mutating-API call order** (Jolt `Docs/Architecture.md`,
 
 - **Guaranteed:** the same scene stepped on the same build produces
   bit-identical results across processes and runs. Pinned by
-  `test/determinism.test.js` (three fresh processes, exact f32-bit
-  fingerprint over a scene with stacked spheres, a kinematic platform
-  and mixed shapes/masses).
+  `test/determinism.test.js`: three fresh processes, exact f32-bit
+  fingerprint over stacked spheres, a kinematic platform, mixed shapes and
+  masses, and four rigs (two full, two light), with the single-threaded job
+  system and with a four-thread pool.
+- **Not guaranteed:** the same bits at every thread count. Jolt's
+  architecture notes give the guarantee as call order plus binary, and say
+  nothing about thread count. The test checks that 0 and 4 threads give the
+  same bits on this one scene, and no more than that.
 - **Deliberately avoided:** broadphase/narrowphase query result
   ordering, contact-listener callbacks and `GetActiveBodies()` —
   Jolt documents these as nondeterministic (multithreaded). If a
   future feature needs them, collect-and-sort before the results feed
   game logic.
-- **Single-threaded job system** (`JobSystemSingleThreaded`): maximum
-  determinism, no per-world thread-pool overhead. A thread pool is a
-  future tuning knob if physics ever shows up in tick profiles.
+- **Job threads** (`createWorld({ threads })`). 0, the default, runs the
+  simulation on one thread (`JobSystemSingleThreaded`). 1 to 64 start a Jolt
+  thread pool of that size. Jolt's worker threads are not visible to JS, and
+  the world is still stepped from the JS thread. The pool is opt-in per world,
+  and its cost is measured by `npm run bench:threads:addon`.
 
 ### `CROSS_PLATFORM_DETERMINISTIC` — open decision
 
@@ -182,6 +193,8 @@ background.
 The addon path, the one the engine runs, has its own bench: `npm run bench:ragdoll:addon` (repo root) builds a resting world through this addon's rig API, with the budget on and off, and writes `docs/addon-ragdoll-results.json`. The sweep and what it shows are in [the scope doc](../../../docs/RAGDOLL-COST-GATE.md#through-the-addon-f1-and-f2).
 
 The sleep threshold has its own sweep: `npm run bench:sleep:addon` (repo root) settles a resting crowd for 20 s at each threshold, times 2 s, and checks that a sphere wakes a sleeping rig. It writes `docs/addon-sleep-threshold-results.json`.
+
+The thread pool has its own sweep: `npm run bench:threads:addon` (repo root) runs the resting sweep on 0 and 4 threads and writes `docs/addon-ragdoll-threads-results.json`.
 
 ## License
 
