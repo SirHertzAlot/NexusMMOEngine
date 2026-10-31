@@ -1016,7 +1016,6 @@ export function editorHost(options: EditorHostOptions): Plugin {
         }
         try {
           if (url === "/api/editor/server/start" && req.method === "POST") {
-            const startBody = await readBody(req);
             // Start options honored today: bots → MMO_BOTS, the optional
             // {scene: {name, content?}} for playing the open scene (EA6),
             // fresh/keep for world snapshot/restore, and spawn {x, z} for
@@ -1029,8 +1028,9 @@ export function editorHost(options: EditorHostOptions): Plugin {
             let keep = false;
             let spawn: { x: number; z: number } | undefined;
             let edge = false;
-            try {
-              const parsed = JSON.parse(startBody || "{}") as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown; spawn?: unknown; network?: unknown };
+            // An empty or non-JSON body leaves the server defaults in place.
+            const parsed = (await readJsonBody(req)) as { bots?: unknown; scene?: PlaySceneRequest; fresh?: unknown; keep?: unknown; spawn?: unknown; network?: unknown } | undefined;
+            if (parsed) {
               edge = parsed.network === "edge";
               if (typeof parsed.bots === "number" && Number.isFinite(parsed.bots) && parsed.bots >= 0) {
                 bots = Math.floor(parsed.bots);
@@ -1042,8 +1042,6 @@ export function editorHost(options: EditorHostOptions): Plugin {
               if (sp && typeof sp.x === "number" && typeof sp.z === "number" && Number.isFinite(sp.x) && Number.isFinite(sp.z)) {
                 spawn = { x: sp.x, z: sp.z };
               }
-            } catch {
-              /* empty / non-JSON body: server defaults */
             }
             // Back up world.db before the server starts (see play-snapshot).
             // Not while a server runs: that start fails with 409, and its
@@ -1096,13 +1094,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
               sendJson(res, 405, { ok: false, error: "POST only" });
               return;
             }
-            let body: { name?: unknown; reason?: unknown } = {};
-            try {
-              body = JSON.parse((await readBody(req)) || "{}") as typeof body;
-            } catch {
-              sendJson(res, 400, { ok: false, error: "body must be JSON" });
-              return;
-            }
+            const body = (await readJsonOr400(req, res, {})) as { name?: unknown; reason?: unknown } | undefined;
+            if (body === undefined) return;
             if (!owned || typeof body.name !== "string") {
               sendJson(res, 409, { ok: false, error: owned ? 'need {"name": "<module>"}' : "the play server isn't running" });
               return;
@@ -1189,7 +1182,8 @@ export function editorHost(options: EditorHostOptions): Plugin {
             return;
           }
           if (url === "/api/editor/tables" && req.method === "POST") {
-            const body = JSON.parse(await readBody(req)) as { file?: unknown; json?: unknown };
+            const body = (await readJsonOr400(req, res)) as { file?: unknown; json?: unknown } | undefined;
+            if (body === undefined) return;
             if (!isEditableTable(body.file)) {
               sendJson(res, 400, { ok: false, error: `not an editable rules table: ${String(body.file)}` });
               return;
@@ -1294,8 +1288,10 @@ export function editorHost(options: EditorHostOptions): Plugin {
           // Profile files (content/build/profiles): validated save, delete; a refused save writes nothing.
           const profileUrl = /^\/api\/editor\/build\/profiles\/([a-z0-9-]+)$/.exec(url);
           if (url === "/api/editor/build/profiles" && req.method === "PUT") {
+            const body = (await readJsonOr400(req, res, null)) as { profile?: unknown } | null | undefined;
+            if (body === undefined) return;
             try {
-              const saved = buildHost.saveProfile((JSON.parse((await readBody(req)) || "null") as { profile?: unknown } | null)?.profile);
+              const saved = buildHost.saveProfile(body?.profile);
               sendJson(res, 200, { ok: true, profile: saved });
             } catch (err) {
               const issues = (err as { issues?: string[] }).issues;
