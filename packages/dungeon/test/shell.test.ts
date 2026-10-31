@@ -141,3 +141,70 @@ describe("dungeonShell (manifold + Clipper2)", () => {
     assert.throws(() => dungeonShell(empty, geo), /no floor/);
   });
 });
+
+describe("dungeonShell with laid interiors", () => {
+  const d = make(1337, "ancient", 12);
+  const cell = SHELL_DEFAULTS.cell;
+  const size = new Map(d.rooms.map((r) => [r.id, r.size]));
+  const whole = dungeonShell(d, geo);
+  const s = dungeonShell(d, geo, { laidRooms: d.rooms.map((r) => r.id) });
+  const WALL = SHELL_PARTS.indexOf("wall");
+  const walkable = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < d.width && y < d.height && (d.grid[y * d.width + x] === CELL.floor || d.grid[y * d.width + x] === CELL.pool);
+
+  // The closed edges of the laid rooms: each room cell against rock or void, as a grid segment under the room's height.
+  const closed: { x0: number; z0: number; x1: number; z1: number; h: number }[] = [];
+  for (let y = 0; y < d.height; y++) {
+    for (let x = 0; x < d.width; x++) {
+      const sizeOf = size.get(d.roomId[y * d.width + x]);
+      if (sizeOf === undefined || !walkable(x, y)) continue;
+      const h = SHELL_DEFAULTS.roomHeight[sizeOf];
+      const edge = (x0: number, z0: number, x1: number, z1: number): void => {
+        closed.push({ x0: x0 * cell, z0: z0 * cell, x1: x1 * cell, z1: z1 * cell, h });
+      };
+      if (!walkable(x, y - 1)) edge(x, y, x + 1, y);
+      if (!walkable(x, y + 1)) edge(x, y + 1, x + 1, y + 1);
+      if (!walkable(x - 1, y)) edge(x, y, x, y + 1);
+      if (!walkable(x + 1, y)) edge(x + 1, y, x + 1, y + 1);
+    }
+  }
+
+  /** Is (x, y, z) on a closed edge of a laid room, under its height? Corners count: they are the segments' ends. */
+  const onClosedEdge = (x: number, y: number, z: number): boolean =>
+    closed.some((e) => {
+      const dx = e.x1 - e.x0, dz = e.z1 - e.z0;
+      const t = Math.max(0, Math.min(1, ((x - e.x0) * dx + (z - e.z0) * dz) / (dx * dx + dz * dz)));
+      return Math.hypot(x - (e.x0 + t * dx), z - (e.z0 + t * dz)) < 1e-3 && y > -1e-3 && y < e.h + 1e-3;
+    });
+
+  it("drops wall faces and nothing else", () => {
+    const count = (sh: { parts: Uint8Array }, part: number): number => sh.parts.filter((p) => p === part).length;
+    for (const part of [FLOOR, CEILING, BASIN]) assert.equal(count(s, part), count(whole, part), SHELL_PARTS[part]);
+    assert.ok(count(s, WALL) < count(whole, WALL), "some wall faces are dropped");
+    assert.ok(count(s, WALL) > 0, "the other walls stand");
+  });
+
+  it("opens the surface only along the closed edges of laid rooms", () => {
+    const p = s.positions, idx = s.indices;
+    const directed = new Set<string>();
+    for (let t = 0; t < idx.length / 3; t++) {
+      for (let j = 0; j < 3; j++) directed.add(`${idx[t * 3 + j]},${idx[t * 3 + ((j + 1) % 3)]}`);
+    }
+    let open = 0;
+    for (const k of directed) {
+      const [a, b] = k.split(",").map(Number);
+      if (directed.has(`${b},${a}`)) continue;
+      open++;
+      for (const v of [a, b]) assert.ok(onClosedEdge(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]), `open edge ${k} starts off a laid room's closed edge`);
+      const mid = [0, 1, 2].map((j) => (p[a * 3 + j] + p[b * 3 + j]) / 2);
+      assert.ok(onClosedEdge(mid[0], mid[1], mid[2]), `open edge ${k} runs off a laid room's closed edge`);
+    }
+    assert.ok(open > 0, "the laid walls left openings in the shell");
+  });
+
+  it("is the same shell as before when no room is laid", () => {
+    const none = dungeonShell(d, geo, { laidRooms: [] });
+    assert.deepEqual(none.indices, whole.indices);
+    assert.deepEqual(none.parts, whole.parts);
+  });
+});

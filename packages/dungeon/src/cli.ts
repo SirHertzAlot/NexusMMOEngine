@@ -27,12 +27,15 @@
  *   --no-shell             don't prebake shells (by default each dungeon's
  *                          walls, floors and ceilings are baked into
  *                          <id>.shell.pcgm with @mmo-engine/addon-geometry)
+ *   --no-interiors         don't lay room interiors (each dressed room's walls
+ *                          and floor, from its archetype's style)
  */
 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, writeFileSync } from "node:fs";
 import { bakeDungeons } from "./bake.js";
+import { loadInteriorContent } from "./interiors.js";
 import { decodeDungeon, type DungeonFile } from "./format.js";
 import { dungeonPng } from "./preview.js";
 import { loadThemes } from "./themes.js";
@@ -41,8 +44,8 @@ import { loadSpecies } from "@mmo-engine/species";
 import { createRequire } from "node:module";
 import type { GeometryOps } from "./shell.js";
 
-const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "species", "empty", "bare", "no-shell"] as const;
-const FLAGS: readonly string[] = ["fresh", "png", "empty", "bare", "no-shell"];
+const OPTIONS = ["n", "seed", "theme", "rooms", "loops", "decor", "themes", "out", "fresh", "png", "rank", "dressing", "species", "empty", "bare", "no-shell", "no-interiors"] as const;
+const FLAGS: readonly string[] = ["fresh", "png", "empty", "bare", "no-shell", "no-interiors"];
 type Option = (typeof OPTIONS)[number];
 
 /**
@@ -111,6 +114,7 @@ function main(): void {
   const bare = o.bare !== undefined && o.bare !== "false";
   const empty = bare || (o.empty !== undefined && o.empty !== "false");
   const noShell = o["no-shell"] !== undefined && o["no-shell"] !== "false";
+  const noInteriors = o["no-interiors"] !== undefined && o["no-interiors"] !== "false";
   const t0 = performance.now();
   const r = bakeDungeons({
     count, seed, rooms, out,
@@ -121,6 +125,7 @@ function main(): void {
     fresh: o.fresh !== undefined && o.fresh !== "false",
     ...(bare ? {} : { dress: { dressing: loadDressing(o.dressing), rank } }),
     ...(empty ? {} : { populate: { roster: loadSpecies(o.species), rank } }),
+    ...(noInteriors || bare ? {} : { interiors: loadInteriorContent(resolve(here, "../../../../content/synthesis")) }),
     ...(noShell ? {} : { shell: { geo: loadGeometry() } }),
   });
   if (o.png !== undefined && o.png !== "false") {
@@ -130,7 +135,7 @@ function main(): void {
     }
   }
   for (const d of r.added) {
-    const dressed = (d.rank !== undefined ? `, rank ${d.rank}` : "") + (d.veins !== undefined ? `, ${d.veins} veins` : "") + (d.boss ? `, ${d.dwellers} dwellers, boss ${d.boss}` : "");
+    const dressed = (d.rank !== undefined ? `, rank ${d.rank}` : "") + (d.veins !== undefined ? `, ${d.veins} veins` : "") + (d.interiors !== undefined ? `, ${d.interiors} interiors` : "") + (d.boss ? `, ${d.dwellers} dwellers, boss ${d.boss}` : "");
     const shell = d.shell ? `, shell ${d.shell.triangles} tris ${(d.shell.bytes / 1024).toFixed(0)} KB` : "";
     console.log(`  ${d.id}  ${d.name}  (${d.rooms} rooms${dressed}, ${d.floorTiles} tiles, ${d.width}x${d.height}${shell})`);
   }
