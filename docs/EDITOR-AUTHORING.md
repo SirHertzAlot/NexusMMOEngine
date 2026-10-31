@@ -348,32 +348,46 @@ envelope rules as verb calls.
    only for panels where, at that time: the project pin has held on the
    viewport-authoring template for the whole window (a); no rollback to
    legacy is recorded inside the window (b); and criterion (c) passes for
-   that panel. Until the window closes, (a)/(b) read as **window
-   running** in the slate below — the decision is recorded here, and no
-   removal is performed before the eligibility date.
+   that panel. **Window closed 2026-10-31: the Phase C evaluation that day
+   found no rollback recorded in memory or this doc during the window, so
+   (a)/(b) pass on the available evidence (pins live in per-user local
+   prefs and cannot be verified from the repo); (c) then decided every
+   row, and zero panels were removed — see the slate statuses and the
+   evaluation note below.**
 
 ## Phase C — panel removal slate (nothing deleted yet — see the status column for why)
 
 A standalone panel is removed only when the widget that replaces it is live
 **and dispatching** (see gaps). Slated, in order:
 
-| Standalone panel today | Replaced by | Remove when | Status after the authoring-depth slice (2026-10-24) |
+| Standalone panel today | Replaced by | Remove when | Status at the Phase C evaluation (2026-10-31) |
 |---|---|---|---|
-| ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits | **Blocked** — (a)/(b): grace window running (7 days from 2026-10-24; eligible on/after 2026-10-31 if the pin held with no rollback); (c) met for what the widgets expose: per-field editing now dispatches from the widgets' applied-state lines on live-entity selections (numeric fields via admin `set`, the set whitelist gating; `fieldEditTarget`/`fieldEditPlan` in dispatch.ts). The widgets' applied lines remain selection-local fields + read-backs, not the inspector's full live component tables — the inspector also stays the live-entity picker that feeds those selections |
-| Characters workspace Records panel | Merged Character widget (Sheet + Records tabs) | The widget's Records tab renders the panel (Phase A modal already proves the merge) | **Blocked** — (a)/(b) window running; (c) unmet: the merged widget carries the Sheet + Records tabs, but renders applied-state lines, not the Records panel's record data (no live character-record read feeds it) |
-| Story workspace quest & dialog panels | Merged Quests & dialogue widget (Quests + Dialogue tabs) | Same — widget renders both tabs against live quest content | **Blocked** — (a)/(b) window running; (c) unmet: the tabs render as structure, not against live quest content, and dialogue has no dispatch at all (startDialogue has no admin home) |
-| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Blocked** — (a)/(b) window running; (c) **met**: binding dispatches (shelf `addcomponent` FlowRef) and unbinding now dispatches from the flow widget itself (`removecomponent` FlowRef, the admin home this slice added) |
-| Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget | **Blocked** — (a)/(b) window running; (c) half met, narrowed: emitter *attach* dispatches (shelf `addcomponent`), and the per-field edit path now exists for emitter fields too (VfxEmitter.template/intensity, AudioEmitter.clip/radius are `set`-writable and field-editable when a selection's applied lines expose them) — but today's live entity picks project only transform/velocity/intent/chunk/health/body through the mirror, so emitter fields do not yet appear on live selections to be edited; the remaining (c) gap is that exposure, not the edit path |
-| Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live | **Blocked** — (a)/(b) window running; (c) **met**: attach/detach dispatch live (proven), and stock now dispatches from the vendor widget (template picker + exact def name + price + qty → `vendor stock`; the template must already be defined on the server — the precondition is named on the action, and an undefined template returns the server's refusal) |
+| ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback to legacy recorded in memory or this doc during the window; (c) still not fully passed: per-field editing dispatches for the fields the widgets expose on live-entity selections (numeric fields via admin `set`, the set whitelist gating; `fieldEditTarget`/`fieldEditPlan` in dispatch.ts), but the inspector's entity list/filter/pick plus its full component tables are unreplaced — and the inspector is the live-entity picker that feeds widget selections (`EcsInspectorPanel` writes `editorSelection`), so removing it would break the widget flow itself |
+| Characters workspace Records panel | Merged Character widget (Sheet + Records tabs) | The widget's Records tab renders the panel (Phase A modal already proves the merge) | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) unmet: the merged widget carries the Sheet + Records tabs, but the Records tab is a tab over applied-state lines and CRUD, not the Records panel's record data (no live character-record read feeds it) |
+| Story workspace quest & dialog panels | Merged Quests & dialogue widget (Quests + Dialogue tabs) | Same — widget renders both tabs against live quest content | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) unmet: the tabs render as structure, not against live quest content, and dialogue has no dispatch at all (startDialogue still has no admin home) |
+| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Held, not deleted (2026-10-31 evaluation)** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; bind/unbind (c) met (binding dispatches via shelf `addcomponent` FlowRef; unbinding dispatches from the flow widget via admin `removecomponent`). NOT deleted because the panel that exists is the full game-flow graph editor (nodes/edges/validation/save/play-from over `content/flow/game.flow.json`), not merely a per-object entry point, and no widget replaces graph-content editing — deleting `flow.graph` would remove unreplaced capability, so (c) does not fully pass for the panel as it exists. Needs Joey's call: narrow this row to bind/unbind only (graph editor stays), or hold the row until a graph-editing widget exists |
+| Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) half met, narrowed: emitter *attach* dispatches (shelf `addcomponent`), and the per-field edit path now exists for emitter fields too (VfxEmitter.template/intensity, AudioEmitter.clip/radius are `set`-writable and field-editable when a selection's applied lines expose them) — but today's live entity picks still project only transform/velocity/intent/chunk/health/body through the mirror (`inspectors/ecs.ts` ComponentKind, mirror state rows), so emitter fields do not yet appear on live selections to be edited; the remaining (c) gap is that projection, not the edit path |
+| Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live | **No panel to remove (2026-10-31 evaluation)** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) met for the widget functions (attach/detach dispatch live, and stock dispatches from the vendor widget — template picker + exact def name + price + qty → `vendor stock`; the template must already be defined on the server, and an undefined template returns the server's refusal). But no standalone vendor panel exists on current main to delete: the economy module has no editor entry, and the Modules workspace panel is the module registry itself, which must stay. Row closed as N/A unless a vendor panel is identified |
 
-**Why nothing was deleted in this slice (the playbook applied
-literally):** playbook step 5 allows deletion only when (a) the
-project pin has been on the new template for the whole grace window
-the team sets, (b) the pin history shows no rollback to legacy inside
-that window, and (c) each replacing widget is live AND dispatching.
+**Phase C evaluation (2026-10-31, origin/main d3ef4c7e): zero panels
+removed.** The grace window closed, no rollback to legacy was recorded in
+memory or this doc during the window, and every slate row was re-checked
+against (c) as it stands on current main (no authoring-code change since
+the 2026-10-25 depth slice altered any (c) verdict: the mirror still
+projects only transform/velocity/intent/chunk/health/body; `removecomponent`,
+field-edit via `set`, and vendor stock all still dispatch as documented).
+Verdicts: ECS inspector kept (picker + full tables unreplaced); Characters
+Records kept (no live record read); Story kept (no live quest content,
+startDialogue still homeless); Flow kept despite bind/unbind passing,
+because the existing panel is the full graph editor and no widget replaces
+graph-content editing — that row needs Joey's scoping call before any
+deletion; Art/audio kept (emitter-field projection gap); Vendor closed as
+N/A (widget functions pass, but no standalone vendor panel exists — the
+Modules panel is the registry itself). The legacy presentation and the
+templating system are untouched, as Phase C requires.
 **Joey set the grace window on 2026-10-24: 7 days, starting
-2026-10-24 — so the window is now RUNNING, and (a)/(b) become
-evaluable only when it closes: removals are eligible on/after
+2026-10-24 — the window closed 2026-10-31; see the 2026-10-31 evaluation
+above for the outcome: removals are eligible on/after
 2026-10-31, per panel, provided the viewport-authoring pin held for
 the whole window with no rollback to legacy recorded in it and (c)
 passes for that panel at that time.** (Pins live in per-user local
