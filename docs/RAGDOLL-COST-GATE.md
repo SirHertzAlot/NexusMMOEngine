@@ -169,6 +169,42 @@ The capped columns admit 48 full or 120 light rigs, so every row above those cou
 
 **Decision (recommended).** Threads stay opt-in per world, and the default stays one thread. The engine can use a pool for worlds of 64 full rigs or more, or 120 light rigs. The 4 ms cap does not need one. Whether the engine uses threads at all is the person's call.
 
+## Through the addon: F3 (contact cap)
+
+Jolt keeps 10,240 contact constraints per world. When they are full, Jolt drops the contacts that did not fit for that step, and its update returns error bits to say so. The addon ignored those bits, so a full cap was silent. `lastStepErrors()` now reports them for each step, and `UpdateError.ContactConstraintsFull` is the cap. Tests: `test/contact-cap.test.js`. An awake crowd at the budget stays clear for 150 steps, and a sheet of 6,400 touching spheres fills the cap and is reported on every step.
+
+`npm run bench:contact-cap:addon` runs settle, awake and apart for full and light rigs with the budget lifted. Each run records the step time, the cap bit, the fastest body and the bodies below the floor at the end. For each rig kind and scenario it then bisects for the first count that sets the bit, to within 4 rigs. Results: [`addon-contact-cap-results.json`](addon-contact-cap-results.json).
+
+| Scenario | Full rigs: first count that fills the cap | Light rigs: first count that fills the cap |
+|:---|:---|:---|
+| Awake crowd: 0.9 m apart, sleep off | 636 (clear at 632) | 1,458 (clear at 1,455) |
+| Apart: 4 m apart, sleep off, no rig touches | 920 (clear at 916) | 1,882 (clear at 1,878) |
+| Settle: 0.9 m apart, sleep on, the first 2 s | 1,084 (clear at 1,080) | not reached by 3,200 |
+
+The budget (48 full or 120 light rigs) sits 12 to 19 times below these counts. Per rig, the cap is about 16 constraints for an awake full rig and about 7 for an awake light one. That is the cap divided by the fill point, not a count. An apart rig gives 11 full and 5 light, one for each body on the floor, which checks the arithmetic. At the budget an awake crowd uses about 8% of the cap.
+
+Past the cap, with an awake crowd, bodies fly and fall through the floor:
+
+| Full rigs | Fastest body | Bodies below the floor |
+|---:|:---|:---|
+| 512 (clear) | 1.4 m/s | 0% |
+| 768 | 15 m/s | 16% |
+| 1,024 | 19 m/s | 46% |
+| 2,048 | 23 m/s | 81% |
+
+Light rigs: 1,440 is clear at 1.5 m/s. At 1,920 the fastest body is 14 m/s with 28% below the floor, and at 3,200 it is 16 m/s with 63%. Apart full rigs at 1,024, past their cap, are at 17 m/s with 11% below the floor. Settle's fastest body reads the same at every count, about 5 m/s for full rigs and 1.6 m/s for light ones, so the signal there is the count below the floor: 2% at 2,048 full rigs.
+
+**The budget holds only for a crowd that sleeps.** With sleep off, the budget's rigs cost more than 4 ms: 5.4 ms for 48 full rigs and 7.1 ms for 120 light rigs in the sweep. A quiet re-measure gave 4.2 and 4.0 ms, so timings on this shared container vary by up to about 30% between sessions. Resting, the same counts cost 3.4 to 3.7 ms (F2). A crowd that sleeps stays inside the budget, and one that stays awake sits at or just above 4 ms. That is why the sleep threshold (F7) matters.
+
+Caveats:
+
+- The fill points are for rigs on one floor. Other bodies in the same world share the cap, and each one reduces the room past the budget.
+- The constraints per rig are inferred from the fill points, not counted.
+- A fill point is the first count that set the bit in the run, warm-up included. The bisection is to 4 rigs.
+- The engine does not read `lastStepErrors()` yet, so a full cap is silent in the game until it does.
+
+Reproduce: `npm run bench:contact-cap:addon` runs the full sweep and fill search, about 20 minutes on this container. `-- --quick` runs three counts. Tests: `node --test packages/addons/physics/test/contact-cap.test.js`.
+
 ## F5: cosmetic deaths on the client (scope only)
 
 Roadmap "Ragdoll slice 1". Not measured, and not built. The server cost is zero: the server already sends the life message on a death. The client cost is unknown, because no client package depends on a physics library.
@@ -235,7 +271,7 @@ Proposed client budget, not decided: 12% of the frame, the same share as the ser
 |:---|:---|:---|:---|
 | **F1.** Light rig for crowds | About 3 times cheaper per rig at 256 to 1,000 rigs (34 to 37 µs against 98 to 124 µs) | No arms. Art and gameplay must accept it | Which rig, for which rigs |
 | **F2.** Cap server-simulated rigs per world | 32 full rigs 2.7 ms (8%); 64 rigs 5.2 ms (16%); 128 rigs 11.6 ms (35%). Through the addon, capped: 3.6 ms at 128 and 256 full rigs | Other players' deaths need F5 | Cap size, set from the 4 ms budget: 48 full or 120 light rigs per world |
-| **F3.** Keep each world under the contact cap | At 512 full rigs the cap does not fill and the cost is valid (64 ms) | Bigger crowds need F5 or F6 | Enforce in code, and say what happens at the cap |
+| **F3.** Keep each world under the contact cap | Measured through the addon: the budget sits 12 to 19 times below the cap. Past it, bodies fall through the floor (16% at 768 awake full rigs, 46% at 1,024) | Bigger crowds need F5 or F6 | Keep 10,240 (decision 5). The addon reports a full cap each step (`lastStepErrors()`) |
 | **F4.** Four-thread job pool | Through the addon: 1.9 times at 256 uncapped full rigs (25.6 to 13.2 ms); 1.1 to 1.4 times at the cap; 16-rig worlds slower (0.44 to 0.85 times) | Determinism: the same bits at 0 and 4 threads on the test scene. Each world owns its pool | Opt-in per world, default one thread. A pool from about 64 full or 120 light rigs |
 | **F5.** Cosmetic ragdolls on clients, for other players' deaths | Zero server cost: the server sends the death event and the client shows the body | Client cost not measured here. Not authoritative, so fine for looks only | Recommended. Measure the client budget |
 | **F6.** Shard the world: several single-threaded worlds across cores | Not measured. Each world stays under the cap, and the work scales with cores | An addon change for more than one world. Must stay off the JS thread. Collisions across shards | Architecture decision |
@@ -270,7 +306,7 @@ should be:
 - **Phase 4, CharacterVirtual.** Its own cost gate, using the same method, before
   any gameplay code (roadmap row C).
 
-Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is in PR #490, ready for review, stacked on #489 (below). F4 is measured through the addon (below), in its own PR stacked on #490. F3 is not measured yet. F5 has a scope section below and no measurement: the client needs a physics option first.
+Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, measured through the addon above). F7 is in PR #490, ready for review, stacked on #489 (below). F4 is measured through the addon (below), in its own PR stacked on #490. F3 is measured through the addon (below), in its own PR stacked on #492. F5 has a scope section below and no measurement: the client needs a physics option first.
 
 ## Open decisions
 
@@ -283,7 +319,8 @@ Status: F1 and F2 are in PR #489, ready for review, stacked on #488 (slice 2, me
    away?
 4. **Threads, shards, or one thread.** Recommended: threads opt-in per world (F4), default one thread. Shards (F6) are not started.
 5. **The contact cap.** Keep 10,240 and limit crowds, or raise it at a cost
-   (142 ms at 1,000 awake rigs)?
+   (142 ms at 1,000 awake rigs)? Recommended: keep it. The budget sits 12 to 19
+   times below the cap (F3).
 6. **Client physics for cosmetic deaths.** A JavaScript library (A), Jolt as WebAssembly (B), or no ragdoll (C)? Recommended: A, measured first. The fall's direction is a separate question (see F5).
 
 ## Not measured

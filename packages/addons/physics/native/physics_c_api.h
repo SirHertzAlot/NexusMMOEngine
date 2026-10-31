@@ -174,6 +174,15 @@ int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
                                    const uint64_t *ids, float *out,
                                    int capacity);
 
+/* Jolt's update errors for the last mj_physics_step call, OR-ed over its
+ * substeps: a bit set for each of the MJ_UPDATE_* flags below. Zero means every
+ * contact was kept. When MJ_UPDATE_CONTACT_CONSTRAINTS_FULL is set, Jolt has
+ * dropped contacts for that step (the contact cap of 10,240 is full). */
+#define MJ_UPDATE_MANIFOLD_CACHE_FULL 1u
+#define MJ_UPDATE_BODY_PAIR_CACHE_FULL 2u
+#define MJ_UPDATE_CONTACT_CONSTRAINTS_FULL 4u
+uint32_t mj_physics_last_step_errors(mj_physics_world_t *world);
+
 #ifdef __cplusplus
 }
 #endif
