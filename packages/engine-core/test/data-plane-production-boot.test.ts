@@ -12,6 +12,7 @@
  *    - Malformed / non-finite payloads are rejected (4003) and NEVER enqueue.
  *    - Stale / out-of-order intents are dropped and NEVER enqueue.
  * 4. Crash Containment: SimWorker crash or shutdown leaves Gateway and client sockets alive.
+ * 5. Persistence worker: repeated start and stop cycles end without aborting the process.
  */
 
 import { describe, it, afterEach } from "node:test";
@@ -396,6 +397,25 @@ describe("Phase 2: Production Data Plane Boot & Security Perimeter", () => {
       const pongs = await client.waitFor(MessageType.Pong, 1);
       assert.equal(pongs.length, 1);
       assert.equal(client.closed, false);
+    });
+
+    it("starts and stops the persistence worker in a row without aborting the process", async () => {
+      // Ending the worker with process.exit() once aborted the whole process at shutdown. The abort is rare,
+      // so run the cycle often enough to catch it coming back.
+      for (let i = 0; i < 25; i++) {
+        dataPlaneServer = new HybridDataPlaneServer({
+          entityCapacity: 512,
+          heapMegabytes: 2,
+          simAutoStart: false,
+          spawnWorkers: true,
+          spawnPersistWorker: true,
+          dbUrl: "mem://",
+        });
+        await dataPlaneServer.startWorkers();
+        await dataPlaneServer.flushPersistWorker();
+        await dataPlaneServer.close();
+        dataPlaneServer = null;
+      }
     });
   });
 });
