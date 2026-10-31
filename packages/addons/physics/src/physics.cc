@@ -164,6 +164,9 @@ public:
             InstanceMethod("ragdollUnits", &PhysicsWorldWrap::RagdollUnits),
             InstanceMethod("ragdollBudget", &PhysicsWorldWrap::RagdollBudget),
             InstanceMethod("setRagdollBudget", &PhysicsWorldWrap::SetRagdollBudget),
+            InstanceMethod("sleepThreshold", &PhysicsWorldWrap::SleepThreshold),
+            InstanceMethod("setSleepThreshold", &PhysicsWorldWrap::SetSleepThreshold),
+            InstanceMethod("ragdollActiveBodies", &PhysicsWorldWrap::RagdollActiveBodies),
         });
     exports.Set("PhysicsWorld", ctor);
     return exports;
@@ -583,6 +586,42 @@ private:
     if (!requireLive(env))
       return env.Undefined();
     return Napi::Number::New(env, mj_physics_ragdoll_units(mWorld));
+  }
+
+  // sleepThreshold(): the world's point-velocity sleep threshold, in m/s.
+  Napi::Value SleepThreshold(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_sleep_threshold(mWorld));
+  }
+
+  // setSleepThreshold(metresPerSecond: number). Jolt's default is 0.03; a
+  // larger value lets resting bodies sleep sooner.
+  void SetSleepThreshold(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+      Napi::TypeError::New(env, "setSleepThreshold(metresPerSecond)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    const double v = info[0].As<Napi::Number>().DoubleValue();
+    if (!std::isfinite(v) || v < 0.0) {
+      Napi::RangeError::New(env, "sleep threshold must be a finite number >= 0")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    mj_physics_set_sleep_threshold(mWorld, static_cast<float>(v));
+  }
+
+  // ragdollActiveBodies(): ragdoll bodies that are simulating (not asleep).
+  Napi::Value RagdollActiveBodies(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_physics_ragdoll_active_bodies(mWorld));
   }
 
   Napi::Value RagdollBudget(const Napi::CallbackInfo &info) {
