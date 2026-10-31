@@ -4,9 +4,11 @@
  *
  * Runs every native addon's test suite under valgrind's helgrind and fails
  * on thread errors (data races, deadlocks, lock order violations) in OUR code:
- * an error counts when the code at fault is in one of the addons' own binaries
- * (packages/addons/<name>/build/Release/*.node; see isOurs). Node and V8 may
- * report their own threading issues; those are filtered out.
+ * an error counts when the code at fault is in the addon's own sources (the
+ * rules are in helgrind-report.mjs). Code the addon builds in from a
+ * third_party folder, such as Jolt in physics, is counted as vendored, and
+ * Node's and V8's own reports as node; neither fails the run. Standard-library
+ * and node-addon-api code is blamed on whoever called it.
  *
  * The tests run in the valgrind process itself (--experimental-test-
  * isolation=none): `node --test` otherwise runs each file in a child that
@@ -14,16 +16,18 @@
  * test that fails on timing may fail here; that is reported but isn't a
  * thread error, and doesn't fail the run.
  *
- * Output: a summary per addon, the stacks of our errors, and
- * the raw XML reports in valgrind-out/helgrind/. For file and line numbers
- * in the stacks, rebuild the addon with debug info first:
- * `CXXFLAGS=-g npx node-gyp rebuild` in its folder (it runs the same).
+ * Output: a summary per addon, the stacks of our errors, and the raw XML
+ * reports in valgrind-out/helgrind/. Telling our code from vendored code
+ * needs file and line numbers, so rebuild the addon with debug info first:
+ * `CXXFLAGS=-g npx node-gyp rebuild` in its folder. Without them every error
+ * inside the addon's binary counts as ours, and the run says so.
  */
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classify, faultFrame, parseReport } from "./helgrind-report.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const outDir = join(root, "valgrind-out", "helgrind");
@@ -49,42 +53,20 @@ function addons() {
     })
     .filter((a) => a.tests.length > 0 && a.binaries.length > 0 && (only.length === 0 || only.includes(a.name)));
 }
-// ---- a small reader for valgrind's XML (the parts we need)
 
-const text = (xml, tag) => {
-  const m = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml);
-  return m ? m[1].replace(/</g, "<").replace(/>/g, ">").replace(/&/g, "&").trim() : "";
-};
-const all = (xml, tag) => [...xml.matchAll(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g"))].map((m) => m[1]);
-
-function readReport(file) {
-  const xml = readFileSync(file, "utf8");
-  return all(xml, "error").map((e) => {
-    const stack = all(e, "stack")[0] ?? "";
-    const frames = all(stack, "frame").map((f) => ({ obj: text(f, "obj"), fn: text(f, "fn"), file: text(f, "file"), line: text(f, "line") }));
-    const what = text(e, "what") || text(all(e, "xwhat")[0] ?? "", "text");
-    return { kind: text(e, "kind"), what, frames };
-  });
+/** One frame for the report: its function, and where it is. */
+function frameText(f) {
+  const where = f.file ? `${relative(root, f.file)}:${f.line}` : relative(root, f.obj) || f.obj;
+  return `${f.fn || "???"}  (${where})`;
 }
 
-/**
- * Ours when the code at fault is: the first frame that isn't the allocator
- * or a C/C++ runtime helper (malloc, memcpy, operator new, strlen...) is in
- * one of the addon's binaries. For a thread error that's the code involved
- * in the race/deadlock. Node or V8 code merely running during an addon call
- * isn't ours even though an addon frame sits further down the stack.
- */
-function isOurs(err, binaries) {
-  const runtime = /vgpreload_|\/libc[.-]|\/libstdc\+\+|\/libm[.-]|\/libgcc|ld-linux/;
-  const first = err.frames.find((f) => !runtime.test(f.obj));
-  return first !== undefined && binaries.includes(first.obj);
-}
-
+/** An error for the report: its kind and text, the faulting stack, then the top of each other stack. */
 function describe(err) {
   const lines = [`  ${err.kind}: ${err.what}`];
-  for (const f of err.frames.slice(0, 14)) {
-    const where = f.file ? `${f.file}:${f.line}` : relative(root, f.obj) || f.obj;
-    lines.push(`    ${f.fn || "???"}  (${where})`);
+  for (const f of (err.stacks[0] ?? []).slice(0, 14)) lines.push(`    ${frameText(f)}`);
+  for (const stack of err.stacks.slice(1)) {
+    lines.push("    other stack:");
+    for (const f of stack.slice(0, 8)) lines.push(`      ${frameText(f)}`);
   }
   return lines.join("\n");
 }
@@ -98,6 +80,7 @@ if (list.length === 0) {
 
 let failed = 0;
 const rows = [];
+const notes = [];
 for (const a of list) {
   const xmlFile = join(outDir, `${a.name}.xml`);
   const t0 = Date.now();
@@ -123,10 +106,25 @@ for (const a of list) {
     failed++;
     continue;
   }
-  const errors = readReport(xmlFile);
-  const ours = errors.filter((e) => isOurs(e, a.binaries));
+  const errors = parseReport(readFileSync(xmlFile, "utf8"));
+  const kinds = errors.map((e) => classify(e, a, root));
+  const ours = errors.filter((_, i) => kinds[i] === "ours");
+  const unlocated = ours.filter((e) => faultFrame(e, root)?.file === "").length;
   const testsFailed = /# fail (\d+)/.exec(r.stdout)?.[1] ?? "?";
-  rows.push({ addon: a.name, seconds, errors: errors.length, ours: ours.length, testsFailed });
+  rows.push({
+    addon: a.name,
+    seconds,
+    errors: errors.length,
+    ours: ours.length,
+    vendored: kinds.filter((k) => k === "vendored").length,
+    testsFailed,
+  });
+  if (unlocated > 0) {
+    notes.push(
+      `[helgrind] ${a.name}: ${unlocated} of the ours have no source location, so they count as ours. ` +
+        `Rebuild with debug info (CXXFLAGS=-g npx node-gyp rebuild in packages/addons/${a.name}) to tell our code from vendored code.`,
+    );
+  }
   if (ours.length > 0) {
     failed++;
     console.log(`\n[helgrind] ${a.name}: ${ours.length} thread error(s) in our code`);
@@ -134,9 +132,13 @@ for (const a of list) {
   }
 }
 
-console.log("\n  addon          time    ours   node/v8 (ignored)   tests failing under valgrind");
+console.log("\n  addon          time    ours  vendored  node/v8   tests failing under valgrind");
 for (const r of rows) {
-  console.log(`  ${r.addon.padEnd(14)} ${String(r.seconds).padStart(4)} s  ${String(r.ours).padStart(4)}   ${String(r.errors - r.ours).padStart(8)}            ${r.testsFailed}`);
+  const nodeV8 = r.errors - r.ours - r.vendored;
+  console.log(
+    `  ${r.addon.padEnd(14)} ${String(r.seconds).padStart(4)} s  ${String(r.ours).padStart(4)}  ${String(r.vendored).padStart(8)}  ${String(nodeV8).padStart(8)}            ${r.testsFailed}`,
+  );
 }
+for (const note of notes) console.log(note);
 console.log(`\n[helgrind] ${failed === 0 ? "clean" : `${failed} addon(s) with thread errors`}; reports in ${relative(root, outDir)}/`);
 process.exit(failed === 0 ? 0 : 1);
