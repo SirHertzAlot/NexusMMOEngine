@@ -118,6 +118,7 @@ holds 3 floats per id: the root where each rig is dropped.
 - Rigs step with the bodies and sleep as Jolt decides: the production
   configuration (sleep on, the addon's defaults).
 - `sleepThreshold()` and `setSleepThreshold(metresPerSecond)` set Jolt's point-velocity sleep threshold for the whole world (default 0.03 m/s; a larger value lets resting bodies sleep sooner). `ragdollActiveBodies()` counts the ragdoll bodies still simulating. Measured in the sleep bench below.
+- `lastStepErrors()` returns Jolt's update errors for the last `step()`, OR-ed over its substeps, as `UpdateError` bits: `ManifoldCacheFull` (1), `BodyPairCacheFull` (2) and `ContactConstraintsFull` (4). Zero means every contact was kept. `ContactConstraintsFull` means the world's 10,240 contact constraints were full: Jolt dropped contacts for that step, so bodies that should touch can pass through each other or fly apart. The budget keeps the rigs under the cap; where crowds reach it is in the contact cap bench below.
 - **Not yet covered:** the engine's real world (terrain and other bodies) and
   server hardware. Both are in the cost gate's not-measured list.
 
@@ -195,6 +196,8 @@ The addon path, the one the engine runs, has its own bench: `npm run bench:ragdo
 The sleep threshold has its own sweep: `npm run bench:sleep:addon` (repo root) settles a resting crowd for 20 s at each threshold, times 2 s, and checks that a sphere wakes a sleeping rig. It writes `docs/addon-sleep-threshold-results.json`.
 
 The thread pool has its own sweep: `npm run bench:threads:addon` (repo root) runs the resting sweep on 0 and 4 threads and writes `docs/addon-ragdoll-threads-results.json`.
+
+The contact cap has its own bench: `npm run bench:contact-cap:addon` (repo root) runs each rig kind in three scenarios (settle, awake, apart) at rig counts from the budget up to the cap, reports `lastStepErrors()` and the step time for each, and bisects for the first count that fills the cap. It also records the fastest body and the bodies through the floor at the end of each run. It writes `docs/addon-contact-cap-results.json`.
 
 ## License
 

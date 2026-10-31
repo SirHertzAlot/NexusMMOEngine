@@ -19,6 +19,7 @@
     "bench:ragdoll:addon": "node packages/addons/physics/bench/addon-ragdoll-cost.mjs",
     "bench:sleep:addon": "node packages/addons/physics/bench/addon-sleep-threshold.mjs",
     "bench:threads:addon": "node packages/addons/physics/bench/addon-ragdoll-threads.mjs",
+    "bench:contact-cap:addon": "node packages/addons/physics/bench/addon-contact-cap.mjs",
     "build": "node scripts/build.mjs",
     "client": "npm run dev --workspace=@mmo-engine/client",
     "start": "node scripts/start.mjs",

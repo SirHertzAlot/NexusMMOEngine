@@ -33,6 +33,9 @@ const MotionType = Object.freeze({ Static: 0, Kinematic: 1, Dynamic: 2 });
 const SyncFlags = Object.freeze({ None: 0, Teleport: 0x01 });
 // Server ragdoll rigs for addRagdolls(ids, rigKind, pos): see index.d.ts.
 const RagdollRig = Object.freeze({ Full: 0, Light: 1 });
+// Bits of lastStepErrors(): Jolt's EPhysicsUpdateError. ContactConstraintsFull
+// means the 10,240-contact cap was full and Jolt dropped contacts that step.
+const UpdateError = Object.freeze({ ManifoldCacheFull: 1, BodyPairCacheFull: 2, ContactConstraintsFull: 4 });
 
 // createWorld({ threads }): threads 0 (the default) runs one thread; 1 to 64
 // starts a Jolt thread pool of that size. See the README's Determinism section.
@@ -50,4 +53,5 @@ module.exports = {
   MotionType,
   SyncFlags,
   RagdollRig,
+  UpdateError,
 };

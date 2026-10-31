@@ -124,6 +124,12 @@ export declare class PhysicsWorld {
   setSleepThreshold(metresPerSecond: number): void;
   /** Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
   ragdollActiveBodies(): number;
+  /**
+   * Jolt's update errors for the last step(), OR-ed over its substeps, as
+   * UpdateError bits. 0 when every contact was kept. A set ContactConstraintsFull
+   * bit means the contact cap was full: Jolt dropped contacts that step.
+   */
+  lastStepErrors(): number;
   destroy(): void;
 }
 
@@ -131,6 +137,13 @@ export declare class PhysicsWorld {
 export declare const RagdollRig: Readonly<{
   Full: 0;
   Light: 1;
+}>;
+
+/** Bits of PhysicsWorld.lastStepErrors(). */
+export declare const UpdateError: Readonly<{
+  ManifoldCacheFull: 1;
+  BodyPairCacheFull: 2;
+  ContactConstraintsFull: 4;
 }>;
 
 /** Options for createWorld. */
