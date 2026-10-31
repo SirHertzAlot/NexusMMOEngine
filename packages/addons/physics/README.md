@@ -141,6 +141,22 @@ bad-free (caught via ASan in the Phase 2 spike). This addon
 heap-allocates every settings object (`JPH::Ref<ShapeSettings>`) —
 the footgun cannot recur here.
 
+## Ragdoll cost bench
+
+`npm run bench:ragdoll` (repo root) measures what simulated ragdolls add to a
+physics step. `bench/ragdoll-cost.cpp` links against this package's compiled
+Jolt objects, so build the addon first (`npx node-gyp rebuild` here). It runs
+Jolt's own `Ragdoll` (11 bodies, 10 swing-twist joints; `--rig light` is 5
+bodies) from 0 to 1,000 rigs, in four scenarios (`settle`, `awake`, `apart`,
+`resting`), under six configurations: the bench defaults (`main`), two substeps
+with the bench's limits (`substeps2`), the engine's tick (`production`: two
+substeps and the addon's temp allocator and contact cap), and the engine's tick
+with a thread pool (`threads4`), a lighter rig (`light`) or a shorter sleep
+time (`sleep0.1`). It writes `docs/ragdoll-cost-results.json`. `-- --quick`
+runs three counts once and writes no file. Needs a C++17 compiler (`$CXX`, or
+`c++`); Linux and macOS. A full run takes a while, so start it in the
+background.
+
 ## License
 
 Jolt Physics: MIT, © 2021 Jorrit Rouwe (see `third_party/JoltPhysics/LICENSE`).
