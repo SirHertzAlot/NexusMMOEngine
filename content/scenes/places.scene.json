@@ -274,6 +274,81 @@
           }
         },
         {
+          "id": "P0009-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              -824,
+              0,
+              -581
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0009-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              -824,
+              0,
+              -587
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0009-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              -808,
+              0,
+              -581
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
+            }
+          }
+        },
+        {
           "id": "P0010",
           "name": "farmhouse",
           "transform": {
@@ -323,6 +398,81 @@
             },
             "Collider": {
               "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0010-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              1048,
+              0,
+              109
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0010-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              1048,
+              0,
+              115
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0010-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              1032,
+              0,
+              109
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
             }
           }
         },
@@ -380,6 +530,81 @@
           }
         },
         {
+          "id": "P0011-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              -1509,
+              0,
+              1280
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0011-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              -1515,
+              0,
+              1280
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0011-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              -1509,
+              0,
+              1264
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
+            }
+          }
+        },
+        {
           "id": "P0012",
           "name": "farmhouse",
           "transform": {
@@ -429,6 +654,81 @@
             },
             "Collider": {
               "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0012-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              800,
+              0,
+              1739
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0012-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              800,
+              0,
+              1733
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0012-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              816,
+              0,
+              1739
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
             }
           }
         },
@@ -486,6 +786,81 @@
           }
         },
         {
+          "id": "P0013-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              1733,
+              0,
+              568
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0013-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              1739,
+              0,
+              568
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0013-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              1733,
+              0,
+              584
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
+            }
+          }
+        },
+        {
           "id": "P0014",
           "name": "farmhouse",
           "transform": {
@@ -535,6 +910,81 @@
             },
             "Collider": {
               "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0014-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              352,
+              0,
+              573
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0014-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              352,
+              0,
+              579
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0014-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              336,
+              0,
+              573
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
             }
           }
         },
@@ -592,6 +1042,81 @@
           }
         },
         {
+          "id": "P0015-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              -813,
+              0,
+              1976
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0015-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              -819,
+              0,
+              1976
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0015-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              -813,
+              0,
+              1960
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
+            }
+          }
+        },
+        {
           "id": "P0016",
           "name": "farmhouse",
           "transform": {
@@ -645,6 +1170,81 @@
           }
         },
         {
+          "id": "P0016-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              -1752,
+              0,
+              -581
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0016-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              -1752,
+              0,
+              -587
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0016-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              -1736,
+              0,
+              -581
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
+            }
+          }
+        },
+        {
           "id": "P0017",
           "name": "farmhouse",
           "transform": {
@@ -694,6 +1294,81 @@
             },
             "Collider": {
               "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0017-farm_tools",
+          "name": "farm_tools",
+          "transform": {
+            "position": [
+              -587,
+              0,
+              104
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_tools",
+              "asset": "",
+              "width": 2,
+              "depth": 1,
+              "height": 1.2
+            }
+          }
+        },
+        {
+          "id": "P0017-farm_produce",
+          "name": "farm_produce",
+          "transform": {
+            "position": [
+              -581,
+              0,
+              104
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_produce",
+              "asset": "",
+              "width": 1.5,
+              "depth": 1.5,
+              "height": 0.8
+            }
+          }
+        },
+        {
+          "id": "P0017-farm_yard",
+          "name": "farm_yard",
+          "transform": {
+            "position": [
+              -587,
+              0,
+              120
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_yard",
+              "asset": "",
+              "width": 2,
+              "depth": 2,
+              "height": 1.5
             }
           }
         }
