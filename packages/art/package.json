@@ -23,7 +23,8 @@
     "convert:packs": "node dist/src/convert/convert-packs.js",
     "import:glb": "node dist/src/convert/import-glb-packs.js",
     "convert:modular": "node dist/src/convert/convert-modular.js",
-    "convert:animations": "node dist/src/convert/convert-animations.js"
+    "convert:animations": "node dist/src/convert/convert-animations.js",
+    "placeholder:wildlife": "node dist/src/convert/placeholder-cli.js"
   },
   "type": "module",
   "types": "dist/src/index.d.ts",
