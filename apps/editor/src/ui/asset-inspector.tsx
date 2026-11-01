@@ -28,6 +28,7 @@ import {
   SectionTitle,
 } from "./components.js";
 import { ModelPreview } from "./model-preview.js";
+import { RigPreview } from "./rig-preview.js";
 import { createStore } from "../store.js";
 
 /** Shared asset-browser UI: the dock search filters the panel's model
@@ -86,6 +87,7 @@ interface AssetScan {
 }
 
 export function AssetInspectorPanel(): React.JSX.Element {
+  const [showRig, setShowRig] = React.useState(false);
   const { scan, loading, refresh } = useAssetManifest();
   const [fallbacks, setFallbacks] = React.useState<AssetLoadStatus[] | null>(null);
   const [packLoading, setPackLoading] = React.useState(false);
@@ -166,7 +168,19 @@ export function AssetInspectorPanel(): React.JSX.Element {
                     className="h-8 w-72 rounded-md border border-input bg-background px-2 text-xs"
                   />
                 </div>
-                {previewFile && <ModelPreview url={`/assets/${previewFile}`} />}
+                {previewFile && (
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={showRig} onChange={(e) => setShowRig(e.target.checked)} />
+                      Show animal rig (WL2 rig view)
+                    </label>
+                    {showRig ? (
+                      <RigPreview url={`/assets/${previewFile}`} modelName={previewFile} />
+                    ) : (
+                      <ModelPreview url={`/assets/${previewFile}`} />
+                    )}
+                  </div>
+                )}
                 <ModelTable
                   selected={previewId}
                   onSelect={setAssetPreview}

@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { advancePhase, aquaticWave, avianFlightCurve, serpentineWave } from "../src/render/animal/gait.js";
+import { advancePhase, aquaticWave, avianFlightCurve, serpentineWave } from "../src/gait.js";
 
 describe("avian flight", () => {
   it("keeps the wings still at rest and flaps them once it is moving fast", () => {
