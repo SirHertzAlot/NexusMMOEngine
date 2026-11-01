@@ -32,7 +32,7 @@ import { hash } from "./ecology.js";
 import { bossModels } from "./megafauna.js";
 
 export const ROLES = ["apex_predator", "mesopredator", "large_herbivore", "small_prey", "scavenger", "livestock", "aquatic"] as const;
-export const TEMPERAMENTS = ["flee", "defend", "territorial", "hunt"] as const;
+export const TEMPERAMENTS = ["flee", "defend", "territorial", "hunt", "raid"] as const;
 export const ACTIVITIES = ["diurnal", "nocturnal", "crepuscular", "cathemeral"] as const;
 export const GROUPS = ["solitary", "pair", "herd", "flock", "pack", "shoal"] as const;
 
@@ -147,6 +147,20 @@ export type Megaflora = z.infer<typeof MegafloraSchema>;
 
 const size = z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([a, b]) => a <= b, "group size: min above max");
 
+/** A raider (temperament raid, WL2): goes for a settlement when hungry, takes what draws it there, goes home when sated. Same fields as the creature rules' `raid`. */
+export const SpeciesRaidSchema = z.strictObject({
+  /** Metres from its home it will go for a settlement. */
+  rangeM: z.number().positive(),
+  /** A settlement qualifies with at least this many structures. */
+  minStructures: z.number().int().min(0).default(1),
+  /** Seconds from sated to hungry again. */
+  hungerSeconds: z.number().positive().default(600),
+  /** Seconds of fighting at a settlement before it is sated and goes home. */
+  satiateSeconds: z.number().positive().default(45),
+  /** Relative pull of each kind of target at a settlement (players = noise, livestock = food/scent, structures = bulk). */
+  weights: z.strictObject({ player: z.number().min(0).default(1), livestock: z.number().min(0).default(1), structure: z.number().min(0).default(0.5) }).prefault({}),
+});
+
 export const SpeciesSchema = z.strictObject({
   role: z.enum(ROLES),
   /** Counts toward predators, prey or neither in the ratios; default from the role (aquatic species say). */
@@ -181,8 +195,12 @@ export const SpeciesSchema = z.strictObject({
   biomes: z.record(z.string(), z.number().min(0)),
   /** Tier 5 only: the megafauna block (size, speed, lair, rarity, drives, raid). */
   boss: BossSchema.optional(),
+  /** temperament raid: what it raids and how (WL2). Only raiders have it. */
+  raid: SpeciesRaidSchema.optional(),
   note: z.string().default(""),
-}).refine((s) => s.habitat !== "water" || s.depthM !== undefined, { message: "habitat water needs depthM", path: ["depthM"] })
+}).refine((s) => (s.temperament === "raid") === (s.raid !== undefined), { message: "temperament raid needs a raid block, and a raid block needs temperament raid", path: ["raid"] })
+  .refine((s) => !(s.boss && s.raid), { message: "a boss raids by its boss block, not a raid block", path: ["raid"] })
+  .refine((s) => s.habitat !== "water" || s.depthM !== undefined, { message: "habitat water needs depthM", path: ["depthM"] })
   .refine((s) => s.role !== "aquatic" || s.habitat === "water" || s.habitat === "shore", { message: "aquatic species live in or by the water", path: ["habitat"] });
 
 const range = z.tuple([z.number().min(0), z.number().min(0)]).refine(([a, b]) => a <= b, "range: min above max");

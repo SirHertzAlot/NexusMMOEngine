@@ -60,6 +60,7 @@ export function wildlifeCreatures(t: WildlifeTable, natural: NaturalWeapons): Cr
         telegraphS: s.danger.telegraphS,
         wanderM: s.wanderM ?? 0,
         wanderPauseS: 6,
+        ...(s.raid ? { raid: { ...s.raid, weights: { ...s.raid.weights } } } : {}),
         fleeSpeed: 1.4,
         tactics: s.danger.tactics,
         activity: s.activity,
