@@ -134,6 +134,8 @@ export interface ClientSession {
   pinnedOut?: Set<bigint>;
   /** IM5: the wire ids whose name this session has been sent (a name goes out once, when the entity is first in view). */
   namedSent?: Set<bigint>;
+  /** IM5: the ground item wire ids whose drop row this session has been sent (a drop goes out once, when it is first in view). */
+  droppedSent?: Set<bigint>;
   /** IM5: foes this session hit or was hit by, pinned until the tick given. */
   combatPins?: Map<bigint, number>;
 }
