@@ -304,7 +304,20 @@ export function App(): React.ReactElement {
     pointerLocked: false,
   });
 
-  /** Shared MirrorClient construction with the standard callbacks. */
+  /**
+ * The welcome timeout in ms (`?welcomeTimeoutMs=`), so a slow software-GL box can
+ * wait out a big world's welcome. Absent or not a positive number: the default (8 s).
+ */
+function welcomeTimeoutMs(): number | undefined {
+  try {
+    const v = Number(new URLSearchParams(window.location.search).get("welcomeTimeoutMs"));
+    return Number.isFinite(v) && v > 0 ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient => {
     skillsRef.current = null;
     const c: MirrorClient = new MirrorClient((u) => new BrowserSocket(u), {
@@ -354,7 +367,7 @@ export function App(): React.ReactElement {
           onClose: () => {
             if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
           },
-        });
+        }, { welcomeTimeoutMs: welcomeTimeoutMs() });
         observersRef.current.set(b.region, o);
         const { region, from, account, exp, ticket } = b;
         void o.observe(b.endpoint, "mmo-client-observer", { region, from, account, exp, ticket }).catch(() => {
@@ -452,7 +465,7 @@ export function App(): React.ReactElement {
         if (text) setNotice({ text, at: performance.now() });
       },
       onDungeon: (d) => onDungeon(d),
-    });
+    }, { welcomeTimeoutMs: welcomeTimeoutMs() });
     return c;
   };
 

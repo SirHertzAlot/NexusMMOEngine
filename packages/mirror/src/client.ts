@@ -277,6 +277,8 @@ export class MirrorClient {
   constructor(
     private readonly createSocket: (url: string) => SocketLike,
     private readonly events: MirrorEvents,
+    /** `welcomeTimeoutMs`: how long to wait for the welcome (default 8 s; a slow dev box may need more). */
+    private readonly options: { welcomeTimeoutMs?: number } = {},
   ) {}
 
   /**
@@ -543,7 +545,7 @@ export class MirrorClient {
         this.replyResolve = null;
         this.replyReject = null;
         reject(new Error("mirror-client: welcome timeout"));
-      }, CONNECT_TIMEOUT_MS);
+      }, this.options.welcomeTimeoutMs ?? CONNECT_TIMEOUT_MS);
       this.replyResolve = (r) => {
         clearTimeout(timer);
         resolve(r);
