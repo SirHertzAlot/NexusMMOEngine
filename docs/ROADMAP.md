@@ -484,6 +484,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 - **2026-11-01**: GS2 global scale closed: dungeon runs apply the scale to their spawns (#529); `feat/scale-apply` is dead and should not be merged. TL0 closed: gltfpack and lil-gui pinned in `apps/client` (#530), 3 baseline assets already on main.
+- **2026-11-01**: WL1 generated placeholder packs (#582, 🚧): stand-in animal GLBs through the real importer, marked as placeholders. WL1 stays 🚧: farm dressing in the bake, free swimmers and moving creatures are still open.
 - **2026-11-01**: Folded the duplicate shared-body interpolation row (#551) into the ✅ shared-body client row; the mechanism note is kept. In progress 14.
 - **2026-11-01**: Done sweep: RS3's callgrind baseline line updated (`residents-tick` is recorded, #527). Rows still 🚧 or 📋 each name an open item (art, unmerged branch, live check or the gated B7 run), so none were flipped.
 - **2026-11-01**: Roadmap audit follow-up: the two M5 combat rows are one row; the WL2 rows point at what is on main (megafauna data and planner, creature brains, the animal rig) and name their unmerged branches; a row for duel strikes doing no damage (🚧, under investigation) is added.
