@@ -75,4 +75,15 @@ describe("the placeholder effects match the existing balance", () => {
     const mend = spells.spells.find((x) => x.id === "mend")!;
     assert.deepEqual(effectOf("heal"), { kind: "heal", amount: mend.effect.amount });
   });
+
+  it("guard lasts the Guard move and takes the share of a blow a failed block lets through", () => {
+    const moves = JSON.parse(readFileSync(fileURLToPath(new URL("../../../../content/combat/moves.json", import.meta.url)), "utf8")) as { moves: Array<{ name: string; duration: number }> };
+    const guardMove = moves.moves.find((m) => m.name === "guard")!;
+    const combat = rule("combat.json") as { defence: { failedLetsThrough: number } };
+    const statusFile = JSON.parse(readFileSync(fileURLToPath(new URL("../../../../content/combat/abilities.json", import.meta.url)), "utf8")) as { statuses: Array<{ id: string; durationMs: number; mods: Array<{ stat: string; mode: string; value: number }> }> };
+    const guarded = statusFile.statuses.find((x) => x.id === "guarded")!;
+    assert.equal(guarded.durationMs, guardMove.duration * 1000);
+    const armour = guarded.mods.find((m) => m.stat === "armour" && m.mode === "mul")!;
+    assert.equal(1 + armour.value, combat.defence.failedLetsThrough);
+  });
 });

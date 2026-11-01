@@ -34,6 +34,11 @@ export function loadAbilityDefs(file = ABILITIES_FILE) {
   return raw.abilities.map((a) => ({ id: a.id, gcdMs: a.gcdMs, cooldownMs: a.cooldownMs, castMs: a.castMs }));
 }
 
+/** The statuses the placeholder abilities apply (guard's "guarded"), defined on the status system. */
+export function loadAbilityStatuses(file = ABILITIES_FILE) {
+  return JSON.parse(readFileSync(file, "utf8")).statuses ?? [];
+}
+
 /** The effects the placeholder abilities carry (id -> effect), read from the same file. */
 export function loadAbilityEffects(file = ABILITIES_FILE) {
   const raw = JSON.parse(readFileSync(file, "utf8"));
@@ -71,9 +76,14 @@ export function createSystems(ctx) {
   // with the effect each one has when it fires.
   const effects = loadAbilityEffects();
   const living = defineQuery([Health, Transform]);
-  const applyEffect = (e, id) => {
+  const applyEffect = (e, id, tick) => {
     const eff = effects.get(id);
-    if (!eff || !hasComponent(sim.ecs, Health, e)) return;
+    if (!eff) return;
+    if (eff.kind === "buff") {
+      status.apply(e, eff.status, e, tick);
+      return;
+    }
+    if (!hasComponent(sim.ecs, Health, e)) return;
     if (eff.kind === "heal") {
       Health.current[e] = Math.min(Health.max[e], Health.current[e] + eff.amount);
       return;
@@ -95,7 +105,7 @@ export function createSystems(ctx) {
       if (best >= 0) Health.current[best] = Math.max(0, Health.current[best] - eff.amount);
     }
   };
-  const abilities = new AbilitySystem(30, (e, id) => applyEffect(e, id));
+  const abilities = new AbilitySystem(30, (e, id, tick) => applyEffect(e, id, tick));
   for (const def of loadAbilityDefs()) abilities.define(def);
   const status = new StatusSystem(
     30,
@@ -107,6 +117,7 @@ export function createSystems(ctx) {
       if (hasComponent(sim.ecs, Health, t)) Health.current[t] = Math.min(Health.max[t], Health.current[t] + amount);
     },
   );
+  for (const def of loadAbilityStatuses()) status.define(def);
   const telegraphs = new TelegraphSystem(30);
   const duels = new DuelSystem(30);
 
