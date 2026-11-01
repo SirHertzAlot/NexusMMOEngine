@@ -67,6 +67,12 @@ export interface PhysicsWorld {
    */
   moveWalker(handle: number, delta: Vec3): WalkerState;
 
+  /**
+   * Put a walker at `centre` at once, without collision. Prediction uses this to
+   * rewind to a server state before it replays its inputs. Unknown handles are ignored.
+   */
+  teleportWalker(handle: number, centre: Vec3): void;
+
   /** Remove a walker. Unknown handles are ignored. */
   removeWalker(handle: number): void;
 

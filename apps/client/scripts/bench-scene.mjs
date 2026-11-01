@@ -163,8 +163,15 @@ export async function physxAdapter() {
       }
 
       const c0 = characterAt(0);
-      const walker = dynamicAt(tf(c0.x, c0.y, c0.z),
-        new P.PxCapsuleGeometry(SCENE.character.radius2, SCENE.character.halfHeight));
+      // PhysX capsules lie along X by default: turn the walker upright (90 degrees about Z).
+      const walker = physics.createRigidDynamic(tf(c0.x, c0.y, c0.z));
+      const walkerShape = physics.createShape(
+        new P.PxCapsuleGeometry(SCENE.character.radius2, SCENE.character.halfHeight), material, true);
+      walkerShape.setLocalPose(new P.PxTransform(vec(0, 0, 0), new P.PxQuat(0, 0, Math.SQRT1_2, Math.SQRT1_2)));
+      walkerShape.setSimulationFilterData(new P.PxFilterData(1, 1, 0, 0));
+      walker.attachShape(walkerShape);
+      walker.setMass(1);
+      walker.setMassSpaceInertiaTensor(vec(0.1, 0.1, 0.1));
       walker.setRigidDynamicLockFlags(new P.PxRigidDynamicLockFlags(P.PxRigidDynamicLockFlagEnum.PxRigidDynamicLockFlag_eLOCK_ANGULAR_X | 0));
       scene.addActor(walker);
 
