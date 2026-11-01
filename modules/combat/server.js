@@ -89,11 +89,13 @@ export function createSystems(ctx) {
       return;
     }
     if (eff.kind === "damage") {
-      // The nearest living thing in reach that this caster may hurt (duel rules apply).
+      // A duelist's strike goes to their opponent and nobody else; otherwise the
+      // nearest living thing in reach that this caster may hurt (duel rules apply).
+      const foe = duels.opponent(e);
       let best = -1;
       let bestD2 = eff.reachM * eff.reachM;
       for (const t of living(sim.ecs)) {
-        if (t === e || Health.current[t] <= 0 || hasComponent(sim.ecs, God, t)) continue;
+        if (t === e || (foe !== undefined && t !== foe) || Health.current[t] <= 0 || hasComponent(sim.ecs, God, t)) continue;
         const dx = Transform.px[t] - Transform.px[e];
         const dz = Transform.pz[t] - Transform.pz[e];
         const d2 = dx * dx + dz * dz;
@@ -102,7 +104,11 @@ export function createSystems(ctx) {
           bestD2 = d2;
         }
       }
-      if (best >= 0) Health.current[best] = Math.max(0, Health.current[best] - eff.amount);
+      // Status effects scale the blow the way a melee blow is scaled: the caster's power, the target's armour (guard).
+      if (best >= 0) {
+        const amount = eff.amount * combatDamage.damageScale(e, best);
+        Health.current[best] = Math.max(0, Health.current[best] - amount);
+      }
     }
   };
   const abilities = new AbilitySystem(30, (e, id, tick) => applyEffect(e, id, tick));
