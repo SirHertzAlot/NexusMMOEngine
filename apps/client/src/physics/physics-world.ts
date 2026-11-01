@@ -41,6 +41,9 @@ export interface PhysicsWorld {
   /** A static box, for props that block movement. Returns its handle. */
   addStaticBox(centre: Vec3, halfExtents: Vec3): number;
 
+  /** Remove a static box. Unknown handles are ignored. */
+  removeStaticBox(handle: number): void;
+
   /** Spawn a ragdoll rig with its root at `root`. Returns its handle. */
   spawnRagdoll(root: Vec3): number;
 
@@ -49,6 +52,12 @@ export interface PhysicsWorld {
    * `RAGDOLL_PARTS` (length `RAGDOLL_PARTS * 3`).
    */
   ragdollPose(handle: number, out: Float32Array): void;
+
+  /**
+   * Like ragdollPose, with each part's rotation: 7 floats per part, x y z for the
+   * centre then qx qy qz qw. Length `RAGDOLL_PARTS * 7`.
+   */
+  ragdollPartPoses(handle: number, out: Float32Array): void;
 
   /** Remove a ragdoll and its bodies and joints. Unknown handles are ignored. */
   removeRagdoll(handle: number): void;

@@ -81,6 +81,7 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
   };
 
   const rigs = new Map<number, Rig>();
+  const statics = new Map<number, Px>();
   const walkers = new Map<number, Walker>();
   let nextHandle = 1;
 
@@ -128,7 +129,16 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
       const actor = physics.createRigidStatic(tf(centre.x, centre.y, centre.z));
       actor.attachShape(shapeOf(new P.PxBoxGeometry(half.x, half.y, half.z)));
       scene.addActor(actor);
-      return nextHandle++;
+      const handle = nextHandle++;
+      statics.set(handle, actor);
+      return handle;
+    },
+
+    removeStaticBox(handle: number): void {
+      const actor = statics.get(handle);
+      if (!actor) return;
+      scene.removeActor(actor, true);
+      statics.delete(handle);
     },
 
     spawnRagdoll(root: Vec3): number {
@@ -163,6 +173,27 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
         out[i * 3] = p.x;
         out[i * 3 + 1] = p.y;
         out[i * 3 + 2] = p.z;
+      });
+    },
+
+    ragdollPartPoses(handle: number, out: Float32Array): void {
+      const rig = rigs.get(handle);
+      if (!rig) return;
+      if (out.length < RAGDOLL_PARTS * 7) throw new Error("pose buffer too small");
+      rig.actors.forEach((actor, i) => {
+        const pose = actor.getGlobalPose();
+        const p = pose.p;
+        const q = pose.q;
+        out[i * 7] = p.x;
+        out[i * 7 + 1] = p.y;
+        out[i * 7 + 2] = p.z;
+        out[i * 7 + 3] = q.x;
+        out[i * 7 + 4] = q.y;
+        out[i * 7 + 5] = q.z;
+        out[i * 7 + 6] = q.w;
+        p.delete?.();
+        q.delete?.();
+        pose.delete?.();
       });
     },
 
