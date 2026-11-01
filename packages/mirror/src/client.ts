@@ -68,6 +68,9 @@ import {
   type HitMessage,
   type LifeMessage,
   type TelegraphMessage,
+  type AbilityMessage,
+  type AbilityTrigger,
+  type StatusMessage,
   type IntentFields,
   type NamesMessage,
   type RegisterMessage,
@@ -156,6 +159,10 @@ export interface MirrorEvents {
   onLife?(l: LifeMessage): void;
   /** A ground warning was cast, landed or was cancelled (roadmap M5, protocol 0x1e). */
   onTelegraph?(t: TelegraphMessage): void;
+  /** An ability was triggered, fired, queued, interrupted or rejected (roadmap M5, protocol 0x1d). */
+  onAbility?(a: AbilityMessage): void;
+  /** A buff or debuff was applied or removed on an entity (roadmap M5, protocol 0x1f). */
+  onStatus?(s: StatusMessage): void;
   /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
   onBody?(b: BodyMessage): void;
   /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
@@ -405,6 +412,13 @@ export class MirrorClient {
     const msg: CastMessage = { kind: "cast", spell };
     if (target !== undefined) msg.target = target;
     this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl(msg)));
+  }
+
+  /** Trigger an ability by id (M5, 0x1d). The server answers with onAbility. */
+  ability(id: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: AbilityTrigger = { kind: "trigger", id };
+    this.send(this.socket, encodeEnvelope(MessageType.Ability, encodeControl(msg)));
   }
 
   /** Stop the cast under way (0x1c). */
@@ -923,6 +937,12 @@ export class MirrorClient {
         break;
       case MessageType.Telegraph:
         this.events.onTelegraph?.(decodeControl<TelegraphMessage>(payload));
+        break;
+      case MessageType.Ability:
+        this.events.onAbility?.(decodeControl<AbilityMessage>(payload));
+        break;
+      case MessageType.Status:
+        this.events.onStatus?.(decodeControl<StatusMessage>(payload));
         break;
       case MessageType.Body:
         this.body = decodeControl<BodyMessage>(payload);

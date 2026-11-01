@@ -74,5 +74,7 @@ export const DEFAULT_LAYOUT: HudLayout = {
     "character-sheet": { anchor: "bottom-right", offset: { x: 16, y: 400 }, visible: true },
     "party-frame": { anchor: "top-left", offset: { x: 16, y: 64 }, visible: true },
     "guild-frame": { anchor: "top-left", offset: { x: 16, y: 200 }, visible: true },
+    "ability-bar": { anchor: "bottom-center", offset: { x: 0, y: 16 }, visible: true },
+    "status-frame": { anchor: "top-right", offset: { x: 16, y: 260 }, visible: true },
   },
 };
