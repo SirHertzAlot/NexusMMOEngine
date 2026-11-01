@@ -355,6 +355,30 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
+  it("spawnlist names creature kinds too, and spawn routes a creature kind to the shared spawner", async () => {
+    const packs: string[] = [];
+    const url = await startGateway({
+      admins: ["alice"],
+      creatures: {
+        has: (k: string) => k === "wolf",
+        kinds: () => ["wolf"],
+        spawnPack: (_sim: unknown, kind: string) => {
+          packs.push(kind);
+          return [];
+        },
+      },
+    });
+    const { client } = await join(url, "alice");
+    const list = await admin(client, "spawnlist");
+    assert.equal(list.ok, true);
+    assert.ok(list.message.split(" ").includes("wolf"), list.message);
+    const spawned = await admin(client, "spawn", { asset: "wolf" });
+    assert.equal(spawned.ok, true);
+    assert.match(spawned.message, /spawned a pack of 0 wolf/);
+    assert.deepEqual(packs, ["wolf"]);
+    await client.close();
+  });
+
   it("spawn rejects unknown assets; despawn refuses live avatars", async () => {
     const url = await startGateway({
       admins: ["alice"],

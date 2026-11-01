@@ -192,6 +192,11 @@ export class CreatureSystem implements SimSystem {
     return kind in this.opts.creatures;
   }
 
+  /** Every creature kind this world can spawn, sorted (for the admin `spawnlist`). */
+  kinds(): string[] {
+    return Object.keys(this.opts.creatures).sort();
+  }
+
   private rand(): number {
     this.rngState = hash(this.rngState, 0x5bd1e995);
     return this.rngState / 4294967296;
