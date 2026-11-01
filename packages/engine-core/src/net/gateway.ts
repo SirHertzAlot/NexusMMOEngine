@@ -458,6 +458,8 @@ export interface GatewayOptions {
    */
   creatures?: {
     has(kind: string): boolean;
+    /** Every creature kind, for `spawnlist`. */
+    kinds?(): string[];
     spawnPack(sim: SimWorld, kind: string, x: number, z: number): number[];
     /** A creature entity's display name (rides 0x12 names, U12a); undefined if not one. */
     nameOf?(e: number): string | undefined;
@@ -3285,7 +3287,8 @@ export class Gateway {
     }
     const table = this.spawnTable;
     if (command === "spawnlist") {
-      const names = listAssets(table);
+      // Scatter archetypes, then creature kinds (spawned through the shared CreatureSystem).
+      const names = [...listAssets(table), ...(this.creatures?.kinds?.() ?? [])];
       return { kind: "admin", command, ok: true, message: names.length > 0 ? names.join(" ") : "(empty)" };
     }
     if (command === "despawn") {
