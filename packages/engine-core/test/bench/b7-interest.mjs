@@ -123,10 +123,14 @@ async function run(layout, entities, mode, burst) {
   return { layout, entities, mode, burst, perClientBytes: stats(perClient), tickMs: stats(tickMs), channelBytes: stats(channel), edgeMs: stats(edge) };
 }
 
+// B7_ONLY=spread:1000 runs just that layout and entity count (repeat runs for timing).
+const ONLY = process.env.B7_ONLY ? process.env.B7_ONLY.split(":") : null;
 const rows = [];
 for (const mode of MODES) for (const burst of BURSTS) for (const layout of ["spread", "towns"]) for (const entities of [1000, 5000]) {
+  if (ONLY && (ONLY[0] !== layout || Number(ONLY[1]) !== entities)) continue;
   rows.push(await run(layout, entities, mode, burst));
-  console.error(`done ${mode} burst=${burst} ${layout} ${entities}`);
+  const last = rows[rows.length - 1];
+  console.error(`done ${mode} burst=${burst} ${layout} ${entities} tickMs mean=${round(last.tickMs.mean, 2)} p50=${round(last.tickMs.p50 ?? last.tickMs.median ?? NaN, 2)} p99=${round(last.tickMs.p99, 2)}`);
 }
 const kib = (b) => (b / 1024).toFixed(1);
 record("B7", "Interest bandwidth", { ticks: TICKS, sessions: SESSIONS, rows }, `
