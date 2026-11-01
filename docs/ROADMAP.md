@@ -20,9 +20,9 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-10-25)
+## At a glance (2026-11-01)
 
-**189 items built, 43 in progress, 14 planned** (and 3 spikes closed without adoption: TS5, TS6, TS7) (counted
+**208 items built, 50 in progress, 12 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -32,26 +32,20 @@ party, chat, parties, guilds, friends and blocks (all persisted) are in,
 with every player screen for them. The editor has play mode with the
 game view and debugger, selection cards, the PICG graph editor, the
 dungeon view and world-scale terrain editing. The edge/core split (E1 to
-E6) and the world server's migration and stress harness are built.
+E6, with the E5 follow-ups open) and the world server's migration and stress harness are built.
 
 What is left, by area:
 
-- **Modular editor** (1c): the docking shell, workspace navigation,
-  persistent layouts, deep links, display-side data contracts, and a
-  UI-only flow graph are in progress. Scenes, executable game flow,
-  modules, the database editor, and production tools remain EA1 to EA26
-  follow-on work.
-- **Editor and admin**: the play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
-  mode, time and weather), and the appearance editor (A6).
-- **Gameplay**: armour and the rest of equipment (U10), recorded and
-  positional sounds (U4b), dungeon results ingested by the world server
-  (D4), ragdolls and character collision.
-- **Scale**: the client cutover to the edge (E3b), binary mirror frames
-  (E5a, E5b), the region↔world event stream (S2), accounts on the world
-  server (C1).
-- **Checks**: Helgrind on the threaded addons.
-- **CI**: GitHub Actions is out of credits, so every change is checked
-  locally with `npm test` and valgrind.
+- **Modular editor** (1c): only the docking shell (EA1) is open. Its layout, navigation, toolbar and deep links are implemented on `feat/editor-backend-connector`.
+- **Editor and admin**: the admin channel and the inspect and spawn commands (A1 to A3) are partly built, with search and cursor targeting still open. The appearance editor panel (A6) and bots in web workers (A7, planned) remain, along with repeated editor workflows (M9) and tooling phase 0 (TL0).
+- **Gameplay**: combat abilities (M5), currency, trading and vendors (EC1), dungeon chests, traps and the boss crystal (D4f), residents (RS3, RS5), the loading screen (LS1, planned), recorded and positional sounds (U4b, planned), enemy models (EM1, planned), dungeon decals (D4g, planned), dungeon resource nodes (RN1, planned), and weather (WX1).
+- **Settlements**: the generator's slices (SG1 to SG5: sites, roads, occupancy, art, movers and the town plan) are in progress, and the settlement editor pieces (SG4b) are planned. Homesteads (SG7) and roadside places (SG8) are in progress too.
+- **World and content**: terrain relief and plains (TE1, TE2), sea-level placement (TE2), wildlife and megafauna (WL1, WL2), creature brains (WL2), global and architectural scale (GS2, SA1), prop collision (PH1), and the bake-all command (BA1).
+- **Physics**: ragdolls (the cost gate and slices 1 and 2, with the sleep threshold, threads and contact cap; ragdolls and CharacterVirtual are planned), dungeon physics, prop blocking without CharacterVirtual, and the zero-copy data plane.
+- **Scale and edge**: binary mirror frames (E5a) and pushing the encode off the tick (E5b) are planned. Dropping the base64 mirror stream (E5c) is in progress, and interest management (IM) and the region↔world event stream (S2) are open.
+- **Client**: web workers (U14) are built and wired but not yet checked in a browser.
+- **Checks**: Helgrind's gate counts only our own code (#496 and #497 are merged). ThreadSanitizer is still the separate check for races in Jolt, and it isn't automated.
+- **CI**: GitHub Actions is out of credits, so every change is checked locally with `npm test` and valgrind.
 
 ## Where things live
 
@@ -900,3 +894,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-31**: Helgrind on the threaded addons. `npm run valgrind:helgrind -- picg` is clean. `-- physics` reports 2,001 errors inside `physics.node`, where Jolt is linked. Nearly all are races in Jolt's job dispatch, contact cache and solver, ordered by `std::atomic` and lock-free maps that Helgrind does not model. 14 race reports have our `CheckedU64` as the racing access, against V8's ArrayBuffer sweeper thread. 11 pthread-misuse or lock-order reports come from Jolt's body and quadtree mutexes on the main thread. None is shown to be benign yet; a ThreadSanitizer check is the next step.
 - **2026-10-31**: Helgrind follow-up: a ThreadSanitizer build of the physics addon (local, not committed) runs the physics suite clean in our code. 39 of 39 pass, and no report has a Jolt or addon frame. The reports left are inside node's V8 (compiler init, platform job-worker teardown). So Helgrind's Jolt reports are false positives on the paths the tests exercise: 0, 1, 4 and 64 threads, determinism in fresh processes, and world teardown. `valgrind:helgrind` still exits 1 for physics, because it counts Jolt inside `physics.node` as ours; filtering by source file is a follow-up.
 - **2026-10-31**: Helgrind gate counts only our own code. `scripts/valgrind/helgrind-report.mjs` classifies each thread error by the file of its faulting frame: the addon's sources are ours, `third_party` is vendored (Jolt), and Node's and V8's own reports are left out. The standard library and node-addon-api are blamed on their caller. Physics (built with `-g`) gives 0 in our code, 1,561 vendored and 90 Node/V8; picg gives 0, 0 and 18. Before, physics counted 2,001 errors in its binary, all Jolt's. Without debug info every error in an addon's binary still counts as ours, and the run says so. Report counts vary between runs (2,094 without debug info, then 1,800 and 1,651 with it), so the classes are what to read. The ThreadSanitizer check from the Helgrind row above stays the check for races inside Jolt, which the gate no longer fails on.
+- **2026-11-01**: At a glance refreshed to the status rows. It had listed the client cutover (E3b), accounts (C1), armour (U10), dungeon results (D4) and the admin player and loot tools (A4, A5) as open; all five are built. It now lists 208 built, 50 in progress and 12 planned, and the modular editor's only open row is the docking shell (EA1).
