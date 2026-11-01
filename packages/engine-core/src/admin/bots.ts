@@ -78,7 +78,9 @@ export function spawnBots(args: BotsArgs): { ok: boolean; message: string } {
   const count = args.count ?? 1;
   const url = process.env.BOT_WS_URL ?? "ws://localhost:7777";
   const usernamePrefix = process.env.BOT_USERNAME_PREFIX ?? "bot";
-  const password = process.env.BOT_PASSWORD ?? "bot";
+  // The server refuses passwords under 8 characters, so the default must be at least that long.
+  // The bot accounts must be seeded with the same password (seed:user with MMO_DEV_PASSWORD).
+  const password = process.env.BOT_PASSWORD ?? "bot-password";
 
   let started = 0;
   for (let i = 0; i < count; i++) {
