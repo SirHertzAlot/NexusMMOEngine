@@ -423,7 +423,7 @@
    },
    "territoryM": 500,
    "activity": "crepuscular",
-   "temperament": "hunt",
+   "temperament": "raid",
    "danger": {
     "tier": 3,
     "health": 45,
@@ -435,7 +435,14 @@
    "biomes": {
     "plains": 0.8
    },
-   "note": "Small packs that test lone travellers."
+   "raid": {
+    "rangeM": 900,
+    "minStructures": 1,
+    "hungerSeconds": 900,
+    "satiateSeconds": 40,
+    "weights": { "player": 0.6, "livestock": 1.5, "structure": 0.3 }
+   },
+   "note": "Small packs that raid the pens at a settlement's edge and test lone travellers."
   },
   "bobcat": {
    "role": "mesopredator",
@@ -632,7 +639,7 @@
    },
    "territoryM": 80,
    "activity": "nocturnal",
-   "temperament": "defend",
+   "temperament": "raid",
    "danger": {
     "tier": 1,
     "health": 45,
@@ -646,7 +653,14 @@
     "plains": 0.5,
     "swamp": 1
    },
-   "note": "Forages at edges and camps; bites when grabbed."
+   "raid": {
+    "rangeM": 300,
+    "minStructures": 2,
+    "hungerSeconds": 600,
+    "satiateSeconds": 30,
+    "weights": { "player": 0.3, "livestock": 1, "structure": 0.6 }
+   },
+   "note": "Raids larders and bins at the edge of towns; bites when grabbed."
   },
   "cow": {
    "role": "livestock",
