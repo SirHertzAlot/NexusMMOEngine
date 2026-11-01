@@ -124,11 +124,11 @@ The tables above call Jolt directly. This is the path the engine runs: the addon
 
 ## Through the addon: F7 (sleep threshold)
 
-The addon takes a sleep threshold (`setSleepThreshold`, in m/s; Jolt's default is 0.03) and counts the ragdoll bodies still awake (`ragdollActiveBodies`). `npm run bench:sleep:addon` settles a resting crowd on the 0.9 m grid for 20 s at each threshold, records when it is all asleep, then times 2 s. Crowds at the cap:
+The addon takes a sleep threshold (`setSleepThreshold`, in m/s) and counts the ragdoll bodies still awake (`ragdollActiveBodies`). A new world starts at 0.05 m/s, chosen in the decision below; Jolt's own default is 0.03. `npm run bench:sleep:addon` settles a resting crowd on the 0.9 m grid for 20 s at each threshold, records when it is all asleep, then times 2 s. This first sweep ran at 0.03 and predates the decision. Crowds at the cap:
 
 | Threshold | 48 full rigs | 120 light rigs | Step once settled |
 |:---|:---|:---|:---|
-| 0.03 (default) | never; 528 of 528 awake at 20 s | never; 550 of 600 awake | 3.58 ms and 3.33 ms, awake |
+| 0.03 (Jolt's default, then) | never; 528 of 528 awake at 20 s | never; 550 of 600 awake | 3.58 ms and 3.33 ms, awake |
 | 0.1 m/s | asleep at 16 s | asleep at 10 s | under 0.01 ms |
 | 0.3 m/s | asleep at 1 s | asleep at 1 s | under 0.01 ms |
 | 1.0 m/s | asleep at 8 s | asleep at 1 s | under 0.01 ms |
@@ -142,9 +142,30 @@ Wake check: 16 light rigs settled for 20 s, then a 5 kg sphere dropped 2 m onto 
 
 What it means:
 
-- The 4 ms budget is an awake budget. A settled crowd costs under 0.01 ms; a default crowd does not fall asleep within 20 s, so at the cap it costs about 3.5 ms a tick.
-- A larger threshold trades fidelity for that cost. A body slower than the threshold for 0.5 s is put to sleep, so slow motion can freeze. And in this scene, at 0.3 m/s no more than one rig woke, but at the default 70 of 80 bodies did. Both need a look in the client before a default changes.
-- Recommendation: keep 0.03 as the default for now. The person picks the value after a client look. 0.3 m/s is the one that puts a capped crowd to sleep within a second.
+- The 4 ms budget is an awake budget. A settled crowd costs under 0.01 ms; a crowd at Jolt's 0.03 m/s does not fall asleep within 20 s, so at the cap it costs about 3.5 ms a tick.
+- A larger threshold trades fidelity for that cost. A body slower than the threshold for 0.5 s is put to sleep, so slow motion can freeze. And in this scene, at 0.3 m/s no more than one rig woke, but at 0.03 m/s 70 of 80 bodies did. Both need a look in the client, which is still open.
+- Decision (2026-11-01): the default is now 0.05 m/s, chosen by the ensemble bench below. 0.3 m/s puts a capped crowd to sleep within a second, but it was not in the ensemble, and 0.15 and 0.20 m/s fail the bar.
+
+### Decision (2026-11-01): the default is 0.05 m/s
+
+A new world starts at 0.05 m/s. `bench/addon-sleep-ensemble.mjs` chose it. Each crowd (48 full or 120 light rigs, the cap) runs from five start grids (1 mm random offsets, seeds 1 to 5) for 60 s at each of 0.03, 0.05, 0.10, 0.15 and 0.20 m/s. The bar was fixed before the first run. Against the 0.03 runs, a threshold passes when the settled height and footprint of each crowd are within |z| ≤ 3 (Welch, five runs each), a 5 kg sphere dropped 2 m onto the middle light rig wakes it on every seed, and its mean move differs from the 0.03 mean by less than 20 mm. The cheapest passing threshold is chosen. Data: [`addon-sleep-threshold-ensemble-results.json`](addon-sleep-threshold-ensemble-results.json).
+
+| Threshold | Physics time over 60 s, both crowds | Height z, full / light | Footprint z, full / light | Wake, mean move | Result |
+|:---|:---|:---|:---|:---|:---|
+| 0.03 (Jolt's default, reference) | 8,531 ms | 0 / 0 | 0 / 0 | 4.9 mm | reference |
+| **0.05 (chosen)** | **6,030 ms** | 1.15 / 0.19 | −0.03 / 0 | 4.9 mm | passes |
+| 0.10 | 1,555 ms | 1.96 / **4.36** | −0.07 / 0.81 | 5.7 mm | light height over the bar |
+| 0.15 | 1,174 ms | 2.18 / **10.1** | −0.08 / 1.72 | 5.7 mm | light height over the bar |
+| 0.20 | 1,093 ms | 2.55 / **7.91** | 0.04 / 2.11 | **143 mm** | light height and the wake bar |
+
+0.05 is the cheapest threshold that passes. It costs 29% less physics time than 0.03 across both crowds (6.0 s against 8.5 s). Its settled crowds sit 1.1 mm higher (full) and 0.2 mm higher (light) than the default's. 0.10 fails on light-rig height: its rigs sit about 17 mm higher, z 4.36 against a bar of 3. A bar of 4.36 or wider would pass 0.10 instead.
+
+Caveats:
+
+- The 60 s reference is not settled. At 0.03, 2 of 5 full crowds and all 5 light crowds were still awake at 60 s. At 0.05, no full crowd and 3 of 5 light crowds were. The height and footprint are taken over the final 2 s of each run.
+- The bench does not test slow motion. A body slower than the threshold for 0.5 s is put to sleep, so at 0.05 m/s a slow-moving body can freeze. The client look is still open.
+- The |z| ≤ 3 bar was fixed before the run. It is the only reason 0.10 fails.
+- Round 1 (`bench/addon-sleep-threshold.mjs`) is superseded. Its pose check was invalid: a 1 mm change in the start grid moves the default's own settled pose by 263 mm RMS (48 full) and 609 mm (120 light). Its settle-cost and wake numbers stand.
 
 ## Through the addon: F4 (threads and determinism)
 
@@ -248,8 +269,8 @@ Proposed client budget, not decided: 12% of the frame, the same share as the ser
    of each run moved at 0.04 to 0.28 m/s. Jolt's default point-velocity sleep threshold is
    0.03 m/s (`PhysicsSettings::mPointVelocitySleepThreshold`). The likely cause:
    the pile is one contact island, and one body above the threshold keeps the
-   whole island awake. That is an inference from these numbers. It is not tested
-   yet (F7).
+   whole island awake. That is an inference from these numbers. F7 tests it
+   below.
 6. **A shorter sleep time does nothing in a crowd.** With a 0.1 s sleep time,
    production costs at 256 rigs match the default within 5% (resting 25.5 ms
    against 25.3 ms; awake 26.3 ms against 25.2 ms). `sleep0.1` is not a fix.
@@ -275,7 +296,7 @@ Proposed client budget, not decided: 12% of the frame, the same share as the ser
 | **F4.** Four-thread job pool | Through the addon: 1.9 times at 256 uncapped full rigs (25.6 to 13.2 ms); 1.1 to 1.4 times at the cap; 16-rig worlds slower (0.44 to 0.85 times) | Determinism: the same bits at 0 and 4 threads on the test scene. Each world owns its pool | Opt-in per world, default one thread. A pool from about 64 full or 120 light rigs |
 | **F5.** Cosmetic ragdolls on clients, for other players' deaths | Zero server cost: the server sends the death event and the client shows the body | Client cost not measured here. Not authoritative, so fine for looks only | Recommended. Measure the client budget |
 | **F6.** Shard the world: several single-threaded worlds across cores | Not measured. Each world stays under the cap, and the work scales with cores | An addon change for more than one world. Must stay off the JS thread. Collisions across shards | Architecture decision |
-| **F7.** Larger point-velocity sleep threshold | At 0.3 m/s a capped crowd sleeps within a second and costs under 0.01 ms once settled. At the default it does not sleep within 20 s and costs 3.3 to 3.6 ms a tick. Through the addon, above | A body slower than the threshold for 0.5 s freezes. A hit reached only its own rig at 0.3 m/s in one test. Needs a client look | Default unchanged. The person picks the value |
+| **F7.** Larger point-velocity sleep threshold | At 0.3 m/s a capped crowd sleeps within a second and costs under 0.01 ms once settled. At the default it does not sleep within 20 s and costs 3.3 to 3.6 ms a tick. Through the addon, above | A body slower than the threshold for 0.5 s freezes. A hit reached only its own rig at 0.3 m/s in one test. Needs a client look | Default 0.05 m/s, chosen by the ensemble bench (below). Client look still open |
 
 ## Recommendation
 
