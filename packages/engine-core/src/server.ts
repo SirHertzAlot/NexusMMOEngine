@@ -1438,6 +1438,8 @@ async function main(): Promise<void> {
       // its budget overruns become records instead of stdio formatting.
       logRingSab: logRing.sab,
       logRingCapacity: logRing.capacity,
+      // MMO_DATA_PLANE_DB=rocksdb:/abs/path makes the ledger durable across restarts; unset stays volatile (mem://).
+      dbUrl: process.env.MMO_DATA_PLANE_DB?.trim() || undefined,
     });
     await dataPlaneServer.startWorkers();
     console.log(
