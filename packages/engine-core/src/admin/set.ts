@@ -101,6 +101,11 @@ const FIELDS: Record<
     store: C.AssetRef as unknown as Record<string, { [eid: number]: number }>,
     fields: { assetHash: "int", variant: "int" },
   },
+  Needs: {
+    comp: C.Needs,
+    store: C.Needs as unknown as Record<string, { [eid: number]: number }>,
+    fields: { hunger: "float", hungerMax: "float", thirst: "float", thirstMax: "float" },
+  },
   Locomotion: {
     comp: C.Locomotion,
     store: C.Locomotion as unknown as Record<string, { [eid: number]: number }>,
@@ -116,10 +121,24 @@ const FIELDS: Record<
 /**
  * Write one field. Returns the confirmation line, or an error message
  * (never throws for bad input — the gateway answers 4003 with it).
+ *
+ * `Stat` is a pseudo-component: `field` is a stat id from stats.json and
+ * the value sets that stat's base on the entity's sheet (modifiers still
+ * apply on top). An entity with no stat sheet reads as absent.
  */
 export function applySet(world: SimWorld, wireId: bigint, component: string, field: string, value: number): { ok: boolean; message: string } {
   const eid = world.resolveWireId(wireId);
   if (eid < 0) return { ok: false, message: `unknown entity ${wireId}` };
+  if (component === "Stat") {
+    if (!Number.isFinite(value)) return { ok: false, message: "value is not finite" };
+    if (!world.stats.has(eid)) return { ok: false, message: `entity ${wireId} has no Stat` };
+    try {
+      world.stats.setBase(eid, field, value);
+    } catch {
+      return { ok: false, message: `unknown stat ${JSON.stringify(field)} on Stat` };
+    }
+    return { ok: true, message: `Stat.${field} base = ${value} on ${wireId}` };
+  }
   const comp = FIELDS[component];
   if (!comp) return { ok: false, message: `unknown component ${JSON.stringify(component)}` };
   const kind = comp.fields[field];
