@@ -180,6 +180,52 @@ export const WORKLOADS = {
     },
   },
 
+  /** PropCollisionSystem: 100 kinematic walkers among 500 static props (trees as boxes, rocks as spheres) on a 64 m tile, per tick. */
+  "prop-collision-tick": {
+    n: 60, warm: 20, unit: "tick",
+    async setup() {
+      const C = await core();
+      const { addComponent } = await import("bitecs");
+      const prng = mulberry32(11);
+      const sim = new C.SimWorld();
+      for (let i = 0; i < 500; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        addComponent(sim.ecs, C.BodyConfig, e);
+        const rock = i % 4 === 0;
+        C.Transform.px[e] = (prng() - 0.5) * 64;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 64;
+        C.Transform.qw[e] = 1;
+        C.BodyConfig.shapeKind[e] = rock ? C.ShapeKind.Sphere : C.ShapeKind.Box;
+        C.BodyConfig.halfX[e] = rock ? 0 : 0.8;
+        C.BodyConfig.halfY[e] = rock ? 0 : 2.5;
+        C.BodyConfig.halfZ[e] = rock ? 0 : 0.8;
+        C.BodyConfig.radius[e] = rock ? 0.6 : 0;
+        C.BodyConfig.mass[e] = 0;
+        C.BodyConfig.motionType[e] = C.MotionType.Static;
+        C.BodyConfig.layer[e] = 0;
+        C.BodyConfig.friction[e] = 0.8;
+        C.BodyConfig.restitution[e] = 0;
+      }
+      for (let i = 0; i < 100; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        // Velocity first: attachDefaultCollider reads it to make a walker Kinematic rather than Static.
+        addComponent(sim.ecs, C.Velocity, e);
+        C.attachDefaultCollider(sim, e);
+        C.Transform.px[e] = (prng() - 0.5) * 64;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 64;
+        C.Transform.qw[e] = 1;
+      }
+      return { sim, prop: new C.PropCollisionSystem() };
+    },
+    run(s) {
+      s.prop.step(s.sim);
+    },
+  },
+
   /** Residents (RS3): a town of 600 people placed by the schedule, one simulated second per operation (the system steps once a second), a player in the square. */
   "residents-tick": {
     n: 40, warm: 10, unit: "second",
