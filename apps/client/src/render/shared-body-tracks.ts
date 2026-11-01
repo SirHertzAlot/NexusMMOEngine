@@ -37,9 +37,43 @@ interface Track {
   sz: number;
 }
 
+/**
+ * A smooth server clock for the render. Each arriving tick says where the server's
+ * clock is (arrival time minus tick time). The offset is an exponential average,
+ * so a late packet moves it a little instead of stopping or snapping the clock.
+ * The render then draws the body at (local time - offset) minus the delay, so
+ * jitter lands in the buffer rather than in the motion.
+ */
+export class PlayoutClock {
+  private offset: number | null = null;
+  private hz = 0;
+
+  /** `smoothing`: weight of each new arrival in the offset (0..1). */
+  constructor(private readonly smoothing = 0.05) {}
+
+  setTickHz(hz: number): void {
+    if (hz === this.hz) return;
+    this.hz = hz;
+    this.offset = null;
+  }
+
+  /** A tick arrived at local time `arrivalSeconds`. */
+  observe(tick: number, arrivalSeconds: number): void {
+    if (this.hz <= 0) return;
+    const off = arrivalSeconds - tick / this.hz;
+    this.offset = this.offset === null ? off : this.offset + this.smoothing * (off - this.offset);
+  }
+
+  /** The server's clock (seconds) at local time `localSeconds`; undefined before the first arrival. */
+  serverSeconds(localSeconds: number): number | undefined {
+    return this.offset === null ? undefined : localSeconds - this.offset;
+  }
+}
+
 export class SharedBodyTracks {
   private readonly wanted = new Set<bigint>();
   private readonly tracks = new Map<bigint, Track>();
+  private readonly clock = new PlayoutClock();
   private tickHz = 0;
 
   constructor(private readonly options: SharedBodyOptions) {}
@@ -48,6 +82,7 @@ export class SharedBodyTracks {
   setTickHz(hz: number): void {
     if (hz === this.tickHz) return;
     this.tickHz = hz;
+    this.clock.setTickHz(hz);
     this.tracks.clear();
   }
 
@@ -98,14 +133,34 @@ export class SharedBodyTracks {
     };
   }
 
+  /**
+   * The body's pose at local time `localSeconds`, on the smooth playout clock.
+   * Undefined until a tick has arrived and the body has a snapshot.
+   */
+  sampleAt(wid: bigint, localSeconds: number): BodyPose | undefined {
+    const serverNow = this.serverSecondsAt(localSeconds);
+    return serverNow === undefined ? undefined : this.sample(wid, serverNow);
+  }
+
+  /** The playout clock's server time at local time `localSeconds`; undefined before the first arrival. */
+  serverSecondsAt(localSeconds: number): number | undefined {
+    return this.clock.serverSeconds(localSeconds);
+  }
+
   /** Stop drawing this entity from snapshots and drop its buffer (it despawned). */
   forget(wid: bigint): void {
     this.wanted.delete(wid);
     this.tracks.delete(wid);
   }
 
-  /** Listen to a mirror Interpolator's pushes. Returns the unsubscribe function. */
-  attach(source: PushSource): () => void {
-    return source.onPush((tick, rows) => this.feed(tick, rows));
+  /**
+   * Listen to a mirror Interpolator's pushes. Each push also feeds the playout
+   * clock with its local arrival time. Returns the unsubscribe function.
+   */
+  attach(source: PushSource, localNow: () => number = () => performance.now() / 1000): () => void {
+    return source.onPush((tick, rows) => {
+      this.clock.observe(tick, localNow());
+      this.feed(tick, rows);
+    });
   }
 }
