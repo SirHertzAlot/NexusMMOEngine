@@ -183,6 +183,31 @@ int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
 #define MJ_UPDATE_CONTACT_CONSTRAINTS_FULL 4u
 uint32_t mj_physics_last_step_errors(mj_physics_world_t *world);
 
+/*
+ * Jolt CharacterVirtual: an upright capsule that moves by sweeping against the
+ * world's bodies. It is not a body and takes no part in mj_physics_step: each
+ * character moves only when mj_character_update runs. radius and half_height
+ * give a capsule centred on the position: half_height is half the straight
+ * section, and radius extends beyond it on every side. The position is that
+ * centre; where the capsule meets a surface, Jolt keeps it about 0.02 m clear
+ * (its contact padding). Ids are the caller's u64 ids, in their own space.
+ * mj_character_add returns 1 when the character is added, and 0 for a
+ * duplicate id, a radius that is not positive, or a negative half_height
+ * (nothing changes).
+ */
+int mj_character_add(mj_physics_world_t *world, uint64_t id, float radius,
+                     float half_height, float x, float y, float z);
+void mj_character_remove(mj_physics_world_t *world, uint64_t id);
+void mj_character_set_velocity(mj_physics_world_t *world, uint64_t id,
+                               float vx, float vy, float vz);
+/* One Jolt update over dt seconds under gravity (gx, gy, gz). Unknown ids,
+ * and a dt that is not positive, do nothing. */
+void mj_character_update(mj_physics_world_t *world, uint64_t id, float dt,
+                         float gx, float gy, float gz);
+/* Writes the character's position (3 floats); NaN for an unknown id. */
+void mj_character_position(mj_physics_world_t *world, uint64_t id, float *out3);
+int mj_character_count(mj_physics_world_t *world);
+
 #ifdef __cplusplus
 }
 #endif

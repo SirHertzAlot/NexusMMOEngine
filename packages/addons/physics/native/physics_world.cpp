@@ -28,9 +28,12 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
+#include <Jolt/Physics/Collision/ShapeFilter.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -691,6 +694,62 @@ struct mj_physics_world {
     return active;
   }
 
+  // --- CharacterVirtual ----------------------------------------------------
+  // Upright capsules that sweep against the bodies. A character is not a body:
+  // it takes no part in step(), and updateCharacter is what moves it. The
+  // sweep uses the MOVING object layer, so it stops at static and moving bodies.
+
+  bool addCharacter(uint64_t id, float radius, float half_height, float x,
+                    float y, float z) {
+    if (!(radius > 0.0f) || !(half_height >= 0.0f) ||
+        mCharacters.count(id) != 0)
+      return false;
+    JPH::CharacterVirtualSettings settings;
+    // The capsule is centred on the character's position.
+    settings.mShape = new JPH::CapsuleShape(half_height, radius);
+    mCharacters.emplace(
+        id, new JPH::CharacterVirtual(&settings, JPH::RVec3(x, y, z),
+                                      JPH::Quat::sIdentity(), mSystem.get()));
+    return true;
+  }
+
+  void removeCharacter(uint64_t id) { mCharacters.erase(id); }
+
+  void setCharacterVelocity(uint64_t id, float vx, float vy, float vz) {
+    auto it = mCharacters.find(id);
+    if (it != mCharacters.end())
+      it->second->SetLinearVelocity(JPH::Vec3(vx, vy, vz));
+  }
+
+  void updateCharacter(uint64_t id, float dt, float gx, float gy, float gz) {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end() || !(dt > 0.0f))
+      return;
+    JPH::BodyFilter body_filter;
+    JPH::ShapeFilter shape_filter;
+    it->second->Update(
+        dt, JPH::Vec3(gx, gy, gz),
+        mSystem->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
+        mSystem->GetDefaultLayerFilter(Layers::MOVING), body_filter,
+        shape_filter, *mTempAllocator);
+  }
+
+  // Writes the position into out3; NaN on all three for an unknown id.
+  void characterPosition(uint64_t id, float *out3) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) {
+      const float nan = std::numeric_limits<float>::quiet_NaN();
+      out3[0] = out3[1] = out3[2] = nan;
+      return;
+    }
+    const JPH::RVec3 p = it->second->GetPosition();
+    out3[0] = p.GetX();
+    out3[1] = p.GetY();
+    out3[2] = p.GetZ();
+  }
+
+  int characterCount() const { return static_cast<int>(mCharacters.size()); }
+
 private:
   BPLayerInterfaceImpl mBroadPhaseLayerInterface;
   ObjectVsBroadPhaseLayerFilterImpl mObjectVsBroadPhaseLayerFilter;
@@ -700,6 +759,9 @@ private:
   std::unique_ptr<JPH::PhysicsSystem> mSystem;
   std::unordered_map<uint64_t, BodyRecord> mBodies;
   std::unordered_map<uint64_t, JPH::BodyID> mTerrain;
+  // Declared after mSystem, so it is destroyed first: every character leaves
+  // before the system it sweeps against.
+  std::unordered_map<uint64_t, JPH::Ref<JPH::CharacterVirtual>> mCharacters;
 
   struct RagdollRecord {
     JPH::Ref<JPH::Ragdoll> ragdoll;
@@ -873,6 +935,46 @@ int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
     return -1;
   }
   return world->copyRagdollBodies(n, ids, out, capacity);
+}
+
+int mj_character_add(mj_physics_world_t *world, uint64_t id, float radius,
+                     float half_height, float x, float y, float z) {
+  if (world == nullptr)
+    return 0;
+  return world->addCharacter(id, radius, half_height, x, y, z) ? 1 : 0;
+}
+
+void mj_character_remove(mj_physics_world_t *world, uint64_t id) {
+  if (world != nullptr)
+    world->removeCharacter(id);
+}
+
+void mj_character_set_velocity(mj_physics_world_t *world, uint64_t id,
+                               float vx, float vy, float vz) {
+  if (world != nullptr)
+    world->setCharacterVelocity(id, vx, vy, vz);
+}
+
+void mj_character_update(mj_physics_world_t *world, uint64_t id, float dt,
+                         float gx, float gy, float gz) {
+  if (world != nullptr)
+    world->updateCharacter(id, dt, gx, gy, gz);
+}
+
+void mj_character_position(mj_physics_world_t *world, uint64_t id,
+                           float *out3) {
+  if (out3 == nullptr)
+    return;
+  if (world == nullptr) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    out3[0] = out3[1] = out3[2] = nan;
+    return;
+  }
+  world->characterPosition(id, out3);
+}
+
+int mj_character_count(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->characterCount();
 }
 
 } // extern "C"
