@@ -81,6 +81,11 @@ export class SyntyProps implements PropModels {
     return this.ready.size;
   }
 
+  /** Models requested and still loading (LS1's load gate waits on these). */
+  get pendingCount(): number {
+    return this.pending.size;
+  }
+
   model(assetHash: number, _variant: number): Ready | null {
     if (!this.catalog) {
       this.list();
