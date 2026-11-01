@@ -175,7 +175,7 @@ export function GameplayGridsPanel(): React.JSX.Element {
     setPendingChanges(changes.length > 0 ? { label: "Gameplay tables", changes } : null);
   }, [snap, rows, savedRows]);
   React.useEffect(() => () => setPendingChanges(null), []);
-  // Hooks stay above every early return: the loading return below would otherwise skip them on the first render.
+  // Deferred values are hooks: they must run before the early return below, or the hook count changes between renders.
   const deferredSearch = React.useDeferredValue(search);
   const deferredFilterKey = React.useDeferredValue(filterKey);
   const deferredFilterText = React.useDeferredValue(filterText);

@@ -247,3 +247,47 @@ test('terrain: rejects bad input without crashing', () => {
     w.destroy();
   }
 });
+
+// A batch of n static spheres on a grid, ids idBase+1 .. idBase+n.
+function bulkDesc(n, idBase = 0) {
+  const pos = new Float32Array(3 * n);
+  const quat = new Float32Array(4 * n);
+  for (let i = 0; i < n; i++) {
+    pos[3 * i] = (i % 300) * 2;
+    pos[3 * i + 2] = Math.floor(i / 300) * 2;
+    quat[4 * i + 3] = 1;
+  }
+  return {
+    count: n,
+    entityIds: BigUint64Array.from({ length: n }, (_, i) => BigInt(idBase + i + 1)),
+    shapeKind: new Uint8Array(n).fill(ShapeKind.Sphere),
+    halfExtents: new Float32Array(3 * n),
+    radius: new Float32Array(n).fill(0.3),
+    mass: new Float32Array(n).fill(1),
+    friction: new Float32Array(n).fill(0.5),
+    restitution: new Float32Array(n),
+    motionType: new Uint8Array(n).fill(MotionType.Static),
+    layer: new Uint8Array(n),
+    pos,
+    quat,
+    linVel: new Float32Array(3 * n),
+    angVel: new Float32Array(3 * n),
+  };
+}
+
+test('addBodies returns how many bodies the pool refused, and only those', () => {
+  const w = createWorld();
+  try {
+    const cap = w.bodyCapacity;
+    assert.ok(cap > 0, `pool size ${cap}`);
+    assert.equal(w.addBodies(bulkDesc(3)), 0);
+    // Bodies already in the world are skipped as before, and are not refusals.
+    assert.equal(w.addBodies(bulkDesc(3)), 0);
+    assert.equal(w.bodyCount(), 3);
+    // Fill the pool, then go four past it: exactly four are refused.
+    assert.equal(w.addBodies(bulkDesc(cap - 3 + 4, 3)), 4);
+    assert.equal(w.bodyCount(), cap);
+  } finally {
+    w.destroy();
+  }
+});

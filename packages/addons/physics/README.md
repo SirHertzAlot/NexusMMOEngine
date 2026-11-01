@@ -117,7 +117,7 @@ holds 3 floats per id: the root where each rig is dropped.
   set the budget; a lower budget refuses new rigs and keeps the ones present.
 - Rigs step with the bodies and sleep as Jolt decides: the production
   configuration (sleep on, the addon's defaults).
-- `sleepThreshold()` and `setSleepThreshold(metresPerSecond)` set Jolt's point-velocity sleep threshold for the whole world (default 0.03 m/s; a larger value lets resting bodies sleep sooner). `ragdollActiveBodies()` counts the ragdoll bodies still simulating. Measured in the sleep bench below.
+- `sleepThreshold()` and `setSleepThreshold(metresPerSecond)` set Jolt's point-velocity sleep threshold for the whole world (default 0.05 m/s, chosen by the sleep benchmark in `bench/addon-sleep-ensemble.mjs`; Jolt's own is 0.03; a larger value lets resting bodies sleep sooner). `ragdollActiveBodies()` counts the ragdoll bodies still simulating. Measured in the sleep bench below.
 - `lastStepErrors()` returns Jolt's update errors for the last `step()`, OR-ed over its substeps, as `UpdateError` bits: `ManifoldCacheFull` (1), `BodyPairCacheFull` (2) and `ContactConstraintsFull` (4). Zero means every contact was kept. `ContactConstraintsFull` means the world's 10,240 contact constraints were full: Jolt dropped contacts for that step, so bodies that should touch can pass through each other or fly apart. The budget keeps the rigs under the cap; where crowds reach it is in the contact cap bench below.
 - **Not yet covered:** the engine's real world (terrain and other bodies) and
   server hardware. Both are in the cost gate's not-measured list.

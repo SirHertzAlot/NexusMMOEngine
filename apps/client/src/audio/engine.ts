@@ -10,7 +10,8 @@
 
 import { startRain, startWind } from "./cues.js";
 import { playPlaceholder } from "./placeholders.js";
-import { type EventBus, type Listener, planPlay, type SoundBank, type Vec3, VoicePool, DEFAULT_BUS, type BusSettings } from "./sound-logic.js";
+import { SampleBank } from "./samples.js";
+import { type EventBus, eventFiles, type Listener, planPlay, type SoundBank, type Vec3, VoicePool, DEFAULT_BUS, type BusSettings } from "./sound-logic.js";
 import { AUDIO_BUSES, type AudioBus, masterGain, sliderGain, type Volumes } from "./volumes.js";
 
 /** The settings slider each event bus plays through ("master" plays straight into the master). */
@@ -29,6 +30,8 @@ export class AudioEngine {
   private listener: Listener | null = null;
   private readonly pool = new VoicePool();
   private readonly voiceGains = new Map<number, GainNode>();
+  // Recorded samples (U4b): decoded once when present; the placeholder plays otherwise.
+  private samples: SampleBank<AudioBuffer> | null = null;
 
   constructor(private volumes: Volumes) {}
 
@@ -45,6 +48,11 @@ export class AudioEngine {
         g.connect(this.master);
         this.buses.set(b, g);
       }
+      this.samples = new SampleBank<AudioBuffer>({
+        fetch: (url) => fetch(url),
+        decode: (data) => ctx.decodeAudioData(data),
+      });
+      if (this.bank) this.preloadSamples(this.bank);
       this.apply(true);
       if (this.ambience) this.setAmbience(true);
     }
@@ -65,7 +73,12 @@ export class AudioEngine {
   /** The audio events and mixer settings in force; takes effect on the next sound. */
   setBank(bank: SoundBank): void {
     this.bank = bank;
+    this.preloadSamples(bank);
     this.apply(false);
+  }
+
+  private preloadSamples(bank: SoundBank): void {
+    this.samples?.preload(bank.events.flatMap(eventFiles));
   }
 
   /** Where the player hears from (the camera); call as it moves. */
@@ -103,7 +116,20 @@ export class AudioEngine {
     const pan = ctx.createStereoPanner();
     pan.pan.value = plan.pan;
     voice.connect(pan).connect(out);
-    const length = playPlaceholder(ctx, voice, file ?? plan.file, plan.pitch);
+    const clip = file ?? plan.file;
+    const sample = this.samples?.get(clip);
+    let length: number;
+    if (sample) {
+      // A recording: same pitch variation, same length as the buffer at that pitch.
+      const src = ctx.createBufferSource();
+      src.buffer = sample;
+      src.playbackRate.value = plan.pitch;
+      src.connect(voice);
+      src.start();
+      length = sample.duration / plan.pitch;
+    } else {
+      length = playPlaceholder(ctx, voice, clip, plan.pitch);
+    }
     granted.voice.endsAt = ctx.currentTime + length;
     this.voiceGains.set(granted.voice.id, voice);
     window.setTimeout(() => {
