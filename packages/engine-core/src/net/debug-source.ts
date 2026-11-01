@@ -15,7 +15,8 @@
  * @module
  */
 
-import type { DebugResponse } from "@mmo-engine/protocol";
+import { defineQuery, hasComponent } from "bitecs";
+import type { DebugCollider, DebugResponse } from "@mmo-engine/protocol";
 import * as C from "../components.js";
 import type { NavigationSystem } from "../navigation/system.js";
 import type { SimWorld } from "../world.js";
@@ -36,7 +37,22 @@ export interface DebugSource {
   waypoints(
     entityWireId: string,
   ): Extract<DebugResponse, { query: "waypoints" }>;
+  /**
+   * Collision bodies centred within `radius` m of (x, z): static boxes
+   * and spheres plus kinematic capsules. At most MAX_DEBUG_COLLIDERS are
+   * listed; `total` counts every match.
+   */
+  colliders(
+    x: number,
+    z: number,
+    radius: number,
+  ): Extract<DebugResponse, { query: "colliders" }>;
 }
+
+/** The most bodies one colliders answer lists (keeps the JSON frame small). */
+export const MAX_DEBUG_COLLIDERS = 4000;
+
+const bodies = defineQuery([C.Transform, C.BodyConfig]);
 
 export interface DebugSourceDeps {
   world: SimWorld;
@@ -55,6 +71,44 @@ export function makeDebugSource(deps: DebugSourceDeps): DebugSource {
   const { world, navigation, loadedTileBounds } = deps;
   return {
     tiles: () => loadedTileBounds(),
+    colliders: (x, z, radius) => {
+      const colliders: DebugCollider[] = [];
+      let total = 0;
+      if (![x, z, radius].every(Number.isFinite)) return { kind: "debug", query: "colliders", colliders, total };
+      const r2 = radius * radius;
+      for (const e of bodies(world.ecs)) {
+        const motion = C.BodyConfig.motionType[e];
+        const shape = C.BodyConfig.shapeKind[e];
+        const capsule = shape === C.ShapeKind.Capsule;
+        // Static boxes/spheres block characters; kinematic capsules are the characters.
+        if (motion === C.MotionType.Static ? capsule : !(motion === C.MotionType.Kinematic && capsule)) continue;
+        const dx = C.Transform.px[e] - x;
+        const dz = C.Transform.pz[e] - z;
+        if (dx * dx + dz * dz > r2) continue;
+        total++;
+        if (colliders.length >= MAX_DEBUG_COLLIDERS) continue;
+        const qx = C.Transform.qx[e];
+        const qy = C.Transform.qy[e];
+        const qz = C.Transform.qz[e];
+        const qw = C.Transform.qw[e];
+        colliders.push({
+          id: String(world.wireId(e)),
+          shape: shape as 0 | 1 | 2,
+          motion: motion as 0 | 1 | 2,
+          x: C.Transform.px[e],
+          y: C.Transform.py[e],
+          z: C.Transform.pz[e],
+          hx: C.BodyConfig.halfX[e],
+          hy: C.BodyConfig.halfY[e],
+          hz: C.BodyConfig.halfZ[e],
+          r: C.BodyConfig.radius[e],
+          // Yaw about +Y, extracted as NavObstacleSystem / PropCollisionSystem do.
+          yaw: Math.atan2(2 * (qw * qy + qx * qz), 1 - 2 * (qx * qx + qy * qy)),
+          asset: hasComponent(world.ecs, C.AssetRef, e) ? C.AssetRef.assetHash[e] : 0,
+        });
+      }
+      return { kind: "debug", query: "colliders", colliders, total };
+    },
     waypoints: (entityWireId) => {
       const unknown: Extract<DebugResponse, { query: "waypoints" }> = {
         kind: "debug",

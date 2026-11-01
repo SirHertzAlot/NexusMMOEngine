@@ -43,6 +43,8 @@ import { Button } from "./components.js";
 import { clearViewportActions, registerViewportActions, toggleViewportFlag, viewportFlags } from "./viewport-actions.js";
 import { selectionCard, type SelectedEntity, type SelectionCard } from "../inspectors/selection.js";
 import { SelectionCardView, usePcgLibrary } from "./selection-card.js";
+import { useColliderOverlay } from "./collider-overlay.js";
+import type * as THREE from "three";
 import { editorSelection } from "./editor-selection.js";
 import { attachMountToPopup, popOutGameView, takePendingPopup, type PoppedOutView } from "./play-popup.js";
 
@@ -65,6 +67,13 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   // Wireframe is the shared viewport toggle (the toolbar's viewport options and the tools panel below).
   const wireframe = viewportFlags.useValue().wireframe;
   const [showcase, setShowcase] = React.useState(false);
+  // Colliders overlay: the server's collision bodies around the player, drawn in the world's scene.
+  const [colliders, setColliders] = React.useState(false);
+  const [scene, setScene] = React.useState<THREE.Scene | null>(null);
+  const hudRef = React.useRef<HudData | null>(null);
+  const colliderReadout = useColliderOverlay(client, scene, colliders, () =>
+    hudRef.current ? { x: hudRef.current.px, z: hudRef.current.pz } : null,
+  );
   const [maximized, setMaximized] = React.useState(false);
   // Camera view: third-person follow or first-person (V toggles in the view too).
   const [view, setView] = React.useState<"third" | "first">("third");
@@ -72,6 +81,31 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [activeQuality, setActiveQuality] = React.useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
+  // Place at cursor (E4): arm it, pick an asset, click bare ground; the spawn goes through the admin console.
+  const [placing, setPlacing] = React.useState(false);
+  const [spawnAsset, setSpawnAsset] = React.useState("");
+  const [spawnNames, setSpawnNames] = React.useState<string[]>([]);
+  const [spawnNote, setSpawnNote] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    void client
+      .admin("spawnlist")
+      .then((r) => {
+        const names = r.message === "(empty)" ? [] : r.message.split(" ");
+        setSpawnNames(names);
+        setSpawnAsset((cur) => cur || names[0] || "");
+      })
+      .catch(() => undefined);
+  }, [client]);
+  const placeAt = React.useCallback(
+    (x: number, z: number) => {
+      if (!spawnAsset) return;
+      void client
+        .admin("spawn", { asset: spawnAsset, x, z })
+        .then((r) => setSpawnNote(r.message))
+        .catch((e: unknown) => setSpawnNote(e instanceof Error ? e.message : String(e)));
+    },
+    [client, spawnAsset],
+  );
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
   // The game view is the active viewport while it shows: it owns its camera (no zoom/reset), has no
   // grid or gizmos, and can toggle wireframe and take a screenshot.
@@ -153,6 +187,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   onHudRef.current = onHud;
   const onHudBoth = React.useCallback(
     (h: HudData) => {
+      hudRef.current = h;
       setHud(h);
       onHudRef.current?.(h);
     },
@@ -226,6 +261,16 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
             <Button size="sm" className="h-7 px-2 text-xs" variant="secondary" onClick={() => setShowcase((v) => !v)}>
               {showcase ? "hide FX" : "FX showcase"}
             </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              variant={colliders ? "default" : "secondary"}
+              title="Draw the server's collision bodies near you: boxes orange, spheres cyan, character capsules green"
+              onClick={() => setColliders((v) => !v)}
+              data-testid="colliders-toggle"
+            >
+              {colliders ? "hide colliders" : "colliders"}
+            </Button>
             <Button size="sm" className="h-7 px-2 text-xs" variant="outline" onClick={() => setMaximized((m) => !m)}>
               {maximized ? "restore view" : "maximize view"}
             </Button>
@@ -254,6 +299,15 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
               pop out
             </Button>
           </div>
+          {colliders && (
+            <div className="mt-1 text-muted-foreground tabular-nums" data-testid="colliders-count">
+              {colliderReadout
+                ? `${colliderReadout.box} boxes · ${colliderReadout.sphere} spheres · ${colliderReadout.capsule} capsules${
+                    colliderReadout.total > colliderReadout.box + colliderReadout.sphere + colliderReadout.capsule ? ` (of ${colliderReadout.total})` : ""
+                  }`
+                : "asking the server…"}
+            </div>
+          )}
           <AdminConsole client={client} />
         </>
       ),
@@ -315,13 +369,28 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       quality={quality}
       maximized={maximized}
       onHud={onHudBoth}
+      onGroundPick={placing ? placeAt : undefined}
       onGpu={setGpu}
+      onScene={setScene}
       onQuality={onQuality}
       combat={combat}
       containerRef={setFrame}
       view={view}
       onViewChange={setView}
     >
+      <div className="absolute left-2 top-2 z-10 flex items-center gap-2 rounded bg-background/80 p-2 text-xs">
+        <Button size="sm" className="h-7 px-2 text-xs" variant={placing ? "default" : "secondary"} onClick={() => setPlacing((p) => !p)}>
+          {placing ? "Placing: click the ground" : "Place at cursor"}
+        </Button>
+        <select aria-label="asset to place" className="h-7 rounded border border-border bg-background px-1" value={spawnAsset} onChange={(e) => setSpawnAsset(e.target.value)}>
+          {spawnNames.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        {spawnNote && <span className="max-w-[24rem] truncate text-muted-foreground">{spawnNote}</span>}
+      </div>
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>
   );

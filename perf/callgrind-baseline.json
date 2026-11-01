@@ -4,22 +4,22 @@
   "platform": "linux-x64",
   "workloads": {
     "sim-tick-1000": {
-      "irPerOp": 14838319,
+      "irPerOp": 14320105,
       "unit": "tick",
       "n": 60
     },
     "physics-step-200": {
-      "irPerOp": 3016444,
+      "irPerOp": 2412770,
       "unit": "step",
       "n": 60
     },
     "crowd-tick-100": {
-      "irPerOp": 6232587,
+      "irPerOp": 6232899,
       "unit": "tick",
       "n": 60
     },
     "paths-batch-100": {
-      "irPerOp": 6041317,
+      "irPerOp": 6041357,
       "unit": "batch",
       "n": 20
     },
@@ -29,19 +29,24 @@
       "n": 200
     },
     "picg-cook-staircase": {
-      "irPerOp": 214382,
+      "irPerOp": 216751,
       "unit": "cook",
       "n": 5
     },
     "meshopt-staircase": {
-      "irPerOp": 24944836,
+      "irPerOp": 24942299,
       "unit": "mesh",
       "n": 10
     },
     "dungeon-shell-30": {
-      "irPerOp": 590811390,
+      "irPerOp": 589949795,
       "unit": "shell",
       "n": 3
+    },
+    "prop-collision-tick": {
+      "irPerOp": 17619027,
+      "unit": "tick",
+      "n": 60
     },
     "residents-tick": {
       "irPerOp": 5228114,

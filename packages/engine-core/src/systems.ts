@@ -35,6 +35,7 @@
 import { tileHeightAt } from "@mmo-engine/protocol";
 import { createRequire } from "node:module";
 import { addComponent, defineQuery, hasComponent, Not } from "bitecs";
+import { stdioWarn } from "./logging/index.js";
 import { Ability, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import {
   AssetRef,
@@ -505,7 +506,8 @@ export interface PhysicsAddBatch {
  */
 export interface PhysicsBackend {
   readonly name: string;
-  addBodies(batch: PhysicsAddBatch): void;
+  /** Adds the batch. Returns how many bodies it could not create (the pool is full, or a shape was rejected). */
+  addBodies(batch: PhysicsAddBatch): number;
   removeBodies(entityIds: BigUint64Array): void;
   /**
    * Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
@@ -594,6 +596,10 @@ export class PhysicsSystem implements SimSystem {
   readonly name = "physics";
   private readonly query = defineQuery([Transform, Velocity, BodyConfig]);
   private readonly teleports = new Set<bigint>();
+  // Bodies the backend could not create, since start, and whether the current
+  // run of drops has been reported (a batch that fits again ends the run).
+  private dropped = 0;
+  private dropping = false;
 
   // Previous tick's membership, sorted by wire id (two rotating buffers).
   private prevA: bigint[] = [];
@@ -646,11 +652,33 @@ export class PhysicsSystem implements SimSystem {
    * @param backend injected physics backend (Jolt addon or mock).
    * @param subSteps Jolt substeps per tick (fixed-timestep pattern:
    *   dt/subSteps per Update, one collision step each). Default 2.
+   * @param warn where a body the backend refuses is reported (default: stdio).
    */
   constructor(
     private readonly backend: PhysicsBackend,
     private readonly subSteps = 2,
+    private readonly warn: (message: string) => void = stdioWarn,
   ) {}
+
+  /** Bodies the backend could not create since start (its pool is full, or it rejected a shape). */
+  get droppedBodies(): number {
+    return this.dropped;
+  }
+
+  /** Counts the bodies a batch could not create; warns once per run of drops. */
+  private reportDrops(dropped: number, batch: number): void {
+    if (dropped === 0) {
+      this.dropping = false;
+      return;
+    }
+    this.dropped += dropped;
+    if (this.dropping) return;
+    this.dropping = true;
+    this.warn(
+      `[physics] ${dropped} of ${batch} new bodies were not created (the body pool is full, ` +
+        "or a shape was rejected). Those entities have no body until they leave and rejoin the physics set.",
+    );
+  }
 
   /**
    * Mark an entity for teleport on the next tick: its JS-side
@@ -670,22 +698,29 @@ export class PhysicsSystem implements SimSystem {
    * Terrain collision for streamed chunks (a ChunkStreamer `colliders`
    * hook): each loaded chunk's tile becomes a static height field, so
    * physics bodies rest on the same surface characters walk on and
-   * clients render. A no-op when the backend has no terrain support.
+   * clients render. `add` returns false when the backend has no room for
+   * the tile (its body pool is full). The streamer then holds the chunk
+   * back rather than load it without ground. With no terrain support in the
+   * backend, `add` does nothing and returns true. A malformed tile throws.
    */
   terrainColliders(chunkWorldSize: number, friction = 0.8): {
-    add(cx: number, cz: number, heights: Float32Array): void;
+    add(cx: number, cz: number, heights: Float32Array): boolean;
     remove(cx: number, cz: number): void;
   } {
+    // A zero size would make every spacing invalid, which the backend reports as "no room".
+    if (!(chunkWorldSize > 0)) throw new RangeError(`physics: terrain needs a chunk size above zero (got ${chunkWorldSize})`);
     const key = (cx: number, cz: number): bigint =>
       (BigInt.asUintN(32, BigInt(cx)) << 32n) | BigInt.asUintN(32, BigInt(cz));
     return {
       add: (cx, cz, heights) => {
-        if (!this.backend.addTerrain) return;
-        // Samples span the chunk edge to edge (neighbours share borders).
-        const spacing = chunkWorldSize / (Math.sqrt(heights.length) - 1);
-        if (!this.backend.addTerrain(key(cx, cz), cx * chunkWorldSize, cz * chunkWorldSize, spacing, heights, friction)) {
-          throw new Error(`physics: terrain collider for chunk ${cx},${cz} was rejected`);
+        if (!this.backend.addTerrain) return true;
+        const side = Math.round(Math.sqrt(heights.length));
+        if (side < 4 || side % 2 !== 0 || side * side !== heights.length) {
+          throw new Error(`physics: terrain for chunk ${cx},${cz} must be an even square of at least 4x4 samples`);
         }
+        // Samples span the chunk edge to edge (neighbours share borders).
+        const spacing = chunkWorldSize / (side - 1);
+        return this.backend.addTerrain(key(cx, cz), cx * chunkWorldSize, cz * chunkWorldSize, spacing, heights, friction);
       },
       remove: (cx, cz) => this.backend.removeTerrain?.(key(cx, cz)),
     };
@@ -758,7 +793,7 @@ export class PhysicsSystem implements SimSystem {
 
     if (addN > 0) {
       this.addDesc.count = addN;
-      this.backend.addBodies(this.addDesc);
+      this.reportDrops(this.backend.addBodies(this.addDesc), addN);
     }
     if (remN > 0) {
       this.backend.removeBodies(this.remIds.subarray(0, remN));
@@ -900,7 +935,7 @@ export class PhysicsSystem implements SimSystem {
 
 interface JoltAddonModule {
   createWorld(): {
-    addBodies(desc: unknown): void;
+    addBodies(desc: unknown): number;
     removeBodies(entityIds: BigUint64Array): void;
     syncBodies(
       count: number,

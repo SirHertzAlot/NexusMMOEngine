@@ -46,6 +46,23 @@ export function createSystems(ctx) {
         }
         return best;
       },
+      // The nearest chapel or parish church to a home (Sunday worship, SG5).
+      churchNear: (home) => {
+        const from = home ? positions.get(home) : square;
+        let best;
+        let bestD = Infinity;
+        for (const s of manifest.structures) {
+          if (s.archetype !== "chapel" && s.archetype !== "parish_church") continue;
+          const p = positions.get(s.id);
+          if (!p || !from) continue;
+          const d = Math.hypot(p.x - from.x, p.z - from.z);
+          if (d < bestD) {
+            bestD = d;
+            best = s.id;
+          }
+        }
+        return best;
+      },
     };
     // The town's centre and radius, from its structures (the tiers go by a player's distance to its edge).
     const spots = manifest.structures.map((st) => positions.get(st.id)).filter(Boolean);
@@ -86,7 +103,7 @@ export function createSystems(ctx) {
 
   const residents = new ResidentSystem({
     towns,
-    place: (town, npc, t) => scheduleAt(npc, t, towns.find((x) => x.id === town.id).view),
+    place: (town, npc, t, day) => scheduleAt(npc, t, towns.find((x) => x.id === town.id).view, day),
     timeOfDay: config.timeOfDay,
     dayOf: config.dayOf,
     bark: (town, npc, c) => {
