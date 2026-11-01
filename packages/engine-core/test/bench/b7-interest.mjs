@@ -126,18 +126,36 @@ async function run(layout, entities, mode, burst) {
 // B7_ONLY=spread:1000 runs just that layout and entity count (repeat runs for timing).
 const ONLY = process.env.B7_ONLY ? process.env.B7_ONLY.split(":") : null;
 const rows = [];
+// B7_REPEATS=3 runs every cell that many times. The row reports the median of the per-run means
+// and the min to max range, so a burst cost is confirmed only when it clears the spread.
+const REPEATS = Math.max(1, Number(process.env.B7_REPEATS ?? 1));
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 for (const mode of MODES) for (const burst of BURSTS) for (const layout of ["spread", "towns"]) for (const entities of [1000, 5000]) {
   if (ONLY && (ONLY[0] !== layout || Number(ONLY[1]) !== entities)) continue;
-  rows.push(await run(layout, entities, mode, burst));
-  const last = rows[rows.length - 1];
-  console.error(`done ${mode} burst=${burst} ${layout} ${entities} tickMs mean=${round(last.tickMs.mean, 2)} p50=${round(last.tickMs.p50 ?? last.tickMs.median ?? NaN, 2)} p99=${round(last.tickMs.p99, 2)}`);
+  const runs = [];
+  for (let r = 0; r < REPEATS; r++) {
+    runs.push(await run(layout, entities, mode, burst));
+    const last = runs[runs.length - 1];
+    console.error(`done ${mode} burst=${burst} ${layout} ${entities} run=${r + 1}/${REPEATS} tickMs mean=${round(last.tickMs.mean, 2)} p99=${round(last.tickMs.p99, 2)}`);
+  }
+  const pick = (get) => {
+    const vals = runs.map(get);
+    return { median: median(vals), min: Math.min(...vals), max: Math.max(...vals) };
+  };
+  rows.push({
+    ...runs[0], runs: REPEATS,
+    perClientBytes: { ...runs[0].perClientBytes, mean: median(runs.map((x) => x.perClientBytes.mean)) },
+    tickMs: { ...runs[0].tickMs, mean: median(runs.map((x) => x.tickMs.mean)), p99: median(runs.map((x) => x.tickMs.p99)), range: pick((x) => x.tickMs.mean) },
+    channelBytes: { ...runs[0].channelBytes, mean: median(runs.map((x) => x.channelBytes.mean)) },
+    edgeMs: { ...runs[0].edgeMs, mean: median(runs.map((x) => x.edgeMs.mean)) },
+  });
 }
 const kib = (b) => (b / 1024).toFixed(1);
 record("B7", "Interest bandwidth", { ticks: TICKS, sessions: SESSIONS, rows }, `
 ${SESSIONS} sessions over the edge channel, placed like the entities; every entity moves every tick. ${TICKS} ticks after ${WARMUP} warm-up (includes the periodic snapshot tick). Mode \`global\` is today's path (every client gets the whole region's delta). Spawn burst \`yes\`: ${BURST_SIZE} ground items dropped at once every ${BURST_EVERY} ticks (drops ride the per-session drops path with interest on).
 
-| Mode | Spawn burst | Layout | Entities | bytes/client/tick mean | p99 | core tick ms mean | p99 | channel bytes/tick mean | p99 | edge assembly ms mean |
-|---|---|---|---|---|---|---|---|---|---|---|
-${rows.map((r) => `| ${r.mode} | ${r.burst ? "yes" : "no"} | ${r.layout} | ${r.entities} | ${kib(r.perClientBytes.mean)} KiB | ${kib(r.perClientBytes.p99)} KiB | ${round(r.tickMs.mean, 2)} | ${round(r.tickMs.p99, 2)} | ${kib(r.channelBytes.mean)} KiB | ${kib(r.channelBytes.p99)} KiB | ${round(r.edgeMs.mean, 3)} |`).join("\n")}
+| Mode | Spawn burst | Layout | Entities | runs | bytes/client/tick mean | p99 | core tick ms mean, median of runs (min to max) | p99 | channel bytes/tick mean | p99 | edge assembly ms mean |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+${rows.map((r) => `| ${r.mode} | ${r.burst ? "yes" : "no"} | ${r.layout} | ${r.entities} | ${r.runs} | ${kib(r.perClientBytes.mean)} KiB | ${kib(r.perClientBytes.p99)} KiB | ${round(r.tickMs.mean, 2)} (${round(r.tickMs.range.min, 2)} to ${round(r.tickMs.range.max, 2)}) | ${round(r.tickMs.p99, 2)} | ${kib(r.channelBytes.mean)} KiB | ${kib(r.channelBytes.p99)} KiB | ${round(r.edgeMs.mean, 3)} |`).join("\n")}
 `);
 process.exit(0);
