@@ -17,7 +17,7 @@ export const selectQuest = selectedQuest.set;
 
 /** Quest rows from the files on disk; reloads when asked (after a Story editor save, say). */
 export function useQuests(): { rows: QuestRow[] | null; error: string; reload(): void } {
-  const rows = questRows.use();
+  const rows = questRows.useValue();
   const [error, setError] = React.useState("");
   const reload = React.useCallback(() => {
     loadStory()
@@ -38,7 +38,7 @@ export const openStoryEditor = (): void => {
 
 export function QuestsPanel(): React.JSX.Element {
   const { rows, error, reload } = useQuests();
-  const sel = selectedQuest.use();
+  const sel = selectedQuest.useValue();
   if (error) return <p className="p-3 text-sm text-red-400">Could not read content/quests: {error}</p>;
   if (rows === null) return <p className="p-3 text-sm" style={dim}>Reading content/quests…</p>;
   const q = rows.find((r) => r.id === sel) ?? rows[0];
@@ -97,7 +97,7 @@ export function QuestsPanel(): React.JSX.Element {
 /** Left tree of the Story workspace: the real quests; picking one shows it in the Quests view. */
 export function QuestsTree({ onView }: { onView: (v: string) => void }): React.JSX.Element {
   const { rows, reload } = useQuests();
-  const sel = selectedQuest.use();
+  const sel = selectedQuest.useValue();
   const open = (id: string): void => {
     selectQuest(id);
     onView("quests");
@@ -127,7 +127,7 @@ export function QuestsTree({ onView }: { onView: (v: string) => void }): React.J
 
 export function QuestDetailsLive(): React.JSX.Element {
   const { rows } = useQuests();
-  const sel = selectedQuest.use();
+  const sel = selectedQuest.useValue();
   const q = (rows ?? []).find((r) => r.id === sel) ?? rows?.[0];
   if (!q) return <p className="text-xs" style={dim}>No quest selected.</p>;
   return (

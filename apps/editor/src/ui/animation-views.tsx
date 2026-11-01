@@ -103,7 +103,7 @@ export function MediaDocBar({ file, doc }: { file: string; doc: Pick<MediaDoc<Me
 export function ClipBrowser({ rig, loading, graph, moves, clipNames }: {
   rig: AnimationManifest | null; loading: boolean; graph: LocomotionGraph | null; moves: CombatMove[]; clipNames: string[];
 }): React.JSX.Element {
-  const { clip } = animationStore.use();
+  const { clip } = animationStore.useValue();
   const [filter, setFilter] = React.useState("");
   const [source, setSource] = React.useState("all");
   const usage = React.useMemo(() => (graph ? clipUsage(graph, moves) : new Map<string, string[]>()), [graph, moves]);
@@ -266,7 +266,7 @@ export function LocomotionEditor({ graph, clipNames, onChange }: { graph: Locomo
 const MARKER_COLOUR: Record<string, string> = { hitAt: "#93000A", branchAt: "#7A5A12", chain: "#1F5110", advance: "#3a3355", iframes: "#36449A" };
 
 export function CombatTimeline({ doc, rig, events, onChange }: { doc: { moves: CombatMove[] }; rig: AnimationManifest | null; events: string[]; onChange: (moves: CombatMove[]) => void }): React.JSX.Element {
-  const { move: moveId } = animationStore.use();
+  const { move: moveId } = animationStore.useValue();
   const move = doc.moves.find((m) => m.id === moveId) ?? doc.moves[0];
   const [scrub, setScrub] = React.useState(0);
   const drag = React.useRef<Marker | null>(null);

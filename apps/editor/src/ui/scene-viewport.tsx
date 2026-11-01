@@ -92,7 +92,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   }, []);
 
   // Grid / gizmos / wireframe follow the toolbar's viewport options.
-  const flags = viewportFlags.use();
+  const flags = viewportFlags.useValue();
   React.useEffect(() => viewRef.current?.setGrid(flags.grid), [flags.grid, webgl]);
   React.useEffect(() => viewRef.current?.setGizmos(flags.gizmos), [flags.gizmos, webgl]);
   React.useEffect(() => viewRef.current?.setWireframe(flags.wireframe), [flags.wireframe, webgl, content]);
