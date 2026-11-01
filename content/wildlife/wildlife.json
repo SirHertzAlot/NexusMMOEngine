@@ -87,6 +87,7 @@
    "role": "large_herbivore",
    "models": "deer|mule_deer",
    "habitat": "land",
+   "wanderM": 12,
    "group": {
     "kind": "herd",
     "size": [
@@ -177,6 +178,7 @@
    "role": "large_herbivore",
    "models": "bighorn",
    "habitat": "land",
+   "wanderM": 12,
    "group": {
     "kind": "herd",
     "size": [
@@ -232,6 +234,7 @@
    "role": "small_prey",
    "models": "rabbit|cottontail_rabbit",
    "habitat": "land",
+   "wanderM": 6,
    "group": {
     "kind": "herd",
     "size": [
@@ -264,6 +267,7 @@
    "role": "small_prey",
    "models": "squirrel|chipmunk",
    "habitat": "land",
+   "wanderM": 6,
    "group": {
     "kind": "pair",
     "size": [
@@ -292,6 +296,7 @@
    "role": "small_prey",
    "models": "quail|pheasant|sparrow",
    "habitat": "land",
+   "wanderM": 5,
    "group": {
     "kind": "flock",
     "size": [
@@ -647,6 +652,7 @@
    "role": "livestock",
    "models": "cow|bull",
    "habitat": "land",
+   "wanderM": 8,
    "group": {
     "kind": "herd",
     "size": [
@@ -675,6 +681,7 @@
    "role": "livestock",
    "models": "sheep",
    "habitat": "land",
+   "wanderM": 10,
    "group": {
     "kind": "flock",
     "size": [
@@ -703,6 +710,7 @@
    "role": "livestock",
    "models": "goat",
    "habitat": "land",
+   "wanderM": 8,
    "group": {
     "kind": "herd",
     "size": [
@@ -731,6 +739,7 @@
    "role": "livestock",
    "models": "pig",
    "habitat": "land",
+   "wanderM": 8,
    "group": {
     "kind": "herd",
     "size": [
@@ -759,6 +768,7 @@
    "role": "livestock",
    "models": "horse|donkey|llama",
    "habitat": "land",
+   "wanderM": 12,
    "group": {
     "kind": "pair",
     "size": [
@@ -787,6 +797,7 @@
    "role": "livestock",
    "models": "hen|rooster|chick|turkey",
    "habitat": "land",
+   "wanderM": 4,
    "group": {
     "kind": "flock",
     "size": [

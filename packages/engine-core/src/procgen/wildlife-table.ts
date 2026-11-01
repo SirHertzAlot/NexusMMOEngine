@@ -162,6 +162,8 @@ export const SpeciesSchema = z.strictObject({
   /** Radius it ranges over from home, metres. */
   territoryM: z.number().positive(),
   activity: z.enum(ACTIVITIES),
+  /** Metres it strolls from home while idle and awake (WL2); absent: it stands still. */
+  wanderM: z.number().min(0).optional(),
   temperament: z.enum(TEMPERAMENTS),
   danger: z.strictObject({
     /** 0 harmless, 1 defends itself only, 2 solitary and telegraphed, 3 packs and big hunters, 4 apex, 5 boss (needs `boss`). */
