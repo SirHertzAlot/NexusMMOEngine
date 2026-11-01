@@ -37,13 +37,13 @@
         "third_party/FastSIMD/include",
         "generated",
       ],
-      "cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-march=haswell"],
+      "cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell"],
       # node-gyp disables C++ RTTI by default (-fno-rtti); FastNoise2's
       # Metadata machinery uses dynamic_cast, so re-enable it here.
       # (Exceptions stay disabled via NAPI_DISABLE_CPP_EXCEPTIONS.)
       "cflags_cc!": ["-fno-rtti"],
       "xcode_settings": {
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-march=haswell"],
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell"],
         "GCC_ENABLE_CPP_RTTI": "YES"
       },
       "msvs_settings": {

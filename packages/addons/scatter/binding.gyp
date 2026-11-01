@@ -30,9 +30,9 @@
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")"
       ],
-      "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-march=haswell", "-ffp-contract=off"],
+      "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell", "-ffp-contract=off"],
       "xcode_settings": {
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-march=haswell", "-ffp-contract=off"]
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell", "-ffp-contract=off"]
       },
       "msvs_settings": {
         "VCCLCompilerTool": {

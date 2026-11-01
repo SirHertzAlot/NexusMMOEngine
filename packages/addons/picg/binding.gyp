@@ -30,10 +30,10 @@
         "third_party/meshoptimizer/src",
         "generated"
       ],
-      "cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-march=haswell", "-fexceptions", "-w"],
+      "cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell", "-fexceptions", "-w"],
       "cflags_cc!": ["-fno-exceptions", "-fno-rtti"],
       "xcode_settings": {
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-march=haswell", "-w"],
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell", "-w"],
         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
         "GCC_ENABLE_CPP_RTTI": "YES",
         "MACOSX_DEPLOYMENT_TARGET": "10.15"
