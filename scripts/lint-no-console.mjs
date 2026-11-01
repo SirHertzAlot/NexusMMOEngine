@@ -39,7 +39,7 @@ const EXEMPT_DIRS = [join(root, "packages", "logging", "src")];
 const BUDGETS = [
   // Boot banners + fatal handler (docs/SAB-LOGGING-LAYER-SPEC.md §2.1 note in server.ts):
   // visible even when the log worker is not up.
-  { file: "packages/engine-core/src/server.ts", budget: 35, justification: "boot banners + fatal, spec-kept on stdio" },
+  { file: "packages/engine-core/src/server.ts", budget: 36, justification: "boot banners + fatal, spec-kept on stdio; + the enemy models file problem line (EM1, boot only)" },
   { file: "packages/world-server/src/server.ts", budget: 6, justification: "boot banners + fatal, spec-kept on stdio" },
   // CLI products: stdout is the report.
   { file: "packages/engine-core/src/sim.ts", budget: 12, justification: "CLI: the verification report is the product" },

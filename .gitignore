@@ -67,6 +67,8 @@ content/scale.local.json
 # wildlife ecology plan: lists licensed models by id (wildlife:plan), never commit
 packages/engine-core/content/ecology/*.local.ecology.json
 packages/engine-core/content/wildlife/*.local.json
+# Enemy art (EM1) names licensed catalog models: bake locally, never commit
+packages/engine-core/content/enemies/*.local.json
 
 # bake:all outputs under the content folder: they name licensed models or are machine-local
 /content/bake-env.local.txt
