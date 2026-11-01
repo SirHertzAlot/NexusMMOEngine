@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**248 items built, 22 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**249 items built, 21 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -405,7 +405,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | Ragdolls, and Jolt CharacterVirtual (characters blocked by props) | 📋 | |
 | — | **Dungeon physics**: instance bodies are swept against the grid walls (no corner clips, no tunnelling thin walls at speed), dressing lines carry `collision` (solid/none), the bake writes `colliders` (pillars, statues, chests; not torches or banners) that `DungeonWallSystem` enforces, spawns and the entrance are clear of walls and colliders, and the walkable grid agrees with the shell cell by cell | ✅ | `feat/physics-dungeons`; files baked before this have no `colliders` and need a re-bake |
 | — | **Prop blocking without CharacterVirtual**: kinematic walkers resolve against static prop bodies on the JS side (`PropCollisionSystem`, after integrate/character, before the physics sync), so players no longer walk through scatter-spawned trees and rocks; scene nodes carry validated per-node `Collider` data (box/sphere/none, edited in the Scenes workspace) | 🚧 | Merged via `integration/editor`; full CharacterVirtual stays 📋; `npm run valgrind:perf` still owes the new system a Linux baseline check |
-| — | **Zero-Copy Hybrid Engine Data Plane**: page-aligned `SharedArrayBuffer` arena (`sab-store.ts`), 64B cache-line padded lockless SPSC command and transaction rings (`lockless-ring.ts`), 30Hz Simulation Worker (`sim-worker.ts`) with C++ N-API strided & SSE2 branchless Planar SoA SIMD kernels (`packages/addons/integrate` / `engine_kernel.node`), binary 4-byte frame `/ws/sim` ingestion gateway (`data-plane-server.ts`), and async Embedded SurrealDB Persistence Worker (`persist-worker.ts`, `schema.surrealql`) | 🚧 | [`HYBRID-DATA-PLANE.md`](HYBRID-DATA-PLANE.md); PR #430 (`feat/zero-copy-hybrid-data-plane`); 22 unit + e2e + native addon tests green |
+| — | **Zero-Copy Hybrid Engine Data Plane**: page-aligned `SharedArrayBuffer` arena (`sab-store.ts`), 64B cache-line padded lockless SPSC command and transaction rings (`lockless-ring.ts`), 30Hz Simulation Worker (`sim-worker.ts`) with C++ N-API strided & SSE2 branchless Planar SoA SIMD kernels (`packages/addons/integrate` / `engine_kernel.node`), binary 4-byte frame `/ws/sim` ingestion gateway (`data-plane-server.ts`), and async Embedded SurrealDB Persistence Worker (`persist-worker.ts`, `schema.surrealql`) | ✅ | [`HYBRID-DATA-PLANE.md`](HYBRID-DATA-PLANE.md); PR #430 (`feat/zero-copy-hybrid-data-plane`); 22 unit + e2e + native addon tests green; persistence durable by default (#557, #562) |
 | SIMD1 | **SIMD build flags**: native addons compile with `-O3 -ffast-math -fno-finite-math-only -march=haswell` (MSVC `/fp:fast /arch:AVX2`); finiteness and NaN checks in the addons use bit tests, since fast-math folds `std::isfinite`; geometry's -0 and 0 are the same position in its tests | ✅ | PR #503 (`claude/project-thread-j0k4z0`). Memcheck clean on all six addons; physics, procgen, scatter, geometry and navigation suites green locally |
 
 ## 5b. Edge / core split
@@ -486,6 +486,7 @@ Newest first. One line per merged PR or decision.
 - **2026-11-01**: Client ragdoll corpses on PhysX (#549): 20 at most, 4 s each, cosmetic. Live-client check still to do, so the row stays 🚧.
 - **2026-11-01**: Snapshot interpolation for shared bodies (#551): `SnapshotInterpolator`, 0.1 s render delay by default. Not wired into the entity layer yet, so the row stays 🚧.
 - **2026-11-01**: IM5 names follow interest (#560): a session is sent a name once, when its entity is in view (interest sectors, pins, own avatar); catch-up covers entities that walk in later. Drops stay global (next slice). The IM row stays 🚧.
+- **2026-11-01**: Zero-copy data plane persistence is durable by default (#562): the ledger lives in rocksdb under the data dir, `MMO_DATA_PLANE_DB` overrides, `mem://` opts out. Checkpoint throughput is within noise between engines, so the durable default is chosen. Row set to ✅.
 - **2026-11-01**: Persistence ledger survives a restart (#557): schema DEFINEs are idempotent, `MMO_DATA_PLANE_DB` opts production into a durable rocksdb URL, restart round-trip test. The zero-copy row stays 🚧: the default is still `mem://`, and a durable default needs a checkpoint-throughput benchmark on rocksdb first.
 - **2026-11-01**: Shared bodies drawn from server snapshots in the entity layer (#555), render delay 0.15 s from the lossy-feed sweep. Live-server check still to do.
 - **2026-11-01**: Mirror `Interpolator.onPush` listener (#553): a reader can keep more history than the last two ticks. Shared-body wiring in the entity layer is #555, still a draft pending a GIF.
