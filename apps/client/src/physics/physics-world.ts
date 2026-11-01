@@ -26,7 +26,7 @@ export interface WalkerState extends Vec3 {
 
 export interface PhysicsWorld {
   /** The library behind the seam, for benchmarks and logs. */
-  readonly backend: "rapier" | "jolt";
+  readonly backend: "rapier" | "physx";
 
   /** Advance the simulation by `dt` seconds (split into `PHYSICS_SUBSTEPS` steps). */
   step(dt: number): void;
