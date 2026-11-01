@@ -1437,7 +1437,8 @@ export class Gateway {
     // that first shows them (catalog §0x12).
     const spawned = sim.spawnedWireIds();
     const namesEnv = this.namesFor(spawned);
-    const dropsEnv = this.dropsFor(spawned);
+    // With interest on, drops go per session (deliverDropsFor), so no global drops message.
+    const dropsEnv = this.interest ? null : this.dropsFor(spawned);
     // Phase 3: the delta encodes directly from the SAB-backed stores —
     // no intermediate CollectedState row copy. Read-only w.r.t. the
     // tracker: commit() still runs below, as on the row path.
@@ -2117,7 +2118,8 @@ export class Gateway {
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
-    const bySector = frame ? this.namedBySector() : null;
+    const bySector = frame ? this.bucketBySector(this.namedWireIds()) : null;
+    const dropped = frame && this.items ? this.droppedIndex() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
     // interest management splits it per sector (IM3).
     const deltaEnv = encodeEnvelope(
@@ -2154,6 +2156,7 @@ export class Gateway {
         const replace = isSnapshotTick || s.needsResync || !s.interestSet;
         const entries = this.interestEntries(s, frame, replace);
         if (bySector) this.deliverNamesFor(s, bySector, tick);
+        if (dropped) this.deliverDropsFor(s, dropped, tick);
         const sid = edge && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
         if (sid !== undefined) {
           // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
@@ -2332,9 +2335,10 @@ export class Gateway {
    * them on a replace), and a leave for each it dropped.
    */
   /** The named entities by their home sector, once per tick (IM5); null without interest management. */
-  private namedBySector(): Map<string, bigint[]> {
+  /** Wire ids grouped by their home sector (entities without a Transform are left out). */
+  private bucketBySector(wids: readonly bigint[]): Map<string, bigint[]> {
     const bySector = new Map<string, bigint[]>();
-    for (const w of this.namedWireIds()) {
+    for (const w of wids) {
       const eid = this.world.resolveWireId(w);
       if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
       const sector = homeSector(this.world, eid);
@@ -2343,6 +2347,35 @@ export class Gateway {
       else bySector.set(sector, [w]);
     }
     return bySector;
+  }
+
+  /** The ground items by home sector, and the set of all of them (for pruning what a session has been sent). */
+  private droppedIndex(): { bySector: Map<string, bigint[]>; live: Set<bigint> } {
+    const wids = this.items!.groundWireIds(this.world);
+    return { bySector: this.bucketBySector(wids), live: new Set(wids) };
+  }
+
+  /**
+   * Drops (0x15) with interest management on (IM5): a session is told the drop row of each ground item
+   * in its interest sectors that it has not been told yet, so a drop that lands in view, or walks into
+   * view later, arrives with its name. A drop goes out once per session; the client keeps it until the
+   * item despawns, so an item that stays in view costs nothing after its first row. Rows for items that
+   * are gone are pruned from the session's set.
+   */
+  private deliverDropsFor(s: ClientSession, dropped: { bySector: ReadonlyMap<string, bigint[]>; live: ReadonlySet<bigint> }, tick: number): void {
+    const sent = (s.droppedSent ??= new Set<bigint>());
+    if (sent.size > 0) for (const w of sent) if (!dropped.live.has(w)) sent.delete(w);
+    const want: bigint[] = [];
+    for (const sector of s.interestSet ?? []) {
+      for (const w of dropped.bySector.get(sector) ?? []) {
+        if (sent.has(w)) continue;
+        sent.add(w);
+        want.push(w);
+      }
+    }
+    if (want.length === 0) return;
+    const env = this.dropsFor(want);
+    if (env) this.deliver(s, env, tick);
   }
 
   /**

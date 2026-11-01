@@ -108,6 +108,13 @@ export class ItemService implements SimSystem {
     return this.entityOf.size;
   }
 
+  /** Wire ids of the entities of the items lying on the ground (the gateway buckets them by sector, IM5). */
+  groundWireIds(sim: SimWorld): bigint[] {
+    const out: bigint[] = [];
+    for (const eid of this.entityOf.values()) out.push(sim.wireId(eid));
+    return out;
+  }
+
   /**
    * Drop a new item of definition `def` at (x, z): it belongs to `owner`
    * (a character id; 0: anyone) for the rules' ownership time. Returns the
