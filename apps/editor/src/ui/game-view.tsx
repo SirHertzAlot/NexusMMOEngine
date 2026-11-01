@@ -48,6 +48,8 @@ export interface GameViewProps {
   /** Cover the editor window instead of sitting in the panel. */
   maximized?: boolean;
   onHud?: (hud: HudData) => void;
+  /** Place-at-cursor (E4): a left click on bare ground reports its x/z. */
+  onGroundPick?: (x: number, z: number) => void;
   onGpu?: (gpu: GpuInfo) => void;
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   /** Hit feedback and the picked target (a left click on a body picks it); one is made when absent. */
@@ -70,6 +72,7 @@ export function GameView({
   quality = "auto",
   maximized = false,
   onHud,
+  onGroundPick,
   onGpu,
   onQuality,
   combat: givenCombat,
@@ -121,6 +124,7 @@ export function GameView({
         quality={quality}
         combat={combat}
         onHud={onHud}
+        onGroundPick={onGroundPick}
         onGpu={onGpu}
         onQuality={onQuality}
         view={view}
