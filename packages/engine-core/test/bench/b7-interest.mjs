@@ -13,6 +13,7 @@ import { decodeEnvelope, encodeDeltaSet, encodeControl, encodeEnvelope, MessageT
 import { record, round, stats } from "../../../channel/test/bench/results.mjs";
 import { ChannelTransport } from "../../dist/src/net/channel-transport.js";
 import { applyTeleport } from "../../dist/src/admin/player.js";
+import * as C from "../../dist/src/components.js";
 import { ItemDefs, ItemService } from "../../dist/src/items/index.js";
 import { engineDefaults } from "@mmo-engine/rules";
 import { BENCH_PASSWORD, benchGateway, mulberry32, placeIn } from "./world.mjs";
@@ -23,6 +24,12 @@ const MODES = (process.env.B7_MODES ?? "global").split(",");
 // drops BURST_SIZE ground items at once, every BURST_EVERY ticks after warm-up, placed like the entities.
 const BURSTS = (process.env.B7_BURSTS ?? "0").split(",").map((v) => v === "1");
 const BURST_EVERY = 30, BURST_SIZE = 100;
+// IM7 rate LOD: B7_OUTER_EVERY=3 sends sectors beyond enterM every 3 ticks (the union of the window). Unset: every tick.
+const OUTER_EVERY = Number(process.env.B7_OUTER_EVERY ?? 0) || 0;
+// B7_WANDER=1: every player steps 30 m (east, west, north or south) every 15 ticks, so sectors cross
+// the enter and leave radii and the hysteresis band (IM7's outer ring) is actually exercised. Off by default.
+const WANDER = process.env.B7_WANDER === "1";
+const WANDER_EVERY = 15, WANDER_STEP = 30;
 const tick = () => new Promise((r) => setImmediate(r));
 
 const DROP_POOL = [{
@@ -77,7 +84,7 @@ async function run(layout, entities, mode, burst) {
   };
   const transport = new ChannelTransport(push, 4000);
   const items = burst ? makeItems() : null;
-  const gw = await benchGateway({ entities, users: SESSIONS, layout, clock: () => now, transport, ...(items ? { items } : {}), ...(mode === "interest" ? { interest: { enterM: 96, leaveM: 128 } } : {}) });
+  const gw = await benchGateway({ entities, users: SESSIONS, layout, clock: () => now, transport, ...(items ? { items } : {}), ...(mode.startsWith("interest") ? { interest: { enterM: 96, leaveM: 128, ...(OUTER_EVERY ? { outerEvery: OUTER_EVERY } : {}) } } : {}) });
   await gw.listen();
   gw.frame(now);
   for (let i = 0; i < SESSIONS; i++) {
@@ -106,6 +113,17 @@ async function run(layout, entities, mode, burst) {
       for (let k = 0; k < BURST_SIZE; k++) {
         const [x, z] = placeIn(layout, prng);
         items.spawnDrop(gw.world, 0, x, z, 0);
+      }
+    }
+    if (WANDER && i % WANDER_EVERY === 0) {
+      for (const wid of welcomed.values()) {
+        const pe = gw.world.resolveWireId(wid);
+        if (pe < 0) continue;
+        const dir = Math.floor(prng() * 4);
+        const dx = [WANDER_STEP, -WANDER_STEP, 0, 0][dir], dz = [0, 0, WANDER_STEP, -WANDER_STEP][dir];
+        const x = Math.max(-1000, Math.min(1000, C.Transform.px[pe] + dx));
+        const z = Math.max(-1000, Math.min(1000, C.Transform.pz[pe] + dz));
+        applyTeleport(gw.world, wid, x, z, null);
       }
     }
     const t0 = performance.now();

@@ -137,7 +137,7 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
@@ -2421,9 +2421,18 @@ export class Gateway {
       ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
       : new Set([GLOBAL_SECTOR]);
     const entries: DeltaSetEntry[] = [];
+    // IM7: sectors beyond enterM (kept only by hysteresis) send a rate-limited delta, when a rate is set.
+    const every = this.interest!.outerEvery;
+    const at = s.observer
+      ? { x: s.observer.x, z: s.observer.z }
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid) ? { x: C.Transform.px[eid], z: C.Transform.pz[eid] } : null;
     for (const sector of next) {
       if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-      else {
+      else if (every && at && sectorDistance(sector, at.x, at.z) > this.interest!.enterM) {
+        if (frame.tick % every !== 0) continue;
+        const d = frame.rateDelta(sector, every);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      } else {
         const d = frame.delta(sector);
         if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
       }
