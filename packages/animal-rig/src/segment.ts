@@ -316,15 +316,24 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
 }
 
 /** Classify a model into a procedural rig type using name patterns or geometric proportions. */
-/** The rig type a model's name says it is, or undefined when the name says nothing (the art catalog id works too). */
+const NAMED_RIGS: Array<[ModelRigType, RegExp]> = [
+  ["serpentine", /^(snake|eel|worm|serpent|constrictor)s?$/],
+  ["arachnid", /^(spider|centipede|crab|scorpion|ant|beetle|lobster|ladybug)s?$/],
+  ["aquatic", /^(fish|shark|whale|dolphin|orca|trout|piranha|seahorse|walrus|seal|narwhal|squid|octopus|jellyfish)$/],
+  ["avian", /^(bird|owl|hawk|eagle|crow|raven|duck|hen|rooster|goose|pelican|seagull|chick|falcon|bat|dragonfly|butterfly|pheasant|quail)s?$/],
+  ["quadruped", /^(wolf|bear|deer|boar|cow|horse|sheep|goat|pig|coyote|fox|badger|raccoon|cat|dog|lion|tiger|elk|bull|donkey|llama)s?$/],
+  ["flora", /^(tree|bush|plant|flower|grass|kelp|coral|mushroom|fern|anemone|sponge)s?$/],
+];
+
+/**
+ * The rig type a model's name says it is, or undefined when the name says nothing (the art catalog id works too).
+ * Matches whole words: "giant" is not an ant, "combat" is not a bat.
+ */
 export function namedRigType(modelName: string): ModelRigType | undefined {
-  const name = modelName.toLowerCase();
-  if (/snake|eel|worm|serpent|constrictor/.test(name)) return "serpentine";
-  if (/spider|centipede|crab|scorpion|ant|beetle|lobster|ladybug/.test(name)) return "arachnid";
-  if (/fish|shark|whale|dolphin|orca|trout|piranha|seahorse|walrus|seal|narwhal|squid|octopus|jellyfish/.test(name)) return "aquatic";
-  if (/bird|owl|hawk|eagle|crow|raven|duck|hen|rooster|goose|pelican|seagull|chick|falcon|bat|dragonfly|butterfly|pheasant|quail/.test(name)) return "avian";
-  if (/wolf|bear|deer|boar|cow|horse|sheep|goat|pig|coyote|fox|badger|raccoon|cat|dog|lion|tiger|elk|bull|donkey|llama/.test(name)) return "quadruped";
-  if (/tree|\bbush\b|plant|flower|grass|kelp|coral|mushroom|fern|anemone|sponge/.test(name)) return "flora";
+  const words = modelName.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 0);
+  for (const [type, re] of NAMED_RIGS) {
+    if (words.some((w) => re.test(w))) return type;
+  }
   return undefined;
 }
 
