@@ -292,7 +292,44 @@ export const WORKLOADS = {
       s.dungeon.dungeonShell(s.d, s.geo);
     },
   },
+
+  /** Channel (E5a): one wire.sectors push of 64 sectors x 4 KiB to 50 sessions, as raw blobs in a binary frame. */
+  "channel-sectors-push": {
+    n: 200, warm: 50, unit: "push",
+    setup() {
+      return sectorsPush(false);
+    },
+    run(s) {
+      s.encode(s.payload);
+    },
+  },
+
+  /** The same push with the bytes base64'd inside JSON (the frame format before E5a), for comparison. */
+  "channel-sectors-push-base64": {
+    n: 200, warm: 50, unit: "push",
+    setup() {
+      return sectorsPush(true);
+    },
+    run(s) {
+      s.encode(s.payload);
+    },
+  },
 };
+
+/** The shared-bytes push of IM4 (ChannelTransport.sendSectors), built once; `run` only encodes it. */
+function sectorsPush(base64) {
+  const { encodeFrame } = require(join(root, "packages/channel/dist/src/framing.js"));
+  const bytes = {};
+  const plans = [];
+  for (let k = 0; k < 64; k++) {
+    const b = Buffer.alloc(4096);
+    for (let j = 0; j < b.length; j++) b[j] = (k * 31 + j) & 255;
+    bytes["k" + k] = base64 ? b.toString("base64") : b;
+  }
+  for (let p = 0; p < 50; p++) plans.push({ sid: "e-" + p, replace: false, entries: Array.from({ length: 64 }, (_, k) => [0, "s" + k, "k" + k]) });
+  const payload = { type: "wire.sectors", id: "push-1", payload: { tick: 1, bytes, plans } };
+  return { payload, encode: (frame) => encodeFrame(frame) };
+}
 
 /** Run the named workloads (all by default); returns [{ name, n, unit, ms } | { name, skipped }]. */
 export async function runWorkloads(names = Object.keys(WORKLOADS)) {
