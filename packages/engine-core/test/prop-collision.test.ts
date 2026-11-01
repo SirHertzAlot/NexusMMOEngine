@@ -186,3 +186,25 @@ test("flying over a prop does not collide (no vertical overlap)", () => {
   walk(sim, pipeline(), player, 1, 0, 60);
   assert.ok(Transform.px[player] > 0.5, `blocked mid-air: x=${Transform.px[player]}`);
 });
+
+test("a walker is blocked by a prop that straddles a grid cell boundary, among many props", () => {
+  // The per-tick grid bins statics into 32 m cells. A prop spanning the
+  // x = 64 boundary, with a field of other props around it, must still stop
+  // a walker that reaches it from the cell on the near side.
+  const sim = new SimWorld();
+  for (let i = 0; i < 20; i++) {
+    for (let j = 0; j < 20; j++) spawnBoxProp(sim, 1000 + i * 40, 0, 1000 + j * 40, 0.5, 2, 0.5);
+  }
+  spawnBoxProp(sim, 64, 0, 0, 1.5, 2, 1.5); // spans x 62.5 .. 65.5
+  const player = spawnWalker(sim, 40, 0, 0);
+  walk(sim, pipeline(), player, 1, 0, 300);
+  const face = 62.5 - CHARACTER_CAPSULE.radius;
+  assert.ok(
+    Transform.px[player] <= face + 1e-3,
+    `walked through the boundary prop: x=${Transform.px[player]}, face=${face}`,
+  );
+  assert.ok(
+    Transform.px[player] >= face - 0.25,
+    `stuck too far from the boundary prop: x=${Transform.px[player]}, face=${face}`,
+  );
+});

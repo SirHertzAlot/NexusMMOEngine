@@ -92,16 +92,114 @@ function yawOf(e: number): number {
   return Math.atan2(2 * (qw * qy + qx * qz), 1 - 2 * (qx * qx + qy * qy));
 }
 
+/** Side of a grid cell, metres. A static is binned into every cell its XZ bounding circle touches. */
+const CELL_M = 32;
+const CELL_OFFSET = 32768;
+
+/**
+ * XZ grid of the static obstacles that can push a mover at all (boxes with
+ * a size, discs with a radius). Built once per tick from the obstacle list,
+ * in its order, so `near` returns them in the same order the full scan
+ * visited them. Without it each mover scanned every body in the world.
+ */
+class StaticGrid {
+  private readonly cells = new Map<number, number[]>();
+  /** Body entity of each indexed static, in obstacle order. */
+  private readonly bodies: number[] = [];
+  /** Per-query dedupe: a static in several cells is reported once. */
+  private stamp = new Uint32Array(0);
+  private generation = 0;
+  private readonly out: number[] = [];
+
+  build(obstacles: ArrayLike<number>): void {
+    this.cells.clear();
+    this.bodies.length = 0;
+    for (let k = 0; k < obstacles.length; k++) {
+      const o = obstacles[k] as number;
+      if (BodyConfig.motionType[o] !== MotionType.Static) continue;
+      let reach: number;
+      if (BodyConfig.shapeKind[o] === ShapeKind.Box) {
+        // Same guard as boxPush: a box with no size never pushes.
+        const hx = BodyConfig.halfX[o];
+        const hz = BodyConfig.halfZ[o];
+        if (!(hx > 0) || !(hz > 0)) continue;
+        reach = Math.sqrt(hx * hx + hz * hz);
+      } else {
+        // Same guard as discPush.
+        reach = BodyConfig.radius[o];
+        if (!(reach > 0)) continue;
+      }
+      const index = this.bodies.length;
+      this.bodies.push(o);
+      const ox = Transform.px[o];
+      const oz = Transform.pz[o];
+      const x0 = Math.floor((ox - reach) / CELL_M);
+      const x1 = Math.floor((ox + reach) / CELL_M);
+      const z0 = Math.floor((oz - reach) / CELL_M);
+      const z1 = Math.floor((oz + reach) / CELL_M);
+      for (let cx = x0; cx <= x1; cx++) {
+        for (let cz = z0; cz <= z1; cz++) {
+          const key = cellKey(cx, cz);
+          let cell = this.cells.get(key);
+          if (cell === undefined) {
+            cell = [];
+            this.cells.set(key, cell);
+          }
+          cell.push(index);
+        }
+      }
+    }
+    if (this.stamp.length < this.bodies.length) this.stamp = new Uint32Array(Math.max(this.bodies.length, 2 * this.stamp.length));
+  }
+
+  /** The statics whose cells lie within `reach` of (x, z), in obstacle order. The returned array is reused. */
+  near(x: number, z: number, reach: number): number[] {
+    const out = this.out;
+    out.length = 0;
+    const gen = ++this.generation;
+    const x0 = Math.floor((x - reach) / CELL_M);
+    const x1 = Math.floor((x + reach) / CELL_M);
+    const z0 = Math.floor((z - reach) / CELL_M);
+    const z1 = Math.floor((z + reach) / CELL_M);
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const cell = this.cells.get(cellKey(cx, cz));
+        if (cell === undefined) continue;
+        for (let i = 0; i < cell.length; i++) {
+          const index = cell[i] as number;
+          if (this.stamp[index] === gen) continue;
+          this.stamp[index] = gen;
+          out.push(index);
+        }
+      }
+    }
+    if (out.length > 1) out.sort(ascending);
+    for (let i = 0; i < out.length; i++) out[i] = this.bodies[out[i] as number] as number;
+    return out;
+  }
+}
+
+function cellKey(cx: number, cz: number): number {
+  return (cx + CELL_OFFSET) * 65536 + (cz + CELL_OFFSET);
+}
+
+function ascending(a: number, b: number): number {
+  return a - b;
+}
+
 export class PropCollisionSystem implements SimSystem {
   readonly name = "prop-collision";
   private readonly movers = defineQuery([Transform, Velocity, BodyConfig]);
   private readonly obstacles = defineQuery([Transform, BodyConfig]);
   private readonly foot: Footprint = { radius: 0, y0: 0, y1: 0 };
+  /** Static obstacles binned by XZ cell, rebuilt each tick (statics do not move; the set can change). */
+  private readonly grid = new StaticGrid();
 
   step(sim: SimWorld): void {
     const movers = this.movers(sim.ecs);
     if (movers.length === 0) return;
     const obstacles = this.obstacles(sim.ecs);
+    this.grid.build(obstacles);
     const foot = this.foot;
     for (let i = 0; i < movers.length; i++) {
       const e = movers[i] as number;
@@ -114,9 +212,10 @@ export class PropCollisionSystem implements SimSystem {
       const rm = foot.radius;
       const my0 = foot.y0;
       const my1 = foot.y1;
-      for (let k = 0; k < obstacles.length; k++) {
-        const o = obstacles[k] as number;
-        if (o === e || BodyConfig.motionType[o] !== MotionType.Static) continue;
+      // Only statics near the mover, in their original order (pushes are order-sensitive).
+      const near = this.grid.near(px, pz, rm + CELL_M);
+      for (let n = 0; n < near.length; n++) {
+        const o = near[n] as number;
         const kind = BodyConfig.shapeKind[o];
         const ox = Transform.px[o];
         const oz = Transform.pz[o];
