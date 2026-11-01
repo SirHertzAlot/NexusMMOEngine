@@ -34,6 +34,7 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   const rigs = new Map<number, Rig>();
+  const statics = new Map<number, RAPIER.Collider>();
   const walkers = new Map<number, Walker>();
   let nextHandle = 1;
 
@@ -58,10 +59,19 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
     },
 
     addStaticBox(centre: Vec3, half: Vec3): number {
-      world.createCollider(
+      const collider = world.createCollider(
         RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z).setTranslation(centre.x, centre.y, centre.z),
       );
-      return nextHandle++;
+      const handle = nextHandle++;
+      statics.set(handle, collider);
+      return handle;
+    },
+
+    removeStaticBox(handle: number): void {
+      const collider = statics.get(handle);
+      if (!collider) return;
+      world.removeCollider(collider, true);
+      statics.delete(handle);
     },
 
     spawnRagdoll(root: Vec3): number {
@@ -98,6 +108,23 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
         out[i * 3] = t.x;
         out[i * 3 + 1] = t.y;
         out[i * 3 + 2] = t.z;
+      });
+    },
+
+    ragdollPartPoses(handle: number, out: Float32Array): void {
+      const rig = rigs.get(handle);
+      if (!rig) return;
+      if (out.length < RAGDOLL_PARTS * 7) throw new Error("pose buffer too small");
+      rig.bodies.forEach((body, i) => {
+        const t = body.translation();
+        const r = body.rotation();
+        out[i * 7] = t.x;
+        out[i * 7 + 1] = t.y;
+        out[i * 7 + 2] = t.z;
+        out[i * 7 + 3] = r.x;
+        out[i * 7 + 4] = r.y;
+        out[i * 7 + 5] = r.z;
+        out[i * 7 + 6] = r.w;
       });
     },
 

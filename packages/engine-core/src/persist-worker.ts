@@ -27,47 +27,58 @@ import {
   type PersistTransaction,
 } from "./lockless-ring.js";
 import { DEFAULT_PERSIST_RING_CAPACITY } from "./sim-worker.js";
+import { rocksdbUrl } from "./persist/world-catalog.js";
 
 export const PERSIST_SCHEMA_SURREALQL = `
 -- =============================================================================
 -- 1. ENTITY CORE STATE REGISTRY
 -- =============================================================================
-DEFINE TABLE entity SCHEMAFULL;
+DEFINE TABLE IF NOT EXISTS entity SCHEMAFULL;
 
 -- Direct 1:1 index mapping to the C++ SharedArrayBuffer entity slot
-DEFINE FIELD sab_index ON TABLE entity TYPE int
+DEFINE FIELD IF NOT EXISTS sab_index ON TABLE entity TYPE int
     ASSERT $value != NONE AND $value >= 0;
 
 -- Tracks the precise timestamp of the last memory-to-disk checkpoint
-DEFINE FIELD checkpointed_at ON TABLE entity TYPE datetime
+DEFINE FIELD IF NOT EXISTS checkpointed_at ON TABLE entity TYPE datetime
     DEFAULT time::now()
     VALUE time::now();
 
 -- Ensure no two persistent records ever claim the same memory arena index
-DEFINE INDEX sab_index_idx ON TABLE entity COLUMNS sab_index UNIQUE;
+DEFINE INDEX IF NOT EXISTS sab_index_idx ON TABLE entity COLUMNS sab_index UNIQUE;
 
 -- =============================================================================
 -- 2. TRANSACTIONAL INVENTORY LEDGER
 -- =============================================================================
-DEFINE TABLE inventory_slot SCHEMAFULL;
+DEFINE TABLE IF NOT EXISTS inventory_slot SCHEMAFULL;
 
 -- Enforces hard boundary limits natively at the database engine layer
-DEFINE FIELD capacity ON TABLE inventory_slot TYPE int
+DEFINE FIELD IF NOT EXISTS capacity ON TABLE inventory_slot TYPE int
     DEFAULT 20
     ASSERT $value > 0;
 
 -- Array of held item objects/identifiers
-DEFINE FIELD items ON TABLE inventory_slot TYPE array
+DEFINE FIELD IF NOT EXISTS items ON TABLE inventory_slot TYPE array
     DEFAULT [];
 
 -- =============================================================================
 -- 3. GRAPH RELATIONAL LINKAGE (ENTITY -> INVENTORY)
 -- =============================================================================
-DEFINE TABLE owns SCHEMAFULL TYPE RELATION IN entity OUT inventory_slot;
+DEFINE TABLE IF NOT EXISTS owns SCHEMAFULL TYPE RELATION IN entity OUT inventory_slot;
 
 -- Guarantee an inventory container is bound to exactly one owning entity
-DEFINE INDEX structural_ownership ON TABLE owns COLUMNS in, out UNIQUE;
+DEFINE INDEX IF NOT EXISTS structural_ownership ON TABLE owns COLUMNS in, out UNIQUE;
 `;
+
+/**
+ * The ledger's engine URL for production boot. `MMO_DATA_PLANE_DB` wins when set (`mem://`
+ * opts back into the volatile engine); otherwise the ledger is durable under `<dataDir>/data-plane`.
+ */
+export function resolveDataPlaneDbUrl(envValue: string | undefined, dataDir: string): string {
+  const explicit = envValue?.trim();
+  if (explicit) return explicit;
+  return rocksdbUrl(path.join(dataDir, "data-plane"));
+}
 
 /** Load `persist/schema.surrealql` from disk if present, otherwise return embedded constant. */
 export function loadPersistSchemaSurrealQL(): string {
@@ -195,6 +206,13 @@ export class PersistenceWorkerRuntime {
 
       case PERSIST_TX_KIND.INVENTORY_ADD_ITEM: {
         const itemCode = `item_${tx.paramA}`;
+        // One round trip for the common case: append in the engine when the slot has room.
+        const appended = await this.db.query<[InventorySlotRecord[]]>(
+          `UPDATE $sid SET items += $itemCode WHERE array::len(items) < capacity RETURN AFTER;`,
+          { sid, itemCode },
+        );
+        if (appended?.[0]?.[0]) break;
+        // No row was appended: the slot is full or does not exist yet.
         const slotRows = await this.db.query<[InventorySlotRecord[]]>(
           `SELECT * FROM $sid;`,
           { sid },
@@ -211,10 +229,8 @@ export class PersistenceWorkerRuntime {
             `,
             { eid, sid, sabIndex: tx.sabIndex, itemCode },
           );
-        } else if (existing.items.length < existing.capacity) {
-          const nextItems = [...existing.items, itemCode];
-          await this.db.query(`UPDATE $sid SET items = $nextItems;`, { sid, nextItems });
         }
+        // else: the slot is full; the add is dropped, as before.
         break;
       }
 
