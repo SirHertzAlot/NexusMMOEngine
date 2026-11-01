@@ -677,7 +677,7 @@ async function main(): Promise<void> {
     // revision wrapped it as a bare function, which crashed warm() with
     // "colliders?.add is not a function".
     colliders: ((() => {
-      type Hook = { add(cx: number, cz: number, heights: Float32Array): void; remove(cx: number, cz: number): void };
+      type Hook = { add(cx: number, cz: number, heights: Float32Array): boolean; remove(cx: number, cz: number): void };
       let hook: Hook | null = null;
       const get = (): Hook => {
         if (hook) return hook;
