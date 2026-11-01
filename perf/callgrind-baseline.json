@@ -1,50 +1,50 @@
 {
   "format": "mmo-callgrind-baseline/1",
-  "node": "v22.23.4",
+  "node": "v22.22.2",
   "platform": "linux-x64",
   "workloads": {
     "sim-tick-1000": {
-      "irPerOp": 14264942,
+      "irPerOp": 14838319,
       "unit": "tick",
       "n": 60
     },
     "physics-step-200": {
-      "irPerOp": 3016515,
+      "irPerOp": 3016444,
       "unit": "step",
       "n": 60
     },
     "crowd-tick-100": {
-      "irPerOp": 6236128,
+      "irPerOp": 6232587,
       "unit": "tick",
       "n": 60
     },
     "paths-batch-100": {
-      "irPerOp": 6042277,
+      "irPerOp": 6041317,
       "unit": "batch",
       "n": 20
     },
     "procgen-chunk": {
-      "irPerOp": 67278,
+      "irPerOp": 67274,
       "unit": "chunk",
       "n": 200
     },
     "picg-cook-staircase": {
-      "irPerOp": 215242,
+      "irPerOp": 214382,
       "unit": "cook",
       "n": 5
     },
     "meshopt-staircase": {
-      "irPerOp": 24945607,
+      "irPerOp": 24944836,
       "unit": "mesh",
       "n": 10
     },
     "dungeon-shell-30": {
-      "irPerOp": 591516069,
+      "irPerOp": 590811390,
       "unit": "shell",
       "n": 3
     },
     "residents-tick": {
-      "irPerOp": 7725028,
+      "irPerOp": 5228114,
       "unit": "second",
       "n": 40
     }
