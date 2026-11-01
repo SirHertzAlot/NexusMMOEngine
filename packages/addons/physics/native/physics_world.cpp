@@ -264,7 +264,12 @@ JPH::Ref<JPH::RagdollSettings> MakeRagdollSettings(
 // --- Native world ------------------------------------------------------------
 
 struct mj_physics_world {
-  static constexpr int kMaxBodies = 65536;
+  // Room for the streamer's entity budget (ChunkStreamer, 90,000 live
+  // entities, one body each at most) plus one body per loaded chunk's
+  // ground, with headroom for bodies outside the budget. At 65,536 a
+  // crowded world filled the pool: addBodies then dropped bodies silently,
+  // and addTerrain refused a chunk's ground, which threw in the tick.
+  static constexpr int kMaxBodies = 131072;
   static constexpr int kNumBodyMutexes = 0;
   static constexpr int kMaxBodyPairs = 65536;
   static constexpr int kMaxContactConstraints = 10240;
