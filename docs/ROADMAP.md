@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**259 items built, 12 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**260 items built, 11 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -290,7 +290,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | M3 | Items and melee: combat phases, fit and power, defence, dismemberment | ✅ | Stances (technique and aim, 0x19, R/T), fit and power per technique, precision and landing, defence contests (#94), damage kinds, dismemberment shown on every client (#99), dropped hands (#104). Armour waits for armour items |
 | M4 | Disciplines, familiarity, disarms, Medicine | ✅ | Medicine treats wounds, stumps and maimed parts (0x1a, #109); item familiarity, disciplines and the Blade Master disarm (0x1b, #112). Other unlocks (sweep, lunge, throwDown, reattach) are data only so far |
 | M5 | Combat abilities: GCD + queue, telegraphs, status effects, duels | 🚧 | `AbilitySystem` (global cooldown, per-ability cooldowns, one-deep queue, casts + interrupts); `TelegraphSystem` (server-authoritative circle/cone/rect danger zones: warn then resolve on the tick); `StatusSystem` (buffs/debuffs: stacking, refresh modes, stat modifiers, DoT/HoT, cleanse); `DuelSystem` (challenge/accept/decline/expiry, first blood, yield, ad-hoc hostility). `CombatSystem` gains `canHit` (consensual PvP: players only hurt players they duel; PvE unchanged) and `damageScale` (status) hooks. Gateway: 0x1d ability, 0x1e telegraph, 0x1f status, 0x20 duel (protocol v22) — S→C event fan-out plus C→S ability triggers and duel actions. 31 tests green (27 unit + 4 gateway integration); 23 existing combat tests still green. Duel outcomes wired (2026-10-23): a duelist felled by their opponent loses by first blood instead of dying (no penalty, drop or respawn delay; put right in place), and a disconnect, logout or region handoff ends the duel, the opponent told on 0x20. Client: telegraphs drawn (`apps/client/src/render/telegraphs.ts`); placeholder ability bar and status frame (#537) and placeholder effects (#569: strike, heal, guard). Pending: real ability design, target selection, duel challenge/accept UI, live two-account capture |
-| — | **Duel strikes deal no damage**: in a duel the strikes do not reduce health. Being investigated; the cause is not known yet. First-blood outcome wiring is on main (2026-10-23) | 🚧 | Reported in the project chat; under investigation by a thread. Add the cause and fix here when known |
+| — | **Duel strikes deal no damage**: in a duel the strikes do not reduce health. First-blood outcome wiring is on main (2026-10-23) | ✅ | Cause: a duelist's strike picked the nearest living thing (a creature could take the blow) and ignored status modifiers (guard did full damage). Fixed in #587: the strike goes to the opponent and scales by status. Live two-account check: 10 damage plain, 5 guarded |
 | S1 | Say, yell, emote; rate limits; text filter hook | ✅ | Server slice live (0x11, range + cooldowns + filter hook); client panel is U6 |
 | S2 | Region↔world event stream, presence, whispers, friends, blocks | ✅ | Whispers, blocks and friends with presence live, persisted in `social.db` (S2c); cross-region presence via the world directory (regions report online names, friends lists merge world rows on a 30 s sync); unblocking no longer needs the target online (#105) |
 | S3 | Parties | ✅ | Persisted by `SqlitePartyStore` (`parties.db`); members return offline after a restart with the 5 min window (#102) |
@@ -484,6 +484,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 - **2026-11-01**: WL1 stand-in models for every wildlife species (✅, placeholder): generated animal models bound by species through the GLB importer; skinned rigs and animation are not in yet (#593). Closed on the art-blocked rule.
+- **2026-11-01**: Duel strikes row closed ✅ (#587): the cause and fix are on main, with the two-account live check. Recount on main after #595 (B7, still a draft) and the other open PRs: no other status changed.
 - **2026-11-01**: D4g decal spawn (#585): dungeon decal kinds (cracks, moss, roots, bones, icicles) spawn as placeholder props, reusing existing prop shapes. Row closed ✅ on placeholder props, per the art-blocked rule (stand-ins count as done; real art can swap in later).
 - **2026-11-01**: WL1 free swimmers (#590): fish and sea mammals placed as static props in open water, 1 to 30 m. Moving swimmers still need the simulated-agent path. Row stays 🚧.
 - **2026-11-01**: WL1 farm dressing (#586): farm homesteads get three yard pieces (farm_tools, farm_produce, farm_yard) in the bake, in `places-scene.ts`. Ranches get none. Row stays 🚧.
