@@ -86,6 +86,7 @@
     "packages/addons/terrain-kernel",
     "packages/addons/physics",
     "packages/addons/navigation",
+    "packages/animal-rig",
     "apps/client",
     "apps/editor",
     "packages/nethealth",

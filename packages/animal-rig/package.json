@@ -1,0 +1,21 @@
+{
+  "name": "@mmo-engine/animal-rig",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Procedural skeletons for static animal meshes (WL2): segmentation by shape, a skin, and gaits driven by speed. Presentation only, shared by the game client and the editor's rig view.",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/three": "^0.186.0",
+    "typescript": "^5.6.3"
+  }
+}

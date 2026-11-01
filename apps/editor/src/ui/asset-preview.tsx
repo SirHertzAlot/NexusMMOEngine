@@ -12,6 +12,7 @@
 
 import * as React from "react";
 import { ModelPreview } from "./model-preview.js";
+import { RigPreview } from "./rig-preview.js";
 
 export interface AssetPreviewProps {
   /** Manifest asset ID (e.g. "goblin"). Resolved via the editor host. */
@@ -20,9 +21,11 @@ export interface AssetPreviewProps {
   url?: string;
   /** Optional label shown above the preview. */
   label?: string;
+  /** Show the animal's procedural rig (WL2 rig view) instead of the plain model. */
+  rig?: boolean;
 }
 
-export function AssetPreview({ assetId, url, label }: AssetPreviewProps): React.JSX.Element {
+export function AssetPreview({ assetId, url, label, rig }: AssetPreviewProps): React.JSX.Element {
   const [resolvedUrl, setResolvedUrl] = React.useState<string | null>(url ?? null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -77,7 +80,7 @@ export function AssetPreview({ assetId, url, label }: AssetPreviewProps): React.
   return (
     <div className="flex flex-col gap-1">
       {label ? <div className="text-sm font-medium">{label}</div> : null}
-      <ModelPreview url={resolvedUrl} />
+      {rig ? <RigPreview url={resolvedUrl} modelName={resolvedUrl.split("/").pop() ?? resolvedUrl} /> : <ModelPreview url={resolvedUrl} />}
     </div>
   );
 }
