@@ -1,10 +1,10 @@
 {
   "version": 1,
   "placeholder": true,
-  "note": "Placeholder starter set (M5 ability bar). No damage or healing yet; the values are the ones the ability tests run against (30 Hz ticks). Real design replaces this file.",
+  "note": "Placeholder starter set (M5 ability bar). Timings and effect sizes are starting points, checked by packages/engine-core/test/abilities-content.test.ts against the combat and spell balance (content/rules/combat.json damage base, content/rules/spells.json Mend). Real design replaces this file.",
   "abilities": [
-    { "id": "strike", "name": "Strike", "gcdMs": 1000, "cooldownMs": 0, "castMs": 0 },
+    { "id": "strike", "name": "Strike", "gcdMs": 1000, "cooldownMs": 0, "castMs": 0, "effect": { "kind": "damage", "amount": 10, "reachM": 2.5 } },
     { "id": "guard", "name": "Guard", "gcdMs": 1000, "cooldownMs": 4000, "castMs": 0 },
-    { "id": "heal", "name": "Heal", "gcdMs": 1000, "cooldownMs": 8000, "castMs": 1500 }
+    { "id": "heal", "name": "Heal", "gcdMs": 1000, "cooldownMs": 8000, "castMs": 1500, "effect": { "kind": "heal", "amount": 15 } }
   ]
 }

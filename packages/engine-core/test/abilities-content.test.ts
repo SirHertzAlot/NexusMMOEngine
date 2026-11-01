@@ -59,3 +59,20 @@ describe("content/combat/abilities.json (placeholder starter set)", () => {
     assert.equal(s.trigger(1, "guard", landed + gcd + ticks(1000)), "rejected");
   });
 });
+
+describe("the placeholder effects match the existing balance", () => {
+  const rule = (f: string): unknown => JSON.parse(readFileSync(fileURLToPath(new URL(`../../../../content/rules/${f}`, import.meta.url)), "utf8"));
+  const effectOf = (id: string): { kind: string; amount: number; reachM?: number } | undefined =>
+    (defs as Array<Def & { effect?: { kind: string; amount: number; reachM?: number } }>).find((d) => d.id === id)?.effect;
+
+  it("strike does one blow's base damage (content/rules/combat.json)", () => {
+    const combat = rule("combat.json") as { damage: { base: number } };
+    assert.deepEqual(effectOf("strike"), { kind: "damage", amount: combat.damage.base, reachM: 2.5 });
+  });
+
+  it("heal restores what Mend restores (content/rules/spells.json)", () => {
+    const spells = rule("spells.json") as { spells: Array<{ id: string; effect: { kind: string; amount: number } }> };
+    const mend = spells.spells.find((x) => x.id === "mend")!;
+    assert.deepEqual(effectOf("heal"), { kind: "heal", amount: mend.effect.amount });
+  });
+});
