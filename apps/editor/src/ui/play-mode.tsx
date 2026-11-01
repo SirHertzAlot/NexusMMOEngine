@@ -120,7 +120,7 @@ export function isPlayStartPending(): boolean {
 export function PlayModePanel(): React.JSX.Element {
   const [detail, setDetail] = React.useState<string | undefined>();
   const [busy, setBusy] = React.useState(false);
-  const { entityId, autoRefresh, pmState } = playUiStore.use();
+  const { entityId, autoRefresh, pmState } = playUiStore.useValue();
   const [overlays, setOverlays] = React.useState<OverlaySnapshot>({
     waypoints: null,
     tiles: null,
