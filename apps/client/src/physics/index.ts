@@ -1,4 +1,5 @@
 export { createRapierPhysicsWorld } from "./rapier-world.js";
+export { createPhysxPhysicsWorld } from "./physx-world.js";
 export {
   PHYSICS_SUBSTEPS,
   RAGDOLL_PARTS,
