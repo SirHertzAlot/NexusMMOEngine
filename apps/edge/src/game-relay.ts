@@ -58,9 +58,9 @@ export async function startGameRelay(channel: ChannelLike, port: number, host = 
   const topics = new Map<string, Set<string>>();
 
   channel.onPush("wire.send", (p) => {
-    const { sid, data } = p as { sid: string; data: string };
+    const { sid, data } = p as { sid: string; data: Buffer };
     const ws = sockets.get(sid);
-    if (ws?.readyState === WebSocket.OPEN) ws.send(Buffer.from(data, "base64"));
+    if (ws?.readyState === WebSocket.OPEN) ws.send(data);
   });
   channel.onPush("wire.end", (p) => {
     const { sid, code, reason } = p as { sid: string; code: number; reason: string };
@@ -78,21 +78,20 @@ export async function startGameRelay(channel: ChannelLike, port: number, host = 
     topics.get(topic)?.delete(sid);
   });
   channel.onPush("wire.publish", (p) => {
-    const { topic, data } = p as { topic: string; data: string };
+    const { topic, data } = p as { topic: string; data: Buffer };
     const members = topics.get(topic);
     if (!members) return;
-    const bytes = Buffer.from(data, "base64");
     for (const sid of members) {
       const ws = sockets.get(sid);
-      if (ws?.readyState === WebSocket.OPEN) ws.send(bytes);
+      if (ws?.readyState === WebSocket.OPEN) ws.send(data);
     }
   });
   // Interest management (IM4): each sector's bytes arrive once per tick; every session's DeltaSet is
   // assembled here from them (copies of shared buffers), so the core's channel cost doesn't grow with players.
   channel.onPush("wire.sectors", (p) => {
-    const { tick, bytes, plans } = p as { tick: number; bytes: Record<string, string>; plans: Array<{ sid: string; replace: boolean; entries: Array<[number, string, string]> }> };
+    const { tick, bytes, plans } = p as { tick: number; bytes: Record<string, Buffer>; plans: Array<{ sid: string; replace: boolean; entries: Array<[number, string, string]> }> };
     const shared = new Map<string, Uint8Array>();
-    for (const [k, v] of Object.entries(bytes)) shared.set(k, Buffer.from(v, "base64"));
+    for (const [k, v] of Object.entries(bytes)) shared.set(k, v);
     for (const plan of plans) {
       const ws = sockets.get(plan.sid);
       if (ws?.readyState !== WebSocket.OPEN) continue;
@@ -145,7 +144,7 @@ export async function startGameRelay(channel: ChannelLike, port: number, host = 
     const sid = `${edgeId}-${next++}`;
     sockets.set(sid, ws);
     channel.notify("wire.open", { sid, ip: req.socket.remoteAddress ?? "unknown" });
-    ws.on("message", (data) => channel.notify("wire.msg", { sid, data: toBuffer(data).toString("base64") }));
+    ws.on("message", (data) => channel.notify("wire.msg", { sid, data: toBuffer(data) }));
     ws.on("close", () => {
       sockets.delete(sid);
       for (const members of topics.values()) members.delete(sid);

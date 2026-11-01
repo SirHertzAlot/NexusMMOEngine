@@ -263,6 +263,7 @@ import {
 } from "./logging/index.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
+import { enemyModelPicker, loadEnemyModels } from "./enemy-models.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -790,6 +791,10 @@ async function main(): Promise<void> {
     modelPick.set(kind, n + 1);
     return ids[n % ids.length];
   };
+  // EM1: enemy kinds' art models from the gitignored content/enemies/models.local.json (see enemy-models.ts).
+  const enemyModelOf = enemyModelPicker(
+    loadEnemyModels(new URL("../../content/enemies/models.local.json", import.meta.url), (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
+  );
   const wildlifeSettlements: RaidSettlement[] =
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
@@ -813,7 +818,8 @@ async function main(): Promise<void> {
     attackerOf: (e: number) => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
     waterSurfaceAt: water ? (x: number, z: number) => surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z) : undefined,
     waterDepthAt: water ? (x: number, z: number) => { const s = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return s === null ? 0 : Math.max(0, s - characterOf().groundHeight(x, z)); } : undefined,
-    modelOf: wildlifeModelOf,
+    // Wildlife models first, then the enemies' (EM1); a kind in neither spawns on its stand-in block.
+    modelOf: (kind: string) => wildlifeModelOf(kind) ?? enemyModelOf(kind),
     settlements: () => wildlifeSettlements,
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
