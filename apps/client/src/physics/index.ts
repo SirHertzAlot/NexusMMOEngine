@@ -7,3 +7,4 @@ export {
   type Vec3,
   type WalkerState,
 } from "./physics-world.js";
+export { WalkerPredictor, type PredictionOptions, type Snapshot } from "./walker-prediction.js";

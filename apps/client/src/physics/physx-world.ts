@@ -194,6 +194,15 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
       return { x: p.x + delta.x * scale, y: p.y + delta.y * scale, z: p.z + delta.z * scale, grounded: false };
     },
 
+    teleportWalker(handle: number, centre: Vec3): void {
+      const w = walkers.get(handle);
+      if (!w) return;
+      w.actor.setGlobalPose(tf(centre.x, centre.y, centre.z), true);
+      const zero = vec(0, 0, 0);
+      w.actor.setLinearVelocity(zero, true);
+      zero.delete?.();
+    },
+
     removeWalker(handle: number): void {
       const w = walkers.get(handle);
       if (!w) return;

@@ -136,6 +136,13 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
       return { ...next, grounded: w.controller.computedGrounded() };
     },
 
+    teleportWalker(handle: number, centre: Vec3): void {
+      const w = walkers.get(handle);
+      if (!w) return;
+      w.body.setTranslation({ x: centre.x, y: centre.y, z: centre.z }, true);
+      w.body.setNextKinematicTranslation({ x: centre.x, y: centre.y, z: centre.z });
+    },
+
     removeWalker(handle: number): void {
       const w = walkers.get(handle);
       if (!w) return;
