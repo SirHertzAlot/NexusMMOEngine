@@ -39,7 +39,7 @@
     "bake:world:force": "npm run bake:world:force --workspace=@mmo-engine/engine-core",
     "preview:world": "npm run preview:world --workspace=@mmo-engine/engine-core --",
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
-    "test": "npm run test --workspaces --if-present && npm run test:scripts",
+    "test": "node scripts/test-prebuild.mjs && MMO_ORDERED_BUILD=1 npm run test --workspaces --if-present && npm run test:scripts",
     "test:scripts": "node --test \"scripts/test/*.test.mjs\"",
     "smoke:editor-load": "node scripts/editor-load-smoke.mjs",
     "test:addon-geometry": "npm run test --workspace=@mmo-engine/addon-geometry",
