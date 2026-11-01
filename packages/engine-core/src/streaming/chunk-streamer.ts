@@ -69,9 +69,19 @@ export interface ChunkContentsHook {
   unload(sim: SimWorld, cx: number, cz: number): void;
 }
 
-/** Static terrain collision that follows loaded chunks (see PhysicsSystem.terrainColliders). */
+/**
+ * Most live entities the streamer holds before it stops loading. bitECS
+ * holds 100,000; the physics body pool holds these entities and every loaded
+ * chunk's ground (kMaxBodies in packages/addons/physics).
+ */
+export const ENTITY_BUDGET = 90_000;
+
+/**
+ * Static terrain collision that follows loaded chunks (see PhysicsSystem.terrainColliders).
+ * `add` returns false when there is no room for the chunk's ground: the chunk waits.
+ */
 export interface ChunkColliderHook {
-  add(cx: number, cz: number, heights: Float32Array): void;
+  add(cx: number, cz: number, heights: Float32Array): boolean;
   remove(cx: number, cz: number): void;
 }
 
@@ -161,6 +171,7 @@ export class ChunkStreamer implements SimSystem {
   private readonly maxLoadsPerTick: number;
   private readonly entityBudget: number;
   private overBudget = false;
+  private noRoom = false;
   private readonly warn: (message: string) => void;
   private readonly counters = { loads: 0, unloads: 0, populated: 0, restored: 0 };
   private contents: ChunkContentsHook | null = null;
@@ -172,7 +183,7 @@ export class ChunkStreamer implements SimSystem {
     this.planEveryTicks = opts.planEveryTicks ?? 10;
     this.loadBudgetMs = opts.loadBudgetMs ?? 6;
     this.maxLoadsPerTick = opts.maxLoadsPerTick ?? 32;
-    this.entityBudget = opts.entityBudget ?? 90_000;
+    this.entityBudget = opts.entityBudget ?? ENTITY_BUDGET;
     this.warn = opts.warn ?? stdioWarn;
     for (const [name, v] of [["loadRadius", this.loadRadius], ["unloadRadius", this.unloadRadius], ["unloadDelayTicks", this.unloadDelayTicks]] as const) {
       if (!Number.isInteger(v) || v < 0) throw new RangeError(`chunk streamer: ${name} must be a non-negative integer (got ${v})`);
@@ -229,7 +240,10 @@ export class ChunkStreamer implements SimSystem {
       if (this.opts.colliders) {
         const heights = new Float32Array(this.opts.terrain.chunkSamples);
         this.opts.terrain.generateChunk(this.opts.worldSeed, cx, cz, 0, heights);
-        this.opts.colliders.add(cx, cz, heights);
+        // Adopted, not spawned: its contents stay. Without room, the ground is missing until it reloads.
+        if (!this.opts.colliders.add(cx, cz, heights)) {
+          this.warn(`[stream] no room for chunk ${cx},${cz}'s ground (physics bodies are full): its bodies may fall through until it reloads`);
+        }
       }
       this.loadNavmesh(cx, cz);
       adopted++;
@@ -241,10 +255,18 @@ export class ChunkStreamer implements SimSystem {
   warm(sim: SimWorld): number {
     let n = 0;
     for (const key of this.pinned) {
-      if (!this.loaded.has(key)) {
-        this.load(sim, key);
-        n++;
+      if (this.loaded.has(key)) continue;
+      if (!this.load(sim, key)) {
+        // Still queued by plan(): it loads once there is room for its ground.
+        if (!this.noRoom) {
+          const [cx, cz] = unpackChunk(key);
+          this.warn(`[stream] no room for pinned chunk ${cx},${cz}'s ground (physics bodies are full): it loads once there is room`);
+        }
+        this.noRoom = true;
+        continue;
       }
+      this.noRoom = false;
+      n++;
     }
     return n;
   }
@@ -334,20 +356,33 @@ export class ChunkStreamer implements SimSystem {
       this.overBudget = false;
       const key = this.queue[this.queueAt++];
       if (this.loaded.has(key)) continue;
-      this.load(sim, key);
+      if (!this.load(sim, key)) {
+        // No room for the chunk's ground: wait for bodies to free up (an unload), as at the budget.
+        if (!this.noRoom) {
+          const [cx, cz] = unpackChunk(key);
+          this.warn(`[stream] no room for chunk ${cx},${cz}'s ground (physics bodies are full): not loading more chunks until some unload`);
+        }
+        this.noRoom = true;
+        return;
+      }
+      this.noRoom = false;
       n++;
     }
   }
 
   // ------------------------------------------------------------ load / unload
 
-  private load(sim: SimWorld, key: number): void {
+  /** Loads one chunk. False, with nothing left behind, when its ground has no room in the physics world. */
+  private load(sim: SimWorld, key: number): boolean {
     const [cx, cz] = unpackChunk(key);
     const { eid, heights } = spawnChunk(sim, this.opts.terrain, this.opts.worldSeed, cx, cz, 0);
+    // Ground first: bodies restored or scattered below must land on it.
+    if (this.opts.colliders && !this.opts.colliders.add(cx, cz, heights)) {
+      sim.despawn(eid);
+      return false;
+    }
     this.loaded.set(key, { cx, cz, eid });
     this.outOfRangeSince.delete(key);
-    // Ground first: bodies restored or scattered below must land on it.
-    this.opts.colliders?.add(cx, cz, heights);
     const row = this.opts.store.get(cx, cz);
     if (row) {
       sim.spawnFromState(decodeSnapshot(row.bytes));
@@ -359,6 +394,7 @@ export class ChunkStreamer implements SimSystem {
     this.loadNavmesh(cx, cz);
     this.contents?.load(sim, cx, cz);
     this.counters.loads++;
+    return true;
   }
 
   private loadNavmesh(cx: number, cz: number): void {

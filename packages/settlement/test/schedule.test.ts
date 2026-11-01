@@ -51,4 +51,18 @@ describe("scheduleAt", () => {
   it("falls back to the square for an anchor the town does not know", () => {
     assert.equal(scheduleAt({ ...baker, workplace: "gone" }, at(12), town).anchor, SQUARE);
   });
+
+  it("takes the town to church on Sunday morning and keeps workers from work that day", () => {
+    const withChurch: TownView = { ...town, churchNear: (home) => (home === "h1" ? "c1" : undefined) };
+    const worship = Array.from({ length: 100 }, (_, i) => scheduleAt({ ...baker, id: `npc_${i}` }, at(9.5), withChurch, 0));
+    assert.ok(worship.filter((p) => p.activity === "worship").length > 90, "nearly everyone is at worship at 09:30 on a Sunday");
+    assert.ok(worship.every((p) => p.activity !== "worship" || (p.anchor === "c1" && !p.outdoors)), "worship is in the church, indoors");
+    assert.equal(scheduleAt(baker, at(12), withChurch, 0).activity, "idle", "no work on Sunday");
+    assert.equal(scheduleAt(baker, at(12), withChurch, 1).activity, "work", "the next day is a working day");
+  });
+
+  it("does not send anyone to worship without a church, and with no day given keeps the ordinary day", () => {
+    assert.notEqual(scheduleAt(baker, at(9.5), town, 0).activity, "worship");
+    assert.equal(scheduleAt(baker, at(12), town).activity, "work");
+  });
 });

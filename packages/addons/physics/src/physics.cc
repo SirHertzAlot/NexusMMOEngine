@@ -27,6 +27,9 @@
 #include <string>
 
 #include "physics_c_api.h"
+// -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
+static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 namespace mmo_physics {
 
@@ -191,7 +194,7 @@ public:
         return nullptr;
       }
       const double v = info[0].As<Napi::Number>().DoubleValue();
-      if (!std::isfinite(v) || v != std::floor(v) || v < 0.0 ||
+      if (!fp_finite(v) || v != std::floor(v) || v < 0.0 ||
           v > static_cast<double>(kMaxThreads)) {
         Napi::RangeError::New(
             env, "createWorld({ threads }): threads must be an integer from 0 to 64")
@@ -683,7 +686,7 @@ private:
       return;
     }
     const double v = info[0].As<Napi::Number>().DoubleValue();
-    if (!std::isfinite(v) || v < 0.0) {
+    if (!fp_finite(v) || v < 0.0) {
       Napi::RangeError::New(env, "sleep threshold must be a finite number >= 0")
           .ThrowAsJavaScriptException();
       return;

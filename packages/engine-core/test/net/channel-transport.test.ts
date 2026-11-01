@@ -33,14 +33,14 @@ test("a relayed socket: open, frames both ways, topics, and the close round trip
   assert.equal(s.remoteIp, "10.0.0.5");
   assert.ok(s.isOpen);
 
-  await packet("wire.msg", { sid: "e1-0", data: b64("hello") });
+  await packet("wire.msg", { sid: "e1-0", data: Buffer.from("hello") });
   assert.deepEqual(got.msg, ["hello"]);
 
   s.send(new TextEncoder().encode("welcome"));
   s.subscribe("sector:1");
   t.publish("sector:1", new TextEncoder().encode("delta"));
   assert.deepEqual(pushes.map((p) => p.type), ["wire.send", "wire.sub", "wire.publish"]);
-  assert.equal(Buffer.from(pushes[0].payload.data as string, "base64").toString(), "welcome");
+  assert.equal(Buffer.from(pushes[0].payload.data as Uint8Array).toString(), "welcome");
   assert.deepEqual(pushes[1].payload, { sid: "e1-0", topic: "sector:1" });
 
   // The gateway closes: the edge is told, sends stop, and close fires when the edge confirms.
@@ -71,7 +71,7 @@ test("the edge going away closes its sockets; before listen() an open is refused
   t.edgeGone();
   assert.equal(got.closed, 2);
   assert.equal(t.size, 0);
-  await packet("wire.msg", { sid: "a", data: b64("late") });
+  await packet("wire.msg", { sid: "a", data: Buffer.from("late") });
   assert.deepEqual(got.msg, [], "frames for a gone socket are dropped");
 });
 

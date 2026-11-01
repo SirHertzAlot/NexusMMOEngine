@@ -698,22 +698,29 @@ export class PhysicsSystem implements SimSystem {
    * Terrain collision for streamed chunks (a ChunkStreamer `colliders`
    * hook): each loaded chunk's tile becomes a static height field, so
    * physics bodies rest on the same surface characters walk on and
-   * clients render. A no-op when the backend has no terrain support.
+   * clients render. `add` returns false when the backend has no room for
+   * the tile (its body pool is full). The streamer then holds the chunk
+   * back rather than load it without ground. With no terrain support in the
+   * backend, `add` does nothing and returns true. A malformed tile throws.
    */
   terrainColliders(chunkWorldSize: number, friction = 0.8): {
-    add(cx: number, cz: number, heights: Float32Array): void;
+    add(cx: number, cz: number, heights: Float32Array): boolean;
     remove(cx: number, cz: number): void;
   } {
+    // A zero size would make every spacing invalid, which the backend reports as "no room".
+    if (!(chunkWorldSize > 0)) throw new RangeError(`physics: terrain needs a chunk size above zero (got ${chunkWorldSize})`);
     const key = (cx: number, cz: number): bigint =>
       (BigInt.asUintN(32, BigInt(cx)) << 32n) | BigInt.asUintN(32, BigInt(cz));
     return {
       add: (cx, cz, heights) => {
-        if (!this.backend.addTerrain) return;
-        // Samples span the chunk edge to edge (neighbours share borders).
-        const spacing = chunkWorldSize / (Math.sqrt(heights.length) - 1);
-        if (!this.backend.addTerrain(key(cx, cz), cx * chunkWorldSize, cz * chunkWorldSize, spacing, heights, friction)) {
-          throw new Error(`physics: terrain collider for chunk ${cx},${cz} was rejected`);
+        if (!this.backend.addTerrain) return true;
+        const side = Math.round(Math.sqrt(heights.length));
+        if (side < 4 || side % 2 !== 0 || side * side !== heights.length) {
+          throw new Error(`physics: terrain for chunk ${cx},${cz} must be an even square of at least 4x4 samples`);
         }
+        // Samples span the chunk edge to edge (neighbours share borders).
+        const spacing = chunkWorldSize / (side - 1);
+        return this.backend.addTerrain(key(cx, cz), cx * chunkWorldSize, cz * chunkWorldSize, spacing, heights, friction);
       },
       remove: (cx, cz) => this.backend.removeTerrain?.(key(cx, cz)),
     };

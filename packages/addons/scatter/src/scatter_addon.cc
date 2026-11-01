@@ -23,6 +23,9 @@
 #include <string>
 
 #include "scatter_core.h"
+// -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
+static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 namespace mmo_scatter {
 
@@ -40,7 +43,7 @@ bool CheckedNumber(Napi::Env env, Napi::Object obj, const char* key,
     return false;
   }
   const double d = v.As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(d)) {
+  if (!fp_finite(d)) {
     Napi::RangeError::New(env, std::string("settings.") + key +
                                    " must be finite")
         .ThrowAsJavaScriptException();
@@ -85,7 +88,7 @@ bool CheckedInt32(Napi::Env env, Napi::Value value, const char* name,
     return false;
   }
   const double d = value.As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(d) || std::trunc(d) != d || d < -2147483648.0 ||
+  if (!fp_finite(d) || std::trunc(d) != d || d < -2147483648.0 ||
       d > 2147483647.0) {
     Napi::RangeError::New(env, std::string(name) + " must be an int32")
         .ThrowAsJavaScriptException();
@@ -294,7 +297,7 @@ Napi::Value ScatterChunkJs(const Napi::CallbackInfo& info) {
     }
     worldSeedD = v.As<Napi::Number>().DoubleValue();
   }
-  if (!std::isfinite(worldSeedD) || std::trunc(worldSeedD) != worldSeedD ||
+  if (!fp_finite(worldSeedD) || std::trunc(worldSeedD) != worldSeedD ||
       worldSeedD < 0 || worldSeedD >= 4294967296.0) {
     Napi::RangeError::New(env, "args.worldSeed must be a u32")
         .ThrowAsJavaScriptException();
@@ -348,8 +351,8 @@ Napi::Value ScatterChunkJs(const Napi::CallbackInfo& info) {
   gridOx = oxV.As<Napi::Number>().DoubleValue();
   gridOz = ozV.As<Napi::Number>().DoubleValue();
   gridStep = stepV.As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(gridOx) || !std::isfinite(gridOz) ||
-      !std::isfinite(gridStep) || !(gridStep > 0)) {
+  if (!fp_finite(gridOx) || !fp_finite(gridOz) ||
+      !fp_finite(gridStep) || !(gridStep > 0)) {
     Napi::RangeError::New(env, "args.gridStep must be a positive number")
         .ThrowAsJavaScriptException();
     return env.Undefined();
@@ -403,7 +406,7 @@ Napi::Value HashU32Js(const Napi::CallbackInfo& info) {
     return env.Undefined();
   }
   const double d = info[0].As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(d) || std::trunc(d) != d || d < 0 ||
+  if (!fp_finite(d) || std::trunc(d) != d || d < 0 ||
       d >= 4294967296.0) {
     Napi::RangeError::New(env, "hashU32 expects a u32")
         .ThrowAsJavaScriptException();
@@ -421,7 +424,7 @@ Napi::Value Hash01Js(const Napi::CallbackInfo& info) {
     return env.Undefined();
   }
   const double d = info[0].As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(d) || std::trunc(d) != d || d < 0 ||
+  if (!fp_finite(d) || std::trunc(d) != d || d < 0 ||
       d >= 4294967296.0) {
     Napi::RangeError::New(env, "hash01 expects a u32")
         .ThrowAsJavaScriptException();
@@ -440,7 +443,7 @@ Napi::Value DeriveChunkSeedJs(const Napi::CallbackInfo& info) {
   }
   const double w = info[0].As<Napi::Number>().DoubleValue();
   int32_t cx = 0, cz = 0;
-  if (!std::isfinite(w) || std::trunc(w) != w || w < 0 ||
+  if (!fp_finite(w) || std::trunc(w) != w || w < 0 ||
       w >= 4294967296.0 || !CheckedInt32(env, info[1], "cx", &cx) ||
       !CheckedInt32(env, info[2], "cz", &cz)) {
     if (!env.IsExceptionPending()) {
