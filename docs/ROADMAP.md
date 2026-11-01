@@ -490,6 +490,7 @@ Newest first. One line per merged PR or decision.
 - **2026-11-01**: WL2 raid blows on structures verified by test (#598, `creature-raid-structures.test.ts`). WL2 stays 🚧: editor rig view, animal creature rules, live check of birds, snakes and sea giants remain.
 - **2026-11-01**: SG2b closed (#601): settlement junction pads, earthwork and drainage as stand-ins, on top of the ribbons from #595. Survey-based cut and fill is out of the row.
 - **2026-11-01**: WL2 named birds, snakes and fish take their own animal rig (#600): the client routes by model name. WL2 stays 🚧 for the editor rig view and the live check.
+- **2026-11-01**: WL2 animal rig moves to `@mmo-engine/animal-rig` and the editor gets a rig view toggle on the asset inspector (#603). WL2 stays 🚧: the live visual check of birds, snakes and sea giants is still open.
 - **2026-11-01**: Duel strikes row closed ✅ (#587): the cause and fix are on main, with the two-account live check. Recount on main after #595 (B7, still a draft) and the other open PRs: no other status changed.
 - **2026-11-01**: D4g decal spawn (#585): dungeon decal kinds (cracks, moss, roots, bones, icicles) spawn as placeholder props, reusing existing prop shapes. Row closed ✅ on placeholder props, per the art-blocked rule (stand-ins count as done; real art can swap in later).
 - **2026-11-01**: WL1 free swimmers (#590): fish and sea mammals placed as static props in open water, 1 to 30 m. Moving swimmers still need the simulated-agent path. Row stays 🚧.
