@@ -908,7 +908,8 @@ export class EntityLayer {
     tracked.animalTried = true;
     let template = this.animalTemplates.get(asset.assetHash);
     if (template === undefined) {
-      template = AnimalTemplate.from(ready.geometry);
+      // The model's key is "synty:<catalog id>": the id's name picks the rig (a bird, a snake, a fish).
+      template = AnimalTemplate.from(ready.geometry, undefined, ready.key.replace(/^synty:/, ""));
       this.animalTemplates.set(asset.assetHash, template);
     }
     if (!template) return;

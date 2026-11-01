@@ -316,16 +316,23 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
 }
 
 /** Classify a model into a procedural rig type using name patterns or geometric proportions. */
+/** The rig type a model's name says it is, or undefined when the name says nothing (the art catalog id works too). */
+export function namedRigType(modelName: string): ModelRigType | undefined {
+  const name = modelName.toLowerCase();
+  if (/snake|eel|worm|serpent|constrictor/.test(name)) return "serpentine";
+  if (/spider|centipede|crab|scorpion|ant|beetle|lobster|ladybug/.test(name)) return "arachnid";
+  if (/fish|shark|whale|dolphin|orca|trout|piranha|seahorse|walrus|seal|narwhal|squid|octopus|jellyfish/.test(name)) return "aquatic";
+  if (/bird|owl|hawk|eagle|crow|raven|duck|hen|rooster|goose|pelican|seagull|chick|falcon|bat|dragonfly|butterfly|pheasant|quail/.test(name)) return "avian";
+  if (/wolf|bear|deer|boar|cow|horse|sheep|goat|pig|coyote|fox|badger|raccoon|cat|dog|lion|tiger|elk|bull|donkey|llama/.test(name)) return "quadruped";
+  if (/tree|\bbush\b|plant|flower|grass|kelp|coral|mushroom|fern|anemone|sponge/.test(name)) return "flora";
+  return undefined;
+}
+
 export function classifyModelType(positions: ArrayLike<number>, hints?: SegmentHints, modelName?: string): ModelRigType {
   if (hints?.rigType) return hints.rigType;
   if (modelName) {
-    const name = modelName.toLowerCase();
-    if (/snake|eel|worm|serpent|constrictor/.test(name)) return "serpentine";
-    if (/spider|centipede|crab|scorpion|ant|beetle|lobster|ladybug/.test(name)) return "arachnid";
-    if (/fish|shark|whale|dolphin|orca|trout|piranha|seahorse|walrus|seal|narwhal|squid|octopus|jellyfish/.test(name)) return "aquatic";
-    if (/bird|owl|hawk|eagle|crow|raven|duck|hen|rooster|goose|pelican|seagull|chick|falcon|bat|dragonfly|butterfly|pheasant|quail/.test(name)) return "avian";
-    if (/wolf|bear|deer|boar|cow|horse|sheep|goat|pig|coyote|fox|badger|raccoon|cat|dog|lion|tiger|elk|bull|donkey|llama/.test(name)) return "quadruped";
-    if (/tree|\bbush\b|plant|flower|grass|kelp|coral|mushroom|fern|anemone|sponge/.test(name)) return "flora";
+    const named = namedRigType(modelName);
+    if (named) return named;
   }
 
   // Geometric classification
