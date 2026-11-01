@@ -48,8 +48,23 @@ function nlerpQuat(
   return [x, y, z, w];
 }
 
+/** Called after each push with the tick and the rows pushed. Same-tick pushes (snapshot + delta) reach it too. */
+export type PushListener = (tick: number, rows: readonly TransformRow[]) => void;
+
 export class Interpolator {
   private readonly frames = new Map<bigint, Frame>();
+  private readonly listeners = new Set<PushListener>();
+
+  /**
+   * Hears every push, for a reader that keeps more history than the two
+   * ticks kept here. Returns the unsubscribe function.
+   */
+  onPush(listener: PushListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   /**
    * Push the transform rows of one applied tick. Rows for entities
@@ -74,6 +89,7 @@ export class Interpolator {
       }
       // Same-tick duplicate (snapshot + delta in one tick): keep first.
     }
+    for (const listener of this.listeners) listener(tick, rows);
   }
 
   /** Drop interpolation history for a despawned entity. */

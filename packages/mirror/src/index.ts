@@ -9,7 +9,7 @@
  */
 export { MirrorClient } from "./client.js";
 export type { HelloAuth, JoinAuth, JoinReply, MirrorEvents } from "./client.js";
-export { Interpolator } from "./interpolate.js";
+export { Interpolator, type PushListener } from "./interpolate.js";
 export { MirrorState } from "./state.js";
 export type { DeltaSetResult, EntityMirror } from "./state.js";
 export { LaggySocket, latencyMs } from "./laggy-socket.js";
