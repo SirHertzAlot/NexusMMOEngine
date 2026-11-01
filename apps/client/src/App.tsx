@@ -38,6 +38,8 @@ import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
 import { CastBar, nextCast, type CastState } from "./ui/cast-bar.js";
+import { AbilityBar, NO_ABILITY_STATE, abilityEntries, nextAbilityState, type AbilityBarState, type AbilityEntry } from "./ui/ability-bar.js";
+import { StatusFrame, nextStatuses, type StatusView } from "./ui/status-frame.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
@@ -222,6 +224,22 @@ export function App(): React.ReactElement {
   // Mana (0x1c) for the player frame, and the player's own cast under way for the cast bar.
   const [mana, setMana] = useState<ManaMessage | null>(null);
   const [cast, setCast] = useState<CastState | null>(null);
+  const [abilityState, setAbilityState] = useState<AbilityBarState>(NO_ABILITY_STATE);
+  const [statuses, setStatuses] = useState<StatusView[]>([]);
+  /** The ability bar's buttons, from content/combat/abilities.json (placeholder set; M5). */
+  const [abilityBar, setAbilityBar] = useState<AbilityEntry[]>([]);
+  useEffect(() => {
+    let live = true;
+    fetch("/content/combat/abilities.json")
+      .then((r) => (r.ok ? (r.json() as Promise<unknown>) : null))
+      .then((j) => {
+        if (live && j) setAbilityBar(abilityEntries(j));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
@@ -445,6 +463,14 @@ function welcomeTimeoutMs(): number | undefined {
         if (text) setNotice({ text, at: performance.now() });
       },
       onMana: setMana,
+      onAbility: (a) => {
+        const me = clientRef.current?.playerEntity?.toString() ?? null;
+        if (me !== null) setAbilityState((prev) => nextAbilityState(prev, a, me));
+      },
+      onStatus: (st) => {
+        const me = clientRef.current?.playerEntity?.toString() ?? null;
+        if (me !== null) setStatuses((prev) => nextStatuses(prev, st, me));
+      },
       onSpell: (sp) => {
         const me = clientRef.current?.playerEntity?.toString() ?? null;
         setCast((prev) => nextCast(prev, sp, me, performance.now()));
@@ -648,6 +674,8 @@ function welcomeTimeoutMs(): number | undefined {
     setMastery(null);
     setMana(null);
     setCast(null);
+    setAbilityState(NO_ABILITY_STATE);
+    setStatuses([]);
     setBag(null);
     setHands({ main: null, off: null });
     setWorn(EMPTY_WORN);
@@ -929,6 +957,12 @@ function welcomeTimeoutMs(): number | undefined {
         </HudSlot>
         <HudSlot id="cast-bar" className="pointer-events-none z-10">
           <CastBar cast={cast} />
+        </HudSlot>
+        <HudSlot id="status-frame" className="pointer-events-none z-10">
+          <StatusFrame statuses={statuses} />
+        </HudSlot>
+        <HudSlot id="ability-bar" className="z-10">
+          <AbilityBar abilities={abilityBar} state={abilityState} onUse={(id) => clientRef.current?.ability(id)} />
         </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
         <CombatHud
