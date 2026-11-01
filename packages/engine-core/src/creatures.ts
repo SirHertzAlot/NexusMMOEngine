@@ -701,7 +701,6 @@ export class CreatureSystem implements SimSystem {
     }
   }
 
-  /** Walk toward a point (crowd-steered when running); returns the distance left. */
   /** WL2: an idle, awake creature strolls around its home within `wanderM`, pausing between strolls. */
   private wander(e: number, b: Brain, beh: Behavior, tick: number): void {
     if (Number.isNaN(b.wanderX)) {
@@ -722,6 +721,7 @@ export class CreatureSystem implements SimSystem {
     }
   }
 
+  /** Walk toward a point (crowd-steered when running); returns the distance left. */
   private walk(e: number, b: Brain, tick: number, x: number, z: number, pace = 1): number {
     const dx = x - C.Transform.px[e];
     const dz = z - C.Transform.pz[e];
