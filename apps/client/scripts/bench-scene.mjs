@@ -97,6 +97,25 @@ export async function physxAdapter() {
     pose.delete?.();
     return out;
   };
+  // PhysX's default filter shader only collides shapes whose filter words overlap:
+  // zero filter data collides with nothing. Every shape gets the same group.
+  const shapeOf = (geom) => {
+    const shape = physics.createShape(geom, material, true);
+    shape.setSimulationFilterData(new P.PxFilterData(1, 1, 0, 0));
+    return shape;
+  };
+  const staticAt = (pose, geom) => {
+    const a = physics.createRigidStatic(pose);
+    a.attachShape(shapeOf(geom));
+    return a;
+  };
+  const dynamicAt = (pose, geom, mass = 1) => {
+    const a = physics.createRigidDynamic(pose);
+    a.attachShape(shapeOf(geom));
+    a.setMass(mass);
+    a.setMassSpaceInertiaTensor(vec(0.1, 0.1, 0.1));
+    return a;
+  };
   const setVel = (actor, x, y, z) => {
     const v = vec(x, y, z);
     actor.setLinearVelocity(v, true);
@@ -135,18 +154,17 @@ export async function physxAdapter() {
       hfDesc.samples.count = n * n;
       const hf = T.CreateHeightField(hfDesc);
       const hfGeom = new P.PxHeightFieldGeometry(hf, new P.PxMeshGeometryFlags(0), 0.01, cell, cell);
-      const terrain = T.CreateStatic(physics, tf(-SCENE.terrainHalf, 0, -SCENE.terrainHalf), hfGeom, material, identity());
+      const terrain = staticAt(tf(-SCENE.terrainHalf, 0, -SCENE.terrainHalf), hfGeom);
       scene.addActor(terrain);
 
       for (const p of propLayout()) {
-        const box = T.CreateStatic(physics, tf(p.x, p.y, p.z), new P.PxBoxGeometry(p.size / 2, p.size / 2, p.size / 2),
-          material, identity());
+        const box = staticAt(tf(p.x, p.y, p.z), new P.PxBoxGeometry(p.size / 2, p.size / 2, p.size / 2));
         scene.addActor(box);
       }
 
       const c0 = characterAt(0);
-      const walker = T.CreateDynamic(physics, tf(c0.x, c0.y, c0.z),
-        new P.PxCapsuleGeometry(SCENE.character.radius2, SCENE.character.halfHeight), material, 1, identity());
+      const walker = dynamicAt(tf(c0.x, c0.y, c0.z),
+        new P.PxCapsuleGeometry(SCENE.character.radius2, SCENE.character.halfHeight));
       walker.setRigidDynamicLockFlags(new P.PxRigidDynamicLockFlags(P.PxRigidDynamicLockFlagEnum.PxRigidDynamicLockFlag_eLOCK_ANGULAR_X | 0));
       scene.addActor(walker);
 
@@ -154,9 +172,8 @@ export async function physxAdapter() {
       for (let r = 0; r < rigCount; r++) {
         const root = rigRoot(r);
         const bodies = RIG_PARTS.map((p) => {
-          const body = T.CreateDynamic(physics,
-            tf(root.x + p.c[0], root.y + p.c[1], root.z + p.c[2]),
-            new P.PxBoxGeometry(...p.h), material, 1, identity());
+          const body = dynamicAt(tf(root.x + p.c[0], root.y + p.c[1], root.z + p.c[2]),
+            new P.PxBoxGeometry(...p.h));
           scene.addActor(body);
           return body;
         });
