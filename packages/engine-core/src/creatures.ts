@@ -102,7 +102,14 @@ interface Brain {
   raidIdx: number;
   raidFightTicks: number;
   nextScan: number;
+  /** WL2 wandering: the stroll's point (NaN: not walking), and the tick the next stroll may start. */
+  wanderX: number;
+  wanderZ: number;
+  wanderUntil: number;
 }
+
+/** A wandering creature's pace, as a share of its run speed. */
+const WANDER_PACE = 0.35;
 
 /** Brain pacing and ranges (creatures.json `ai`), until the system is given the game's. */
 const DEFAULT_AI: Readonly<CreatureAiRules> = Object.freeze(CreatureAiSchema.parse({}));
@@ -247,6 +254,9 @@ export class CreatureSystem implements SimSystem {
     b.target = -1;
     b.lastHealth = C.Health.max[e];
     b.raidIdx = -1;
+    b.wanderX = NaN;
+    b.wanderZ = NaN;
+    b.wanderUntil = 0;
     b.hungryAt = sim.currentTick + this.hungerTicks(def);
     this.stop(e);
     return true;
@@ -333,6 +343,9 @@ export class CreatureSystem implements SimSystem {
       raidIdx: -1,
       raidFightTicks: 0,
       nextScan: 0,
+      wanderX: NaN,
+      wanderZ: NaN,
+      wanderUntil: 0,
     });
     return eid;
   }
@@ -403,6 +416,7 @@ export class CreatureSystem implements SimSystem {
         if (beh.tactics === "ambush") notice *= this.ai.ambushNotice;
       }
       this.think(sim, e, b, def, beh, notice, hurt, players, tick);
+      if (b.mode === "idle" && beh && beh.wanderM > 0 && !hurt && isAwake(beh.activity, tod)) this.wander(e, b, beh, tick);
       if (beh?.habitat === "water") this.swim(e, def);
     }
   }
@@ -475,7 +489,9 @@ export class CreatureSystem implements SimSystem {
         b.mode = "raid";
       } else {
         b.target = -1;
-        b.mode = Math.hypot(ex - b.homeX, ez - b.homeZ) > this.ai.homeRadiusM ? "return" : "idle";
+        // A wanderer strolls out to wanderM, so it only heads home from beyond that.
+        const homeM = beh && beh.wanderM > 0 ? Math.max(this.ai.homeRadiusM, beh.wanderM + 1) : this.ai.homeRadiusM;
+        b.mode = Math.hypot(ex - b.homeX, ez - b.homeZ) > homeM ? "return" : "idle";
       }
     }
 
@@ -685,19 +701,40 @@ export class CreatureSystem implements SimSystem {
     }
   }
 
+  /** WL2: an idle, awake creature strolls around its home within `wanderM`, pausing between strolls. */
+  private wander(e: number, b: Brain, beh: Behavior, tick: number): void {
+    if (Number.isNaN(b.wanderX)) {
+      if (tick < b.wanderUntil) return; // pausing
+      const r = beh.wanderM * Math.sqrt(this.rand());
+      const a = this.rand() * 2 * Math.PI;
+      b.wanderX = b.homeX + r * Math.cos(a);
+      b.wanderZ = b.homeZ + r * Math.sin(a);
+    }
+    const d = this.walk(e, b, tick, b.wanderX, b.wanderZ, WANDER_PACE);
+    if (d < 0.5) {
+      b.wanderX = NaN;
+      b.wanderZ = NaN;
+      b.wanderUntil = tick + Math.round(beh.wanderPauseS * this.tickHz);
+      this.stop(e);
+      C.PlayerIntent.mx[e] = 0;
+      C.PlayerIntent.mz[e] = 0;
+    }
+  }
+
   /** Walk toward a point (crowd-steered when running); returns the distance left. */
-  private walk(e: number, b: Brain, tick: number, x: number, z: number): number {
+  private walk(e: number, b: Brain, tick: number, x: number, z: number, pace = 1): number {
     const dx = x - C.Transform.px[e];
     const dz = z - C.Transform.pz[e];
     const d = Math.hypot(dx, dz);
     const def = this.opts.creatures[b.kind];
     if (this.opts.steer === true && C.NavAgent.state[e] !== C.NavAgentState.Invalid && def?.behavior?.habitat !== "water") {
+      if (def) C.NavAgent.speed[e] = this.runSpeed(def) * this.walkSpeed * pace;
       if (tick >= b.nextGive) {
         this.give(e, x, z);
         b.nextGive = tick + this.repathTicks;
       }
     } else if (d > 1e-3) {
-      const speed = def ? this.runSpeed(def) : 0;
+      const speed = def ? this.runSpeed(def) * pace : 0;
       C.PlayerIntent.mx[e] = (dx / d) * speed;
       C.PlayerIntent.mz[e] = (dz / d) * speed;
       C.PlayerIntent.lookYaw[e] = Math.atan2(dx, dz);

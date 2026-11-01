@@ -1,20 +1,33 @@
-// Sleep threshold through the addon: does a larger point-velocity sleep threshold
-// let a resting crowd sleep, how long does that take, what does the step cost once
-// it has, and does a sleeping rig still wake when something lands on it?
+// Round 1. Its pose check is superseded: a 1 mm change to the start grid moves the default's
+// own settled pose by 263 mm RMS (48 full rigs), so a single-trajectory pose bar measures chaos,
+// not quality. Round 2 (addon-sleep-ensemble.mjs) replaces the pose check. The settle cost and
+// the wake numbers here stand as measured.
 //
-// The crowd is the resting scenario of addon-ragdoll-cost.mjs: rigs on a 0.9 m
-// grid, sleep on, two substeps. Each run warms up for 20 s, which is long enough
-// for the slow thresholds to put a crowd to sleep (about 15 s at 0.1 m/s for 48
-// full rigs), and records how many ragdoll bodies are still simulating at 5, 10 and
-// 20 s and the first whole second with none awake. The step time is measured for 2 s
-// after warm-up. The wake check settles 16 light rigs for 20 s, drops a 5 kg sphere
-// 2 m onto the middle one, and reports whether any body woke and how far that rig's
-// root moved.
+// Sleep threshold through the addon: which point-velocity sleep threshold should a
+// world default to? Every candidate is compared with the default that shipped before round 2,
+// Jolt's 0.03 m/s, on cost and on settle quality.
+//
+// Cost, per crowd: the physics time spent settling, the sum of every step over the
+// first 20 s after the crowd is dropped; and the step time once it has settled.
+// Quality, per crowd, against the default run on the same grid:
+//   pose    each rig's root, averaged over the last 2 s, compared rig by rig: the RMS
+//           and the largest distance. A rig frozen before it has finished moving shows
+//           up here as the slide it did not make.
+// And for the wake check, against the default's answer to the same hit:
+//   impact  how far the hit rig moves when a 5 kg sphere lands on it from 2 m, and
+//           whether the rig wakes at all.
+//
+// The bar is written here, before any run, and the sweep does not move it. A candidate
+// passes when both capped crowds (48 full rigs, 120 light rigs) are asleep within the
+// 20 s warm-up, with a pose RMS of at most 10 mm and a largest distance of at most
+// 25 mm; and the wake check wakes the hit rig and moves it within 20 mm of the
+// default's distance. The passing candidate with the lowest settle cost becomes the
+// default. If none passes, the default stays where it is.
 //
 // Usage:
 //   node bench/addon-sleep-threshold.mjs            full sweep (3 repeats), writes
 //                                                   docs/addon-sleep-threshold-results.json
-//   node bench/addon-sleep-threshold.mjs --quick    one repeat, no file
+//   node bench/addon-sleep-threshold.mjs --quick    one repeat, prints the JSON, no file
 //   node bench/addon-sleep-threshold.mjs --run --rig full|light --requested N --threshold T
 //                                                   one crowd run, prints one JSON line
 //   node bench/addon-sleep-threshold.mjs --wake --threshold T
@@ -41,14 +54,20 @@ const MEASURE_STEPS = 2 * TICK_HZ;
 const WAKE_STEPS = 2 * TICK_HZ;
 const BODIES = { full: 11, light: 5 };
 const UNITS = { full: 5, light: 2 };
-const THRESHOLDS = [0.03, 0.1, 0.3, 1.0];
+const DEFAULT_THRESHOLD = 0.03;
+const THRESHOLDS = [0.03, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0];
 const CONFIGS = [
   { rig: 'full', requested: 16 },
   { rig: 'full', requested: 48 },
   { rig: 'light', requested: 16 },
   { rig: 'light', requested: 120 },
 ];
+// The crowds the bar applies to: the caps the budget allows (48 full, 120 light).
+const CAPPED = CONFIGS.filter((c) => c.requested === (c.rig === 'full' ? 48 : 120));
+const BAR = { sleepWithinSeconds: WARM_SECONDS, poseRmsMm: 10, poseMaxMm: 25, impactMetres: 0.02 };
 const REPEATS = 3;
+
+const round = (x) => Math.round(x * 100) / 100;
 
 function addFloor(w) {
   w.addBodies({
@@ -94,31 +113,61 @@ function build(rig, requested, threshold) {
   w.setSleepThreshold(threshold);
   const fit = Math.floor((w.ragdollBudget() - w.ragdollUnits()) / UNITS[rig]);
   const accepted = Math.min(requested, fit);
+  const ids = new BigUint64Array(accepted);
+  for (let i = 0; i < accepted; i++) ids[i] = 1000n + BigInt(i);
   if (accepted > 0) {
-    const idList = new BigUint64Array(accepted);
-    for (let i = 0; i < accepted; i++) idList[i] = 1000n + BigInt(i);
-    w.addRagdolls(idList, rig === 'full' ? RagdollRig.Full : RagdollRig.Light, grid(accepted));
+    w.addRagdolls(ids, rig === 'full' ? RagdollRig.Full : RagdollRig.Light, grid(accepted));
   }
-  return { w, accepted };
+  return { w, accepted, ids };
 }
 
+// One crowd: warm up for 20 s (every step timed, for the settle cost), then time 2 s and
+// average each rig's root over those 2 s (for the pose). The roots are read outside the
+// timed step, so reading them does not count toward the step time.
 function runOnce({ rig, requested, threshold }) {
-  const { w, accepted } = build(rig, requested, threshold);
+  const { w, accepted, ids } = build(rig, requested, threshold);
   try {
     const dt = 1 / TICK_HZ;
     const awakeEachSecond = [];
+    const warmMs = [];
     let timeToAsleepS = null;
     for (let sec = 1; sec <= WARM_SECONDS; sec++) {
-      for (let i = 0; i < TICK_HZ; i++) w.step(dt, SUBSTEPS);
+      for (let i = 0; i < TICK_HZ; i++) {
+        const t0 = performance.now();
+        w.step(dt, SUBSTEPS);
+        warmMs.push(performance.now() - t0);
+      }
       const awake = w.ragdollActiveBodies();
       awakeEachSecond.push(awake);
       if (timeToAsleepS === null && accepted > 0 && awake === 0) timeToAsleepS = sec;
     }
+    const n = 3 * accepted;
+    const sum = new Float64Array(n);
+    const sumSq = new Float64Array(n);
+    const buf = new Float32Array(n);
     const samples = [];
     for (let i = 0; i < MEASURE_STEPS; i++) {
       const t0 = performance.now();
       w.step(dt, SUBSTEPS);
       samples.push(performance.now() - t0);
+      if (accepted > 0) {
+        w.copyRagdollRoots(ids, buf);
+        for (let k = 0; k < n; k++) {
+          sum[k] += buf[k];
+          sumSq[k] += buf[k] * buf[k];
+        }
+      }
+    }
+    const mean = Array.from(sum, (v) => v / MEASURE_STEPS);
+    // Jitter: each rig's RMS distance from its own window mean, averaged over the rigs.
+    let jitter = 0;
+    for (let r = 0; r < accepted; r++) {
+      let variance = 0;
+      for (let c = 0; c < 3; c++) {
+        const k = 3 * r + c;
+        variance += sumSq[k] / MEASURE_STEPS - mean[k] * mean[k];
+      }
+      jitter += Math.sqrt(Math.max(0, variance));
     }
     return {
       rig,
@@ -131,8 +180,11 @@ function runOnce({ rig, requested, threshold }) {
       awakeAt20s: awakeEachSecond[WARM_SECONDS - 1],
       awakeAfterMeasure: w.ragdollActiveBodies(),
       timeToAsleepS,
+      settleCostMs: warmMs.reduce((a, b) => a + b, 0),
       stepMs: median(samples),
       meanStepMs: samples.reduce((a, b) => a + b, 0) / samples.length,
+      jitterRmsMm: accepted > 0 ? (1000 * jitter) / accepted : 0,
+      rootsMean: mean,
     };
   } finally {
     w.destroy();
@@ -188,6 +240,19 @@ function wakeCheck(threshold) {
   }
 }
 
+// Per-rig distance between two sets of roots (3 floats per rig): RMS and largest, in mm.
+function poseError(a, b) {
+  const n = Math.min(a.length, b.length) / 3;
+  let sq = 0;
+  let max = 0;
+  for (let r = 0; r < n; r++) {
+    const d = Math.hypot(a[3 * r] - b[3 * r], a[3 * r + 1] - b[3 * r + 1], a[3 * r + 2] - b[3 * r + 2]);
+    sq += d * d;
+    max = Math.max(max, d);
+  }
+  return { rmsMm: n ? 1000 * Math.sqrt(sq / n) : 0, maxMm: 1000 * max };
+}
+
 function runChild(args) {
   const out = execFileSync(process.execPath, [fileURLToPath(import.meta.url), ...args], { encoding: 'utf8' });
   return JSON.parse(out.trim().split('\n').pop());
@@ -195,15 +260,25 @@ function runChild(args) {
 
 function sweep(repeats) {
   const results = [];
-  for (const threshold of THRESHOLDS) {
-    for (const c of CONFIGS) {
+  for (const c of CONFIGS) {
+    // Each run is its own process, so the timings are clean. The physics is deterministic
+    // per process, so the awake counts and roots match across repeats; only the timings vary.
+    const runsByThreshold = new Map();
+    for (const threshold of THRESHOLDS) {
       const runs = [];
       for (let r = 0; r < repeats; r++) {
         runs.push(runChild(['--run', '--rig', c.rig, '--requested', String(c.requested), '--threshold', String(threshold)]));
       }
-      // The physics is deterministic per process, so the awake counts match across
-      // repeats; only the timings vary. The first run's counts stand for all of them.
+      runsByThreshold.set(threshold, runs);
       const first = runs[0];
+      const asleep = first.timeToAsleepS === null ? 'not within 20 s' : `at ${first.timeToAsleepS} s`;
+      process.stderr.write(`threshold ${threshold} ${c.rig} ${c.requested}: asleep ${asleep}, settle ${round(median(runs.map((run) => run.settleCostMs)))} ms, step ${round(median(runs.map((run) => run.stepMs)))} ms\n`);
+    }
+    const reference = runsByThreshold.get(DEFAULT_THRESHOLD)[0];
+    for (const threshold of THRESHOLDS) {
+      const runs = runsByThreshold.get(threshold);
+      const first = runs[0];
+      const pose = poseError(first.rootsMean, reference.rootsMean);
       results.push({
         threshold,
         rig: c.rig,
@@ -215,19 +290,50 @@ function sweep(repeats) {
         awakeAt20s: first.awakeAt20s,
         awakeAfterMeasure: first.awakeAfterMeasure,
         timeToAsleepS: first.timeToAsleepS,
-        stepMs: median(runs.map((run) => run.stepMs)),
-        meanStepMs: median(runs.map((run) => run.meanStepMs)),
-        runsMs: runs.map((run) => Number(run.stepMs.toFixed(3))),
+        settleCostMs: round(median(runs.map((run) => run.settleCostMs))),
+        stepMs: round(median(runs.map((run) => run.stepMs))),
+        meanStepMs: round(median(runs.map((run) => run.meanStepMs))),
+        runsMs: runs.map((run) => round(run.stepMs)),
+        poseRmsMm: round(pose.rmsMm),
+        poseMaxMm: round(pose.maxMm),
+        jitterRmsMm: round(first.jitterRmsMm),
       });
-      const asleep = first.timeToAsleepS === null ? 'not within 20 s' : `at ${first.timeToAsleepS} s`;
-      process.stderr.write(`threshold ${threshold} ${c.rig} ${c.requested}: awake ${first.awakeAt5s}/${first.bodies} at 5 s, ${first.awakeAt20s} at 20 s; asleep ${asleep}; step ${median(runs.map((run) => run.stepMs)).toFixed(3)} ms\n`);
     }
   }
   const wakes = THRESHOLDS.map((threshold) => runChild(['--wake', '--threshold', String(threshold)]));
-  for (const wake of wakes) {
-    process.stderr.write(`wake at threshold ${wake.threshold}: awake before drop ${wake.awakeBeforeDrop}, woke ${wake.woke}, moved ${wake.movedMetres.toFixed(3)} m\n`);
-  }
   return { results, wakes };
+}
+
+// Applies the bar, then picks the passing candidate with the lowest settle cost (both
+// capped crowds summed). If none passes, the default stays.
+function evaluate(results, wakes) {
+  const wakeAt = (t) => wakes.find((w) => w.threshold === t);
+  const defaultWake = wakeAt(DEFAULT_THRESHOLD);
+  const rows = THRESHOLDS.map((threshold) => {
+    const crowds = CAPPED.map((c) => results.find((r) => r.threshold === threshold && r.rig === c.rig && r.requested === c.requested));
+    const wake = wakeAt(threshold);
+    const checks = {
+      asleepWithinWarmUp: crowds.every((r) => r.timeToAsleepS !== null && r.timeToAsleepS <= BAR.sleepWithinSeconds),
+      poseRmsWithinBar: crowds.every((r) => r.poseRmsMm <= BAR.poseRmsMm),
+      poseMaxWithinBar: crowds.every((r) => r.poseMaxMm <= BAR.poseMaxMm),
+      hitRigWakes: wake.woke,
+      impactWithinBar: Math.abs(wake.movedMetres - defaultWake.movedMetres) <= BAR.impactMetres,
+    };
+    return {
+      threshold,
+      checks,
+      passes: Object.values(checks).every(Boolean),
+      settleCostMs: round(crowds.reduce((sum, r) => sum + r.settleCostMs, 0)),
+    };
+  });
+  const passing = rows.filter((row) => row.passes && row.threshold !== DEFAULT_THRESHOLD);
+  const decision = passing.length === 0
+    ? { threshold: DEFAULT_THRESHOLD, reason: 'no candidate passes the bar, so the default stays' }
+    : {
+      threshold: passing.reduce((best, row) => (row.settleCostMs < best.settleCostMs ? row : best)).threshold,
+      reason: `lowest settle cost among the ${passing.length} passing threshold(s)`,
+    };
+  return { rows, decision };
 }
 
 function main(argv) {
@@ -248,12 +354,19 @@ function main(argv) {
   const quick = argv.includes('--quick');
   const repeats = quick ? 1 : REPEATS;
   const { results, wakes } = sweep(repeats);
+  const { rows, decision } = evaluate(results, wakes);
+  for (const row of rows) {
+    const failed = Object.entries(row.checks).filter(([, ok]) => !ok).map(([name]) => name);
+    process.stderr.write(`bar at ${row.threshold}: ${row.passes ? 'passes' : `fails (${failed.join(', ')})`}, settle cost ${row.settleCostMs} ms\n`);
+  }
+  process.stderr.write(`decision: ${decision.threshold} m/s (${decision.reason})\n`);
   const doc = {
     tickHz: TICK_HZ,
     substeps: SUBSTEPS,
-    scenario: 'resting: 0.9 m grid, sleep on, 20 s warm-up, 2 s measured; wake check: 16 light rigs settled 20 s, a 5 kg sphere dropped 2 m onto the middle rig',
-    defaultThreshold: 0.03,
+    scenario: 'resting: 0.9 m grid, sleep on, 20 s warm-up (every step timed), then 2 s timed with each rig\'s root averaged; wake check: 16 light rigs settled 20 s, a 5 kg sphere dropped 2 m onto the middle rig',
+    defaultThreshold: DEFAULT_THRESHOLD,
     repeats,
+    bar: BAR,
     machine: {
       cpu: os.cpus()[0]?.model ?? 'unknown',
       cpus: os.cpus().length,
@@ -261,6 +374,8 @@ function main(argv) {
     },
     results,
     wakes,
+    evaluation: rows,
+    decision,
   };
   if (quick) {
     process.stdout.write(`${JSON.stringify(doc, null, 2)}\n`);

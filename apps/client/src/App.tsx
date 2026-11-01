@@ -65,6 +65,7 @@ import { GuildFrame } from "./ui/guild-frame.js";
 import { parseChatCommand, replyTarget } from "./ui/chat-command.js";
 import { PouchPanel, tierColor } from "./ui/pouch-panel.js";
 import { nextShop, type ShopView } from "./ui/vendor-panel.js";
+import { DuelPanel, type DuelView, nextDuel } from "./ui/duel-panel.js";
 // Types for lazy-loaded components
 import type { Worn } from "./ui/bag-panel.js";
 import { EMPTY_WORN } from "./ui/bag-panel.js";
@@ -252,6 +253,8 @@ export function App(): React.ReactElement {
   const [nearChest, setNearChest] = useState<bigint | null>(null);
   // The shop E opened (protocol 0x21) and the player's gold.
   const [shop, setShop] = useState<ShopView | null>(null);
+  // The duel window (M5): the server's duel messages, seen from this player.
+  const [duel, setDuel] = useState<DuelView | null>(null);
   const [gold, setGold] = useState<number | null>(null);
   const [, setResourcesSeen] = useState(0);
   const [pouch, setPouch] = useState<PouchMaterial[]>([]);
@@ -322,7 +325,20 @@ export function App(): React.ReactElement {
     pointerLocked: false,
   });
 
-  /** Shared MirrorClient construction with the standard callbacks. */
+  /**
+ * The welcome timeout in ms (`?welcomeTimeoutMs=`), so a slow software-GL box can
+ * wait out a big world's welcome. Absent or not a positive number: the default (8 s).
+ */
+function welcomeTimeoutMs(): number | undefined {
+  try {
+    const v = Number(new URLSearchParams(window.location.search).get("welcomeTimeoutMs"));
+    return Number.isFinite(v) && v > 0 ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Shared MirrorClient construction with the standard callbacks. */
   const createClient = (): MirrorClient => {
     skillsRef.current = null;
     const c: MirrorClient = new MirrorClient((u) => new BrowserSocket(u), {
@@ -372,7 +388,7 @@ export function App(): React.ReactElement {
           onClose: () => {
             if (observersRef.current.get(b.region) === o) observersRef.current.delete(b.region);
           },
-        });
+        }, { welcomeTimeoutMs: welcomeTimeoutMs() });
         observersRef.current.set(b.region, o);
         const { region, from, account, exp, ticket } = b;
         void o.observe(b.endpoint, "mmo-client-observer", { region, from, account, exp, ticket }).catch(() => {
@@ -414,6 +430,14 @@ export function App(): React.ReactElement {
         setWorn({ ...EMPTY_WORN, ...inv.worn });
       },
       onVendor: (v) => setShop((prev) => nextShop(prev, v)),
+      onDuel: (d) => {
+        const me = clientRef.current?.playerEntity?.toString();
+        if (!me) return;
+        setDuel((prev) => nextDuel(prev, d, me));
+        if (d.state === "ended" && (d.a === me || d.b === me)) {
+          setNotice({ text: t(d.winner === me ? "duel.won" : "duel.lost"), at: performance.now() });
+        }
+      },
       onWallet: (w) => setGold(w.balance),
       onResources: () => setResourcesSeen((n) => n + 1),
       onPouch: (p) => {
@@ -478,7 +502,7 @@ export function App(): React.ReactElement {
         if (text) setNotice({ text, at: performance.now() });
       },
       onDungeon: (d) => onDungeon(d),
-    });
+    }, { welcomeTimeoutMs: welcomeTimeoutMs() });
     return c;
   };
 
@@ -506,6 +530,7 @@ export function App(): React.ReactElement {
     setNearEntrance(null);
     combat.select(null);
     setCombatView(null);
+    setDuel(null);
     const old = clientRef.current;
     const next = createClient();
     clientRef.current = next;
@@ -667,6 +692,7 @@ export function App(): React.ReactElement {
     setNearEntrance(null);
     combat.select(null);
     setCombatView(null);
+    setDuel(null);
     fire("net.closed");
   };
 
@@ -994,6 +1020,16 @@ export function App(): React.ReactElement {
             else if (c.kind === "error") setNotice({ text: c.text, at: Date.now() });
           }}
         />
+        <HudSlot id="duel-panel" className="z-10">
+          <DuelPanel
+            duel={duel}
+            target={combatView?.target ?? null}
+            onChallenge={() => combatView?.target && client?.duel("challenge", combatView.target.entity.toString())}
+            onAccept={() => client?.duel("accept")}
+            onDecline={() => client?.duel("decline")}
+            onYield={() => client?.duel("yield")}
+          />
+        </HudSlot>
         {shop && bag && (
           <HudSlot id="vendor-panel" className="z-10">
             <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.vendor")}</div>}>
