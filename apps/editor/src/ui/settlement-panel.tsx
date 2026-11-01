@@ -15,6 +15,7 @@ import { DocBar } from "./doc-bar.js";
 import { useSaveTask } from "./use-save-task.js";
 import { NodeEditor } from "./rules-editor.js";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, SectionTitle, Select } from "./components.js";
+import { requestJson } from "../api.js";
 import { sameValue } from "../document-state.js";
 import { NO_HISTORY, useDocActions } from "./doc-actions.js";
 import { groupIssues, setAtPath, type RuleIssueView } from "../rules-tree.js";
@@ -51,6 +52,70 @@ export const SECTIONS: [key: string, label: string, blurb: string][] = [
   ["architecture", "Architecture", "Storey, ceiling and roof heights against the human."],
   ["version", "Version", "The rules' version, written into every baked town."],
 ];
+
+/** The Bake button's status (settlement-bake.ts): the state, the times and the output tail. */
+interface BakeView {
+  state: "idle" | "running" | "done" | "failed" | "cancelled";
+  startedAt: number | null;
+  finishedAt: number | null;
+  exitCode: number | null;
+  log: string;
+}
+const URL_BAKE = "/api/editor/settlements/bake";
+
+/** Bake the towns from the saved rules: one bake at a time, its output tailed while it runs, Cancel stops it. */
+function BakeCard(): React.JSX.Element {
+  const [bake, setBake] = React.useState<BakeView | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const running = bake?.state === "running";
+  const refresh = React.useCallback(async () => {
+    try {
+      setBake(await requestJson<BakeView>(URL_BAKE, { fail: "bake status failed" }));
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  // Progress: the output is polled once a second while a bake runs.
+  React.useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => void refresh(), 1000);
+    return () => clearInterval(timer);
+  }, [running, refresh]);
+  const act = async (path: string, fail: string): Promise<void> => {
+    try {
+      setBake(await requestJson<BakeView>(`${URL_BAKE}${path}`, { method: "POST", fail }));
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+  const logRef = React.useRef<HTMLPreElement>(null);
+  React.useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [bake?.log]);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bake the towns</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => void act("", "bake did not start")} disabled={running}>Bake</Button>
+          <Button size="sm" variant="outline" onClick={() => void act("/cancel", "cancel failed")} disabled={!running}>Cancel</Button>
+          <Badge>{bake ? bake.state : "…"}</Badge>
+          {bake?.exitCode !== null && bake?.exitCode !== undefined && !running ? <span className="text-xs text-muted-foreground">exit {bake.exitCode}</span> : null}
+        </div>
+        <span className="text-xs text-muted-foreground">Bakes the saved rules, the same command as npm run settlement:bake. Save first.</span>
+        {error ? <div role="alert" className="text-xs text-destructive">{error}</div> : null}
+        <pre ref={logRef} aria-label="Bake output" className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-xs">{bake?.log || "No bake yet."}</pre>
+      </CardContent>
+    </Card>
+  );
+}
 
 /** Plan colours by district kind (fill only; text stays in the theme's ink). */
 const KIND_FILL: Record<string, string> = {
@@ -405,7 +470,10 @@ export function SettlementPanel(): React.JSX.Element {
         </CardContent>
       </Card>
 
-      <div className="lg:col-span-2 2xl:col-span-1">{content !== null && <PreviewCard content={content} />}</div>
+      <div className="lg:col-span-2 2xl:col-span-1">
+        {content !== null && <PreviewCard content={content} />}
+        <BakeCard />
+      </div>
     </div>
   );
 }
