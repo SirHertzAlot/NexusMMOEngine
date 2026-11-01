@@ -63,7 +63,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [hud, setHud] = React.useState<HudData | null>(null);
   const [gpu, setGpu] = React.useState<GpuInfo | null>(null);
   // Wireframe is the shared viewport toggle (the toolbar's viewport options and the tools panel below).
-  const wireframe = viewportFlags.use().wireframe;
+  const wireframe = viewportFlags.useValue().wireframe;
   const [showcase, setShowcase] = React.useState(false);
   const [maximized, setMaximized] = React.useState(false);
   // Camera view: third-person follow or first-person (V toggles in the view too).

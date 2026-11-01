@@ -89,7 +89,7 @@ export function AssetInspectorPanel(): React.JSX.Element {
   const { scan, loading, refresh } = useAssetManifest();
   const [fallbacks, setFallbacks] = React.useState<AssetLoadStatus[] | null>(null);
   const [packLoading, setPackLoading] = React.useState(false);
-  const { filter, previewId } = assetUiStore.use();
+  const { filter, previewId } = assetUiStore.useValue();
 
   async function loadPackInBrowser(): Promise<void> {
     if (!scan?.manifest || !loadable) return;
