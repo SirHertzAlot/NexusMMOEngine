@@ -117,6 +117,7 @@ import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
+import { findEntities, FindArgsSchema } from "../admin/find.js";
 import { parseAppearanceArgs, applyAppearanceEdit } from "../admin/appearance.js";
 import { ensureAnimation } from "../animation.js";
 import { applyFly, applyGod, applyHeal, applyNoclip, applyTeleport, FlyArgsSchema, GodArgsSchema, HealArgsSchema, InjureArgsSchema, NoclipArgsSchema, SkillArgsSchema, TeleportArgsSchema } from "../admin/player.js";
@@ -2939,7 +2940,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, set, addcomponent, removecomponent, appearance, bots, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, find, set, addcomponent, removecomponent, appearance, bots, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -2967,6 +2968,13 @@ export class Gateway {
       };
     } else if (cmd.command === "inspect") {
       res = this.runInspect(s, cmd.args);
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
+      }
+    } else if (cmd.command === "find") {
+      res = this.runFind(s, cmd.args);
       if (!res.ok) {
         this.logAdmin(s.username, cmd.command, false);
         this.sendError(s, 4003, res.message);
@@ -3186,7 +3194,25 @@ export class Gateway {
   }
 
   /**
-   * `set` (roadmap A2, write path): change one numeric component field.
+   * `find` (roadmap A2, search): entities matching a wire-id prefix, a
+   * component name, or a creature name. Args: {query}. Zero matches is
+   * still ok; the message says so.
+   */
+  private runFind(_s: ClientSession, args: unknown): AdminResult {
+    const parsed = FindArgsSchema.safeParse(args ?? {});
+    if (!parsed.success) {
+      return { kind: "admin", command: "find", ok: false, message: "usage: find {query}" };
+    }
+    const creatureName = this.creatures?.nameOf?.bind(this.creatures);
+    const { total, lines } = findEntities(this.world, parsed.data.query, creatureName);
+    if (total === 0) return { kind: "admin", command: "find", ok: true, message: `no entity matches ${JSON.stringify(parsed.data.query)}` };
+    const head = total > lines.length ? `${total} matches, first ${lines.length}:` : `${total} match${total === 1 ? "" : "es"}:`;
+    return { kind: "admin", command: "find", ok: true, message: [head, ...lines].join("\n") };
+  }
+
+  /**
+   * `set` (roadmap A2, write path): change one numeric component field
+   * (or a stat base through the `Stat` pseudo-component).
    * Args: {entity: "<u64>" | "me", component, field, value}. Unknown
    * entities, components, fields, and values read as errors, never throw.
    */
