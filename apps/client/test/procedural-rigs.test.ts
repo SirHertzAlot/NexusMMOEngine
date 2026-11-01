@@ -16,6 +16,7 @@ import {
   segmentFlora,
 } from "../src/render/animal/segment.js";
 import { AnimalTemplate } from "../src/render/animal/animal-rig.js";
+import { namedRigType } from "../src/render/animal/segment.js";
 
 function box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, seg = [1, 1, 1]): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0, seg[0], seg[1], seg[2]);
@@ -84,6 +85,15 @@ describe("Multi-rig procedural classification & segmentation", () => {
     assert.equal(classifyModelType(dummy, undefined, "Spider_1.glb"), "arachnid");
     assert.equal(classifyModelType(dummy, undefined, "Pine_tree_02.glb"), "flora");
     assert.equal(classifyModelType(dummy, undefined, "Wolf_6K9M8f0j1P.glb"), "quadruped");
+  });
+
+  it("a model named as a bird takes the avian rig from its name, not the quadruped fit", () => {
+    assert.equal(namedRigType("synty:animals/SM_Raven_01"), "avian");
+    assert.equal(namedRigType("animals/SM_Bear_01"), "quadruped");
+    assert.equal(namedRigType("structure:house"), undefined, "a name that says nothing");
+    const named = AnimalTemplate.from(syntheticAvian(), undefined, "animals/SM_Raven_01");
+    assert.ok(named);
+    assert.equal(named.seg.type, "avian");
   });
 
   it("segments avian models with wing and leg bones", () => {
