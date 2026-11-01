@@ -32,41 +32,41 @@ export const PERSIST_SCHEMA_SURREALQL = `
 -- =============================================================================
 -- 1. ENTITY CORE STATE REGISTRY
 -- =============================================================================
-DEFINE TABLE entity SCHEMAFULL;
+DEFINE TABLE IF NOT EXISTS entity SCHEMAFULL;
 
 -- Direct 1:1 index mapping to the C++ SharedArrayBuffer entity slot
-DEFINE FIELD sab_index ON TABLE entity TYPE int
+DEFINE FIELD IF NOT EXISTS sab_index ON TABLE entity TYPE int
     ASSERT $value != NONE AND $value >= 0;
 
 -- Tracks the precise timestamp of the last memory-to-disk checkpoint
-DEFINE FIELD checkpointed_at ON TABLE entity TYPE datetime
+DEFINE FIELD IF NOT EXISTS checkpointed_at ON TABLE entity TYPE datetime
     DEFAULT time::now()
     VALUE time::now();
 
 -- Ensure no two persistent records ever claim the same memory arena index
-DEFINE INDEX sab_index_idx ON TABLE entity COLUMNS sab_index UNIQUE;
+DEFINE INDEX IF NOT EXISTS sab_index_idx ON TABLE entity COLUMNS sab_index UNIQUE;
 
 -- =============================================================================
 -- 2. TRANSACTIONAL INVENTORY LEDGER
 -- =============================================================================
-DEFINE TABLE inventory_slot SCHEMAFULL;
+DEFINE TABLE IF NOT EXISTS inventory_slot SCHEMAFULL;
 
 -- Enforces hard boundary limits natively at the database engine layer
-DEFINE FIELD capacity ON TABLE inventory_slot TYPE int
+DEFINE FIELD IF NOT EXISTS capacity ON TABLE inventory_slot TYPE int
     DEFAULT 20
     ASSERT $value > 0;
 
 -- Array of held item objects/identifiers
-DEFINE FIELD items ON TABLE inventory_slot TYPE array
+DEFINE FIELD IF NOT EXISTS items ON TABLE inventory_slot TYPE array
     DEFAULT [];
 
 -- =============================================================================
 -- 3. GRAPH RELATIONAL LINKAGE (ENTITY -> INVENTORY)
 -- =============================================================================
-DEFINE TABLE owns SCHEMAFULL TYPE RELATION IN entity OUT inventory_slot;
+DEFINE TABLE IF NOT EXISTS owns SCHEMAFULL TYPE RELATION IN entity OUT inventory_slot;
 
 -- Guarantee an inventory container is bound to exactly one owning entity
-DEFINE INDEX structural_ownership ON TABLE owns COLUMNS in, out UNIQUE;
+DEFINE INDEX IF NOT EXISTS structural_ownership ON TABLE owns COLUMNS in, out UNIQUE;
 `;
 
 /** Load `persist/schema.surrealql` from disk if present, otherwise return embedded constant. */
