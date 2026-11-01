@@ -1177,6 +1177,7 @@ async function main(): Promise<void> {
     dungeonDir: process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT,
     dataDir: DATA_DIR,
     instanceHost: process.env.MMO_INSTANCE_HOST || "localhost",
+    scale,
     getGame: () => game,
     credentialStore,
     getGateway: () => gw,
