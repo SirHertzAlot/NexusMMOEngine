@@ -27,6 +27,7 @@ import {
   type PersistTransaction,
 } from "./lockless-ring.js";
 import { DEFAULT_PERSIST_RING_CAPACITY } from "./sim-worker.js";
+import { rocksdbUrl } from "./persist/world-catalog.js";
 
 export const PERSIST_SCHEMA_SURREALQL = `
 -- =============================================================================
@@ -68,6 +69,16 @@ DEFINE TABLE IF NOT EXISTS owns SCHEMAFULL TYPE RELATION IN entity OUT inventory
 -- Guarantee an inventory container is bound to exactly one owning entity
 DEFINE INDEX IF NOT EXISTS structural_ownership ON TABLE owns COLUMNS in, out UNIQUE;
 `;
+
+/**
+ * The ledger's engine URL for production boot. `MMO_DATA_PLANE_DB` wins when set (`mem://`
+ * opts back into the volatile engine); otherwise the ledger is durable under `<dataDir>/data-plane`.
+ */
+export function resolveDataPlaneDbUrl(envValue: string | undefined, dataDir: string): string {
+  const explicit = envValue?.trim();
+  if (explicit) return explicit;
+  return rocksdbUrl(path.join(dataDir, "data-plane"));
+}
 
 /** Load `persist/schema.surrealql` from disk if present, otherwise return embedded constant. */
 export function loadPersistSchemaSurrealQL(): string {
