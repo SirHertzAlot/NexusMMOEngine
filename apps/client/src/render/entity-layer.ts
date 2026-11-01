@@ -639,7 +639,7 @@ export class EntityLayer {
 
       // Shared bodies come from the server's snapshots; the local player is predicted elsewhere.
       const isPlayerBody = playerWireId !== null && wid === playerWireId;
-      const sharedT = isPlayerBody ? undefined : this.sharedPose(wid, clock, alpha);
+      const sharedT = isPlayerBody ? undefined : this.sharedPose(wid, now);
       const t = sharedT ?? interpolator.sample(wid, alpha) ?? e.transform;
       tracked.object.position.set(t.px, t.py, t.pz);
       if (tracked.character) {
@@ -750,11 +750,10 @@ export class EntityLayer {
     this.props.matte();
   }
 
-  /** A shared body's pose from snapshots, or undefined until it has some. Time runs with the frame's alpha, so motion is smooth between ticks. */
-  private sharedPose(wid: bigint, clock: ServerClock, alpha: number): BodyPose | undefined {
+  /** A shared body's pose from snapshots on the playout clock, or undefined until it has some. */
+  private sharedPose(wid: bigint, now: number): BodyPose | undefined {
     this.shared.want(wid);
-    const hz = clock.tickHz || 30;
-    return this.shared.sample(wid, (clock.tick - 1 + alpha) / hz);
+    return this.shared.sampleAt(wid, now);
   }
 
   private attachShared(interp: Interpolator): void {
