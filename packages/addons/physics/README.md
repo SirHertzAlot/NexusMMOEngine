@@ -122,6 +122,27 @@ holds 3 floats per id: the root where each rig is dropped.
 - **Not yet covered:** the engine's real world (terrain and other bodies) and
   server hardware. Both are in the cost gate's not-measured list.
 
+### Characters (CharacterVirtual, slice 1)
+
+`addCharacter(id, radius, halfHeight, x, y, z)` adds an upright capsule (Jolt
+`CharacterVirtual`) centred on the position: `halfHeight` is half the straight
+section and `radius` extends beyond it on every side. It returns `true`, or
+`false` and changes nothing for a duplicate id, a radius that is not positive,
+or a negative `halfHeight`. `removeCharacter(id)` is idempotent.
+
+- A character is **not a body** and takes no part in `step()`. `updateCharacter(id,
+  dt, gx, gy, gz)` moves it by one Jolt update over `dt` seconds under gravity
+  `(gx, gy, gz)`. It sweeps against static geometry (layer 0) and moving bodies
+  (any other layer), so it stops at their faces. `setCharacterVelocity(id, vx, vy,
+  vz)` sets the velocity the next updates carry.
+- `characterPosition(id)` returns `[x, y, z]`, NaN on each axis for an unknown id.
+  `characterCount()` reports how many characters are present.
+- Where the capsule meets a surface, Jolt keeps it about 0.02 m clear (its contact
+  padding). The settings are Jolt's defaults.
+- **Not yet covered:** the engine does not use characters yet (kinematic walkers
+  still move on the JS side), and the API exposes no slope, step or ground
+  settings.
+
 ## Determinism
 
 Jolt is deterministic given **the same binary and the same

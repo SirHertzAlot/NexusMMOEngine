@@ -133,6 +133,23 @@ export declare class PhysicsWorld {
    * bit means the contact cap was full: Jolt dropped contacts that step.
    */
   lastStepErrors(): number;
+  /**
+   * Jolt CharacterVirtual: an upright capsule that moves by sweeping against the
+   * world's bodies. It is not a body and takes no part in step(); each character
+   * moves only when updateCharacter runs. radius and halfHeight give a capsule
+   * centred on the position (halfHeight is half the straight section). Returns
+   * false, and changes nothing, for a duplicate id, a radius that is not
+   * positive, or a negative halfHeight.
+   */
+  addCharacter(id: bigint, radius: number, halfHeight: number, x: number, y: number, z: number): boolean;
+  /** Removes a character; unknown ids are ignored. */
+  removeCharacter(id: bigint): void;
+  setCharacterVelocity(id: bigint, vx: number, vy: number, vz: number): void;
+  /** One Jolt update of the character over dt seconds under gravity (gx, gy, gz). */
+  updateCharacter(id: bigint, dt: number, gx: number, gy: number, gz: number): void;
+  /** The character's position; each axis is NaN for an unknown id. */
+  characterPosition(id: bigint): [number, number, number];
+  characterCount(): number;
   destroy(): void;
 }
 
