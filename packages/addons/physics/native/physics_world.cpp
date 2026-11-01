@@ -173,6 +173,9 @@ constexpr int kRagdollLightUnits = 2;
 constexpr int kRagdollDefaultBudget = 240;
 
 constexpr float kRagdollDegrees = 3.14159265358979f / 180.0f;
+// The sleep threshold (m/s) a world starts with. Jolt's own default is 0.03; 0.05 is the value
+// the sleep benchmark chose (bench/addon-sleep-ensemble.mjs, docs/addon-sleep-threshold-ensemble-results.json).
+constexpr float kDefaultSleepThreshold = 0.05f;
 
 const RagdollPart *RigParts(int rig_kind, int *count) {
   if (rig_kind == MJ_RAGDOLL_LIGHT) {
@@ -295,6 +298,9 @@ struct mj_physics_world {
                   kMaxContactConstraints, mBroadPhaseLayerInterface,
                   mObjectVsBroadPhaseLayerFilter, mObjectLayerPairFilter);
     mSystem->SetGravity(JPH::Vec3(0.0f, -9.81f, 0.0f));
+    JPH::PhysicsSettings settings = mSystem->GetPhysicsSettings();
+    settings.mPointVelocitySleepThreshold = kDefaultSleepThreshold;
+    mSystem->SetPhysicsSettings(settings);
   }
 
   mj_physics_world(const mj_physics_world &) = delete;

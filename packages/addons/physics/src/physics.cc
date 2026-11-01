@@ -674,8 +674,8 @@ private:
     return Napi::Number::New(env, mj_physics_sleep_threshold(mWorld));
   }
 
-  // setSleepThreshold(metresPerSecond: number). Jolt's default is 0.03; a
-  // larger value lets resting bodies sleep sooner.
+  // setSleepThreshold(metresPerSecond: number). A world starts at 0.05 (the sleep
+  // benchmark's choice; Jolt's own is 0.03); a larger value lets resting bodies sleep sooner.
   void SetSleepThreshold(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!requireLive(env))
