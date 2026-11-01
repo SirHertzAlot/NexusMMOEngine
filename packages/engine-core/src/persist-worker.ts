@@ -195,6 +195,13 @@ export class PersistenceWorkerRuntime {
 
       case PERSIST_TX_KIND.INVENTORY_ADD_ITEM: {
         const itemCode = `item_${tx.paramA}`;
+        // One round trip for the common case: append in the engine when the slot has room.
+        const appended = await this.db.query<[InventorySlotRecord[]]>(
+          `UPDATE $sid SET items += $itemCode WHERE array::len(items) < capacity RETURN AFTER;`,
+          { sid, itemCode },
+        );
+        if (appended?.[0]?.[0]) break;
+        // No row was appended: the slot is full or does not exist yet.
         const slotRows = await this.db.query<[InventorySlotRecord[]]>(
           `SELECT * FROM $sid;`,
           { sid },
@@ -211,10 +218,8 @@ export class PersistenceWorkerRuntime {
             `,
             { eid, sid, sabIndex: tx.sabIndex, itemCode },
           );
-        } else if (existing.items.length < existing.capacity) {
-          const nextItems = [...existing.items, itemCode];
-          await this.db.query(`UPDATE $sid SET items = $nextItems;`, { sid, nextItems });
         }
+        // else: the slot is full; the add is dropped, as before.
         break;
       }
 
