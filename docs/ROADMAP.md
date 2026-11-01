@@ -487,6 +487,7 @@ Newest first. One line per merged PR or decision.
 - **2026-11-01**: B7 spawn-burst repeat runs (#595): burst cost confirmed in all four cells (3 runs each). Row closed ✅.
 - **2026-11-01**: IM7 rate LOD (#595): sectors beyond the enter radius send one delta every 3 ticks by default (outerEvery). IM still open: quest NPC pins, farVisible entities, region-wide drops.
 - **2026-11-01**: SG2b settlement street ribbons (#595): routed streets become ribbons in the bake sidecar, with the client road mesh. Row stays 🚧 for junctions, earthwork and drainage.
+- **2026-11-01**: WL2 raid blows on structures verified by test (#598, `creature-raid-structures.test.ts`). WL2 stays 🚧: editor rig view, animal creature rules, live check of birds, snakes and sea giants remain.
 - **2026-11-01**: Duel strikes row closed ✅ (#587): the cause and fix are on main, with the two-account live check. Recount on main after #595 (B7, still a draft) and the other open PRs: no other status changed.
 - **2026-11-01**: D4g decal spawn (#585): dungeon decal kinds (cracks, moss, roots, bones, icicles) spawn as placeholder props, reusing existing prop shapes. Row closed ✅ on placeholder props, per the art-blocked rule (stand-ins count as done; real art can swap in later).
 - **2026-11-01**: WL1 free swimmers (#590): fish and sea mammals placed as static props in open water, 1 to 30 m. Moving swimmers still need the simulated-agent path. Row stays 🚧.
