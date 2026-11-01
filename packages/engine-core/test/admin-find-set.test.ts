@@ -98,3 +98,43 @@ describe("admin set: the widened fields", () => {
     assert.match(unknown.message, /unknown stat/);
   });
 });
+
+describe("admin set: Appearance and Chunk", () => {
+  it("sets Appearance.look to a look the world knows, and refuses an unknown one or a missing component", () => {
+    const sim = world(false);
+    const a = positioned(sim, 0, 0);
+    const b = positioned(sim, 1, 0);
+    sim.setLook(a, '{"parts":{"head":"a"}}');
+    sim.setLook(b, '{"parts":{"head":"b"}}');
+    const lookA = C.Appearance.look[a]!;
+    const lookB = C.Appearance.look[b]!;
+    const ok = applySet(sim, sim.wireId(a), "Appearance", "look", lookB);
+    assert.equal(ok.ok, true, ok.message);
+    assert.equal(C.Appearance.look[a], lookB);
+    assert.equal(sim.lookJson(C.Appearance.look[a]!), '{"parts":{"head":"b"}}');
+    const unknown = applySet(sim, sim.wireId(a), "Appearance", "look", 99999);
+    assert.equal(unknown.ok, false);
+    assert.match(unknown.message, /no look 99999/);
+    const bare = positioned(sim, 2, 0);
+    const none = applySet(sim, sim.wireId(bare), "Appearance", "look", lookA);
+    assert.equal(none.ok, false);
+    assert.match(none.message, /has no Appearance/);
+    const field = applySet(sim, sim.wireId(a), "Appearance", "colour", 1);
+    assert.equal(field.ok, false);
+  });
+
+  it("sets Chunk.lod within 0..255, and refuses the chunk identity", () => {
+    const sim = world(false);
+    const eid = positioned(sim, 0, 0);
+    addComponent(sim.ecs, C.Chunk, eid);
+    const wire = sim.wireId(eid);
+    assert.equal(applySet(sim, wire, "Chunk", "lod", 3).ok, true);
+    assert.equal(C.Chunk.lod[eid], 3);
+    assert.equal(applySet(sim, wire, "Chunk", "lod", 256).ok, false);
+    assert.equal(applySet(sim, wire, "Chunk", "lod", -1).ok, false);
+    assert.equal(applySet(sim, wire, "Chunk", "lod", 1.5).ok, false);
+    assert.equal(C.Chunk.lod[eid], 3, "a refused write changes nothing");
+    assert.equal(applySet(sim, wire, "Chunk", "chunkIdLo", 7).ok, false, "the chunk id is not writable");
+  });
+});
+

@@ -5,8 +5,8 @@
  * ownership by construction, so every write lands in the command log
  * (the gateway logs all answered admin commands).
  *
- * Only numeric SoA fields; Appearance stays out (look ids are resolved
- * through the world's look table — A6 owns appearance editing). Integer
+ * Numeric SoA fields, plus Appearance.look (a known look id from the world's
+ * look table; the `appearance` command still owns part and colour edits, A6). Integer
  * stores reject non-integers; every value must be finite.
  */
 
@@ -101,6 +101,12 @@ const FIELDS: Record<
     store: C.AssetRef as unknown as Record<string, { [eid: number]: number }>,
     fields: { assetHash: "int", variant: "int" },
   },
+  Chunk: {
+    comp: C.Chunk,
+    store: C.Chunk as unknown as Record<string, { [eid: number]: number }>,
+    // Only the LOD is writable: the chunk id and seed are the chunk's identity.
+    fields: { lod: "int" },
+  },
   Needs: {
     comp: C.Needs,
     store: C.Needs as unknown as Record<string, { [eid: number]: number }>,
@@ -129,6 +135,18 @@ const FIELDS: Record<
 export function applySet(world: SimWorld, wireId: bigint, component: string, field: string, value: number): { ok: boolean; message: string } {
   const eid = world.resolveWireId(wireId);
   if (eid < 0) return { ok: false, message: `unknown entity ${wireId}` };
+  if (component === "Appearance") {
+    // The look is an interned id (see World.setLook); only a look the world already knows can be set.
+    if (field !== "look") return { ok: false, message: `unknown field ${JSON.stringify(field)} on Appearance` };
+    if (!Number.isInteger(value) || value < 0) return { ok: false, message: "Appearance.look is a look id (a non-negative integer)" };
+    if (!hasComponent(world.ecs, C.Appearance, eid)) return { ok: false, message: `entity ${wireId} has no Appearance` };
+    if (world.lookJson(value) === "") return { ok: false, message: `no look ${value} in this world (see inspect)` };
+    C.Appearance.look[eid] = value;
+    return { ok: true, message: `Appearance.look = ${value} on ${wireId}` };
+  }
+  if (component === "Chunk" && field === "lod" && (!Number.isInteger(value) || value < 0 || value > 255)) {
+    return { ok: false, message: "Chunk.lod is an integer from 0 to 255" };
+  }
   if (component === "Stat") {
     if (!Number.isFinite(value)) return { ok: false, message: "value is not finite" };
     if (!world.stats.has(eid)) return { ok: false, message: `entity ${wireId} has no Stat` };

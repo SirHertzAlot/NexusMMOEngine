@@ -100,7 +100,7 @@ export function inspectEntity(world: SimWorld, wireId: bigint): string | null {
     lines.push(`Locomotion: mode ${L.mode[eid]} abilities ${L.abilities[eid]} breath ${r2(L.breath[eid])}`);
   }
   if (hasComponent(ecs, C.Appearance, eid)) {
-    lines.push(`Appearance: ${world.lookJson(C.Appearance.look[eid])}`);
+    lines.push(`Appearance: look ${C.Appearance.look[eid]} ${world.lookJson(C.Appearance.look[eid])}`);
   }
   if (hasComponent(ecs, C.Action, eid)) {
     lines.push(`Action: move ${C.Action.move[eid]} started ${C.Action.started[eid]} seq ${C.Action.seq[eid]}`);
