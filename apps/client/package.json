@@ -54,6 +54,7 @@
     "pretest": "npm run build:deps",
     "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",
     "bench:sab-assets": "npm run build:lib && node scripts/bench-sab-assets.mjs",
+    "bench:art-baselines": "node scripts/art-baselines.mjs",
     "surfaces:fetch": "node scripts/fetch-surfaces.mjs",
     "models:generate": "gltfjsx --types --output src/render/generated --transform"
   },

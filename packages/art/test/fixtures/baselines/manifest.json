@@ -1,1 +1,49 @@
-{"assets":[{"bytes":1056,"file":"prop-crate.glb","kind":"prop","loadMs":null,"note":"Unit crate (box). Baseline for geometry compression."},{"bytes":2084,"file":"character-humanoid.glb","kind":"character","loadMs":null,"note":"Two-box humanoid (body + head). Baseline for character compression."},{"bytes":15144,"file":"vista-terrain.glb","kind":"vista","loadMs":null,"note":"24x24 displaced plane. Baseline for environment compression."}],"generated":"2026-10-10","generator":"packages/art/scripts/gen-baselines.mjs","loadMsNote":"Client load times (median of 5) and screenshot hashes are recorded by the client test harness when it runs against these fixtures.","screenshotHashNote":"Screenshot hashes are recorded by the client test harness when it renders these fixtures.","toolVersions":{"@gltf-transform/cli":"4.5.1","animouse":"0.8.0","gltfjsx":"6.5.3","gltfpack":"v1.3","leva":"0.10.1","lil-gui":"0.21.0"}}
+{
+  "assets": [
+    {
+      "bytes": 1056,
+      "file": "prop-crate.glb",
+      "kind": "prop",
+      "loadMs": 4.3,
+      "note": "Unit crate (box). Baseline for geometry compression.",
+      "screenshotSha256": "a5b70790c45a9dd34f71d9d2adcf974486ba9cba38c560ce0a80242803d778ff"
+    },
+    {
+      "bytes": 2084,
+      "file": "character-humanoid.glb",
+      "kind": "character",
+      "loadMs": 3.1,
+      "note": "Two-box humanoid (body + head). Baseline for character compression.",
+      "screenshotSha256": "f7665eb132b0580774d7bfb8fc69fa023088238803af13deda0ac6072d509582"
+    },
+    {
+      "bytes": 15144,
+      "file": "vista-terrain.glb",
+      "kind": "vista",
+      "loadMs": 3.9,
+      "note": "24x24 displaced plane. Baseline for environment compression.",
+      "screenshotSha256": "b66c436dc2f987b97fb9d5b9825dbee553a9d9a10a667a212de5d09762f6955a"
+    }
+  ],
+  "generated": "2026-10-10",
+  "generator": "packages/art/scripts/gen-baselines.mjs",
+  "loadMsNote": "Median of 5 runs after one warmup (fetch, parse and scene build), recorded by apps/client/scripts/art-baselines.mjs on the machine named in environment.",
+  "screenshotHashNote": "sha256 of the 256 x 256 RGBA render with a fixed camera, recorded by apps/client/scripts/art-baselines.mjs. Its --check mode fails when a render changes.",
+  "toolVersions": {
+    "@gltf-transform/cli": "4.5.1",
+    "animouse": "0.8.0",
+    "gltfjsx": "6.5.3",
+    "gltfpack": "v1.3",
+    "leva": "0.10.1",
+    "lil-gui": "0.21.0"
+  },
+  "environment": {
+    "browser": "Chromium 153.0.8010.12",
+    "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "node": "v22.22.0",
+    "three": "0.186.1",
+    "render": "256x256",
+    "runs": 5,
+    "measuredOn": "2026-11-01"
+  }
+}
