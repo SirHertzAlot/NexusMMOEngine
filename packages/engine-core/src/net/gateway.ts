@@ -2117,6 +2117,7 @@ export class Gateway {
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
+    const bySector = frame ? this.namedBySector() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
     // interest management splits it per sector (IM3).
     const deltaEnv = encodeEnvelope(
@@ -2146,11 +2147,13 @@ export class Gateway {
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
-      if (namesEnv) this.deliver(s, namesEnv, tick);
+      // Names: everyone without interest management; with it, per session (deliverNamesFor), before its delta.
+      if (namesEnv && !frame) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (frame) {
         const replace = isSnapshotTick || s.needsResync || !s.interestSet;
         const entries = this.interestEntries(s, frame, replace);
+        if (bySector) this.deliverNamesFor(s, bySector, tick);
         const sid = edge && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
         if (sid !== undefined) {
           // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
@@ -2328,6 +2331,52 @@ export class Gateway {
    * sectors' shared bytes, full state for sectors it just entered (or all of
    * them on a replace), and a leave for each it dropped.
    */
+  /** The named entities by their home sector, once per tick (IM5); null without interest management. */
+  private namedBySector(): Map<string, bigint[]> {
+    const bySector = new Map<string, bigint[]>();
+    for (const w of this.namedWireIds()) {
+      const eid = this.world.resolveWireId(w);
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      const sector = homeSector(this.world, eid);
+      const list = bySector.get(sector);
+      if (list) list.push(w);
+      else bySector.set(sector, [w]);
+    }
+    return bySector;
+  }
+
+  /**
+   * Names (0x12) with interest management on (IM5): a session is told the name of each named entity in
+   * its interest sectors, or pinned, that it has not been told yet. That covers a spawn in view, an
+   * entity that walks into view later, and the session's own avatar. A name goes out once per session,
+   * so an entity that stays in view costs nothing after its first name. Replaces the global names
+   * broadcast, which sent every spawn's name to every session (~35 bytes each).
+   */
+  private deliverNamesFor(s: ClientSession, bySector: ReadonlyMap<string, bigint[]>, tick: number): void {
+    const sent = (s.namedSent ??= new Set<bigint>());
+    const want: bigint[] = [];
+    const consider = (w: bigint): void => {
+      if (sent.has(w)) return;
+      sent.add(w);
+      want.push(w);
+    };
+    if (s.playerEntity !== null) consider(s.playerEntity);
+    for (const sector of s.interestSet ?? []) for (const w of bySector.get(sector) ?? []) consider(w);
+    for (const w of s.pinnedOut ?? []) consider(w);
+    if (want.length === 0) return;
+    const env = this.namesFor(want);
+    if (env) this.deliver(s, env, tick);
+  }
+
+  /** Every entity that has a name on the wire: each player, and each named creature. */
+  private namedWireIds(): bigint[] {
+    const out: bigint[] = [];
+    for (const other of this.sessions.values()) if (other.playerEntity !== null) out.push(other.playerEntity);
+    const creatures = this.creatures;
+    if (creatures) for (const e of creatures.entities?.() ?? []) if (creatures.nameOf?.(e)) out.push(this.world.wireId(e));
+    return out;
+  }
+
   private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
