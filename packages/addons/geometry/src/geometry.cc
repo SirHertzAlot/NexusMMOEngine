@@ -22,6 +22,9 @@
 #include "clipper2/clipper.version.h"
 #include "manifold/cross_section.h"
 #include "manifold/manifold.h"
+// -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
+static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 using manifold::CrossSection;
 using manifold::Manifold;
@@ -66,7 +69,7 @@ Polygons ReadPolygons(const Napi::Value& v, const char* what) {
     ring.reserve(rings[r]);
     for (uint32_t i = 0; i < rings[r]; ++i, ++at) {
       const double x = pts[at * 2], z = pts[at * 2 + 1];
-      if (!std::isfinite(x) || !std::isfinite(z)) fail(std::string(what) + ": a point isn't finite");
+      if (!fp_finite(x) || !fp_finite(z)) fail(std::string(what) + ": a point isn't finite");
       ring.push_back(vec2(x, -z));
     }
     out.push_back(std::move(ring));
@@ -119,7 +122,7 @@ double NumberOr(const Napi::Object& o, const char* key, double fallback) {
   if (v.IsUndefined()) return fallback;
   if (!v.IsNumber()) fail(std::string(key) + ": expected a number");
   const double d = v.As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(d)) fail(std::string(key) + ": not finite");
+  if (!fp_finite(d)) fail(std::string(key) + ": not finite");
   return d;
 }
 
@@ -236,7 +239,7 @@ vec3 ReadVec3(const Napi::Object& o, const char* key) {
   double c[3];
   for (uint32_t i = 0; i < 3; ++i) {
     c[i] = a.Get(i).As<Napi::Number>().DoubleValue();
-    if (!std::isfinite(c[i])) fail(std::string(key) + ": not finite");
+    if (!fp_finite(c[i])) fail(std::string(key) + ": not finite");
   }
   return vec3(c[0], c[1], c[2]);
 }
