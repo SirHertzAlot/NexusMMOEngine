@@ -73,7 +73,8 @@ export interface ResidentTown {
 export interface ResidentOptions {
   towns: readonly ResidentTown[];
   /** Where `npc` is at a time of day (0..1) in `town`. */
-  place: (town: ResidentTown, npc: ResidentNpc, timeOfDay: number) => ResidentPlacement;
+  /** `day` is the game day at the tick (0 is a Sunday); absent when the server keeps no calendar. */
+  place: (town: ResidentTown, npc: ResidentNpc, timeOfDay: number, day?: number) => ResidentPlacement;
   /** Time of day (0..1) at a tick; absent: noon. */
   timeOfDay?: (tick: number) => number;
   /** The part catalog for looks (null: default parts, varied colours). */
@@ -277,6 +278,7 @@ export class ResidentSystem implements SimSystem {
     if (this.ran && tick % this.tickHz !== 0) return;
     this.ran = true;
     const t = this.opts.timeOfDay?.(tick) ?? 0.5;
+    const day = this.opts.dayOf?.(tick);
     const towns = this.sortedByPlayer(sim);
     for (const town of towns) {
       const tier = this.tierFor(town, towns.dists.get(town.id) ?? 0);
@@ -300,7 +302,7 @@ export class ResidentSystem implements SimSystem {
           fate.backAt = null;
           this.opts.store?.save({ kind: "resident", key: npc.id, state: `alive:${fate.generation}`, at: this.now(), respawnAt: null });
         }
-        let p = this.opts.place(town, npc, t);
+        let p = this.opts.place(town, npc, t, day);
         // Raiders at the gates: anyone outdoors who is not on guard takes cover at home.
         if (raid && p.outdoors && !this.holds(npc) && npc.home) p = { anchor: npc.home, outdoors: false, activity: "hide" };
         const have = this.live.get(npc.id);

@@ -18,7 +18,7 @@ import { ResidentSystem, type ResidentNpc, type ResidentTown } from "../../src/r
 const settlementPath = "../../../../settlement/dist/src/index.js";
 const settlement = (await import(settlementPath)) as {
   SQUARE: string;
-  scheduleAt(npc: unknown, timeOfDay: number, town: { archetypeOf(s: string): string | undefined; tavernNear(h: string | null): string | undefined }): { anchor: string; outdoors: boolean; activity: string };
+  scheduleAt(npc: unknown, timeOfDay: number, town: { archetypeOf(s: string): string | undefined; tavernNear(h: string | null): string | undefined }, day?: number): { anchor: string; outdoors: boolean; activity: string };
 };
 
 const ARCH: Record<string, string> = { h0: "house", h1: "house", b1: "bakery", c1: "chapel", t1: "tavern" };
@@ -378,5 +378,21 @@ describe("ResidentSystem: raids", () => {
     const sys = new ResidentSystem({ towns: [t], place: () => ({ anchor: "sq", outdoors: true, activity: "idle" }), raided: () => [{ x: 5000, z: 5000, radius: 30 }], catalog: null });
     run(sys, sim, 30);
     assert.equal(sys.count, 3);
+  });
+});
+
+describe("ResidentSystem: the game day", () => {
+  it("hands the schedule the game day from dayOf, and nothing when the server keeps no calendar", () => {
+    const days: (number | undefined)[] = [];
+    const place = (_t: ResidentTown, n: ResidentNpc, tod: number, day?: number) => {
+      days.push(day);
+      return settlement.scheduleAt(n, tod, view, day);
+    };
+    const sim = new SimWorld();
+    run(new ResidentSystem({ towns: [town(3)], place, dayOf: () => 14, catalog: null }), sim, 30);
+    assert.ok(days.length > 0 && days.every((d) => d === 14), `day 14 for every placement (${days})`);
+    days.length = 0;
+    run(new ResidentSystem({ towns: [town(3)], place, catalog: null }), new SimWorld(), 30);
+    assert.ok(days.length > 0 && days.every((d) => d === undefined), "no calendar, no day");
   });
 });

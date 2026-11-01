@@ -19,7 +19,7 @@ export const SQUARE = "@square";
 export interface Placement {
   anchor: string;
   outdoors: boolean;
-  activity: "sleep" | "work" | "tavern" | "idle";
+  activity: "sleep" | "work" | "tavern" | "idle" | "worship";
 }
 
 /** What the schedule needs to know of the town. */
@@ -28,6 +28,8 @@ export interface TownView {
   archetypeOf(structure: string): string | undefined;
   /** The tavern or inn nearest to a home (undefined: the town has none). */
   tavernNear(home: string | null): string | undefined;
+  /** The chapel or parish church nearest to a home (undefined: the town has none). Sunday worship needs it. */
+  churchNear?(home: string | null): string | undefined;
 }
 
 /** Archetypes where the work is done out in the open, or the keeper stands at the front. */
@@ -53,11 +55,17 @@ function within(h: number, from: number, to: number): boolean {
   return from <= to ? h >= from && h < to : h >= from || h < to;
 }
 
+/** Sunday worship starts at this hour (the bells for terce, the first office after the morning's work begins) and lasts this long. */
+export const WORSHIP_HOUR = 9;
+export const WORSHIP_HOURS = 1.5;
+
 /**
  * Where `npc` is at `timeOfDay` (0..1, 0 midnight). `town` says what its structures are.
  * A resident whose anchor is unknown to the town falls back to the square.
+ * `day` is the game day (0 is a Sunday); absent, it is an ordinary day. On a Sunday the
+ * town goes to church in the morning, and nobody works.
  */
-export function scheduleAt(npc: Npc, timeOfDay: number, town: TownView): Placement {
+export function scheduleAt(npc: Npc, timeOfDay: number, town: TownView, day?: number): Placement {
   const seed = hashOf(npc.id);
   // Block edges shift by up to +-30 minutes, by id.
   const jitter = ((seed % 61) - 30) / 60;
@@ -69,7 +77,12 @@ export function scheduleAt(npc: Npc, timeOfDay: number, town: TownView): Placeme
     return { anchor, outdoors: anchor === SQUARE || OUTDOOR_ARCHETYPES.has(town.archetypeOf(anchor)!), activity };
   };
 
-  if (npc.workplace && WORKING.has(npc.cohort)) {
+  const sunday = day !== undefined && day % 7 === 0;
+  if (sunday && within(hour, WORSHIP_HOUR, WORSHIP_HOUR + WORSHIP_HOURS)) {
+    const church = town.churchNear?.(home);
+    if (church) return { anchor: church, outdoors: false, activity: "worship" };
+  }
+  if (npc.workplace && WORKING.has(npc.cohort) && !sunday) {
     const keeper = (town.archetypeOf(npc.workplace) ?? "").match(/^(tavern|inn)$/) !== null;
     // Tavern and inn keepers work the afternoon and evening, the rest the day.
     if (keeper ? within(hour, 12, 24) : within(hour, 8, 17)) return at(npc.workplace, "work");
