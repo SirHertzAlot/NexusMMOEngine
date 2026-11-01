@@ -21,10 +21,12 @@ import { groupIssues, setAtPath, type RuleIssueView } from "../rules-tree.js";
 import { TOWN_FORMS } from "../town-rules.js";
 import { FieldSection } from "./spec-form.js";
 import {
+  bakeSettlementTown,
   getSettlementRules,
   LAND_PRESET_LABELS,
   previewSettlement,
   saveSettlementRules,
+  type BakeReply,
   type LandPreset,
   type SettlementPreview,
 } from "../settlement-preview.js";
@@ -104,6 +106,57 @@ function PlanLegend({ kinds, nodes }: { kinds: string[]; nodes: string[] }): Rea
       {kinds.map((k) => chip(KIND_FILL[k] ?? "#777", k, false))}
       {nodes.map((n) => chip(NODE_FILL[n] ?? "#e0c050", n.replace(/_/g, " "), true))}
     </div>
+  );
+}
+
+/** Bakes one town from the world's sites into content/settlements (the same bake as `npm run settlement:bake`). */
+function BakeCard(): React.JSX.Element {
+  const [id, setId] = React.useState("0004");
+  const [seed, setSeed] = React.useState(1234);
+  const [population, setPopulation] = React.useState(600);
+  const [site, setSite] = React.useState(1);
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<BakeReply | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function bake(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(await bakeSettlementTown("", { id, seed, population, site }));
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bake a town</CardTitle>
+        <p className="text-xs text-muted-foreground">Writes content/settlements/&lt;id&gt;.settlement.json and its scene from the world&apos;s site (best first). Uses the rules as saved.</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-sm">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <label className="flex flex-col gap-1 text-xs">Id<input aria-label="Town id" value={id} onChange={(e) => setId(e.target.value)} className="rounded-md border border-border bg-transparent px-2 py-1 text-sm" /></label>
+          <label className="flex flex-col gap-1 text-xs">Seed<input aria-label="Seed" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} className="rounded-md border border-border bg-transparent px-2 py-1 text-sm" /></label>
+          <label className="flex flex-col gap-1 text-xs">Population<input aria-label="Population" type="number" value={population} onChange={(e) => setPopulation(Number(e.target.value))} className="rounded-md border border-border bg-transparent px-2 py-1 text-sm" /></label>
+          <label className="flex flex-col gap-1 text-xs">Site rank<input aria-label="Site rank" type="number" value={site} onChange={(e) => setSite(Number(e.target.value))} className="rounded-md border border-border bg-transparent px-2 py-1 text-sm" /></label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" disabled={busy} onClick={() => void bake()}>{busy ? "Baking…" : "Bake"}</Button>
+          {error && <span className="text-xs text-red-400">{error}</span>}
+        </div>
+        {result && (
+          <div>
+            <p className={result.ok ? "text-emerald-400" : "text-red-400"}>{result.ok ? "Baked." : `Bake failed (exit ${result.exitCode}).`}</p>
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2 text-xs">{result.output}</pre>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -406,6 +459,7 @@ export function SettlementPanel(): React.JSX.Element {
       </Card>
 
       <div className="lg:col-span-2 2xl:col-span-1">{content !== null && <PreviewCard content={content} />}</div>
+      <div className="lg:col-span-2 2xl:col-span-1"><BakeCard /></div>
     </div>
   );
 }

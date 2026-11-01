@@ -9,6 +9,7 @@
  *
  * The path is fixed, never taken from the request.
  */
+import { execFile } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -127,6 +128,55 @@ export async function previewSettlement(content: unknown, population: number, se
 
 const PRESETS = Object.keys(LAND_PRESETS) as LandPreset[];
 
+/** A town to bake from the world's sites: the id it is saved under, the seed, the population and the site's rank (best first). */
+export interface BakeRequest {
+  id: string;
+  seed: number;
+  population: number;
+  site: number;
+}
+
+/** Checks a bake request. Only whole, in-range numbers and a four-digit id reach the bake CLI. */
+export function parseBakeBody(body: string | undefined): BakeRequest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body ?? "") as unknown;
+  } catch {
+    throw Object.assign(new Error("request body is not valid JSON"), { status: 400 });
+  }
+  const b = (parsed ?? {}) as Record<string, unknown>;
+  const whole = (v: unknown, lo: number, hi: number): boolean => typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
+  if (typeof b.id !== "string" || !/^\d{4}$/.test(b.id) || !whole(b.seed, 0, 4294967295) || !whole(b.population, 1, 5000) || !whole(b.site, 1, 20)) {
+    throw Object.assign(new Error('need {"id": "0000"-"9999", "seed": 0..2^32-1, "population": 1..5000, "site": 1..20}'), { status: 400 });
+  }
+  return { id: b.id, seed: b.seed as number, population: b.population as number, site: b.site as number };
+}
+
+/** The bake CLI's arguments for one request: the world's site, written beside the other towns, with its scene. */
+export function bakeArgs(repoRoot: string, req: BakeRequest): string[] {
+  return [
+    resolve(repoRoot, "packages", "settlement", "dist", "src", "cli.js"),
+    "--id", req.id,
+    "--seed", String(req.seed),
+    "--population", String(req.population),
+    "--world", resolve(repoRoot, "packages", "engine-core", "worlds", "default.world.json"),
+    "--site", String(req.site),
+    "--out", resolve(repoRoot, "content", "settlements"),
+    "--scenes", resolve(repoRoot, "content", "scenes"),
+    "--scene",
+  ];
+}
+
+/** Runs the bake CLI for one town. Its output is kept to the last lines, so the editor can show what happened. */
+export function bakeTown(repoRoot: string, req: BakeRequest): Promise<{ ok: boolean; exitCode: number; output: string }> {
+  return new Promise((done) => {
+    execFile(process.execPath, bakeArgs(repoRoot, req), { cwd: repoRoot, timeout: 600_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const text = `${stdout}${stderr}`.trimEnd().split("\n").slice(-12).join("\n");
+      done({ ok: !err, exitCode: err ? (typeof err.code === "number" ? err.code : 1) : 0, output: text });
+    });
+  });
+}
+
 function previewBody(body: string | undefined): { content: unknown; population: number; seed: number; land: LandPreset } {
   let parsed: unknown;
   try {
@@ -153,6 +203,9 @@ export async function handleSettlementRoute(repoRoot: string, method: string, pa
     if (pathname === "/api/editor/settlements/preview" && method === "POST") {
       const p = previewBody(body);
       return { status: 200, body: await previewSettlement(p.content, p.population, p.seed, p.land) };
+    }
+    if (pathname === "/api/editor/settlements/bake" && method === "POST") {
+      return { status: 200, body: await bakeTown(repoRoot, parseBakeBody(body)) };
     }
     return { status: 404, body: { ok: false, error: "not found" } };
   } catch (err) {

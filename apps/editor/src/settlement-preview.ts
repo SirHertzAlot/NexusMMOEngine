@@ -48,5 +48,15 @@ export async function getSettlementRules(base = ""): Promise<{ content: unknown;
 export const saveSettlementRules = (base = "", content: unknown): Promise<void> =>
   requestJson(`${base}${URL_RULES}`, { method: "PUT", body: { content }, fail: "town rules save failed", refused });
 
+/** The bake's result: whether the CLI wrote the town, and the last lines it printed. */
+export interface BakeReply {
+  ok: boolean;
+  exitCode: number;
+  output: string;
+}
+
+export const bakeSettlementTown = (base = "", req: { id: string; seed: number; population: number; site: number }): Promise<BakeReply> =>
+  requestJson<BakeReply>(`${base}/api/editor/settlements/bake`, { method: "POST", body: req, fail: "town bake failed" });
+
 export const previewSettlement = (base = "", content: unknown, population: number, seed: number, land: LandPreset): Promise<SettlementPreview> =>
   requestJson<SettlementPreview>(`${base}/api/editor/settlements/preview`, { method: "POST", body: { content, population, seed, land }, fail: "town preview failed" });
