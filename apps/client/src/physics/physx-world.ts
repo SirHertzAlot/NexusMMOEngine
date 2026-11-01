@@ -1,14 +1,16 @@
 /**
  * The physics seam on PhysX 5.12 (CPU, `physx-js-webidl`). Runs only in a
- * browser: the loader refuses Node. Same scene model as the Rapier backend;
- * the walker is a dynamic capsule steered by velocity (rotation locked), the
- * same approach the benchmark measured (scripts/bench-scene.mjs).
+ * browser: the loader refuses Node. Same scene model as the Rapier backend.
+ * Walkers use PhysX's capsule character controller, the counterpart of
+ * Rapier's kinematic character controller: it slides along what blocks it,
+ * steps up small ledges, and stays on the ground.
  */
 
 import { PHYSICS_SUBSTEPS, RAGDOLL_PARTS, type PhysicsWorld, type Vec3, type WalkerState } from "./physics-world.js";
 import { RIG_JOINTS, RIG_PARTS } from "./ragdoll-rig.js";
 
-// physx-js-webidl ships no type declarations; the surface used here is small.
+// physx-js-webidl's typings are loose for the parts used here; `Px` keeps the
+// rest of the surface readable without a second declaration file.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Px = any;
 
@@ -17,11 +19,21 @@ interface Rig {
 }
 
 interface Walker {
-  readonly actor: Px;
+  readonly controller: Px;
 }
 
-/** A walker moves this many metres per tick at most; larger requests are clamped. */
-const MAX_WALKER_STEP = 2;
+const DEG = Math.PI / 180;
+/** Step height a walker climbs without jumping, metres. */
+const STEP_HEIGHT = 0.35;
+/** Gap kept between a walker and what it touches, metres. */
+const SKIN = 0.01;
+/**
+ * Downward pull added to every walker move, metres per tick. The controller
+ * stops at the ground, so this keeps a walker on a slope it walks down and is
+ * the controller's stand-in for gravity.
+ */
+const GROUND_PULL = 0.1;
+const MOVE_DT = 1 / 60;
 
 export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
   const { default: PHYSX } = (await import("physx-js-webidl")) as { default: () => Promise<Px> };
@@ -39,6 +51,9 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
   sceneDesc.cpuDispatcher = T.DefaultCpuDispatcherCreate(0); // inline: the wasm build hangs with a worker thread
   sceneDesc.filterShader = T.DefaultFilterShader();
   const scene = physics.createScene(sceneDesc);
+  const controllers: Px = T.CreateControllerManager(scene);
+  const filters = new P.PxControllerFilters();
+  const collisionDown = P.PxControllerCollisionFlagEnum.eCOLLISION_DOWN;
 
   const vec = (x: number, y: number, z: number): Px => new P.PxVec3(x, y, z);
   const tf = (x: number, y: number, z: number): Px => new P.PxTransform(vec(x, y, z), new P.PxQuat(0, 0, 0, 1));
@@ -161,56 +176,51 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
     },
 
     spawnWalker(centre: Vec3, radius: number, halfHeight: number): number {
-      const actor = physics.createRigidDynamic(tf(centre.x, centre.y, centre.z));
-      // PhysX capsules lie along X; turn this one upright (90 degrees about Z).
-      const shape = physics.createShape(new P.PxCapsuleGeometry(radius, halfHeight), material, true);
-      shape.setLocalPose(new P.PxTransform(vec(0, 0, 0), new P.PxQuat(0, 0, Math.SQRT1_2, Math.SQRT1_2)));
-      shape.setSimulationFilterData(new P.PxFilterData(1, 1, 0, 0));
-      actor.attachShape(shape);
-      actor.setMass(1);
-      actor.setMassSpaceInertiaTensor(vec(0.1, 0.1, 0.1));
-      actor.setRigidDynamicLockFlags(new P.PxRigidDynamicLockFlags(
-        P.PxRigidDynamicLockFlagEnum.PxRigidDynamicLockFlag_eLOCK_ANGULAR_X
-        | P.PxRigidDynamicLockFlagEnum.PxRigidDynamicLockFlag_eLOCK_ANGULAR_Y
-        | P.PxRigidDynamicLockFlagEnum.PxRigidDynamicLockFlag_eLOCK_ANGULAR_Z,
-      ));
-      scene.addActor(actor);
+      const desc = new P.PxCapsuleControllerDesc();
+      desc.height = halfHeight * 2; // the straight part, caps excluded
+      desc.radius = radius;
+      desc.position = new P.PxExtendedVec3(centre.x, centre.y, centre.z);
+      desc.upDirection = vec(0, 1, 0);
+      desc.slopeLimit = Math.cos(45 * DEG);
+      desc.stepOffset = STEP_HEIGHT;
+      desc.contactOffset = SKIN;
+      desc.material = material;
+      const controller = controllers.createController(desc);
+      desc.delete?.();
       const handle = nextHandle++;
-      walkers.set(handle, { actor });
+      walkers.set(handle, { controller });
       return handle;
     },
 
     moveWalker(handle: number, delta: Vec3): WalkerState {
       const w = walkers.get(handle);
       if (!w) return { x: 0, y: 0, z: 0, grounded: false };
-      // Steer by velocity: the next step moves the capsule by about `delta`.
-      const len = Math.hypot(delta.x, delta.y, delta.z);
-      const scale = len > MAX_WALKER_STEP ? MAX_WALKER_STEP / len : 1;
-      const inv = scale / (1 / 60);
-      const v = vec(delta.x * inv, delta.y * inv, delta.z * inv);
-      w.actor.setLinearVelocity(v, true);
-      v.delete?.();
-      const p = posOf(w.actor);
-      return { x: p.x + delta.x * scale, y: p.y + delta.y * scale, z: p.z + delta.z * scale, grounded: false };
+      const disp = vec(delta.x, delta.y - GROUND_PULL, delta.z);
+      const flags = w.controller.move(disp, 0, MOVE_DT, filters);
+      disp.delete?.();
+      const grounded = flags.isSet(collisionDown);
+      flags.delete?.();
+      const p = w.controller.getPosition();
+      const out = { x: p.x as number, y: p.y as number, z: p.z as number, grounded };
+      p.delete?.();
+      return out;
     },
 
     teleportWalker(handle: number, centre: Vec3): void {
       const w = walkers.get(handle);
       if (!w) return;
-      w.actor.setGlobalPose(tf(centre.x, centre.y, centre.z), true);
-      const zero = vec(0, 0, 0);
-      w.actor.setLinearVelocity(zero, true);
-      zero.delete?.();
+      w.controller.setPosition(new P.PxExtendedVec3(centre.x, centre.y, centre.z));
     },
 
     removeWalker(handle: number): void {
       const w = walkers.get(handle);
       if (!w) return;
-      scene.removeActor(w.actor, true);
+      w.controller.release();
       walkers.delete(handle);
     },
 
     dispose(): void {
+      controllers.release?.();
       scene.release?.();
       rigs.clear();
       walkers.clear();
