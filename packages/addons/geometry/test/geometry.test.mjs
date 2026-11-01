@@ -69,8 +69,9 @@ describe("addon-geometry", () => {
       assert.ok(signedArea(rs[0]) > 0, "outer ring counter-clockwise");
       // z runs down the rows: the L's foot is at z 2..4, x 0..2.
       const zs = rs[0].map(([, z]) => z);
-      assert.equal(Math.min(...zs), 0);
-      assert.equal(Math.max(...zs), 4);
+      // -0 and 0 are the same position; the addon builds with -ffast-math, which can yield -0.
+      assert.ok(Math.min(...zs) === 0);
+      assert.ok(Math.max(...zs) === 4);
       assert.ok(rs[0].some(([x, z]) => x === 2 && z === 4), "the foot's corner");
     });
 
@@ -144,8 +145,9 @@ describe("addon-geometry", () => {
       const r = geo.solid({ op: "extrude", polygons: l, y0: -1, height: 3 });
       assert.ok(close(r.volume, 16 * 3));
       const { min, max } = bounds(r.positions);
-      assert.deepEqual(min, [0, -1, 0]);
-      assert.deepEqual(max, [6, 2, 4]);
+      // -0 and 0 are the same position; normalise so the comparison is not sign-sensitive.
+      assert.deepEqual(min.map((v) => v + 0), [0, -1, 0]);
+      assert.deepEqual(max.map((v) => v + 0), [6, 2, 4]);
       // The L's foot is at x 0..2, z 2..4: a vertex there, none at x 4..6, z 4.
       const has = (x, z) => {
         for (let i = 0; i < r.positions.length; i += 3) if (r.positions[i] === x && r.positions[i + 2] === z) return true;

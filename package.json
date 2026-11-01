@@ -41,6 +41,7 @@
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
     "test": "npm run test --workspaces --if-present && npm run test:scripts",
     "test:scripts": "node --test \"scripts/test/*.test.mjs\"",
+    "smoke:editor-load": "node scripts/editor-load-smoke.mjs",
     "test:addon-geometry": "npm run test --workspace=@mmo-engine/addon-geometry",
     "test:addon-navigation": "npm run test --workspace=@mmo-engine/addon-navigation",
     "valgrind:memcheck": "node scripts/valgrind/memcheck.mjs",

@@ -27,7 +27,7 @@ const shownScenario = createSlot<ScenarioEntry>();
 
 /** Right-dock Details for the Playtests view: the selected scenario's real numbers. */
 export function PlaytestDetails(): React.JSX.Element {
-  const e = shownScenario.use();
+  const e = shownScenario.useValue();
   if (!e?.content) return <p className="text-xs" style={dim}>Select a scenario.</p>;
   const { content: c, history } = e;
   const last = history[0];
@@ -52,7 +52,7 @@ export function PlaytestDetails(): React.JSX.Element {
 export function PlaytestsPanel(): React.JSX.Element {
   const [list, setList] = React.useState<ScenarioEntry[] | null>(null);
   const [error, setError] = React.useState("");
-  const sel = selectedScenario.use();
+  const sel = selectedScenario.useValue();
   const setSel = selectedScenario.set;
   const [newName, setNewName] = React.useState("");
 

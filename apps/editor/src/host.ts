@@ -131,6 +131,7 @@ import { handleStringsRoute } from "./strings-host.js";
 import { handleScaleRoute } from "./scale-host.js";
 import { handleContentDocsRoute } from "./content-docs-host.js";
 import { handleSettlementRoute } from "./settlement-host.js";
+import { SettlementBake } from "./settlement-bake.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
@@ -520,6 +521,8 @@ const editorRoutes: RouteEntry[] = [];
 
 export function editorHost(options: EditorHostOptions): Plugin {
   const repoRoot = resolve(options.repoRoot);
+  // The settlement Bake button (SG4b): the same `npm run settlement:bake` the CLI runs, one at a time.
+  const settlementBake = new SettlementBake(() => npmInvocation(["run", "settlement:bake"]), repoRoot);
   const serverPort = options.serverPort ?? 7777;
   // `npm run server` rebuilds five packages before listening (~27 s measured
   // on Windows), so 30 s left almost no margin.
@@ -1548,6 +1551,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
             req.method ?? "GET",
             scenesUrl.pathname,
             (req.method === "PUT" || req.method === "POST") && scenesUrl.pathname.startsWith("/api/editor/settlements/") ? await readBody(req) : undefined,
+            settlementBake,
           );
           if (settlementReply) {
             sendJson(res, settlementReply.status, settlementReply.body);

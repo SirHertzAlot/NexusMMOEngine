@@ -40,8 +40,8 @@ export function PlayMenu({ setup, onChange, onPlay, onClose }: {
   onPlay: () => void;
   onClose: () => void;
 }): React.JSX.Element {
-  const saved = savedSetupsStore.use();
-  const saveError = setupsSaveError.use();
+  const saved = savedSetupsStore.useValue();
+  const saveError = setupsSaveError.useValue();
   const [flow, setFlow] = React.useState<Awaited<ReturnType<typeof getFlow>>["content"] | null>(null);
   React.useEffect(() => {
     void getFlow().then((b) => setFlow(b.content), () => setFlow(null));

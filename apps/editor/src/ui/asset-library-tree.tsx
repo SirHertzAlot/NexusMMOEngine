@@ -10,7 +10,7 @@ import { assetUiStore, setAssetFilter, setAssetPreview, useAssetManifest } from 
 
 export function AssetLibraryTree(): React.JSX.Element {
   const { scan, loading, refresh } = useAssetManifest();
-  const { filter, previewId } = assetUiStore.use();
+  const { filter, previewId } = assetUiStore.useValue();
   const [open, setOpen] = React.useState<string[]>(["models"]);
   const toggle = (id: string): void => setOpen((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const models = scan?.manifest?.models ?? [];

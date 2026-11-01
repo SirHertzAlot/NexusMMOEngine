@@ -81,6 +81,7 @@ import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 import { PerfSampler, type PerfSample } from "./perf-stats.js";
+import { LoadGate, type LoadProgress } from "./load-gate.js";
 
 /** Haze colour before the first frame sets it from the time of day. */
 const SKY = 0x9fc0dc;
@@ -193,6 +194,8 @@ export interface WorldCanvasProps {
   equippedOff?: string | null;
   equippedMainColor?: string;
   onReticle?: (telemetry: CombatReticleTelemetry) => void;
+  /** LS1: where the world's load stands (null once it is revealed). */
+  onLoading?: (progress: LoadProgress | null) => void;
   /** Optional ref to receive the streaming coordinator for region-change notifications. */
   streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
   /** The audio engine for weather sound (rain bed). */
@@ -385,6 +388,7 @@ function MirrorWorld({
   assets,
   pcg,
   lastStateAt,
+  onLoading,
   wireframe,
   showcase,
   bindings,
@@ -425,8 +429,8 @@ function MirrorWorld({
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
   // Latest ref includes stance, equipped items, and reticle callback.
-  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings });
-  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings };
+  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings });
+  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings };
   const fpsCamState = useRef(createFirstPersonCameraState());
   const fpsMotion = useRef<FirstPersonMotionSample>({
     right: 0,
@@ -472,6 +476,8 @@ function MirrorWorld({
     targetName: "",
   });
   const perf = useRef(new PerfSampler(performance.now()));
+  const loadGate = useRef<LoadGate | null>(null);
+  const loadReportAt = useRef(-Infinity);
   const pointer = useRef(new THREE.Vector2());
   // Scratch eye position for first-person mode (no per-frame allocation).
   const eyePos = useRef(new THREE.Vector3());
@@ -697,6 +703,17 @@ function MirrorWorld({
     if (!r) return;
     const now = performance.now();
     const l = loop.current;
+    // LS1: hold the world back (the App shows progress) until its first snapshot and its models have settled.
+    loadGate.current ??= new LoadGate();
+    if (!loadGate.current.done) {
+      const m = r.layer.modelLoad();
+      const p = loadGate.current.sample({ now, stateSeen: latest.current.lastStateAt() > 0, ready: m.ready, pending: m.pending });
+      if (p.done) latest.current.onLoading?.(null);
+      else if (now - loadReportAt.current >= 250) {
+        loadReportAt.current = now;
+        latest.current.onLoading?.(p);
+      }
+    }
     const ear = latest.current.listener;
     if (ear) {
       const dir = camera.getWorldDirection(earDir);

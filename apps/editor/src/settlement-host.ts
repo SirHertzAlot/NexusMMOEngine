@@ -15,6 +15,7 @@ import { Worker } from "node:worker_threads";
 import { BUILTIN_RULES, checkRules, type GenerationResult, type Land, type SettlementRequest } from "@mmo-engine/settlement";
 import { failureReply, jsonBodyField, refuseInvalid, type RouteReply } from "./api.js";
 import type { LandPreset, SettlementPreview } from "./settlement-preview.js";
+import type { SettlementBake } from "./settlement-bake.js";
 
 export const settlementRulesFile = (repoRoot: string): string => resolve(repoRoot, "content", "settlements", "rules.json");
 
@@ -142,13 +143,20 @@ function previewBody(body: string | undefined): { content: unknown; population: 
   return { content: b.content, population: b.population, seed: b.seed, land };
 }
 
-export async function handleSettlementRoute(repoRoot: string, method: string, pathname: string, body: string | undefined): Promise<RouteReply | null> {
+export async function handleSettlementRoute(repoRoot: string, method: string, pathname: string, body: string | undefined, bake?: SettlementBake): Promise<RouteReply | null> {
   if (!pathname.startsWith("/api/editor/settlements/")) return null;
   try {
     if (pathname === "/api/editor/settlements/rules" && method === "GET") return { status: 200, body: { ok: true, ...readSettlementRules(repoRoot) } };
     if (pathname === "/api/editor/settlements/rules" && method === "PUT") {
       saveSettlementRules(repoRoot, jsonBodyField(body, "content"));
       return { status: 200, body: { ok: true } };
+    }
+    if (pathname.startsWith("/api/editor/settlements/bake")) {
+      if (!bake) return { status: 404, body: { ok: false, error: "not found" } };
+      // The Bake button (SG4b): status, start, cancel. The panel polls status while a bake runs.
+      if (pathname === "/api/editor/settlements/bake" && method === "GET") return { status: 200, body: { ok: true, ...bake.current() } };
+      if (pathname === "/api/editor/settlements/bake" && method === "POST") return { status: 202, body: { ok: true, ...bake.start() } };
+      if (pathname === "/api/editor/settlements/bake/cancel" && method === "POST") return { status: 200, body: { ok: true, ...bake.cancel() } };
     }
     if (pathname === "/api/editor/settlements/preview" && method === "POST") {
       const p = previewBody(body);

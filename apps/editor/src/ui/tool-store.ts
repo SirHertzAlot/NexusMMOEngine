@@ -27,4 +27,4 @@ const store = createStore<EditorTool>("select");
 export const getTool = store.get;
 export const setTool = store.set;
 export const subscribeTool = store.subscribe;
-export const useTool = store.use;
+export const useTool = store.useValue;
