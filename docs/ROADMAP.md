@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**239 items built, 26 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**241 items built, 24 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
