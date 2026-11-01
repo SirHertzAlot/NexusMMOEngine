@@ -1497,6 +1497,8 @@ async function main(): Promise<void> {
     groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
     creatures: {
       has: (k) => k in game.rules.creatures.creatures,
+      // The admin spawnlist names creature kinds from the rules (A3); without this only props show.
+      kinds: () => Object.keys(game.rules.creatures.creatures).sort(),
       spawnPack: (w, k, x, z) => creaturesOf().spawnPack(w, k, x, z),
       nameOf: (e) => creaturesOf().nameOf(e),
       entities: () => creaturesOf().entities(),
