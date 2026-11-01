@@ -47,6 +47,11 @@
       "irPerOp": 17619027,
       "unit": "tick",
       "n": 60
+    },
+    "residents-tick": {
+      "irPerOp": 5228114,
+      "unit": "second",
+      "n": 40
     }
   }
 }
