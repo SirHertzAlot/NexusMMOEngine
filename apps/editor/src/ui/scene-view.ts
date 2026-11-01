@@ -19,6 +19,7 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 import { worldNodes, type LiveTransform, type SceneDoc, type Vec3 } from "@mmo-engine/scene";
 import { buildChunkGeometry, writeChunkGeometry } from "../terrain/terrain-view.js";
 import { makeHeightSampler, markerFor, type HeightTile } from "../viewport-model.js";
+import { FLY_BOOST, FLY_KEYS, FLY_SPEED, flyAxes } from "./scene-camera.js";
 
 export type GizmoMode = "translate" | "rotate" | "scale";
 
@@ -31,6 +32,8 @@ export interface SceneViewHandlers {
   onPlace(prefab: string, position: Vec3): void;
   /** The orbit camera moved: ground (x, z) it looks at. */
   onCameraGround?(pos: { x: number; z: number }): void;
+  /** Free-fly turned on or off (Escape turns it off from the canvas). */
+  onFly?(on: boolean): void;
 }
 
 const DEG = 180 / Math.PI;
@@ -69,6 +72,10 @@ export class SceneView {
   private frameId = 0;
   private readonly observer: ResizeObserver;
   private readonly cleanup: Array<() => void> = [];
+  /** Free-fly camera: WASD, Q/E, Shift; the orbit controls are off meanwhile. */
+  private flying = false;
+  private readonly keys = new Set<string>();
+  private lastFrame = 0;
   /** Test hook: the last frame's draw-call count. */
   drawCalls = 0;
 
@@ -142,11 +149,46 @@ export class SceneView {
       () => canvas.removeEventListener("drop", onDrop),
     );
 
+    // Fly keys are read from the window so they work with the canvas focused
+    // or not; typing in an input never moves the camera.
+    const typing = (e: KeyboardEvent): boolean => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    };
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!this.flying || typing(e)) return;
+      if (e.key === "Escape") {
+        this.setFly(false);
+        this.handlers.onFly?.(false);
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (!FLY_KEYS.has(k) && k !== "shift") return;
+      e.preventDefault();
+      this.keys.add(k);
+    };
+    const onKeyUp = (e: KeyboardEvent): void => {
+      this.keys.delete(e.key.toLowerCase());
+    };
+    const onBlur = (): void => this.keys.clear();
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    this.cleanup.push(
+      () => window.removeEventListener("keydown", onKeyDown),
+      () => window.removeEventListener("keyup", onKeyUp),
+      () => window.removeEventListener("blur", onBlur),
+    );
+
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(canvas.parentElement ?? canvas);
     this.resize();
     const loop = (): void => {
       this.frameId = requestAnimationFrame(loop);
+      const now = performance.now();
+      const dt = this.lastFrame === 0 ? 0 : Math.min(0.1, (now - this.lastFrame) / 1000);
+      this.lastFrame = now;
+      if (this.flying) this.fly(dt);
       this.renderer.render(this.scene, this.camera);
       this.drawCalls = this.renderer.info.render.calls;
     };
@@ -314,6 +356,53 @@ export class SceneView {
     }
     this.orbit.target.copy(target);
     this.camera.position.copy(target).add(new THREE.Vector3(18, 14, 18));
+  }
+
+  /** Move the camera and its target to ground point (x, z), keeping the view angle. */
+  lookAt(x: number, z: number): void {
+    const y = this.heightAt(x, z) ?? 0;
+    const delta = new THREE.Vector3(x, y, z).sub(this.orbit.target);
+    this.orbit.target.add(delta);
+    this.camera.position.add(delta);
+    this.orbit.update();
+  }
+
+  /** Turn the free-fly camera on or off. Off hands control back to orbit, looking ahead. */
+  setFly(on: boolean): void {
+    if (on === this.flying) return;
+    this.flying = on;
+    this.keys.clear();
+    this.orbit.enabled = !on && !this.gizmo.dragging;
+    if (!on) {
+      const ahead = new THREE.Vector3();
+      this.camera.getWorldDirection(ahead);
+      this.orbit.target.copy(this.camera.position).addScaledVector(ahead, 20);
+      this.orbit.update();
+    }
+  }
+
+  get isFlying(): boolean {
+    return this.flying;
+  }
+
+  /** One frame of free-fly movement, along the view (flat) and up/down. */
+  private fly(dt: number): void {
+    const axes = flyAxes(this.keys);
+    if (dt === 0 || (axes.forward === 0 && axes.right === 0 && axes.up === 0)) return;
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-8) forward.set(0, 0, -1);
+    forward.normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+    const boost = this.keys.has("shift") ? FLY_BOOST : 1;
+    const step = FLY_SPEED * boost * dt;
+    const move = new THREE.Vector3()
+      .addScaledVector(forward, axes.forward * step)
+      .addScaledVector(right, axes.right * step)
+      .add(new THREE.Vector3(0, axes.up * step, 0));
+    this.camera.position.add(move);
+    this.orbit.target.add(move);
   }
 
   /** Where the camera looks, on the ground (for "place at the view centre"). */
