@@ -23,6 +23,8 @@ import type { PropModels } from "./instanced-props.js";
 import { applyShadingToMaterial } from "./shading/shading.js";
 
 export const DEFAULT_ART_URL = "/assets/";
+/** The generated stand-in models (scripts/gen-placeholder-art.mjs), served when the licensed art is not. */
+export const PLACEHOLDER_ART_URL = "/placeholder-art/";
 
 // A 1x1 PNG: model files name their atlas, but SyntyProps loads each atlas once itself.
 const BLANK_PNG =
@@ -66,6 +68,8 @@ export class SyntyProps implements PropModels {
   private readonly textureLoader = new THREE.TextureLoader();
   private readonly loader: ReturnType<typeof createGltfLoader>;
   private disposed = false;
+  /** The folder the catalog was read from: the licensed art, or the placeholders. */
+  private catalogBase: string | null = null;
 
   constructor(
     private readonly onChange: () => void,
@@ -99,22 +103,29 @@ export class SyntyProps implements PropModels {
   }
 
   private list(): void {
-    this.listing ??= fetch(`${this.baseUrl}catalog.json`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`${res.status}`);
-        const body = (await res.json()) as { models: CatalogModel[] };
-        this.catalog = new Map(body.models.filter((m) => !m.skinned).map((m) => [fnv1a32(m.id), m]));
-        if (!this.disposed) this.onChange(); // props waiting on the catalog can ask again
-      })
+    this.listing ??= this.readCatalog(this.baseUrl)
+      // No licensed art served: the settlement's stand-in models (SG4a), so the town still shows its buildings.
+      .catch(() => this.readCatalog(PLACEHOLDER_ART_URL))
       .catch((e: unknown) => {
         this.catalog = new Map(); // no art here: every prop stays as it is
         console.info(`[props] no art pack catalog (${e instanceof Error ? e.message : e}): scenery stays placeholder`);
       });
   }
 
+  /** Reads the catalog at `base`; on success the models load from that folder. */
+  private readCatalog(base: string): Promise<void> {
+    return fetch(`${base}catalog.json`).then(async (res) => {
+      if (!res.ok) throw new Error(`${res.status}`);
+      const body = (await res.json()) as { models: CatalogModel[] };
+      this.catalogBase = base;
+      this.catalog = new Map(body.models.filter((m) => !m.skinned).map((m) => [fnv1a32(m.id), m]));
+      if (!this.disposed) this.onChange(); // props waiting on the catalog can ask again
+    });
+  }
+
   private load(hash: number, entry: CatalogModel): void {
     this.pending.add(hash);
-    const url = new URL(`${this.baseUrl}${entry.file}`, location.href).href;
+    const url = new URL(`${this.catalogBase ?? this.baseUrl}${entry.file}`, location.href).href;
     fetch(url)
       .then(async (res) => {
         if (!res.ok) throw new Error(`${res.status}`);

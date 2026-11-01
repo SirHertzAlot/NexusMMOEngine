@@ -1,0 +1,532 @@
+{
+  "models": [
+    {
+      "id": "Preset_House_02_Optimized",
+      "name": "Preset_House_02_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_House_02_Optimized.glb"
+    },
+    {
+      "id": "Preset_House_01_A_Optimized",
+      "name": "Preset_House_01_A_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_House_01_A_Optimized.glb"
+    },
+    {
+      "id": "Preset_Hut_01_Optimized",
+      "name": "Preset_Hut_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Hut_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Shelter_01_Optimized",
+      "name": "Preset_Shelter_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Shelter_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_House_Windmill_01_Optimized",
+      "name": "Preset_House_Windmill_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        9,
+        6
+      ],
+      "file": "Preset_House_Windmill_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Bakery_01_Optimized",
+      "name": "Preset_Bakery_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Bakery_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Blacksmith_01_Optimized",
+      "name": "Preset_Blacksmith_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Blacksmith_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Workshop_01_Optimized",
+      "name": "Preset_Workshop_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Workshop_01_Optimized.glb"
+    },
+    {
+      "id": "Prop_Market_Stall_01",
+      "name": "Prop_Market_Stall_01",
+      "skinned": false,
+      "size": [
+        3,
+        2.5,
+        3
+      ],
+      "file": "Prop_Market_Stall_01.glb"
+    },
+    {
+      "id": "Preset_Tavern_01_Optimized",
+      "name": "Preset_Tavern_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Tavern_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Church_01_A_Optimized",
+      "name": "Preset_Church_01_A_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        8,
+        9
+      ],
+      "file": "Preset_Church_01_A_Optimized.glb"
+    },
+    {
+      "id": "Preset_Stables_01_Optimized",
+      "name": "Preset_Stables_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Stables_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_House_11_Optimized",
+      "name": "Preset_House_11_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_House_11_Optimized.glb"
+    },
+    {
+      "id": "Preset_Inn_01_Optimized",
+      "name": "Preset_Inn_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Inn_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Theatre_01_Optimized",
+      "name": "Preset_Theatre_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Theatre_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Bathhouse_01_Optimized",
+      "name": "Preset_Bathhouse_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Bathhouse_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Town_Hall_01_Optimized",
+      "name": "Preset_Town_Hall_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        7,
+        9
+      ],
+      "file": "Preset_Town_Hall_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Guard_House_01_Optimized",
+      "name": "Preset_Guard_House_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Guard_House_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Barracks_01_Optimized",
+      "name": "Preset_Barracks_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        5,
+        6
+      ],
+      "file": "Preset_Barracks_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_School_01_Optimized",
+      "name": "Preset_School_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_School_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Library_01_Optimized",
+      "name": "Preset_Library_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Library_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Church_01_C_Optimized",
+      "name": "Preset_Church_01_C_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        8,
+        9
+      ],
+      "file": "Preset_Church_01_C_Optimized.glb"
+    },
+    {
+      "id": "Preset_Cathedral_01_Optimized",
+      "name": "Preset_Cathedral_01_Optimized",
+      "skinned": false,
+      "size": [
+        12,
+        12,
+        20
+      ],
+      "file": "Preset_Cathedral_01_Optimized.glb"
+    },
+    {
+      "id": "Prop_Graveyard_01",
+      "name": "Prop_Graveyard_01",
+      "skinned": false,
+      "size": [
+        4,
+        1,
+        4
+      ],
+      "file": "Prop_Graveyard_01.glb"
+    },
+    {
+      "id": "Preset_Rectory_01_Optimized",
+      "name": "Preset_Rectory_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Rectory_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Hospital_01_Optimized",
+      "name": "Preset_Hospital_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Hospital_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Monastery_01_Optimized",
+      "name": "Preset_Monastery_01_Optimized",
+      "skinned": false,
+      "size": [
+        12,
+        7,
+        12
+      ],
+      "file": "Preset_Monastery_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Apothecary_01_Optimized",
+      "name": "Preset_Apothecary_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Apothecary_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Tenement_A_Optimized",
+      "name": "Preset_Tenement_A_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        9,
+        6
+      ],
+      "file": "Preset_Tenement_A_Optimized.glb"
+    },
+    {
+      "id": "Preset_Shop_01_Optimized",
+      "name": "Preset_Shop_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Shop_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Watch_House_01_Optimized",
+      "name": "Preset_Watch_House_01_Optimized",
+      "skinned": false,
+      "size": [
+        6,
+        5,
+        6
+      ],
+      "file": "Preset_Watch_House_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Gaol_01_Optimized",
+      "name": "Preset_Gaol_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        5,
+        9
+      ],
+      "file": "Preset_Gaol_01_Optimized.glb"
+    },
+    {
+      "id": "Prop_Garden_01",
+      "name": "Prop_Garden_01",
+      "skinned": false,
+      "size": [
+        4,
+        1,
+        4
+      ],
+      "file": "Prop_Garden_01.glb"
+    },
+    {
+      "id": "Prop_Park_01",
+      "name": "Prop_Park_01",
+      "skinned": false,
+      "size": [
+        8,
+        1,
+        8
+      ],
+      "file": "Prop_Park_01.glb"
+    },
+    {
+      "id": "Prop_Rubble_01",
+      "name": "Prop_Rubble_01",
+      "skinned": false,
+      "size": [
+        4,
+        1,
+        4
+      ],
+      "file": "Prop_Rubble_01.glb"
+    },
+    {
+      "id": "Preset_Guild_Hall_01_Optimized",
+      "name": "Preset_Guild_Hall_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        7,
+        9
+      ],
+      "file": "Preset_Guild_Hall_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Sawmill_01_Optimized",
+      "name": "Preset_Sawmill_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        6
+      ],
+      "file": "Preset_Sawmill_01_Optimized.glb"
+    },
+    {
+      "id": "Prop_Mine_01",
+      "name": "Prop_Mine_01",
+      "skinned": false,
+      "size": [
+        5,
+        3,
+        5
+      ],
+      "file": "Prop_Mine_01.glb"
+    },
+    {
+      "id": "Preset_Fishery_01_Optimized",
+      "name": "Preset_Fishery_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        5,
+        6
+      ],
+      "file": "Preset_Fishery_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Farm_01_Optimized",
+      "name": "Preset_Farm_01_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Farm_01_Optimized.glb"
+    },
+    {
+      "id": "Preset_Blacksmith_02_Optimized",
+      "name": "Preset_Blacksmith_02_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Blacksmith_02_Optimized.glb"
+    },
+    {
+      "id": "Preset_Workshop_02_Optimized",
+      "name": "Preset_Workshop_02_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Workshop_02_Optimized.glb"
+    },
+    {
+      "id": "Preset_Bakery_02_Optimized",
+      "name": "Preset_Bakery_02_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Bakery_02_Optimized.glb"
+    },
+    {
+      "id": "Preset_Fishery_02_Optimized",
+      "name": "Preset_Fishery_02_Optimized",
+      "skinned": false,
+      "size": [
+        9,
+        6,
+        9
+      ],
+      "file": "Preset_Fishery_02_Optimized.glb"
+    },
+    {
+      "id": "Prop_Well_01",
+      "name": "Prop_Well_01",
+      "skinned": false,
+      "size": [
+        2,
+        1.2,
+        2
+      ],
+      "file": "Prop_Well_01.glb"
+    },
+    {
+      "id": "Castle_Wall_Straight_01",
+      "name": "Castle_Wall_Straight_01",
+      "skinned": false,
+      "size": [
+        4,
+        3,
+        1
+      ],
+      "file": "Castle_Wall_Straight_01.glb"
+    },
+    {
+      "id": "Castle_Tower_Round_01",
+      "name": "Castle_Tower_Round_01",
+      "skinned": false,
+      "size": [
+        3,
+        8,
+        3
+      ],
+      "file": "Castle_Tower_Round_01.glb"
+    },
+    {
+      "id": "Castle_Gate_Large_01",
+      "name": "Castle_Gate_Large_01",
+      "skinned": false,
+      "size": [
+        6,
+        6,
+        2
+      ],
+      "file": "Castle_Gate_Large_01.glb"
+    }
+  ]
+}
