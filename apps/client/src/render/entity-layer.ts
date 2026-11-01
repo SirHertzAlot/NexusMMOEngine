@@ -194,8 +194,8 @@ function warnOnce(message: string): void {
   console.warn(message);
 }
 
-/** How far behind the clock shared bodies are drawn: 3 ticks at 30 Hz. */
-const SHARED_DELAY_SECONDS = 0.1;
+/** How far behind the clock shared bodies are drawn: 0.15 s, tuned by scripts/shared-delay-sweep.mjs. */
+const SHARED_DELAY_SECONDS = 0.15;
 
 export class EntityLayer {
   /** Everything this layer draws that isn't FX: add it to the scene. */
