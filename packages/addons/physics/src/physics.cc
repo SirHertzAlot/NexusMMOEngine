@@ -157,6 +157,7 @@ public:
             InstanceMethod("step", &PhysicsWorldWrap::Step),
             InstanceMethod("copyResults", &PhysicsWorldWrap::CopyResults),
             InstanceMethod("bodyCount", &PhysicsWorldWrap::BodyCount),
+            InstanceValue("bodyCapacity", Napi::Number::New(env, mj_physics_body_capacity())),
             InstanceMethod("addTerrain", &PhysicsWorldWrap::AddTerrain),
             InstanceMethod("removeTerrain", &PhysicsWorldWrap::RemoveTerrain),
             InstanceMethod("terrainCount", &PhysicsWorldWrap::TerrainCount),
@@ -239,19 +240,21 @@ private:
 
   // addBodies({ count, entityIds, shapeKind, halfExtents, radius, mass,
   //   friction, restitution, motionType, layer, pos, quat, linVel, angVel })
-  void AddBodies(const Napi::CallbackInfo &info) {
+  Napi::Value AddBodies(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!requireLive(env))
-      return;
+      return env.Undefined();
     if (!info[0].IsObject()) {
       Napi::TypeError::New(env, "addBodies expects a descriptor object")
           .ThrowAsJavaScriptException();
-      return;
+      return env.Undefined();
     }
     Napi::Object d = info[0].As<Napi::Object>();
     int n = 0;
-    if (!CheckedCount(env, d.Get("count"), &n) || n == 0)
-      return; // validator threw, or nothing to do
+    if (!CheckedCount(env, d.Get("count"), &n))
+      return env.Undefined(); // validator threw
+    if (n == 0)
+      return Napi::Number::New(env, 0);
     const size_t un = static_cast<size_t>(n);
     // NOTE: each validator throws at most once and returns null on
     // failure; bail out immediately so a second validator never throws
@@ -259,46 +262,47 @@ private:
     // NAPI_DISABLE_CPP_EXCEPTIONS).
     const uint64_t *entity_ids = CheckedU64(env, d.Get("entityIds"), "entityIds", un);
     if (!entity_ids)
-      return;
+      return env.Undefined();
     const uint8_t *shape_kind = CheckedU8(env, d.Get("shapeKind"), "shapeKind", un);
     if (!shape_kind)
-      return;
+      return env.Undefined();
     const float *half_extents = CheckedF32(env, d.Get("halfExtents"), "halfExtents", 3 * un);
     if (!half_extents)
-      return;
+      return env.Undefined();
     const float *radius = CheckedF32(env, d.Get("radius"), "radius", un);
     if (!radius)
-      return;
+      return env.Undefined();
     const float *mass = CheckedF32(env, d.Get("mass"), "mass", un);
     if (!mass)
-      return;
+      return env.Undefined();
     const float *friction = CheckedF32(env, d.Get("friction"), "friction", un);
     if (!friction)
-      return;
+      return env.Undefined();
     const float *restitution = CheckedF32(env, d.Get("restitution"), "restitution", un);
     if (!restitution)
-      return;
+      return env.Undefined();
     const uint8_t *motion_type = CheckedU8(env, d.Get("motionType"), "motionType", un);
     if (!motion_type)
-      return;
+      return env.Undefined();
     const uint8_t *layer = CheckedU8(env, d.Get("layer"), "layer", un);
     if (!layer)
-      return;
+      return env.Undefined();
     const float *pos = CheckedF32(env, d.Get("pos"), "pos", 3 * un);
     if (!pos)
-      return;
+      return env.Undefined();
     const float *quat = CheckedF32(env, d.Get("quat"), "quat", 4 * un);
     if (!quat)
-      return;
+      return env.Undefined();
     const float *lin_vel = CheckedF32(env, d.Get("linVel"), "linVel", 3 * un);
     if (!lin_vel)
-      return;
+      return env.Undefined();
     const float *ang_vel = CheckedF32(env, d.Get("angVel"), "angVel", 3 * un);
     if (!ang_vel)
-      return;
-    mj_physics_add_bodies(mWorld, n, entity_ids, shape_kind, half_extents,
-                          radius, mass, friction, restitution, motion_type,
-                          layer, pos, quat, lin_vel, ang_vel);
+      return env.Undefined();
+    const int dropped = mj_physics_add_bodies(
+        mWorld, n, entity_ids, shape_kind, half_extents, radius, mass, friction,
+        restitution, motion_type, layer, pos, quat, lin_vel, ang_vel);
+    return Napi::Number::New(env, dropped);
   }
 
   void RemoveBodies(const Napi::CallbackInfo &info) {
