@@ -104,7 +104,7 @@ it("through the edge: one wire.sectors push per tick carries the shared bytes an
   gw.frame(now);
   await transport.handle({ type: "wire.open", id: "p", payload: { sid: "e-1", ip: "127.0.0.1" } });
   const hello = encodeEnvelope(MessageType.Hello, encodeControl({ protocol: PROTOCOL_VERSION, client: "t", want_snapshot: true, username: "alice", password: TEST_PASSWORD }));
-  await transport.handle({ type: "wire.msg", id: "p", payload: { sid: "e-1", data: Buffer.from(hello).toString("base64") } });
+  await transport.handle({ type: "wire.msg", id: "p", payload: { sid: "e-1", data: Buffer.from(hello) } });
   for (let i = 0; i < 300 && !pushes.some((p) => p.type === "wire.send"); i++) await new Promise((r) => setTimeout(r, 10));
   pushes.length = 0;
   frames(2);
@@ -115,7 +115,7 @@ it("through the edge: one wire.sectors push per tick carries the shared bytes an
   assert.equal(plans[0].replace, true, "the first tick after welcome is a full replace");
   const bytes = sectors[0].payload.bytes as Record<string, string>;
   for (const [, , key] of plans[0].entries) assert.ok(key in bytes || key.startsWith("2:"));
-  assert.ok(!pushes.some((p) => p.type === "wire.send" && Buffer.from(p.payload.data as string, "base64")[0] === MessageType.DeltaSet), "no per-session DeltaSet from the core");
+  assert.ok(!pushes.some((p) => p.type === "wire.send" && Buffer.from(p.payload.data as Uint8Array)[0] === MessageType.DeltaSet), "no per-session DeltaSet from the core");
 });
 
 it("pinned: a foe far away stays visible through the pinned entry, and leaves when the pin ends", async () => {
