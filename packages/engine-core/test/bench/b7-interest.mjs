@@ -62,7 +62,7 @@ async function run(layout, entities, mode) {
     const sid = `b7-${i}`;
     await transport.handle({ type: "wire.open", id: "p", payload: { sid, ip: "127.0.0.1" } });
     const hello = encodeEnvelope(MessageType.Hello, encodeControl({ protocol: PROTOCOL_VERSION, client: "b7", want_snapshot: true, username: `bench-${i}`, password: BENCH_PASSWORD }));
-    await transport.handle({ type: "wire.msg", id: "p", payload: { sid, data: Buffer.from(hello).toString("base64") } });
+    await transport.handle({ type: "wire.msg", id: "p", payload: { sid, data: Buffer.from(hello) } });
   }
   for (let i = 0; welcomed.size < SESSIONS; i++) {
     if (i > 3000) throw new Error(`only ${welcomed.size} sessions welcomed`);
