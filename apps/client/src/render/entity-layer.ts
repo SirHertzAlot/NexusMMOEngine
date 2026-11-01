@@ -373,6 +373,14 @@ export class EntityLayer {
   }
 
   /** Entities flash red until their entry's time (performance.now() seconds); the map is read, never copied. */
+  /** Models this layer has ready and still loading (PCG meshes and Synty art), for the world's load gate. */
+  modelLoad(): { ready: number; pending: number } {
+    return {
+      ready: this.syntyProps.size + (this.pcgMeshes?.size ?? 0),
+      pending: this.syntyProps.pendingCount + (this.pcgMeshes?.pendingCount ?? 0),
+    };
+  }
+
   setFlashes(flashes: ReadonlyMap<bigint, number>): void {
     this.flashes = flashes;
   }

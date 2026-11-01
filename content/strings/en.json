@@ -338,6 +338,8 @@
   "dungeon.died.loot": "All dungeon loot and chests were lost.",
   "dungeon.respawnAtGate": "Respawn at dungeon gates",
   "loading.dungeonTransit": "Loading dungeon transit…",
+  "loading.worldState": "Joining the world…",
+  "loading.worldModels": "Loading the world's models…",
   "loading.dungeonHud": "Loading dungeon HUD…",
   "loading.dungeonResult": "Loading dungeon result…",
   "dungeon.youDied": "You Died",

@@ -41,6 +41,7 @@ import { CastBar, nextCast, type CastState } from "./ui/cast-bar.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
 import { WorldCanvas, type CombatView, type HudData, type NearDrop } from "./render/world-canvas.js";
+import type { LoadProgress } from "./render/load-gate.js";
 import { CombatFeedback } from "./render/combat-feedback.js";
 import { QUALITY_TIERS, type QualityTier } from "./render/quality.js";
 import { PlaceholderAssets } from "./render/assets.js";
@@ -228,6 +229,8 @@ export function App(): React.ReactElement {
   const [nearDrop, setNearDrop] = useState<NearDrop | null>(null);
   // Gathering (0x24): the resource node in reach (its view re-read when the nodes change) and the materials pouch.
   const [nearResource, setNearResource] = useState<bigint | null>(null);
+  // LS1: the world's load progress until it is revealed (null: shown).
+  const [worldLoad, setWorldLoad] = useState<LoadProgress | null>(null);
   const [nearChest, setNearChest] = useState<bigint | null>(null);
   // The shop E opened (protocol 0x21) and the player's gold.
   const [shop, setShop] = useState<ShopView | null>(null);
@@ -773,9 +776,20 @@ export function App(): React.ReactElement {
           equippedOff={hands.off?.model || hands.off?.base || null}
           equippedMainColor={hands.main?.color}
           onReticle={setReticleTelemetry}
+          onLoading={setWorldLoad}
           streamingRef={streamingRef}
           audio={audio}
         />
+        {worldLoad ? (
+          <div role="status" aria-live="polite" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
+            <div className="text-sm">{worldLoad.stage === "state" ? t("loading.worldState") : t("loading.worldModels")}</div>
+            {worldLoad.stage === "models" && worldLoad.ready + worldLoad.pending > 0 ? (
+              <div className="h-1.5 w-56 overflow-hidden rounded bg-muted">
+                <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round((100 * worldLoad.ready) / (worldLoad.ready + worldLoad.pending))}%` }} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {nearDrop ? (
           <div className="pointer-events-none absolute left-1/2 top-[60%] z-10 -translate-x-1/2 rounded-md border bg-card/85 px-3 py-1 text-sm shadow-sm">
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
