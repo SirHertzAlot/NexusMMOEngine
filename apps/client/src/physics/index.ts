@@ -4,4 +4,5 @@ export {
   RAGDOLL_PARTS,
   type PhysicsWorld,
   type Vec3,
+  type WalkerState,
 } from "./physics-world.js";
