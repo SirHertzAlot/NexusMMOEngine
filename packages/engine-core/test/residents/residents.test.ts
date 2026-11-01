@@ -381,6 +381,39 @@ describe("ResidentSystem: raids", () => {
   });
 });
 
+describe("ResidentSystem: talk", () => {
+  it("answers with the bark for the resident's town and npc, at the game's hour and day, and names them by role", () => {
+    const seen: Array<{ npc: string; tod: number; day: number; raid: boolean }> = [];
+    const sim = new SimWorld();
+    const sys = new ResidentSystem({
+      towns: [town()],
+      place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view),
+      timeOfDay: () => 12 / 24,
+      dayOf: () => 7,
+      bark: (_t, npc, c) => (seen.push({ npc: npc.id, tod: c.timeOfDay, day: c.day, raid: c.raid ?? false }), `Hi from ${npc.id}`),
+      catalog: null,
+    });
+    run(sys, sim, 30);
+    const eid = town().npcs.map((n) => sys.entityOf(n.id)).find((e): e is number => e !== undefined);
+    assert.ok(eid !== undefined, "someone is out by day");
+    const said = sys.talk(eid, 30);
+    assert.ok(said);
+    assert.equal(said.text, `Hi from ${said.npc}`);
+    assert.equal(said.name, said.name.charAt(0).toUpperCase() + said.name.slice(1), "name is capitalised");
+    assert.deepEqual(seen.at(-1), { npc: said.npc, tod: 12 / 24, day: 7, raid: false });
+  });
+
+  it("is undefined for anything that is not a resident, and says '...' when no bark is wired", () => {
+    const sim = new SimWorld();
+    const sys = system({ hour: () => 12 / 24 });
+    run(sys, sim, 30);
+    const stranger = sim.spawn();
+    assert.equal(sys.talk(stranger, 30), undefined);
+    const eid = town().npcs.map((n) => sys.entityOf(n.id)).find((e): e is number => e !== undefined)!;
+    assert.equal(sys.talk(eid, 30)?.text, "...");
+  });
+});
+
 describe("ResidentSystem: the game day", () => {
   it("hands the schedule the game day from dayOf, and nothing when the server keeps no calendar", () => {
     const days: (number | undefined)[] = [];

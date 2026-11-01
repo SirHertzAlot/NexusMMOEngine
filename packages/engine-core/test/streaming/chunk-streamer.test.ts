@@ -255,6 +255,7 @@ describe("ChunkStreamer", () => {
       add: (cx: number, cz: number, heights: Float32Array) => {
         assert.ok(!live.has(`${cx},${cz}`), "never added twice");
         live.set(`${cx},${cz}`, heights);
+        return true;
       },
       remove: (cx: number, cz: number) => {
         assert.ok(live.delete(`${cx},${cz}`), "only loaded chunks are removed");
@@ -274,6 +275,53 @@ describe("ChunkStreamer", () => {
     const s2 = streamer(store, { loadRadius: 1, unloadRadius: 1, colliders });
     assert.equal(s2.adopt(world), 9);
     assert.equal(live.size, 9);
+    store.close();
+  });
+
+  test("holds a chunk back while its ground has no room, then loads it", () => {
+    const world = new SimWorld();
+    const store = new ChunkEntityStore(tmpDb());
+    const warnings: string[] = [];
+    const live = new Set<string>();
+    let room = false;
+    const colliders = {
+      add: (cx: number, cz: number) => {
+        if (!room) return false;
+        live.add(`${cx},${cz}`);
+        return true;
+      },
+      remove: (cx: number, cz: number) => {
+        live.delete(`${cx},${cz}`);
+      },
+    };
+    const s = streamer(store, { loadRadius: 1, unloadRadius: 1, colliders, warn: (m) => warnings.push(m) });
+    player(world, 8, 8);
+    run(s, world, 3);
+    assert.equal(s.stats.loaded, 0, "no chunk loads without its ground");
+    assert.equal(world.liveEntityCount, 1, "and none is left behind: only the player");
+    assert.equal(warnings.length, 1, "says so once");
+    assert.match(warnings[0], /no room for chunk/);
+    room = true;
+    run(s, world, 3);
+    assert.equal(s.stats.loaded, 9);
+    assert.equal(live.size, 9);
+    store.close();
+  });
+
+  test("warm holds a pinned chunk back while its ground has no room, and the planner loads it later", () => {
+    const world = new SimWorld();
+    const store = new ChunkEntityStore(tmpDb());
+    const warnings: string[] = [];
+    let room = false;
+    const colliders = { add: () => room, remove: () => {} };
+    const s = streamer(store, { loadRadius: 1, unloadRadius: 1, colliders, pinned: [[0, 0]], warn: (m) => warnings.push(m) });
+    player(world, 8, 8);
+    assert.equal(s.warm(world), 0, "nothing warmed without room");
+    assert.equal(s.stats.loaded, 0);
+    assert.equal(warnings.length, 1, "says so once");
+    room = true;
+    run(s, world, 3);
+    assert.ok(s.loadedChunks().some(([cx, cz]) => cx === 0 && cz === 0), "the pinned chunk loads once there is room");
     store.close();
   });
 

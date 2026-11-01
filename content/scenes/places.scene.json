@@ -16,12 +16,12 @@
       "children": [
         {
           "id": "P0001",
-          "name": "farmhouse",
+          "name": "guard_outpost",
           "transform": {
             "position": [
-              -816,
+              152,
               0,
-              -352
+              1236
             ],
             "rotation": [
               0,
@@ -31,50 +31,22 @@
           },
           "components": {
             "Structure": {
-              "kind": "farmhouse",
+              "kind": "guard_outpost",
               "asset": "",
-              "width": 10,
-              "depth": 8,
-              "height": 6
-            }
-          }
-        },
-        {
-          "id": "P0001-farm",
-          "name": "farm_field",
-          "transform": {
-            "position": [
-              -816,
-              0,
-              -316
-            ],
-            "rotation": [
-              0,
-              0,
-              0
-            ]
-          },
-          "components": {
-            "Structure": {
-              "kind": "farm_field",
-              "asset": "",
-              "width": 60,
-              "depth": 40,
-              "height": 0.1
-            },
-            "Collider": {
-              "shape": "none"
+              "width": 9,
+              "depth": 9,
+              "height": 10
             }
           }
         },
         {
           "id": "P0002",
-          "name": "farmhouse",
+          "name": "guard_outpost",
           "transform": {
             "position": [
-              -352,
+              -1331,
               0,
-              576
+              689
             ],
             "rotation": [
               0,
@@ -84,50 +56,231 @@
           },
           "components": {
             "Structure": {
-              "kind": "farmhouse",
+              "kind": "guard_outpost",
               "asset": "",
-              "width": 10,
-              "depth": 8,
-              "height": 6
-            }
-          }
-        },
-        {
-          "id": "P0002-farm",
-          "name": "farm_field",
-          "transform": {
-            "position": [
-              -316,
-              0,
-              576
-            ],
-            "rotation": [
-              0,
-              90,
-              0
-            ]
-          },
-          "components": {
-            "Structure": {
-              "kind": "farm_field",
-              "asset": "",
-              "width": 60,
-              "depth": 40,
-              "height": 0.1
-            },
-            "Collider": {
-              "shape": "none"
+              "width": 9,
+              "depth": 9,
+              "height": 10
             }
           }
         },
         {
           "id": "P0003",
+          "name": "roadside_inn",
+          "transform": {
+            "position": [
+              -1261,
+              0,
+              689
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "roadside_inn",
+              "asset": "",
+              "width": 18,
+              "depth": 12,
+              "height": 9
+            }
+          }
+        },
+        {
+          "id": "P0004",
+          "name": "camp_site",
+          "transform": {
+            "position": [
+              912,
+              0,
+              1130
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "camp_site",
+              "asset": "",
+              "width": 8,
+              "depth": 8,
+              "height": 0.3
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0005",
+          "name": "camp_site",
+          "transform": {
+            "position": [
+              -810,
+              0,
+              1256
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "camp_site",
+              "asset": "",
+              "width": 8,
+              "depth": 8,
+              "height": 0.3
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0006",
+          "name": "shack",
+          "transform": {
+            "position": [
+              662,
+              0,
+              1130
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "shack",
+              "asset": "",
+              "width": 4,
+              "depth": 5,
+              "height": 3
+            }
+          }
+        },
+        {
+          "id": "P0007",
+          "name": "shack",
+          "transform": {
+            "position": [
+              -1478,
+              0,
+              492
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "shack",
+              "asset": "",
+              "width": 4,
+              "depth": 5,
+              "height": 3
+            }
+          }
+        },
+        {
+          "id": "P0008",
+          "name": "shack",
+          "transform": {
+            "position": [
+              -940,
+              0,
+              1023
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "shack",
+              "asset": "",
+              "width": 4,
+              "depth": 5,
+              "height": 3
+            }
+          }
+        },
+        {
+          "id": "P0009",
           "name": "farmhouse",
           "transform": {
             "position": [
-              -1048,
+              -816,
               0,
-              1040
+              -584
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0009-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -816,
+              0,
+              -548
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0010",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              1040,
+              0,
+              112
             ],
             "rotation": [
               0,
@@ -146,13 +299,13 @@
           }
         },
         {
-          "id": "P0003-farm",
+          "id": "P0010-farm",
           "name": "farm_field",
           "transform": {
             "position": [
-              -1048,
+              1040,
               0,
-              1004
+              76
             ],
             "rotation": [
               0,
@@ -174,13 +327,119 @@
           }
         },
         {
-          "id": "P0004",
+          "id": "P0011",
           "name": "farmhouse",
           "transform": {
             "position": [
-              -1048,
+              -1512,
               0,
-              -1048
+              1272
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0011-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -1476,
+              0,
+              1272
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0012",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              808,
+              0,
+              1736
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0012-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              808,
+              0,
+              1772
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0013",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              1736,
+              0,
+              576
             ],
             "rotation": [
               0,
@@ -199,13 +458,225 @@
           }
         },
         {
-          "id": "P0004-farm",
+          "id": "P0013-farm",
           "name": "farm_field",
           "transform": {
             "position": [
-              -1084,
+              1700,
               0,
-              -1048
+              576
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0014",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              344,
+              0,
+              576
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0014-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              344,
+              0,
+              540
+            ],
+            "rotation": [
+              0,
+              180,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0015",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -816,
+              0,
+              1968
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0015-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -780,
+              0,
+              1968
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0016",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -1744,
+              0,
+              -584
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0016-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -1744,
+              0,
+              -548
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farm_field",
+              "asset": "",
+              "width": 60,
+              "depth": 40,
+              "height": 0.1
+            },
+            "Collider": {
+              "shape": "none"
+            }
+          }
+        },
+        {
+          "id": "P0017",
+          "name": "farmhouse",
+          "transform": {
+            "position": [
+              -584,
+              0,
+              112
+            ],
+            "rotation": [
+              0,
+              270,
+              0
+            ]
+          },
+          "components": {
+            "Structure": {
+              "kind": "farmhouse",
+              "asset": "",
+              "width": 10,
+              "depth": 8,
+              "height": 6
+            }
+          }
+        },
+        {
+          "id": "P0017-farm",
+          "name": "farm_field",
+          "transform": {
+            "position": [
+              -620,
+              0,
+              112
             ],
             "rotation": [
               0,
