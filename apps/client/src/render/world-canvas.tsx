@@ -75,6 +75,7 @@ import type { AudioEngine } from "../audio/engine.js";
 import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
+import { groundPoint } from "./ground-pick.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { StreamingCoordinator } from "./terrain/streaming-coordinator.js";
 import { WorkerPool } from "../workers/pool.js";
@@ -148,6 +149,8 @@ export interface WorldCanvasProps {
   /** "auto": the preset for this GPU, stepped down (and back up) by the frame-rate governor; else a pinned preset. */
   quality: "auto" | QualityTier;
   onGpu?: (gpu: GpuInfo) => void;
+  /** The three.js scene once the canvas exists (the editor's debugger adds its overlays to it). */
+  onScene?: (scene: THREE.Scene) => void;
   /** The preset running now, and the one detected for the GPU (null until known). */
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
@@ -167,6 +170,8 @@ export interface WorldCanvasProps {
   onUseHotkey?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** Editor place-at-cursor (E4): a left click on bare ground reports its x/z. Absent: clicks on the ground do nothing. */
+  onGroundPick?: (x: number, z: number) => void;
   /** The resource node in gathering range changed (its wire id; null: none in range). */
   onNearResource?: (node: bigint | null) => void;
   /** The world chest E would open (its wire id; null: none in reach). */
@@ -295,7 +300,8 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       dpr={dpr}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, scene }) => {
+        props.onScene?.(scene);
         const gpu = detectGpu(gl);
         onGpu?.(gpu);
         void detectQuality(gl, gpu.software).then((r) => setDetected(r.tier));
@@ -393,6 +399,7 @@ function MirrorWorld({
   showcase,
   bindings,
   onHud,
+  onGroundPick,
   listener,
   onFootstep,
   onBag,
@@ -429,8 +436,8 @@ function MirrorWorld({
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
   // Latest ref includes stance, equipped items, and reticle callback.
-  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings });
-  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings };
+  const latest = useRef({ onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings });
+  latest.current = { onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings };
   const fpsCamState = useRef(createFirstPersonCameraState());
   const fpsMotion = useRef<FirstPersonMotionSample>({
     right: 0,
@@ -588,7 +595,22 @@ function MirrorWorld({
     const onMouseDown = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const h = layer.hovered;
-      if (h !== null && h !== client.playerEntity) latest.current.combat?.select(h);
+      if (h !== null && h !== client.playerEntity) {
+        latest.current.combat?.select(h);
+        return;
+      }
+      const pick = latest.current.onGroundPick;
+      const terrain = rt.current?.terrain;
+      if (h === null && pick && terrain) {
+        raycaster.current.setFromCamera(pointer.current, camera);
+        const ray = raycaster.current.ray;
+        const p = groundPoint(
+          { ox: ray.origin.x, oy: ray.origin.y, oz: ray.origin.z, dx: ray.direction.x, dy: ray.direction.y, dz: ray.direction.z },
+          terrain,
+          camera.position.y,
+        );
+        if (p) pick(p.x, p.z);
+      }
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);

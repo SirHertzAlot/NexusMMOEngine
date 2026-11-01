@@ -198,6 +198,20 @@ describe("gateway: admin console", () => {
     await client.close();
   });
 
+  it("find locates the avatar by its id or by a component it carries", async () => {
+    const url = await startGateway({ admins: ["alice"] });
+    const { client, entity } = await join(url, "alice");
+    const byId = await admin(client, "find", { query: entity.toString() });
+    assert.equal(byId.ok, true);
+    assert.ok(byId.message.includes(entity.toString()), byId.message);
+    const byComp = await admin(client, "find", { query: "Health" });
+    assert.ok(byComp.message.includes(entity.toString()), byComp.message);
+    const none = await admin(client, "find", { query: "zz-no-such-thing" });
+    assert.equal(none.ok, true);
+    assert.match(none.message, /no entity matches/);
+    await client.close();
+  });
+
   it("teleport moves the avatar with ground snap; heal fills; fly flips the bit", async () => {
     const url = await startGateway({ admins: ["alice"], groundHeightAt: () => 42 });
     const { client, entity } = await join(url, "alice");
@@ -338,6 +352,30 @@ describe("gateway: admin console", () => {
     client.sendRaw(MessageType.Admin, encodeControl({ kind: "admin", command: "inspect", args: { entity: id } }));
     const [payload] = await errP;
     assert.equal(decodeControl<ErrorMessage>(payload).code, 4003, "despawned reads as unknown");
+    await client.close();
+  });
+
+  it("spawnlist names creature kinds too, and spawn routes a creature kind to the shared spawner", async () => {
+    const packs: string[] = [];
+    const url = await startGateway({
+      admins: ["alice"],
+      creatures: {
+        has: (k: string) => k === "wolf",
+        kinds: () => ["wolf"],
+        spawnPack: (_sim: unknown, kind: string) => {
+          packs.push(kind);
+          return [];
+        },
+      },
+    });
+    const { client } = await join(url, "alice");
+    const list = await admin(client, "spawnlist");
+    assert.equal(list.ok, true);
+    assert.ok(list.message.split(" ").includes("wolf"), list.message);
+    const spawned = await admin(client, "spawn", { asset: "wolf" });
+    assert.equal(spawned.ok, true);
+    assert.match(spawned.message, /spawned a pack of 0 wolf/);
+    assert.deepEqual(packs, ["wolf"]);
     await client.close();
   });
 

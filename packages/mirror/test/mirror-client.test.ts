@@ -168,6 +168,19 @@ describe("MirrorClient handshake", () => {
     assert.equal(hello.password, undefined);
   });
 
+  it("waits for the welcome for the configured timeout, not the default 8 s", async () => {
+    // A slow world (software GL, a big welcome) needs longer than the default; the option sets it.
+    let socket!: FakeSocket;
+    const client = new MirrorClient(() => (socket = new FakeSocket()), { onWelcome() {}, onState() {}, onError() {}, onClose() {} }, {
+      welcomeTimeoutMs: 40,
+    });
+    const started = Date.now();
+    const p = client.connect("ws://localhost:7777", "test-client", { token: "tok".padEnd(64, "0") });
+    socket.open();
+    await assert.rejects(p, /welcome timeout/);
+    assert.ok(Date.now() - started < 2000, "rejected at the configured timeout");
+  });
+
   it("fails fast with a clear reason when the server can't be reached", async () => {
     // A refused connection (server not running, wrong port) fires error and
     // close before open. That must reject immediately — not wait out the

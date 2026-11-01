@@ -1,0 +1,1127 @@
+{
+  "tickHz": 30,
+  "substeps": 2,
+  "horizonSeconds": 60,
+  "windowSeconds": 2,
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "scenario": "five start grids per crowd (round-1 grid, 1 mm random offsets); 60 s horizon; height and footprint over the final 2 s; wake check on 16 light rigs settled 60 s, then a 5 kg sphere dropped 2 m onto the middle rig",
+  "defaultThreshold": 0.03,
+  "bar": {
+    "zMax": 3,
+    "impactMetres": 0.02,
+    "hitRigWakesEverySeed": true,
+    "sleepIsPassCondition": false
+  },
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "node": "v22.22.2"
+  },
+  "crowdRuns": {
+    "full-48-0.03": [
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.03,
+        "seed": 1,
+        "awakeAt20s": 500,
+        "awakeAtEnd": 495,
+        "warmCostMs": 1885,
+        "costMs": 5484.8,
+        "height": 0.16280065525530116,
+        "footprint": 2.444787366339164
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.03,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1664.1,
+        "costMs": 1666.6,
+        "height": 0.1650464137395223,
+        "footprint": 2.3967905940103824
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.03,
+        "seed": 3,
+        "awakeAt20s": 451,
+        "awakeAtEnd": 451,
+        "warmCostMs": 1791.4,
+        "costMs": 5163.3,
+        "height": 0.16401448259130122,
+        "footprint": 2.4316396929558377
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.03,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1324.1,
+        "costMs": 1325.5,
+        "height": 0.16218390905608734,
+        "footprint": 2.426570611586869
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.03,
+        "seed": 5,
+        "awakeAt20s": 429,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1744,
+        "costMs": 4071.8,
+        "height": 0.16113247101505598,
+        "footprint": 2.397225807588003
+      }
+    ],
+    "full-48-0.05": [
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.05,
+        "seed": 1,
+        "awakeAt20s": 500,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1965.9,
+        "costMs": 2100.9,
+        "height": 0.16442743067940077,
+        "footprint": 2.4445645248045293
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.05,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1215.1,
+        "costMs": 1217.3,
+        "height": 0.16609324607998133,
+        "footprint": 2.39613989181786
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.05,
+        "seed": 3,
+        "awakeAt20s": 451,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1913,
+        "costMs": 4638.9,
+        "height": 0.16435009644677243,
+        "footprint": 2.4317466749940073
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.05,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1162.6,
+        "costMs": 1166,
+        "height": 0.16245150162527958,
+        "footprint": 2.426284578242023
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.05,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 979.4,
+        "costMs": 981.4,
+        "height": 0.16317638320227465,
+        "footprint": 2.3964790090020918
+      }
+    ],
+    "full-48-0.1": [
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.1,
+        "seed": 1,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 519.5,
+        "costMs": 520.9,
+        "height": 0.16592596222956976,
+        "footprint": 2.443665936232836
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.1,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 520.1,
+        "costMs": 523,
+        "height": 0.16759430275609097,
+        "footprint": 2.395550110805351
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.1,
+        "seed": 3,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 593.4,
+        "costMs": 595.1,
+        "height": 0.16940281198670468,
+        "footprint": 2.4303387270414856
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.1,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 814.6,
+        "costMs": 815.9,
+        "height": 0.1630505636955301,
+        "footprint": 2.426256587724225
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.1,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 929,
+        "costMs": 930.5,
+        "height": 0.16311967248717943,
+        "footprint": 2.39648307759273
+      }
+    ],
+    "full-48-0.15": [
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.15,
+        "seed": 1,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 494.3,
+        "costMs": 495.7,
+        "height": 0.1659776195883751,
+        "footprint": 2.4434960105066548
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.15,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 513.6,
+        "costMs": 515.9,
+        "height": 0.1677977042272687,
+        "footprint": 2.3956338838111098
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.15,
+        "seed": 3,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 508.8,
+        "costMs": 510.2,
+        "height": 0.1695846033593019,
+        "footprint": 2.430205520116346
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.15,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 443.3,
+        "costMs": 444.7,
+        "height": 0.16363292249540487,
+        "footprint": 2.4259806455526767
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.15,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 861.3,
+        "costMs": 863.5,
+        "height": 0.16330245913316807,
+        "footprint": 2.3964516244501866
+      }
+    ],
+    "full-48-0.2": [
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.2,
+        "seed": 1,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 577.1,
+        "costMs": 578.6,
+        "height": 0.16596450190991163,
+        "footprint": 2.4436712251865047
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.2,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 457.7,
+        "costMs": 459.9,
+        "height": 0.16783290853103003,
+        "footprint": 2.395543685089349
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.2,
+        "seed": 3,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 475.9,
+        "costMs": 477.4,
+        "height": 0.1695892345160246,
+        "footprint": 2.4302249267250104
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.2,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 410.7,
+        "costMs": 412.2,
+        "height": 0.16379334249844155,
+        "footprint": 2.425887216171706
+      },
+      {
+        "rig": "full",
+        "requested": 48,
+        "threshold": 0.2,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 419.1,
+        "costMs": 420.5,
+        "height": 0.16431930909554163,
+        "footprint": 2.4042551188867605
+      }
+    ],
+    "light-120-0.03": [
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.03,
+        "seed": 1,
+        "awakeAt20s": 405,
+        "awakeAtEnd": 400,
+        "warmCostMs": 1599.3,
+        "costMs": 4428.2,
+        "height": 0.15340848233343823,
+        "footprint": 3.7544982255656056
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.03,
+        "seed": 2,
+        "awakeAt20s": 480,
+        "awakeAtEnd": 490,
+        "warmCostMs": 1743.1,
+        "costMs": 5041.5,
+        "height": 0.15514779351444707,
+        "footprint": 3.676059484981455
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.03,
+        "seed": 3,
+        "awakeAt20s": 525,
+        "awakeAtEnd": 525,
+        "warmCostMs": 1971.5,
+        "costMs": 5586.2,
+        "height": 0.15171378667155908,
+        "footprint": 3.536285015245588
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.03,
+        "seed": 4,
+        "awakeAt20s": 540,
+        "awakeAtEnd": 385,
+        "warmCostMs": 1845.7,
+        "costMs": 4684.9,
+        "height": 0.1542099305335432,
+        "footprint": 3.676332854785572
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.03,
+        "seed": 5,
+        "awakeAt20s": 520,
+        "awakeAtEnd": 520,
+        "warmCostMs": 1792.8,
+        "costMs": 5202.4,
+        "height": 0.15184220022832357,
+        "footprint": 3.6823275558413817
+      }
+    ],
+    "light-120-0.05": [
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.05,
+        "seed": 1,
+        "awakeAt20s": 405,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1540.6,
+        "costMs": 3144.1,
+        "height": 0.15352712584038575,
+        "footprint": 3.754354392690185
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.05,
+        "seed": 2,
+        "awakeAt20s": 480,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1614.5,
+        "costMs": 1643.8,
+        "height": 0.15588243367771307,
+        "footprint": 3.6756020878723255
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.05,
+        "seed": 3,
+        "awakeAt20s": 525,
+        "awakeAtEnd": 525,
+        "warmCostMs": 1843,
+        "costMs": 5458.7,
+        "height": 0.15176801907933424,
+        "footprint": 3.5363712948418757
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.05,
+        "seed": 4,
+        "awakeAt20s": 545,
+        "awakeAtEnd": 385,
+        "warmCostMs": 1824.5,
+        "costMs": 4553.5,
+        "height": 0.15427407816983763,
+        "footprint": 3.676514821169875
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.05,
+        "seed": 5,
+        "awakeAt20s": 520,
+        "awakeAtEnd": 525,
+        "warmCostMs": 1752.1,
+        "costMs": 5246,
+        "height": 0.15185280136971013,
+        "footprint": 3.6823560374094746
+      }
+    ],
+    "light-120-0.1": [
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.1,
+        "seed": 1,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 990.1,
+        "costMs": 991.5,
+        "height": 0.16043427834908167,
+        "footprint": 3.792541970171932
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.1,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 820.8,
+        "costMs": 822.2,
+        "height": 0.17962790268162887,
+        "footprint": 3.6970716932678487
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.1,
+        "seed": 3,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 775.3,
+        "costMs": 777.7,
+        "height": 0.166242574279507,
+        "footprint": 3.571217046814242
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.1,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 1169.8,
+        "costMs": 1172.2,
+        "height": 0.1665748738994201,
+        "footprint": 3.729757497787749
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.1,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 626.2,
+        "costMs": 627.7,
+        "height": 0.17988214852909248,
+        "footprint": 3.7428233484221227
+      }
+    ],
+    "light-120-0.15": [
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.15,
+        "seed": 1,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 640.1,
+        "costMs": 641.6,
+        "height": 0.20822569380203884,
+        "footprint": 3.785387810691081
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.15,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 668.5,
+        "costMs": 670.1,
+        "height": 0.195791078855594,
+        "footprint": 3.7849861409523773
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.15,
+        "seed": 3,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 574.1,
+        "costMs": 576.4,
+        "height": 0.1823092397302389,
+        "footprint": 3.6634204195945026
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.15,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 509.2,
+        "costMs": 511.7,
+        "height": 0.1978321671485901,
+        "footprint": 3.7266783425673586
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.15,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 638.1,
+        "costMs": 639.5,
+        "height": 0.19411890457073847,
+        "footprint": 3.7266638801862255
+      }
+    ],
+    "light-120-0.2": [
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.2,
+        "seed": 1,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 573.8,
+        "costMs": 575.9,
+        "height": 0.19858269182344276,
+        "footprint": 3.8184568528003378
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.2,
+        "seed": 2,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 621.8,
+        "costMs": 623.2,
+        "height": 0.1746894869953394,
+        "footprint": 3.7086919954033646
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.2,
+        "seed": 3,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 818.9,
+        "costMs": 821.1,
+        "height": 0.1807100109755993,
+        "footprint": 3.676929151576799
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.2,
+        "seed": 4,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 514,
+        "costMs": 516.4,
+        "height": 0.19139005566636721,
+        "footprint": 3.786492182589325
+      },
+      {
+        "rig": "light",
+        "requested": 120,
+        "threshold": 0.2,
+        "seed": 5,
+        "awakeAt20s": 0,
+        "awakeAtEnd": 0,
+        "warmCostMs": 576.2,
+        "costMs": 577.6,
+        "height": 0.18675656442840893,
+        "footprint": 3.818663747591721
+      }
+    ]
+  },
+  "wakeRuns": {
+    "0.03": [
+      {
+        "threshold": 0.03,
+        "seed": 1,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004196375819171923
+      },
+      {
+        "threshold": 0.03,
+        "seed": 2,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004355281428270329
+      },
+      {
+        "threshold": 0.03,
+        "seed": 3,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004222756229577981
+      },
+      {
+        "threshold": 0.03,
+        "seed": 4,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.007283575278199122
+      },
+      {
+        "threshold": 0.03,
+        "seed": 5,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004418059633195649
+      }
+    ],
+    "0.05": [
+      {
+        "threshold": 0.05,
+        "seed": 1,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004196568292410386
+      },
+      {
+        "threshold": 0.05,
+        "seed": 2,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.0043462949415970864
+      },
+      {
+        "threshold": 0.05,
+        "seed": 3,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004213490885237192
+      },
+      {
+        "threshold": 0.05,
+        "seed": 4,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.007273435621244805
+      },
+      {
+        "threshold": 0.05,
+        "seed": 5,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004482461418555613
+      }
+    ],
+    "0.1": [
+      {
+        "threshold": 0.1,
+        "seed": 1,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.0042194011118319415
+      },
+      {
+        "threshold": 0.1,
+        "seed": 2,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.0042342494295707425
+      },
+      {
+        "threshold": 0.1,
+        "seed": 3,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.007789590553363843
+      },
+      {
+        "threshold": 0.1,
+        "seed": 4,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.00796862323772832
+      },
+      {
+        "threshold": 0.1,
+        "seed": 5,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004153799663239322
+      }
+    ],
+    "0.15": [
+      {
+        "threshold": 0.15,
+        "seed": 1,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004113993358873477
+      },
+      {
+        "threshold": 0.15,
+        "seed": 2,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.008169801919306394
+      },
+      {
+        "threshold": 0.15,
+        "seed": 3,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.007627108611686902
+      },
+      {
+        "threshold": 0.15,
+        "seed": 4,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004185166606574738
+      },
+      {
+        "threshold": 0.15,
+        "seed": 5,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004253957774926488
+      }
+    ],
+    "0.2": [
+      {
+        "threshold": 0.2,
+        "seed": 1,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.004168688263016135
+      },
+      {
+        "threshold": 0.2,
+        "seed": 2,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.005762083987068753
+      },
+      {
+        "threshold": 0.2,
+        "seed": 3,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.0042721543439705
+      },
+      {
+        "threshold": 0.2,
+        "seed": 4,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.0032781171937862215
+      },
+      {
+        "threshold": 0.2,
+        "seed": 5,
+        "awakeBeforeDrop": 0,
+        "woke": true,
+        "movedMetres": 0.6970794183729399
+      }
+    ]
+  },
+  "evaluation": [
+    {
+      "threshold": 0.03,
+      "quality": [
+        {
+          "rig": "full",
+          "requested": 48,
+          "heightZ": 0,
+          "footprintZ": 0,
+          "meanCostMs": 3542.4,
+          "awakeAt20s": [
+            500,
+            0,
+            451,
+            0,
+            429
+          ],
+          "awakeAtEnd": [
+            495,
+            0,
+            451,
+            0,
+            0
+          ]
+        },
+        {
+          "rig": "light",
+          "requested": 120,
+          "heightZ": 0,
+          "footprintZ": 0,
+          "meanCostMs": 4988.6,
+          "awakeAt20s": [
+            405,
+            480,
+            525,
+            540,
+            520
+          ],
+          "awakeAtEnd": [
+            400,
+            490,
+            525,
+            385,
+            520
+          ]
+        }
+      ],
+      "impact": {
+        "meanMm": 4.9,
+        "defaultMeanMm": 4.9,
+        "diffMm": 0,
+        "withinBar": true,
+        "hitRigWakesEverySeed": true
+      },
+      "qualityPass": true,
+      "totalCostMs": 8531,
+      "passes": true
+    },
+    {
+      "threshold": 0.05,
+      "quality": [
+        {
+          "rig": "full",
+          "requested": 48,
+          "heightZ": 1.15,
+          "footprintZ": -0.03,
+          "meanCostMs": 2020.9,
+          "awakeAt20s": [
+            500,
+            0,
+            451,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "rig": "light",
+          "requested": 120,
+          "heightZ": 0.19,
+          "footprintZ": 0,
+          "meanCostMs": 4009.2,
+          "awakeAt20s": [
+            405,
+            480,
+            525,
+            545,
+            520
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            525,
+            385,
+            525
+          ]
+        }
+      ],
+      "impact": {
+        "meanMm": 4.9,
+        "defaultMeanMm": 4.9,
+        "diffMm": 0,
+        "withinBar": true,
+        "hitRigWakesEverySeed": true
+      },
+      "qualityPass": true,
+      "totalCostMs": 6030.1,
+      "passes": true
+    },
+    {
+      "threshold": 0.1,
+      "quality": [
+        {
+          "rig": "full",
+          "requested": 48,
+          "heightZ": 1.96,
+          "footprintZ": -0.07,
+          "meanCostMs": 677.1,
+          "awakeAt20s": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "rig": "light",
+          "requested": 120,
+          "heightZ": 4.36,
+          "footprintZ": 0.81,
+          "meanCostMs": 878.3,
+          "awakeAt20s": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "impact": {
+        "meanMm": 5.7,
+        "defaultMeanMm": 4.9,
+        "diffMm": 0.8,
+        "withinBar": true,
+        "hitRigWakesEverySeed": true
+      },
+      "qualityPass": false,
+      "totalCostMs": 1555.4,
+      "passes": false
+    },
+    {
+      "threshold": 0.15,
+      "quality": [
+        {
+          "rig": "full",
+          "requested": 48,
+          "heightZ": 2.18,
+          "footprintZ": -0.08,
+          "meanCostMs": 566,
+          "awakeAt20s": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "rig": "light",
+          "requested": 120,
+          "heightZ": 10.1,
+          "footprintZ": 1.72,
+          "meanCostMs": 607.9,
+          "awakeAt20s": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "impact": {
+        "meanMm": 5.7,
+        "defaultMeanMm": 4.9,
+        "diffMm": 0.8,
+        "withinBar": true,
+        "hitRigWakesEverySeed": true
+      },
+      "qualityPass": false,
+      "totalCostMs": 1173.9,
+      "passes": false
+    },
+    {
+      "threshold": 0.2,
+      "quality": [
+        {
+          "rig": "full",
+          "requested": 48,
+          "heightZ": 2.55,
+          "footprintZ": 0.04,
+          "meanCostMs": 469.7,
+          "awakeAt20s": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "rig": "light",
+          "requested": 120,
+          "heightZ": 7.91,
+          "footprintZ": 2.11,
+          "meanCostMs": 622.8,
+          "awakeAt20s": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "awakeAtEnd": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "impact": {
+        "meanMm": 142.9,
+        "defaultMeanMm": 4.9,
+        "diffMm": 138,
+        "withinBar": false,
+        "hitRigWakesEverySeed": true
+      },
+      "qualityPass": false,
+      "totalCostMs": 1092.5,
+      "passes": false
+    }
+  ],
+  "decision": {
+    "threshold": 0.05,
+    "changed": true,
+    "reason": "lowest total cost among the 2 passing thresholds (default included)"
+  }
+}

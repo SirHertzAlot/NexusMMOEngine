@@ -11,6 +11,9 @@
  * The status damage/heal callbacks touch Health/God components via ctx.sim.
  */
 import { hasComponent } from "bitecs";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { CombatSystem } from "../../packages/engine-core/dist/src/combat.js";
 import { AbilitySystem } from "../../packages/engine-core/dist/src/abilities.js";
 import { StatusSystem } from "../../packages/engine-core/dist/src/status.js";
@@ -21,6 +24,14 @@ import { DeathSystem } from "../../packages/engine-core/dist/src/death.js";
 import { MagicSystem } from "../../packages/engine-core/dist/src/magic.js";
 import { StaminaSystem } from "../../packages/engine-core/dist/src/stats/stamina-system.js";
 import { Health, God, CharacterRef } from "../../packages/engine-core/dist/src/components.js";
+
+const ABILITIES_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "content", "combat", "abilities.json");
+
+/** The ability definitions in content/combat/abilities.json (id, gcdMs, cooldownMs, castMs). */
+export function loadAbilityDefs(file = ABILITIES_FILE) {
+  const raw = JSON.parse(readFileSync(file, "utf8"));
+  return raw.abilities.map((a) => ({ id: a.id, gcdMs: a.gcdMs, cooldownMs: a.cooldownMs, castMs: a.castMs }));
+}
 
 export function createSystems(ctx) {
   const config = ctx.config?.combat ?? {};
@@ -50,6 +61,8 @@ export function createSystems(ctx) {
   };
 
   const abilities = new AbilitySystem(30);
+  // The placeholder starter set (content/combat/abilities.json, M5 ability bar): defined once here.
+  for (const def of loadAbilityDefs()) abilities.define(def);
   const status = new StatusSystem(
     30,
     (t, amount) => {

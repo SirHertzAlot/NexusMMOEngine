@@ -56,6 +56,11 @@ export interface RoadEdge {
   widthMm: number;
   /** Paved (a walled town's streets, out to its gates) or beaten earth (a village's, and the country roads beyond the gates). */
   surface: "paved" | "dirt";
+  /**
+   * The street's centreline, when the bake routed it over the ground (`site.route`): offsets from the town's centre in
+   * mm, with `h` the ground height along it in metres above the ground at the centre. Absent, the street is one straight slab.
+   */
+  path?: Array<{ x: number; z: number; h: number }>;
 }
 
 export interface District {

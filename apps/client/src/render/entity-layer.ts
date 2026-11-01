@@ -52,6 +52,7 @@ import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
 import { CorpseProxy } from "./animal/corpse-proxy.js";
+import { animalIsFar } from "./animal/far-lod.js";
 import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
@@ -82,6 +83,8 @@ interface TrackedMesh {
   actionKey?: string;
   /** A static animal model given a procedural skeleton and gait (see animal/animal-rig.ts). */
   animal?: AnimalRig;
+  /** Far from the camera: the animal is one stand-in in the instanced batch, and its own mesh is hidden. */
+  far?: boolean;
   /** The animal rig was tried (a model without a quadruped shape stays as it is). */
   animalTried?: boolean;
   /** Nameplate sprite above the head, and the name it shows. */
@@ -180,6 +183,7 @@ const TURN_RATE = 12;
 
 const tmpColor = new THREE.Color();
 const tmpEye = new THREE.Vector3();
+const tmpAnimal = new THREE.Vector3();
 const tmpSpawn = new THREE.Vector3();
 /** Warn-once log (missing bones, missing models: per session, not per frame). */
 const warned = new Set<string>();
@@ -487,6 +491,22 @@ export class EntityLayer {
   }
 
   /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node or broken (BROKEN_VARIANT). */
+  /**
+   * Far LOD for an animal (WL2): past the radius (with a band, animal/far-lod.ts) its own posed mesh
+   * is hidden and it is one instance in the shared InstancedProps batch, a stand-in box or sphere
+   * sized to its body. Near again, the batch instance goes and the mesh shows. Called every frame
+   * the entity is in view, before the props and tracked-mesh paths pick it up.
+   */
+  private gateFarAnimal(wid: bigint, tracked: TrackedMesh, t: TransformRow, body: BodyConfigRow | null): void {
+    const eye = this.camera.getWorldPosition(tmpEye);
+    const far = animalIsFar(tracked.far === true, eye.distanceTo(tmpAnimal.set(t.px, t.py, t.pz)));
+    if (far === (tracked.far === true)) return;
+    tracked.far = far;
+    tracked.object.visible = !far;
+    if (far) this.props.add(wid, ...this.shown(wid, t, body), placeholderColor(wid), null);
+    else this.props.remove(wid);
+  }
+
   private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null, asset?: AssetRefRow): [TransformRow, BodyConfigRow | null] {
     if (!this.depleted.has(wid) && asset?.variant !== BROKEN_VARIANT) {
       this.lowRows.delete(wid);
@@ -541,6 +561,9 @@ export class EntityLayer {
         this.terrain.ensureChunk(wid, e.chunk);
         continue;
       }
+      // A far animal is one stand-in in the instanced batch (WL2 far LOD): see gateFarAnimal.
+      const animalMesh = this.meshes.get(wid);
+      if (animalMesh?.animal && e.transform) this.gateFarAnimal(wid, animalMesh, e.transform, e.body ?? null);
       // Batched static props: follow their rows (unchanged rows cost nothing).
       if (this.props.has(wid)) {
         if (e.transform) {

@@ -25,6 +25,7 @@ import { checkRuleSave, readRuleFile, rulesDir, saveRuleFile } from "./rules-hos
 import { readRulesTables } from "./rules-store.js";
 import { isGameplayTable, type GameplayTable } from "./gameplay-tables.js";
 import { refuseInvalid } from "./api.js";
+import { engineModule } from "./content-docs-host.js";
 import { checkDataTable, isDataTable, readDataTables, saveDataTable } from "./data-host.js";
 
 export interface GameplayIssue {
@@ -221,6 +222,66 @@ export async function saveGameplay(repoRoot: string, table: GameplayTable, conte
   saveRuleFile(repoRoot, table, content);
 }
 
+// ---------------------------------------------------------------- wildlife (read-only)
+
+/** One species row of the wildlife table, flat, for the view. Numbers the game reads, nothing invented. */
+export interface WildlifeRow {
+  id: string;
+  role: string;
+  habitat: string;
+  temperament: string;
+  activity: string;
+  tier: number;
+  health: number;
+  noticeM: number;
+  territoryM: number;
+  wanderM: number;
+  group: string;
+  groupMin: number;
+  groupMax: number;
+  /** Metres from its home it raids a settlement; null when it doesn't raid. */
+  raidRangeM: number | null;
+  biomes: string[];
+  boss: boolean;
+}
+
+export interface WildlifeView {
+  species: WildlifeRow[];
+  /** The table's own checks (pyramid ratios, rings, bosses): empty when sound. */
+  problems: string[];
+  biomes: string[];
+}
+
+/** The wildlife table as the game loads it (engine-core's loader and checks), flattened for the view. Read only: saving stays in the content files. */
+export async function readWildlife(repoRoot: string): Promise<WildlifeView> {
+  const mod = await engineModule(repoRoot, "procgen/wildlife-table.js");
+  const load = mod.loadWildlifeTable as () => {
+    species: Record<string, { role: string; habitat: string; temperament: string; activity: string; danger: { tier: number; health: number; noticeM: number }; territoryM: number; wanderM?: number; group: { kind: string; size: [number, number] }; raid?: { rangeM: number }; biomes: Record<string, number>; boss?: unknown }>;
+    biomes: Record<string, unknown>;
+  };
+  const check = mod.checkWildlife as (t: unknown) => string[];
+  const t = load();
+  const species = Object.entries(t.species).map(([id, s]): WildlifeRow => ({
+    id,
+    role: s.role,
+    habitat: s.habitat,
+    temperament: s.temperament,
+    activity: s.activity,
+    tier: s.danger.tier,
+    health: s.danger.health,
+    noticeM: s.danger.noticeM,
+    territoryM: s.territoryM,
+    wanderM: s.wanderM ?? 0,
+    group: s.group.kind,
+    groupMin: s.group.size[0],
+    groupMax: s.group.size[1],
+    raidRangeM: s.raid ? s.raid.rangeM : null,
+    biomes: Object.keys(s.biomes).filter((b) => (s.biomes[b] ?? 0) > 0),
+    boss: s.boss !== undefined,
+  }));
+  return { species, problems: check(t), biomes: Object.keys(t.biomes) };
+}
+
 // ---------------------------------------------------------------- routes
 
 export interface GameplayRequest {
@@ -236,6 +297,7 @@ export async function handleGameplay(repoRoot: string, req: GameplayRequest): Pr
   const no = (status: number, error: string): { status: number; body: unknown } => ({ status, body: { ok: false, error } });
   try {
     if (req.method === "GET" && req.route === "") return { status: 200, body: { ok: true, ...(await readGameplay(repoRoot)) } };
+    if (req.method === "GET" && req.route === "wildlife") return { status: 200, body: { ok: true, ...(await readWildlife(repoRoot)) } };
     if (req.method !== "POST" && req.method !== "PUT") return no(404, "not found");
     if (!/^application\/json\b/i.test(req.contentType ?? "")) return no(415, "send application/json");
     if (req.method === "POST" && req.route === "check") {

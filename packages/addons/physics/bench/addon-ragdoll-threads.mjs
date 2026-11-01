@@ -1,11 +1,13 @@
-// Thread pool cost through the addon: the step time of the same resting world on
-// the single-threaded job system (threads 0, the addon's default) and on a Jolt
-// thread pool of four (threads 4). The scenario and budgets are those of
-// addon-ragdoll-cost.mjs, so the threads-0 rows reproduce that sweep.
+// Thread pool cost through the addon: the step time of the same world on the
+// single-threaded job system (threads 0, the addon's default) and on Jolt thread
+// pools of 1, 2 and 4 threads. The scenario and budgets are those of
+// addon-ragdoll-cost.mjs.
 //
-// What it measures: rigs 0.9 m apart on one floor, sleep on, the addon's two
-// substeps. Each run warms up for 5 s, then measures 2 s at 30 Hz. At the default
-// sleep threshold a capped crowd stays awake, so these are awake costs.
+// What it measures: rigs 0.9 m apart on one floor, the sleep threshold at 0.05 m/s
+// (the chosen default, set explicitly below so this bench means the same on any
+// base), and the addon's two substeps. Each run warms up for 5 s, then measures 2 s
+// at 30 Hz. Each row records the ragdoll bodies still awake at the end, so a row
+// whose crowd has fallen asleep says so.
 //
 // Budgets: `default` is the world's budget (240 units: 48 full or 120 light
 // rigs). `uncapped` raises it, to show what the cap prevents. A spawner asks for
@@ -34,10 +36,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const RESULTS = path.join(here, '..', '..', '..', '..', 'docs', 'addon-ragdoll-threads-results.json');
 const TICK_HZ = 30;
 const SUBSTEPS = 2;
+const SLEEP_THRESHOLD = 0.05; // the chosen default (bench/addon-sleep-ensemble.mjs)
 const WARM_STEPS = 5 * TICK_HZ;
 const MEASURE_STEPS = 2 * TICK_HZ;
 const UNITS = { full: 5, light: 2 };
-const THREADS = [0, 4];
+const THREADS = [0, 1, 2, 4];
 const REPEATS = 3;
 
 const CONFIGS = [
@@ -87,6 +90,7 @@ function median(values) {
 function runOnce({ rig, requested, budget, threads }) {
   const w = createWorld({ threads });
   try {
+    w.setSleepThreshold(SLEEP_THRESHOLD);
     if (budget === 'uncapped') w.setRagdollBudget(1_000_000_000);
     addFloor(w);
     const fit = Math.floor((w.ragdollBudget() - w.ragdollUnits()) / UNITS[rig]);
@@ -113,6 +117,7 @@ function runOnce({ rig, requested, budget, threads }) {
       units: w.ragdollUnits(),
       budgetUnits: w.ragdollBudget(),
       stepMs: median(samples),
+      activeBodies: w.ragdollActiveBodies(),
     };
   } finally {
     w.destroy();
@@ -145,6 +150,7 @@ function sweep(repeats) {
           accepted: first.accepted,
           units: first.units,
           budgetUnits: first.budgetUnits,
+          activeBodies: first.activeBodies,
           stepMs: median(runs.map((run) => run.stepMs)),
           runsMs: runs.map((run) => Number(run.stepMs.toFixed(3))),
         });
@@ -173,7 +179,8 @@ function main(argv) {
   const doc = {
     tickHz: TICK_HZ,
     substeps: SUBSTEPS,
-    scenario: 'resting: rigs 0.9 m apart, sleep on, 5 s warm-up, 2 s measured; threads 0 (single) and 4 (Jolt pool)',
+    sleepThreshold: SLEEP_THRESHOLD,
+    scenario: 'rigs 0.9 m apart, sleep threshold 0.05 m/s, 5 s warm-up, 2 s measured; threads 0 (single), 1, 2 and 4 (Jolt pools)',
     repeats,
     machine: {
       cpu: os.cpus()[0]?.model ?? 'unknown',
