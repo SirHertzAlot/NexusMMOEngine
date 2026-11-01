@@ -50,6 +50,10 @@ Trade-offs, and why Rapier still wins:
 
 ## Scope
 
+Walkers: `spawnWalker`, `moveWalker` and `removeWalker` use Rapier's
+`KinematicCharacterController` (slides along walls, climbs steps up to 0.35 m,
+snaps to the ground). Tested on a ramp and against a box in the path. The
+benchmark's walker is still the steered body, so its numbers do not cover the controller.
+
 Not included: cosmetic ragdolls on death (roadmap "Ragdoll slice 1"), which
-will call this seam; the per-frame sync to the scene; the walker's character
-controller.
+will call this seam, and the per-frame sync to the scene.

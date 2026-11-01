@@ -19,9 +19,14 @@ export interface Vec3 {
   readonly z: number;
 }
 
+export interface WalkerState extends Vec3 {
+  /** True when the walker is standing on something after the move. */
+  readonly grounded: boolean;
+}
+
 export interface PhysicsWorld {
   /** The library behind the seam, for benchmarks and logs. */
-  readonly backend: "rapier" | "jolt";
+  readonly backend: "rapier" | "physx";
 
   /** Advance the simulation by `dt` seconds (split into `PHYSICS_SUBSTEPS` steps). */
   step(dt: number): void;
@@ -47,6 +52,29 @@ export interface PhysicsWorld {
 
   /** Remove a ragdoll and its bodies and joints. Unknown handles are ignored. */
   removeRagdoll(handle: number): void;
+
+  /**
+   * Spawn a walker: a capsule of `radius` and `halfHeight` (the straight part,
+   * not counting the caps) centred on `centre`, moved by `moveWalker` and
+   * stopped by the terrain and props. Returns its handle.
+   */
+  spawnWalker(centre: Vec3, radius: number, halfHeight: number): number;
+
+  /**
+   * Ask a walker to move by `delta` this tick. It slides along what blocks it,
+   * climbs steps up to 0.35 m, and snaps down to the ground. Returns where it
+   * will be after the next `step`. Call once per walker per tick, before `step`.
+   */
+  moveWalker(handle: number, delta: Vec3): WalkerState;
+
+  /**
+   * Put a walker at `centre` at once, without collision. Prediction uses this to
+   * rewind to a server state before it replays its inputs. Unknown handles are ignored.
+   */
+  teleportWalker(handle: number, centre: Vec3): void;
+
+  /** Remove a walker. Unknown handles are ignored. */
+  removeWalker(handle: number): void;
 
   /** Free the library's memory. The world is unusable afterwards. */
   dispose(): void;
