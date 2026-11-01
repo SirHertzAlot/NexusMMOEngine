@@ -9,7 +9,7 @@
  * Bots run in worker_threads so they don't block the server's tick loop.
  *
  * Builds on scripts/world-stress/bot-client.mjs and
- * scripts/world-stress/bot-worker.mjs.
+ * scripts/world-stress/bot-worker.mjs (which start their bots from workerData).
  *
  * Admin command: `bots <count>` — spawns <count> bot workers.
  * Admin command: `bots stop` — stops all running bot workers.
@@ -17,8 +17,10 @@
 import { stdioError, stdioLog } from "../logging/index.js";
 
 import { z } from "zod";
+import * as fs from "node:fs";
 import { Worker } from "node:worker_threads";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const BotsArgsSchema = z
   .object({
@@ -38,34 +40,55 @@ export const BotsArgsSchema = z
 
 export type BotsArgs = z.infer<typeof BotsArgsSchema>;
 
-/** Active bot workers, keyed by worker index. */
+/**
+ * Running bot workers. Keys come from a counter that never repeats, so a
+ * second `bots` run cannot overwrite (and lose) the workers of the first.
+ */
 const botWorkers = new Map<number, Worker>();
+let nextWorkerKey = 0;
 
-/** Resolve the bot worker script path. */
+const WORKER_SCRIPT = path.join("scripts", "world-stress", "bot-worker.mjs");
+
+/**
+ * The bot worker script, found by walking up from this module to the repo
+ * root, so the command works from the server's cwd or a package's.
+ */
 function workerScriptPath(): string {
-  return path.resolve(process.cwd(), "scripts/world-stress/bot-worker.mjs");
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    const candidate = path.join(dir, WORKER_SCRIPT);
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return path.resolve(process.cwd(), WORKER_SCRIPT);
+    dir = parent;
+  }
 }
 
-/** Spawn N bot worker threads. */
+/** Spawn N bot worker threads, or stop the running ones. */
 export function spawnBots(args: BotsArgs): { ok: boolean; message: string } {
   if (args.stop) {
-    for (const [idx, worker] of botWorkers) {
-      worker.terminate();
-      botWorkers.delete(idx);
+    const stopped = botWorkers.size;
+    for (const worker of botWorkers.values()) {
+      worker.postMessage({ type: "stop" });
     }
-    return { ok: true, message: `stopped ${botWorkers.size} bot workers` };
+    botWorkers.clear();
+    return { ok: true, message: `stopped ${stopped} bot worker(s)` };
   }
 
   const count = args.count ?? 1;
   const url = process.env.BOT_WS_URL ?? "ws://localhost:7777";
   const usernamePrefix = process.env.BOT_USERNAME_PREFIX ?? "bot";
-  const password = process.env.BOT_PASSWORD ?? "bot";
+  // The server refuses passwords under 8 characters, so the default must be at least that long.
+  // The bot accounts must be seeded with the same password (seed:user with MMO_DEV_PASSWORD).
+  const password = process.env.BOT_PASSWORD ?? "bot-password";
 
   let started = 0;
   for (let i = 0; i < count; i++) {
+    const key = nextWorkerKey++;
+    const workerId = `bots-${key}`;
     const worker = new Worker(workerScriptPath(), {
       workerData: {
-        workerId: `bots-${i}`,
+        workerId,
         count: 1,
         url,
         usernamePrefix,
@@ -79,26 +102,24 @@ export function spawnBots(args: BotsArgs): { ok: boolean; message: string } {
         stdioLog(
           `[admin bots] worker ${msg.workerId} ready with ${msg.botCount} bot(s)`,
         );
-      } else if (msg.type === "stats") {
-        // Stats are logged periodically; could also be forwarded to admin UI
-      } else if (msg.type === "stopped") {
-        botWorkers.delete(Number(msg.workerId.split("-")[1]));
+      } else if (msg.type === "error") {
+        stdioError(`[admin bots] worker ${msg.workerId} failed: ${msg.message}`);
       }
     });
 
     worker.on("error", (err) => {
-      stdioError(`[admin bots] worker ${i} error:`, err);
-      botWorkers.delete(i);
+      stdioError(`[admin bots] worker ${workerId} error:`, err);
+      botWorkers.delete(key);
     });
 
     worker.on("exit", (code) => {
       if (code !== 0) {
-        stdioError(`[admin bots] worker ${i} exited with code ${code}`);
+        stdioError(`[admin bots] worker ${workerId} exited with code ${code}`);
       }
-      botWorkers.delete(i);
+      botWorkers.delete(key);
     });
 
-    botWorkers.set(i, worker);
+    botWorkers.set(key, worker);
     started++;
   }
 
