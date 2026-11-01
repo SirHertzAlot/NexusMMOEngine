@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AbilityMessage, StatusMessage } from "@mmo-engine/protocol";
-import { NO_ABILITY_STATE, nextAbilityState } from "../src/ui/ability-bar.js";
+import { NO_ABILITY_STATE, abilityEntries, nextAbilityState } from "../src/ui/ability-bar.js";
 import { nextStatuses } from "../src/ui/status-frame.js";
 
 const ab = (state: AbilityMessage["state"], id: string, entity = "me"): AbilityMessage => ({
@@ -50,6 +50,19 @@ describe("nextAbilityState", () => {
     assert.equal(s, NO_ABILITY_STATE);
     const r = nextAbilityState(NO_ABILITY_STATE, ab("rejected", "heal"), "me");
     assert.equal(r, NO_ABILITY_STATE);
+  });
+});
+
+describe("abilityEntries", () => {
+  it("reads the content file's abilities in order, keeping names", () => {
+    const list = abilityEntries({ abilities: [{ id: "strike", name: "Strike", gcdMs: 1000 }, { id: "heal" }] });
+    assert.deepEqual(list, [{ id: "strike", name: "Strike" }, { id: "heal" }]);
+  });
+
+  it("drops entries without an id and gives an empty bar for another shape", () => {
+    assert.deepEqual(abilityEntries({ abilities: [{ name: "x" }, { id: "" }, { id: "guard" }] }), [{ id: "guard" }]);
+    assert.deepEqual(abilityEntries({ nope: true }), []);
+    assert.deepEqual(abilityEntries(null), []);
   });
 });
 

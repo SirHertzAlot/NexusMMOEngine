@@ -27,12 +27,6 @@ import type { PouchMaterial } from "@mmo-engine/protocol";
 // Lazy-load heavy panels (code splitting)
 import React from "react";
 import type { DungeonRun } from "./ui/dungeon.js";
-/**
- * The abilities on the bar (roadmap M5). The server defines no abilities in
- * content yet, so the bar stays hidden until a content list fills this in.
- */
-const ABILITY_BAR: AbilityEntry[] = [];
-
 const DungeonHud = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonHud })));
 const DungeonResult = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonResult })));
 const DungeonTransit = React.lazy(() => import("./ui/dungeon.js").then((m) => ({ default: m.DungeonTransit })));
@@ -44,7 +38,7 @@ import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
 import { CastBar, nextCast, type CastState } from "./ui/cast-bar.js";
-import { AbilityBar, NO_ABILITY_STATE, nextAbilityState, type AbilityBarState, type AbilityEntry } from "./ui/ability-bar.js";
+import { AbilityBar, NO_ABILITY_STATE, abilityEntries, nextAbilityState, type AbilityBarState, type AbilityEntry } from "./ui/ability-bar.js";
 import { StatusFrame, nextStatuses, type StatusView } from "./ui/status-frame.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
@@ -231,6 +225,20 @@ export function App(): React.ReactElement {
   const [cast, setCast] = useState<CastState | null>(null);
   const [abilityState, setAbilityState] = useState<AbilityBarState>(NO_ABILITY_STATE);
   const [statuses, setStatuses] = useState<StatusView[]>([]);
+  /** The ability bar's buttons, from content/combat/abilities.json (placeholder set; M5). */
+  const [abilityBar, setAbilityBar] = useState<AbilityEntry[]>([]);
+  useEffect(() => {
+    let live = true;
+    fetch("/content/combat/abilities.json")
+      .then((r) => (r.ok ? (r.json() as Promise<unknown>) : null))
+      .then((j) => {
+        if (live && j) setAbilityBar(abilityEntries(j));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
@@ -928,7 +936,7 @@ export function App(): React.ReactElement {
           <StatusFrame statuses={statuses} />
         </HudSlot>
         <HudSlot id="ability-bar" className="z-10">
-          <AbilityBar abilities={ABILITY_BAR} state={abilityState} onUse={(id) => clientRef.current?.ability(id)} />
+          <AbilityBar abilities={abilityBar} state={abilityState} onUse={(id) => clientRef.current?.ability(id)} />
         </HudSlot>
         <TargetFrame target={combatView?.target ?? null} />
         <CombatHud

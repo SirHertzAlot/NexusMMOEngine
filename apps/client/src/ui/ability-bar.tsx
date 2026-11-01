@@ -15,8 +15,28 @@ import { t, tName } from "../i18n.js";
 /** An ability the content defines, as the bar shows it. */
 export interface AbilityEntry {
   id: string;
+  /** Display name from the content file; the strings table names it otherwise. */
+  name?: string;
   /** Hotkey label shown on the button (e.g. "1"); optional. */
   key?: string;
+}
+
+/**
+ * The bar's abilities from content/combat/abilities.json (served at
+ * /content/combat/abilities.json). Entries without a string id are dropped;
+ * a file that is not that shape gives an empty bar.
+ */
+export function abilityEntries(raw: unknown): AbilityEntry[] {
+  const list = (raw as { abilities?: unknown } | null)?.abilities;
+  if (!Array.isArray(list)) return [];
+  const out: AbilityEntry[] = [];
+  for (const a of list) {
+    const id = (a as { id?: unknown })?.id;
+    if (typeof id !== "string" || id.length === 0) continue;
+    const name = (a as { name?: unknown }).name;
+    out.push(typeof name === "string" && name.length > 0 ? { id, name } : { id });
+  }
+  return out;
 }
 
 /** What the player's own abilities are doing: the one casting and the one queued behind it. */
@@ -65,7 +85,7 @@ function AbilityBarImpl({
       {abilities.map((a) => {
         const casting = state.casting === a.id;
         const queued = state.queued === a.id;
-        const name = tName("ability", a.id);
+        const name = a.name ?? tName("ability", a.id);
         return (
           <button
             key={a.id}

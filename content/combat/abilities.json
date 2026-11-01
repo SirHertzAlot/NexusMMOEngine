@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "placeholder": true,
+  "note": "Placeholder starter set (M5 ability bar). No damage or healing yet; the values are the ones the ability tests run against (30 Hz ticks). Real design replaces this file.",
+  "abilities": [
+    { "id": "strike", "name": "Strike", "gcdMs": 1000, "cooldownMs": 0, "castMs": 0 },
+    { "id": "guard", "name": "Guard", "gcdMs": 1000, "cooldownMs": 4000, "castMs": 0 },
+    { "id": "heal", "name": "Heal", "gcdMs": 1000, "cooldownMs": 8000, "castMs": 1500 }
+  ]
+}
