@@ -483,6 +483,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-01**: M5 duel strike fix (#587): a duelist's strike goes to the opponent; strike scales by status (guard halves it). Two-account live check: 10 damage plain, 5 guarded. Ability bar, status frame, and real design still open. Row stays 🚧.
 - **2026-11-01**: GS2 global scale closed: dungeon runs apply the scale to their spawns (#529); `feat/scale-apply` is dead and should not be merged. TL0 closed: gltfpack and lil-gui pinned in `apps/client` (#530), 3 baseline assets already on main.
 - **2026-11-01**: WL1 generated placeholder packs (#582, 🚧): stand-in animal GLBs through the real importer, marked as placeholders. WL1 stays 🚧: farm dressing in the bake, free swimmers and moving creatures are still open.
 - **2026-11-01**: Folded the duplicate shared-body interpolation row (#551) into the ✅ shared-body client row; the mechanism note is kept. In progress 14.
