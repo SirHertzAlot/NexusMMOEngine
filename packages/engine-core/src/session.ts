@@ -132,6 +132,8 @@ export interface ClientSession {
   borders?: Map<string, number>;
   /** IM5: pinned wire ids sent through the pinned entry last tick (out of the interest sectors). */
   pinnedOut?: Set<bigint>;
+  /** IM5: the wire ids whose name this session has been sent (a name goes out once, when the entity is first in view). */
+  namedSent?: Set<bigint>;
   /** IM5: foes this session hit or was hit by, pinned until the tick given. */
   combatPins?: Map<bigint, number>;
 }
