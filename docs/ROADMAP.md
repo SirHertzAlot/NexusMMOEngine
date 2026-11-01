@@ -485,6 +485,7 @@ Newest first. One line per merged PR or decision.
 - **2026-11-01**: GS2 global scale closed: dungeon runs apply the scale to their spawns (#529); `feat/scale-apply` is dead and should not be merged. TL0 closed: gltfpack and lil-gui pinned in `apps/client` (#530), 3 baseline assets already on main.
 - **2026-11-01**: Client ragdoll corpses on PhysX (#549): 20 at most, 4 s each, cosmetic. Live-client check still to do, so the row stays 🚧.
 - **2026-11-01**: Snapshot interpolation for shared bodies (#551): `SnapshotInterpolator`, 0.1 s render delay by default. Not wired into the entity layer yet, so the row stays 🚧.
+- **2026-11-01**: IM5 names follow interest (#560): a session is sent a name once, when its entity is in view (interest sectors, pins, own avatar); catch-up covers entities that walk in later. Drops stay global (next slice). The IM row stays 🚧.
 - **2026-11-01**: Persistence ledger survives a restart (#557): schema DEFINEs are idempotent, `MMO_DATA_PLANE_DB` opts production into a durable rocksdb URL, restart round-trip test. The zero-copy row stays 🚧: the default is still `mem://`, and a durable default needs a checkpoint-throughput benchmark on rocksdb first.
 - **2026-11-01**: Shared bodies drawn from server snapshots in the entity layer (#555), render delay 0.15 s from the lossy-feed sweep. Live-server check still to do.
 - **2026-11-01**: Mirror `Interpolator.onPush` listener (#553): a reader can keep more history than the last two ticks. Shared-body wiring in the entity layer is #555, still a draft pending a GIF.
