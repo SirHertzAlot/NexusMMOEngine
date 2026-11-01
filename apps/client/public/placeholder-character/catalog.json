@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "parts": [
+    {
+      "name": "Chr_Torso_Male_01",
+      "slot": "torso",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_Torso_Female_01",
+      "slot": "torso",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmUpperRight_Male_01",
+      "slot": "armUpperRight",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmUpperRight_Female_01",
+      "slot": "armUpperRight",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmUpperLeft_Male_01",
+      "slot": "armUpperLeft",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmUpperLeft_Female_01",
+      "slot": "armUpperLeft",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmLowerRight_Male_01",
+      "slot": "armLowerRight",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmLowerRight_Female_01",
+      "slot": "armLowerRight",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmLowerLeft_Male_01",
+      "slot": "armLowerLeft",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_ArmLowerLeft_Female_01",
+      "slot": "armLowerLeft",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_HandRight_Male_01",
+      "slot": "handRight",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_HandRight_Female_01",
+      "slot": "handRight",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_HandLeft_Male_01",
+      "slot": "handLeft",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_HandLeft_Female_01",
+      "slot": "handLeft",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_Hips_Male_01",
+      "slot": "hips",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_Hips_Female_01",
+      "slot": "hips",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_LegRight_Male_01",
+      "slot": "legRight",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_LegRight_Female_01",
+      "slot": "legRight",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_LegLeft_Male_01",
+      "slot": "legLeft",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_LegLeft_Female_01",
+      "slot": "legLeft",
+      "gender": "female",
+      "index": 1
+    },
+    {
+      "name": "Chr_Head_Male_01",
+      "slot": "head",
+      "gender": "male",
+      "index": 1
+    },
+    {
+      "name": "Chr_Head_Female_01",
+      "slot": "head",
+      "gender": "female",
+      "index": 1
+    }
+  ],
+  "rig": "rig.glb",
+  "files": {
+    "Chr_Torso_Male_01": "parts/Chr_Torso_Male_01.glb",
+    "Chr_Torso_Female_01": "parts/Chr_Torso_Male_01.glb",
+    "Chr_ArmUpperRight_Male_01": "parts/Chr_ArmUpperRight_Male_01.glb",
+    "Chr_ArmUpperRight_Female_01": "parts/Chr_ArmUpperRight_Male_01.glb",
+    "Chr_ArmUpperLeft_Male_01": "parts/Chr_ArmUpperLeft_Male_01.glb",
+    "Chr_ArmUpperLeft_Female_01": "parts/Chr_ArmUpperLeft_Male_01.glb",
+    "Chr_ArmLowerRight_Male_01": "parts/Chr_ArmLowerRight_Male_01.glb",
+    "Chr_ArmLowerRight_Female_01": "parts/Chr_ArmLowerRight_Male_01.glb",
+    "Chr_ArmLowerLeft_Male_01": "parts/Chr_ArmLowerLeft_Male_01.glb",
+    "Chr_ArmLowerLeft_Female_01": "parts/Chr_ArmLowerLeft_Male_01.glb",
+    "Chr_HandRight_Male_01": "parts/Chr_HandRight_Male_01.glb",
+    "Chr_HandRight_Female_01": "parts/Chr_HandRight_Male_01.glb",
+    "Chr_HandLeft_Male_01": "parts/Chr_HandLeft_Male_01.glb",
+    "Chr_HandLeft_Female_01": "parts/Chr_HandLeft_Male_01.glb",
+    "Chr_Hips_Male_01": "parts/Chr_Hips_Male_01.glb",
+    "Chr_Hips_Female_01": "parts/Chr_Hips_Male_01.glb",
+    "Chr_LegRight_Male_01": "parts/Chr_LegRight_Male_01.glb",
+    "Chr_LegRight_Female_01": "parts/Chr_LegRight_Male_01.glb",
+    "Chr_LegLeft_Male_01": "parts/Chr_LegLeft_Male_01.glb",
+    "Chr_LegLeft_Female_01": "parts/Chr_LegLeft_Male_01.glb",
+    "Chr_Head_Male_01": "parts/Chr_Head_Male_01.glb",
+    "Chr_Head_Female_01": "parts/Chr_Head_Male_01.glb"
+  },
+  "textures": {
+    "base": "textures/base.png",
+    "masks": [
+      "textures/mask0.png",
+      "textures/mask1.png",
+      "textures/mask2.png",
+      "textures/mask3.png"
+    ]
+  }
+}

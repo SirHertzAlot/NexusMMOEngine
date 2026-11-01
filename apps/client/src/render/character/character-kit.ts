@@ -22,6 +22,15 @@ import { applyToon, type ToonOptions } from "../toon/toon-material.js";
 import { addOutline, OutlineMaterial, type OutlineOptions } from "../toon/outline.js";
 
 export const DEFAULT_KIT_URL = "/assets/models/glb/modular-fantasy-hero/Rigged/";
+/** The stand-in kit (scripts/gen-placeholder-character.mjs), read when the licensed kit is not served (SG4a). */
+export const PLACEHOLDER_KIT_URL = "/placeholder-character/";
+
+/** The folder to read the kit from: the licensed rig when served, else the stand-in kit. Explicit URLs stay as given. */
+export async function kitBase(requested: string): Promise<string> {
+  if (requested !== DEFAULT_KIT_URL) return requested;
+  const res = await fetch(`${requested}catalog.json`).catch(() => null);
+  return res?.ok ? requested : PLACEHOLDER_KIT_URL;
+}
 
 // A 1x1 PNG: part files reference the atlas, but the kit loads it once itself.
 const BLANK_PNG =
@@ -89,7 +98,8 @@ export class CharacterKit {
     this.outlineMaterial = style.outline ? new OutlineMaterial({ map: textures.base, ...style.outline }) : null;
   }
 
-  static async load(baseUrl = DEFAULT_KIT_URL, style: CharacterStyle = DEFAULT_CHARACTER_STYLE): Promise<CharacterKit> {
+  static async load(requested = DEFAULT_KIT_URL, style: CharacterStyle = DEFAULT_CHARACTER_STYLE): Promise<CharacterKit> {
+    const baseUrl = await kitBase(requested);
     const res = await fetch(`${baseUrl}catalog.json`);
     if (!res.ok) throw new Error(`character kit: ${baseUrl}catalog.json (${res.status}) — run npm run convert:modular -w @mmo-engine/art`);
     const catalog = (await res.json()) as RiggedCatalog;

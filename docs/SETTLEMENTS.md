@@ -239,6 +239,10 @@ box. **The baked scene names licensed models, so
 `content/scenes/settlement-*.scene.json` is gitignored: bake it locally.**
 The manifest itself holds only archetypes and can be committed.
 
+Without the licensed packs, the bake has no models to name, and the town shows as stand-in boxes. The stand-in models (`packages/settlement/src/placeholder-art.ts`, one plain box GLB per structure kind, written by `node scripts/gen-placeholder-art.mjs` into `apps/client/public/placeholder-art/`) give every kind a model whose name its art pattern matches. The client reads them when `/assets/catalog.json` is not served. They are generated boxes, not art, so they are committed; `packages/settlement/test/placeholder-art.test.ts` keeps the names and the committed catalog in step.
+
+The character kit has a stand-in too (`scripts/gen-placeholder-character.mjs`, written to `apps/client/public/placeholder-character/`): a 17-bone rig with the bone names the animator and foot IK use, rigid box parts, mask textures, and looped locomotion clips (idle, walk, jog, sprint, jump, swim). `CharacterKit.load` and `AnimationLibrary.load` read it when `/assets/models/glb/modular-fantasy-hero/Rigged/` is not served. A player can create a character and enter the settlement without the licensed art.
+
 Checked end to end: a world baked into a scratch folder, `MMO_SCENE=settlement-0182`,
 the client logged in and walking among 288 buildings (12 kinds, all mapped),
 and the same town as stand-in boxes.

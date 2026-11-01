@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "sources": [
+    {
+      "id": "placeholder",
+      "title": "Stand-in locomotion (generated)",
+      "author": "scripts/gen-placeholder-character.mjs",
+      "license": "generated; no third-party art",
+      "url": "",
+      "file": "placeholder-anims.glb"
+    }
+  ],
+  "clips": [
+    {
+      "name": "Idle_Loop",
+      "source": "placeholder",
+      "duration": 2,
+      "loop": true,
+      "travel": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Walk_Loop",
+      "source": "placeholder",
+      "duration": 1,
+      "loop": true,
+      "travel": [
+        0,
+        1.4
+      ]
+    },
+    {
+      "name": "Jog_Fwd_Loop",
+      "source": "placeholder",
+      "duration": 0.7,
+      "loop": true,
+      "travel": [
+        0,
+        2.52
+      ]
+    },
+    {
+      "name": "Sprint_Loop",
+      "source": "placeholder",
+      "duration": 0.5,
+      "loop": true,
+      "travel": [
+        0,
+        3.1
+      ]
+    },
+    {
+      "name": "Jump_Loop",
+      "source": "placeholder",
+      "duration": 1,
+      "loop": true,
+      "travel": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Swim_Idle_Loop",
+      "source": "placeholder",
+      "duration": 2,
+      "loop": true,
+      "travel": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Swim_Fwd_Loop",
+      "source": "placeholder",
+      "duration": 1.2,
+      "loop": true,
+      "travel": [
+        0,
+        1.68
+      ]
+    }
+  ]
+}
