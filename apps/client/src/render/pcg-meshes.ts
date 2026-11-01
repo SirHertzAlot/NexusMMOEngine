@@ -100,6 +100,11 @@ export class PcgMeshes implements PropModels {
     return this.ready.size;
   }
 
+  /** Meshes requested and still downloading or decoding (LS1's load gate waits on these). */
+  get pendingCount(): number {
+    return this.pending.size;
+  }
+
   model(assetHash: number, variant: number): { key: string; geometry: THREE.BufferGeometry; material?: THREE.Material[]; lods: LodLevel[] } | null {
     if (this.disposed) return null;
     if (!this.assets) {

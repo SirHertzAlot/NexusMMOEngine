@@ -1,35 +1,36 @@
 /** @mmo-engine/world-stress — bot worker (roadmap A7).
  *
- * Worker thread entry point for bot clients. Each worker runs N BotClient
- * instances, each with its own WebSocket connection to the game gateway,
- * sending PlayerIntent messages at 30 Hz.
+ * Worker thread entry point for bot clients. The worker starts its bots as
+ * soon as it loads, from its workerData; each bot is its own WebSocket
+ * connection to the game gateway, sending PlayerIntent messages at 30 Hz.
+ *
+ * workerData (set by engine-core's admin `bots` command):
+ *   { workerId, count, botsPerWorker, url, usernamePrefix, password }
  *
  * Messages from parent:
- *   { type: "start", count, url, usernamePrefix, password, botsPerWorker }
- *   { type: "stop" }
- *   { type: "stats" }
+ *   { type: "stop" }     disconnect every bot and exit
+ *   { type: "stats" }    report stats now
  *
  * Messages to parent:
  *   { type: "ready", workerId, botCount }
- *   { type: "stats", workerId, stats: { connected, authenticated, intentsSent, ... } }
- *   { type: "error", workerId, message }
+ *   { type: "stats", workerId, stats: { botCount, connected, authenticated, ... } }
+ *   { type: "stopped", workerId }
  */
 
 import { parentPort, workerData } from "node:worker_threads";
 import { BotClient } from "./bot-client.mjs";
 
-const bots: BotClient[] = [];
-let workerId = "worker";
-let tickInterval: NodeJS.Timeout | null = null;
-let statsInterval: NodeJS.Timeout | null = null;
+const TICK_MS = 1000 / 30;
+const STATS_MS = 5000;
 
-// Handle messages from the parent thread
-parentPort?.on("message", (msg: any) => {
-  switch (msg.type) {
-    case "start":
-      workerId = msg.workerId ?? "worker";
-      startBots(msg);
-      break;
+const bots = [];
+const workerId = workerData?.workerId ?? "worker";
+let stopping = false;
+let tickInterval = null;
+let statsInterval = null;
+
+parentPort?.on("message", (msg) => {
+  switch (msg?.type) {
     case "stop":
       stopBots();
       break;
@@ -41,73 +42,67 @@ parentPort?.on("message", (msg: any) => {
   }
 });
 
-async function startBots(msg: any): Promise<void> {
-  const { count, url, usernamePrefix = "bot", password = "bot", botsPerWorker = 1 } = msg;
-
+async function startBots({
+  count = 1,
+  url,
+  usernamePrefix = "bot",
+  password = "bot",
+  botsPerWorker = 1,
+}) {
   const totalBots = count * botsPerWorker;
-  console.log(`[worker:${workerId}] starting ${totalBots} bots (${count} workers × ${botsPerWorker} bots)`);
+  console.log(`[worker:${workerId}] starting ${totalBots} bots`);
 
-  for (let i = 0; i < totalBots; i++) {
-    const username = `${usernamePrefix}-${workerId}-${i}`;
+  for (let i = 0; i < totalBots && !stopping; i++) {
     const bot = new BotClient({
       url,
-      username,
+      username: `${usernamePrefix}-${workerId}-${i}`,
       password,
       id: `${workerId}-${i}`,
     });
 
     try {
       await bot.connect();
+      if (stopping) {
+        bot.disconnect();
+        break;
+      }
       bots.push(bot);
     } catch (err) {
       console.error(`[worker:${workerId}] bot ${i} connect failed:`, err);
     }
   }
 
+  if (stopping) return;
+
   console.log(`[worker:${workerId}] ${bots.length}/${totalBots} bots connected`);
 
-  // Report ready to parent
-  parentPort?.postMessage({
-    type: "ready",
-    workerId,
-    botCount: bots.length,
-  });
+  parentPort?.postMessage({ type: "ready", workerId, botCount: bots.length });
 
-  // Start the tick loop at 30 Hz
   tickInterval = setInterval(() => {
-    for (const bot of bots) {
-      bot.tick();
-    }
-  }, 1000 / 30);
+    for (const bot of bots) bot.tick();
+  }, TICK_MS);
 
-  // Report stats every 5 seconds
-  statsInterval = setInterval(() => {
-    reportStats();
-  }, 5000);
+  statsInterval = setInterval(reportStats, STATS_MS);
 }
 
-function stopBots(): void {
-  if (tickInterval) {
-    clearInterval(tickInterval);
-    tickInterval = null;
-  }
-  if (statsInterval) {
-    clearInterval(statsInterval);
-    statsInterval = null;
-  }
+function stopBots() {
+  if (stopping) return;
+  stopping = true;
 
-  for (const bot of bots) {
-    bot.disconnect();
-  }
+  if (tickInterval) clearInterval(tickInterval);
+  if (statsInterval) clearInterval(statsInterval);
+  tickInterval = null;
+  statsInterval = null;
+
+  for (const bot of bots) bot.disconnect();
   bots.length = 0;
 
-  parentPort?.postMessage({
-    type: "stopped",
-    workerId,
-  });
+  parentPort?.postMessage({ type: "stopped", workerId });
+  // Closing the port lets the worker thread exit once its sockets have closed.
+  parentPort?.close();
 }
 
-function reportStats(): void {
+function reportStats() {
   let intentsSent = 0;
   let intentsFailed = 0;
   let messagesIn = 0;
@@ -142,3 +137,8 @@ function reportStats(): void {
     },
   });
 }
+
+startBots(workerData ?? {}).catch((err) => {
+  console.error(`[worker:${workerId}] failed to start:`, err);
+  parentPort?.postMessage({ type: "error", workerId, message: String(err) });
+});

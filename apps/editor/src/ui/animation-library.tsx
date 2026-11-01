@@ -12,7 +12,7 @@ const dim = { color: "var(--m3-on-surface-variant)" } as const;
 
 /** The rig's clips (or the ones the graph and the moves play) and the combat moves. */
 export function ClipList(): React.JSX.Element {
-  const { clip, move, clips, moves } = animationStore.use();
+  const { clip, move, clips, moves } = animationStore.useValue();
   return (
     <div>
       <SelectableList
@@ -42,7 +42,7 @@ export function ClipList(): React.JSX.Element {
 
 /** The facts of the selection the open view published (a clip, a locomotion state, a combat move). */
 export function AnimDetails(): React.JSX.Element {
-  const { detail } = animationStore.use();
+  const { detail } = animationStore.useValue();
   return (
     <div className="flex flex-col gap-2" data-details="animation">
       <p className="font-mono text-xs" style={dim}>ANIMATION</p>

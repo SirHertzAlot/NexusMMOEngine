@@ -242,7 +242,7 @@ export function App(): React.JSX.Element {
   }
   // Play tint + read-only Details (§3.4/§3.5): entering play swaps what
   // panels show, never where they are.
-  const { pmState } = playUiStore.use();
+  const { pmState } = playUiStore.useValue();
   const output = useServerOutput();
   const problems = useDocProblems();
   const diskProblems = useDiskProblems();
@@ -316,7 +316,7 @@ export function App(): React.JSX.Element {
 
   const playSavedRef = React.useRef(playSaved);
   playSavedRef.current = playSaved;
-  const savedSetups = savedSetupsStore.use();
+  const savedSetups = savedSetupsStore.useValue();
 
   /** The shell's own commands for Ctrl K: what the menus, toolbar and shortcuts do, plus the layout and play settings. */
   function shellCommands(): PaletteCommand[] {
@@ -925,7 +925,7 @@ function initialHashLocation(): { workspace: WorkspaceId; view: string } {
 /** The center header's viewport menu: Grid / Gizmos / Wireframe act on the active 3D viewport, Screenshot saves a PNG of it. */
 function ViewportOptions(): React.JSX.Element {
   const vp = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
-  const flags = viewportFlags.use();
+  const flags = viewportFlags.useValue();
   const toggle = (label: string, key: "grid" | "gizmos" | "wireframe"): { label: string; checked: boolean; disabled?: string; run: () => void } => ({
     label,
     checked: flags[key],
@@ -1329,7 +1329,7 @@ function Toolbar(props: {
   // The toolbar's document target: panels register while they hold an
   // open document; with none the buttons disable with a tooltip.
   const doc = React.useSyncExternalStore(subscribeDocActions, getDocActions);
-  const { pmState, paused } = playUiStore.use();
+  const { pmState, paused } = playUiStore.useValue();
   const stopping = pmState === "stopping";
   const canStop = pmState === "running" || pmState === "starting" || pmState === "error";
   const [cfg, setCfg] = React.useState<ToolbarConfig>(() => loadToolbar());
@@ -1896,7 +1896,7 @@ function ViewListTree(props: { view: string; onView: (v: string) => void; views:
  *  Play mode panel itself uses — same store, both directions. */
 function DebugTree(): React.JSX.Element {
   const t = useTree();
-  const { entityId, autoRefresh, pmState } = playUiStore.use();
+  const { entityId, autoRefresh, pmState } = playUiStore.useValue();
   return (
     
         <div className="flex flex-col gap-0.5">

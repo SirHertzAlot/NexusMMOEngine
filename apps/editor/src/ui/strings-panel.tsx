@@ -64,7 +64,7 @@ function MessageCell({ lang, row, onCommit }: { lang: string; row: StringRow; on
 export function StringsPanel(): React.JSX.Element {
   const doc = useDocument<StringTables>();
   const task = useSaveTask<StringIssue>();
-  const { row: picked } = stringsStore.use();
+  const { row: picked } = stringsStore.useValue();
   const [filter, setFilter] = React.useState("");
   const [show, setShow] = React.useState<Show>("all");
   const [pseudo, setPseudo] = React.useState(true);

@@ -520,25 +520,24 @@ function StatusChipImpl({
 function createUiStore<T>(initial: T): {
   get: () => T;
   set: (next: T | ((prev: T) => T)) => void;
-  use: () => T;
+  useValue: () => T;
 } {
   let value = initial;
   const listeners = new Set<() => void>();
+  const subscribe = (fn: () => void): (() => void) => {
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  };
+  const getValue = (): T => value;
   return {
     get: () => value,
     set: (next) => {
       value = typeof next === "function" ? (next as (prev: T) => T)(value) : next;
       listeners.forEach((l) => l());
     },
-    use: () => React.useSyncExternalStore(
-      (fn) => {
-        listeners.add(fn);
-        return () => {
-          listeners.delete(fn);
-        };
-      },
-      () => value,
-    ),
+    useValue: () => React.useSyncExternalStore(subscribe, getValue),
   };
 }
 
@@ -553,7 +552,7 @@ export function notify(msg: string): void {
 
 /** Bottom-center transient feedback (M3 snackbar). Mount once at the root. */
 function SnackbarHostImpl(): React.JSX.Element {
-  const snack = snackStore.use();
+  const snack = snackStore.useValue();
   const [visible, setVisible] = React.useState(false);
   React.useEffect(() => {
     if (!snack) return;
