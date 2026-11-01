@@ -1268,7 +1268,8 @@ async function main(): Promise<void> {
     },
     detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
-    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : () => 0,
+    // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
+    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined,
   };
   const moduleCtx: ServerModuleContext = {
     sim,
