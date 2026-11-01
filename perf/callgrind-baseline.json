@@ -42,6 +42,11 @@
       "irPerOp": 589949795,
       "unit": "shell",
       "n": 3
+    },
+    "prop-collision-tick": {
+      "irPerOp": 17619027,
+      "unit": "tick",
+      "n": 60
     }
   }
 }
