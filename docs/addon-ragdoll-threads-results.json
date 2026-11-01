@@ -1,12 +1,13 @@
 {
   "tickHz": 30,
   "substeps": 2,
-  "scenario": "resting: rigs 0.9 m apart, sleep on, 5 s warm-up, 2 s measured; threads 0 (single) and 4 (Jolt pool)",
+  "sleepThreshold": 0.05,
+  "scenario": "rigs 0.9 m apart, sleep threshold 0.05 m/s, 5 s warm-up, 2 s measured; threads 0 (single), 1, 2 and 4 (Jolt pools)",
   "repeats": 3,
   "machine": {
     "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
     "cpus": 4,
-    "node": "v22.22.0"
+    "node": "v22.22.2"
   },
   "results": [
     {
@@ -18,11 +19,12 @@
       "accepted": 16,
       "units": 80,
       "budgetUnits": 1000000000,
-      "stepMs": 0.9313300000000027,
+      "activeBodies": 0,
+      "stepMs": 1.2618554999999958,
       "runsMs": [
-        0.931,
-        0.966,
-        0.931
+        1.265,
+        1.262,
+        1.209
       ]
     },
     {
@@ -34,11 +36,12 @@
       "accepted": 64,
       "units": 320,
       "budgetUnits": 1000000000,
-      "stepMs": 4.555011500000035,
+      "activeBodies": 561,
+      "stepMs": 3.812306500000034,
       "runsMs": [
-        4.569,
-        4.555,
-        4.414
+        4.003,
+        3.812,
+        3.585
       ]
     },
     {
@@ -50,11 +53,12 @@
       "accepted": 128,
       "units": 640,
       "budgetUnits": 1000000000,
-      "stepMs": 10.504488000000038,
+      "activeBodies": 1386,
+      "stepMs": 9.423534000000018,
       "runsMs": [
-        10.386,
-        10.504,
-        10.948
+        9.424,
+        9.015,
+        9.771
       ]
     },
     {
@@ -66,11 +70,12 @@
       "accepted": 256,
       "units": 1280,
       "budgetUnits": 1000000000,
-      "stepMs": 25.606322999999975,
+      "activeBodies": 2684,
+      "stepMs": 27.232498000000305,
       "runsMs": [
-        25.606,
-        24.704,
-        25.839
+        29.489,
+        22.547,
+        27.232
       ]
     },
     {
@@ -82,11 +87,12 @@
       "accepted": 16,
       "units": 80,
       "budgetUnits": 240,
-      "stepMs": 0.9592409999999916,
+      "activeBodies": 0,
+      "stepMs": 0.7587449999999905,
       "runsMs": [
-        1.336,
-        0.959,
-        0.903
+        0.769,
+        0.759,
+        0.74
       ]
     },
     {
@@ -98,11 +104,12 @@
       "accepted": 48,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 3.7216900000000237,
+      "activeBodies": 484,
+      "stepMs": 2.8767204999999763,
       "runsMs": [
-        3.722,
-        3.52,
-        3.764
+        4.43,
+        2.877,
+        2.755
       ]
     },
     {
@@ -114,11 +121,12 @@
       "accepted": 48,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 3.620488000000023,
+      "activeBodies": 484,
+      "stepMs": 2.875562500000001,
       "runsMs": [
-        3.675,
-        3.62,
-        3.576
+        2.876,
+        2.819,
+        3.784
       ]
     },
     {
@@ -130,11 +138,12 @@
       "accepted": 48,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 3.635883999999976,
+      "activeBodies": 484,
+      "stepMs": 3.6510919999999487,
       "runsMs": [
-        3.636,
-        3.553,
-        3.665
+        4.574,
+        2.755,
+        3.651
       ]
     },
     {
@@ -146,11 +155,12 @@
       "accepted": 16,
       "units": 32,
       "budgetUnits": 240,
-      "stepMs": 0.3487349999999978,
+      "activeBodies": 0,
+      "stepMs": 0.33656150000000196,
       "runsMs": [
-        0.346,
-        0.349,
-        0.36
+        0.337,
+        0.459,
+        0.333
       ]
     },
     {
@@ -162,11 +172,12 @@
       "accepted": 64,
       "units": 128,
       "budgetUnits": 240,
-      "stepMs": 1.6836164999999994,
+      "activeBodies": 245,
+      "stepMs": 1.3367220000000088,
       "runsMs": [
-        1.684,
-        1.741,
-        1.683
+        1.337,
+        1.75,
+        1.28
       ]
     },
     {
@@ -178,11 +189,12 @@
       "accepted": 120,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 3.520618500000012,
+      "activeBodies": 580,
+      "stepMs": 3.3373265000000174,
       "runsMs": [
-        4.573,
-        3.506,
-        3.521
+        3.669,
+        3.337,
+        3.31
       ]
     },
     {
@@ -194,15 +206,16 @@
       "accepted": 120,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 3.4334365000000275,
+      "activeBodies": 580,
+      "stepMs": 4.024913999999967,
       "runsMs": [
-        3.433,
-        3.597,
-        3.432
+        4.025,
+        4.476,
+        3.097
       ]
     },
     {
-      "threads": 4,
+      "threads": 1,
       "label": "full rigs, no cap",
       "rig": "full",
       "budget": "uncapped",
@@ -210,15 +223,16 @@
       "accepted": 16,
       "units": 80,
       "budgetUnits": 1000000000,
-      "stepMs": 1.2159245000000283,
+      "activeBodies": 0,
+      "stepMs": 1.1589615000000038,
       "runsMs": [
-        1.198,
-        1.216,
-        1.336
+        1.159,
+        0.923,
+        1.246
       ]
     },
     {
-      "threads": 4,
+      "threads": 1,
       "label": "full rigs, no cap",
       "rig": "full",
       "budget": "uncapped",
@@ -226,15 +240,16 @@
       "accepted": 64,
       "units": 320,
       "budgetUnits": 1000000000,
-      "stepMs": 3.356845000000021,
+      "activeBodies": 561,
+      "stepMs": 3.8222020000000043,
       "runsMs": [
-        3.292,
-        3.432,
-        3.357
+        2.781,
+        4.481,
+        3.822
       ]
     },
     {
-      "threads": 4,
+      "threads": 1,
       "label": "full rigs, no cap",
       "rig": "full",
       "budget": "uncapped",
@@ -242,15 +257,16 @@
       "accepted": 128,
       "units": 640,
       "budgetUnits": 1000000000,
-      "stepMs": 6.961164499999995,
+      "activeBodies": 1386,
+      "stepMs": 10.036513499999955,
       "runsMs": [
-        6.961,
-        6.929,
-        7.002
+        10.037,
+        10.247,
+        9.298
       ]
     },
     {
-      "threads": 4,
+      "threads": 1,
       "label": "full rigs, no cap",
       "rig": "full",
       "budget": "uncapped",
@@ -258,15 +274,16 @@
       "accepted": 256,
       "units": 1280,
       "budgetUnits": 1000000000,
-      "stepMs": 13.19826599999999,
+      "activeBodies": 2684,
+      "stepMs": 20.86283299999991,
       "runsMs": [
-        13.582,
-        13.198,
-        12.762
+        20.981,
+        20.863,
+        19.927
       ]
     },
     {
-      "threads": 4,
+      "threads": 1,
       "label": "full rigs, capped",
       "rig": "full",
       "budget": "default",
@@ -274,15 +291,16 @@
       "accepted": 16,
       "units": 80,
       "budgetUnits": 240,
-      "stepMs": 1.1269450000000063,
+      "activeBodies": 0,
+      "stepMs": 0.9891820000000138,
       "runsMs": [
-        1.104,
-        1.135,
-        1.127
+        0.708,
+        0.989,
+        1.168
       ]
     },
     {
-      "threads": 4,
+      "threads": 1,
       "label": "full rigs, capped",
       "rig": "full",
       "budget": "default",
@@ -290,27 +308,437 @@
       "accepted": 48,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 2.742879500000015,
-      "runsMs": [
-        2.688,
-        2.743,
-        3.237
-      ]
-    },
-    {
-      "threads": 4,
-      "label": "full rigs, capped",
-      "rig": "full",
-      "budget": "default",
-      "requested": 128,
-      "accepted": 48,
-      "units": 240,
-      "budgetUnits": 240,
-      "stepMs": 3.037503000000015,
+      "activeBodies": 484,
+      "stepMs": 3.003989000000047,
       "runsMs": [
         3.004,
-        3.214,
-        3.038
+        2.934,
+        3.329
+      ]
+    },
+    {
+      "threads": 1,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 3.2532439999999383,
+      "runsMs": [
+        3.253,
+        3.457,
+        2.315
+      ]
+    },
+    {
+      "threads": 1,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 256,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 3.590832500000033,
+      "runsMs": [
+        3.785,
+        3.462,
+        3.591
+      ]
+    },
+    {
+      "threads": 1,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 16,
+      "accepted": 16,
+      "units": 32,
+      "budgetUnits": 240,
+      "activeBodies": 0,
+      "stepMs": 0.7491760000000198,
+      "runsMs": [
+        0.715,
+        0.749,
+        0.767
+      ]
+    },
+    {
+      "threads": 1,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 64,
+      "accepted": 64,
+      "units": 128,
+      "budgetUnits": 240,
+      "activeBodies": 245,
+      "stepMs": 1.7729679999999917,
+      "runsMs": [
+        1.691,
+        1.773,
+        1.896
+      ]
+    },
+    {
+      "threads": 1,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 120,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 580,
+      "stepMs": 4.2207259999999565,
+      "runsMs": [
+        3.878,
+        4.221,
+        4.508
+      ]
+    },
+    {
+      "threads": 1,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 256,
+      "accepted": 120,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 580,
+      "stepMs": 3.7199355000000196,
+      "runsMs": [
+        4.217,
+        3.649,
+        3.72
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 16,
+      "accepted": 16,
+      "units": 80,
+      "budgetUnits": 1000000000,
+      "activeBodies": 0,
+      "stepMs": 1.0880030000000005,
+      "runsMs": [
+        1.088,
+        0.947,
+        1.243
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 64,
+      "accepted": 64,
+      "units": 320,
+      "budgetUnits": 1000000000,
+      "activeBodies": 561,
+      "stepMs": 3.899037000000021,
+      "runsMs": [
+        3.825,
+        3.899,
+        3.929
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 128,
+      "accepted": 128,
+      "units": 640,
+      "budgetUnits": 1000000000,
+      "activeBodies": 1386,
+      "stepMs": 8.095934499999885,
+      "runsMs": [
+        7.868,
+        8.096,
+        8.626
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 256,
+      "accepted": 256,
+      "units": 1280,
+      "budgetUnits": 1000000000,
+      "activeBodies": 2684,
+      "stepMs": 15.805231000000049,
+      "runsMs": [
+        15.974,
+        15.805,
+        15.604
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 16,
+      "accepted": 16,
+      "units": 80,
+      "budgetUnits": 240,
+      "activeBodies": 0,
+      "stepMs": 1.1835425000000015,
+      "runsMs": [
+        1.108,
+        1.184,
+        1.256
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 64,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 3.464589999999987,
+      "runsMs": [
+        3.49,
+        3.465,
+        2.639
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 2.7801264999999944,
+      "runsMs": [
+        2.78,
+        3.333,
+        2.565
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 256,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 2.7201054999999883,
+      "runsMs": [
+        2.641,
+        2.72,
+        2.913
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 16,
+      "accepted": 16,
+      "units": 32,
+      "budgetUnits": 240,
+      "activeBodies": 0,
+      "stepMs": 0.7885109999999855,
+      "runsMs": [
+        0.739,
+        0.828,
+        0.789
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 64,
+      "accepted": 64,
+      "units": 128,
+      "budgetUnits": 240,
+      "activeBodies": 245,
+      "stepMs": 1.7379324999999994,
+      "runsMs": [
+        1.695,
+        1.878,
+        1.738
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 120,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 580,
+      "stepMs": 3.449846500000035,
+      "runsMs": [
+        3.008,
+        3.963,
+        3.45
+      ]
+    },
+    {
+      "threads": 2,
+      "label": "light rigs, capped",
+      "rig": "light",
+      "budget": "default",
+      "requested": 256,
+      "accepted": 120,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 580,
+      "stepMs": 3.7209464999999966,
+      "runsMs": [
+        4.019,
+        3.547,
+        3.721
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 16,
+      "accepted": 16,
+      "units": 80,
+      "budgetUnits": 1000000000,
+      "activeBodies": 0,
+      "stepMs": 1.2333909999999975,
+      "runsMs": [
+        1.233,
+        1.271,
+        1.176
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 64,
+      "accepted": 64,
+      "units": 320,
+      "budgetUnits": 1000000000,
+      "activeBodies": 561,
+      "stepMs": 3.175149000000033,
+      "runsMs": [
+        3.16,
+        3.335,
+        3.175
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 128,
+      "accepted": 128,
+      "units": 640,
+      "budgetUnits": 1000000000,
+      "activeBodies": 1386,
+      "stepMs": 6.855547999999999,
+      "runsMs": [
+        7.132,
+        6.856,
+        6.666
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, no cap",
+      "rig": "full",
+      "budget": "uncapped",
+      "requested": 256,
+      "accepted": 256,
+      "units": 1280,
+      "budgetUnits": 1000000000,
+      "activeBodies": 2684,
+      "stepMs": 13.154641500000025,
+      "runsMs": [
+        12.844,
+        13.155,
+        13.678
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 16,
+      "accepted": 16,
+      "units": 80,
+      "budgetUnits": 240,
+      "activeBodies": 0,
+      "stepMs": 0.9764939999999882,
+      "runsMs": [
+        0.966,
+        1.062,
+        0.976
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 64,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 2.4609240000000057,
+      "runsMs": [
+        2.422,
+        2.461,
+        2.891
+      ]
+    },
+    {
+      "threads": 4,
+      "label": "full rigs, capped",
+      "rig": "full",
+      "budget": "default",
+      "requested": 128,
+      "accepted": 48,
+      "units": 240,
+      "budgetUnits": 240,
+      "activeBodies": 484,
+      "stepMs": 2.7995415000000037,
+      "runsMs": [
+        2.8,
+        2.91,
+        2.505
       ]
     },
     {
@@ -322,11 +750,12 @@
       "accepted": 48,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 3.30249299999997,
+      "activeBodies": 484,
+      "stepMs": 2.872165499999994,
       "runsMs": [
-        3.488,
-        3.253,
-        3.302
+        2.842,
+        2.938,
+        2.872
       ]
     },
     {
@@ -338,11 +767,12 @@
       "accepted": 16,
       "units": 32,
       "budgetUnits": 240,
-      "stepMs": 0.7987919999999917,
+      "activeBodies": 0,
+      "stepMs": 0.7905030000000011,
       "runsMs": [
-        0.703,
-        0.891,
-        0.799
+        0.746,
+        0.791,
+        0.835
       ]
     },
     {
@@ -354,11 +784,12 @@
       "accepted": 64,
       "units": 128,
       "budgetUnits": 240,
-      "stepMs": 1.6583844999999826,
+      "activeBodies": 245,
+      "stepMs": 1.698806000000019,
       "runsMs": [
-        1.606,
-        1.658,
-        1.726
+        1.431,
+        1.699,
+        1.897
       ]
     },
     {
@@ -370,11 +801,12 @@
       "accepted": 120,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 2.7349154999999996,
+      "activeBodies": 580,
+      "stepMs": 3.1781804999999963,
       "runsMs": [
-        2.752,
-        2.693,
-        2.735
+        3.272,
+        3.178,
+        2.842
       ]
     },
     {
@@ -386,11 +818,12 @@
       "accepted": 120,
       "units": 240,
       "budgetUnits": 240,
-      "stepMs": 2.9332449999999994,
+      "activeBodies": 580,
+      "stepMs": 3.2235979999999813,
       "runsMs": [
-        2.933,
-        2.649,
-        3.3
+        3.354,
+        2.936,
+        3.224
       ]
     }
   ]

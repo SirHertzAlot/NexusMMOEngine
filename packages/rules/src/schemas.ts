@@ -617,6 +617,10 @@ export const CreatureBehaviorSchema = z.strictObject({
   noticeM: positive.optional(),
   /** Seconds of visible warning before it strikes; 0: none. */
   telegraphS: z.number().min(0).default(0),
+  /** Metres it strolls from home while idle and awake (WL2); 0: it stands where it is. */
+  wanderM: z.number().min(0).default(0),
+  /** Seconds it pauses between strolls. */
+  wanderPauseS: z.number().min(0).default(6),
   /** Multiple of its run speed it flees at (flee temperament). */
   fleeSpeed: positive.default(1.4),
   /** Run speed as a multiple of a player's walk, beating `chaseSpeed` (which is a share, at most 1). */

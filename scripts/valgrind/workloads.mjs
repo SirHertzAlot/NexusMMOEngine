@@ -180,6 +180,52 @@ export const WORKLOADS = {
     },
   },
 
+  /** PropCollisionSystem: 100 kinematic walkers among 500 static props (trees as boxes, rocks as spheres) on a 64 m tile, per tick. */
+  "prop-collision-tick": {
+    n: 60, warm: 20, unit: "tick",
+    async setup() {
+      const C = await core();
+      const { addComponent } = await import("bitecs");
+      const prng = mulberry32(11);
+      const sim = new C.SimWorld();
+      for (let i = 0; i < 500; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        addComponent(sim.ecs, C.BodyConfig, e);
+        const rock = i % 4 === 0;
+        C.Transform.px[e] = (prng() - 0.5) * 64;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 64;
+        C.Transform.qw[e] = 1;
+        C.BodyConfig.shapeKind[e] = rock ? C.ShapeKind.Sphere : C.ShapeKind.Box;
+        C.BodyConfig.halfX[e] = rock ? 0 : 0.8;
+        C.BodyConfig.halfY[e] = rock ? 0 : 2.5;
+        C.BodyConfig.halfZ[e] = rock ? 0 : 0.8;
+        C.BodyConfig.radius[e] = rock ? 0.6 : 0;
+        C.BodyConfig.mass[e] = 0;
+        C.BodyConfig.motionType[e] = C.MotionType.Static;
+        C.BodyConfig.layer[e] = 0;
+        C.BodyConfig.friction[e] = 0.8;
+        C.BodyConfig.restitution[e] = 0;
+      }
+      for (let i = 0; i < 100; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        // Velocity first: attachDefaultCollider reads it to make a walker Kinematic rather than Static.
+        addComponent(sim.ecs, C.Velocity, e);
+        C.attachDefaultCollider(sim, e);
+        C.Transform.px[e] = (prng() - 0.5) * 64;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 64;
+        C.Transform.qw[e] = 1;
+      }
+      return { sim, prop: new C.PropCollisionSystem() };
+    },
+    run(s) {
+      s.prop.step(s.sim);
+    },
+  },
+
   /** Residents (RS3): a town of 600 people placed by the schedule, one simulated second per operation (the system steps once a second), a player in the square. */
   "residents-tick": {
     n: 40, warm: 10, unit: "second",
@@ -292,7 +338,44 @@ export const WORKLOADS = {
       s.dungeon.dungeonShell(s.d, s.geo);
     },
   },
+
+  /** Channel (E5a): one wire.sectors push of 64 sectors x 4 KiB to 50 sessions, as raw blobs in a binary frame. */
+  "channel-sectors-push": {
+    n: 200, warm: 50, unit: "push",
+    setup() {
+      return sectorsPush(false);
+    },
+    run(s) {
+      s.encode(s.payload);
+    },
+  },
+
+  /** The same push with the bytes base64'd inside JSON (the frame format before E5a), for comparison. */
+  "channel-sectors-push-base64": {
+    n: 200, warm: 50, unit: "push",
+    setup() {
+      return sectorsPush(true);
+    },
+    run(s) {
+      s.encode(s.payload);
+    },
+  },
 };
+
+/** The shared-bytes push of IM4 (ChannelTransport.sendSectors), built once; `run` only encodes it. */
+function sectorsPush(base64) {
+  const { encodeFrame } = require(join(root, "packages/channel/dist/src/framing.js"));
+  const bytes = {};
+  const plans = [];
+  for (let k = 0; k < 64; k++) {
+    const b = Buffer.alloc(4096);
+    for (let j = 0; j < b.length; j++) b[j] = (k * 31 + j) & 255;
+    bytes["k" + k] = base64 ? b.toString("base64") : b;
+  }
+  for (let p = 0; p < 50; p++) plans.push({ sid: "e-" + p, replace: false, entries: Array.from({ length: 64 }, (_, k) => [0, "s" + k, "k" + k]) });
+  const payload = { type: "wire.sectors", id: "push-1", payload: { tick: 1, bytes, plans } };
+  return { payload, encode: (frame) => encodeFrame(frame) };
+}
 
 /** Run the named workloads (all by default); returns [{ name, n, unit, ms } | { name, skipped }]. */
 export async function runWorkloads(names = Object.keys(WORKLOADS)) {

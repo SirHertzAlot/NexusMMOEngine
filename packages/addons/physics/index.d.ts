@@ -37,7 +37,8 @@ export interface AddBodiesDescriptor {
 export declare class PhysicsWorld {
   /** Use createWorld(); the argument is the threads option. */
   constructor(threads?: number);
-  addBodies(desc: AddBodiesDescriptor): void;
+  /** Returns how many bodies it could not create (the pool is full, or a shape was rejected). */
+  addBodies(desc: AddBodiesDescriptor): number;
   removeBodies(entityIds: BigUint64Array): void;
   /**
    * Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
@@ -83,6 +84,8 @@ export declare class PhysicsWorld {
     az: Float32Array,
   ): void;
   bodyCount(): number;
+  /** The most bodies this world can hold: the body pool's size. */
+  readonly bodyCapacity: number;
   /**
    * One static height-field body per terrain chunk, keyed by `key` (its
    * own id space). samples: side*side heights, row-major, X inner; sample
@@ -119,7 +122,7 @@ export declare class PhysicsWorld {
   ragdollBudget(): number;
   /** A lower budget refuses new rigs; rigs already present stay. */
   setRagdollBudget(units: number): void;
-  /** Jolt's point-velocity sleep threshold in m/s (default 0.03). A larger value lets resting bodies sleep sooner. */
+  /** Point-velocity sleep threshold in m/s (default 0.05, chosen by the sleep benchmark; Jolt's own is 0.03). A larger value lets resting bodies sleep sooner. */
   sleepThreshold(): number;
   setSleepThreshold(metresPerSecond: number): void;
   /** Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */

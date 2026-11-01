@@ -173,6 +173,10 @@ export function GameplayGridsPanel(): React.JSX.Element {
     setPendingChanges(changes.length > 0 ? { label: "Gameplay tables", changes } : null);
   }, [snap, rows, savedRows]);
   React.useEffect(() => () => setPendingChanges(null), []);
+  // Deferred values are hooks: they must run before the early return below, or the hook count changes between renders.
+  const deferredSearch = React.useDeferredValue(search);
+  const deferredFilterKey = React.useDeferredValue(filterKey);
+  const deferredFilterText = React.useDeferredValue(filterText);
 
   if (!snap || !rows || !savedRows) {
     return (
@@ -193,9 +197,6 @@ export function GameplayGridsPanel(): React.JSX.Element {
     grids.edit(table, next);
     setStatus(null);
   };
-  const deferredSearch = React.useDeferredValue(search);
-  const deferredFilterKey = React.useDeferredValue(filterKey);
-  const deferredFilterText = React.useDeferredValue(filterText);
   const shownRows = viewRows(mine, { search: deferredSearch, filters: deferredFilterKey ? { [deferredFilterKey]: deferredFilterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
   const mainCols = def.columns.filter((c) => !c.nested);
   const nestedCols = def.columns.filter((c) => c.nested);
