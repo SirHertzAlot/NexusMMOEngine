@@ -49,6 +49,8 @@ export interface GameViewProps {
   /** Cover the editor window instead of sitting in the panel. */
   maximized?: boolean;
   onHud?: (hud: HudData) => void;
+  /** Place-at-cursor (E4): a left click on bare ground reports its x/z. */
+  onGroundPick?: (x: number, z: number) => void;
   onGpu?: (gpu: GpuInfo) => void;
   /** The world's three.js scene, once it exists (debug overlays draw into it). */
   onScene?: (scene: THREE.Scene) => void;
@@ -73,6 +75,7 @@ export function GameView({
   quality = "auto",
   maximized = false,
   onHud,
+  onGroundPick,
   onGpu,
   onScene,
   onQuality,
@@ -125,6 +128,7 @@ export function GameView({
         quality={quality}
         combat={combat}
         onHud={onHud}
+        onGroundPick={onGroundPick}
         onGpu={onGpu}
         onScene={onScene}
         onQuality={onQuality}

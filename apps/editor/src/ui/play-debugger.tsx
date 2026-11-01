@@ -81,6 +81,31 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
   const [activeQuality, setActiveQuality] = React.useState<{ active: QualityTier; detected: QualityTier | null } | null>(null);
   // The panels mount once the view's frame exists, so their first layout fits it.
   const [frame, setFrame] = React.useState<HTMLDivElement | null>(null);
+  // Place at cursor (E4): arm it, pick an asset, click bare ground; the spawn goes through the admin console.
+  const [placing, setPlacing] = React.useState(false);
+  const [spawnAsset, setSpawnAsset] = React.useState("");
+  const [spawnNames, setSpawnNames] = React.useState<string[]>([]);
+  const [spawnNote, setSpawnNote] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    void client
+      .admin("spawnlist")
+      .then((r) => {
+        const names = r.message === "(empty)" ? [] : r.message.split(" ");
+        setSpawnNames(names);
+        setSpawnAsset((cur) => cur || names[0] || "");
+      })
+      .catch(() => undefined);
+  }, [client]);
+  const placeAt = React.useCallback(
+    (x: number, z: number) => {
+      if (!spawnAsset) return;
+      void client
+        .admin("spawn", { asset: spawnAsset, x, z })
+        .then((r) => setSpawnNote(r.message))
+        .catch((e: unknown) => setSpawnNote(e instanceof Error ? e.message : String(e)));
+    },
+    [client, spawnAsset],
+  );
   const bounds = React.useMemo(() => ({ current: frame }), [frame]);
   // The game view is the active viewport while it shows: it owns its camera (no zoom/reset), has no
   // grid or gizmos, and can toggle wireframe and take a screenshot.
@@ -344,6 +369,7 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       quality={quality}
       maximized={maximized}
       onHud={onHudBoth}
+      onGroundPick={placing ? placeAt : undefined}
       onGpu={setGpu}
       onScene={setScene}
       onQuality={onQuality}
@@ -352,6 +378,19 @@ export function PlayDebugger({ client, url, lastStateAt, onHud }: PlayDebuggerPr
       view={view}
       onViewChange={setView}
     >
+      <div className="absolute left-2 top-2 z-10 flex items-center gap-2 rounded bg-background/80 p-2 text-xs">
+        <Button size="sm" className="h-7 px-2 text-xs" variant={placing ? "default" : "secondary"} onClick={() => setPlacing((p) => !p)}>
+          {placing ? "Placing: click the ground" : "Place at cursor"}
+        </Button>
+        <select aria-label="asset to place" className="h-7 rounded border border-border bg-background px-1" value={spawnAsset} onChange={(e) => setSpawnAsset(e.target.value)}>
+          {spawnNames.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        {spawnNote && <span className="max-w-[24rem] truncate text-muted-foreground">{spawnNote}</span>}
+      </div>
       {frame && <DevHud panels={panels} defaults={debuggerLayoutDefaults} bounds={bounds} />}
     </GameView>
   );
