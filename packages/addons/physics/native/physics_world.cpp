@@ -295,14 +295,15 @@ struct mj_physics_world {
   mj_physics_world(const mj_physics_world &) = delete;
   mj_physics_world &operator=(const mj_physics_world &) = delete;
 
-  void addBodies(int n, const uint64_t *entity_ids,
-                 const uint8_t *shape_kind, const float *half_extents,
-                 const float *radius, const float *mass,
-                 const float *friction, const float *restitution,
-                 const uint8_t *motion_type, const uint8_t *layer,
-                 const float *pos, const float *quat, const float *lin_vel,
-                 const float *ang_vel) {
+  int addBodies(int n, const uint64_t *entity_ids,
+                const uint8_t *shape_kind, const float *half_extents,
+                const float *radius, const float *mass,
+                const float *friction, const float *restitution,
+                const uint8_t *motion_type, const uint8_t *layer,
+                const float *pos, const float *quat, const float *lin_vel,
+                const float *ang_vel) {
     JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    int dropped = 0;
     for (int i = 0; i < n; ++i) {
       const uint64_t eid = entity_ids[i];
       if (mBodies.find(eid) != mBodies.end())
@@ -354,9 +355,12 @@ struct mj_physics_world {
           mass[i] > 0.0f ? mass[i] : 1.0f;
 
       JPH::Body *body = bi.CreateBody(bcs);
-      if (body == nullptr)
-        continue; // invalid config (e.g. degenerate shape): skip loudly
-                  // via bodyCount() mismatch rather than crashing
+      if (body == nullptr) {
+        // The pool is full, or Jolt rejected the shape. Skip it and count
+        // it for the caller: a throw here would take the tick down.
+        ++dropped;
+        continue;
+      }
       bi.AddBody(body->GetID(), JPH::EActivation::Activate);
       bi.SetLinearVelocity(
           body->GetID(),
@@ -366,6 +370,7 @@ struct mj_physics_world {
           JPH::Vec3(ang_vel[3 * i], ang_vel[3 * i + 1], ang_vel[3 * i + 2]));
       mBodies.emplace(eid, BodyRecord{body->GetID(), motion_type[i]});
     }
+    return dropped;
   }
 
   void removeBodies(int n, const uint64_t *entity_ids) {
@@ -728,20 +733,22 @@ mj_physics_world_t *mj_physics_create_with_threads(int threads) {
 
 void mj_physics_destroy(mj_physics_world_t *world) { delete world; }
 
-void mj_physics_add_bodies(mj_physics_world_t *world, int n,
-                           const uint64_t *entity_ids,
-                           const uint8_t *shape_kind,
-                           const float *half_extents, const float *radius,
-                           const float *mass, const float *friction,
-                           const float *restitution,
-                           const uint8_t *motion_type, const uint8_t *layer,
-                           const float *pos, const float *quat,
-                           const float *lin_vel, const float *ang_vel) {
+int mj_physics_body_capacity(void) { return mj_physics_world::kMaxBodies; }
+
+int mj_physics_add_bodies(mj_physics_world_t *world, int n,
+                          const uint64_t *entity_ids,
+                          const uint8_t *shape_kind,
+                          const float *half_extents, const float *radius,
+                          const float *mass, const float *friction,
+                          const float *restitution,
+                          const uint8_t *motion_type, const uint8_t *layer,
+                          const float *pos, const float *quat,
+                          const float *lin_vel, const float *ang_vel) {
   if (world == nullptr || n <= 0)
-    return;
-  world->addBodies(n, entity_ids, shape_kind, half_extents, radius, mass,
-                   friction, restitution, motion_type, layer, pos, quat,
-                   lin_vel, ang_vel);
+    return 0;
+  return world->addBodies(n, entity_ids, shape_kind, half_extents, radius,
+                          mass, friction, restitution, motion_type, layer, pos,
+                          quat, lin_vel, ang_vel);
 }
 
 void mj_physics_remove_bodies(mj_physics_world_t *world, int n,
