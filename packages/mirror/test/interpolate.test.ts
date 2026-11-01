@@ -85,3 +85,26 @@ describe("Interpolator.sample", () => {
     assert.equal(i.sample(E, 0.5), undefined);
   });
 });
+
+describe("Interpolator.onPush", () => {
+  it("hears each push with its tick and rows, and stops after unsubscribe", () => {
+    const i = new Interpolator();
+    const seen: Array<[number, number]> = [];
+    const off = i.onPush((tick, rows) => seen.push([tick, rows.length]));
+    i.push(5, [transformRow(E, 1), transformRow(0x2002n, 2)]);
+    off();
+    i.push(6, [transformRow(E, 3)]);
+    assert.deepEqual(seen, [[5, 2]]);
+  });
+
+  it("still hears a same-tick push, so the reader can apply its own rule", () => {
+    const i = new Interpolator();
+    const ticks: number[] = [];
+    i.onPush((tick) => ticks.push(tick));
+    i.push(7, [transformRow(E, 1)]);
+    i.push(7, [transformRow(E, 2)]); // snapshot + delta in one tick
+    assert.deepEqual(ticks, [7, 7]);
+    // The interpolator itself keeps the first row for that tick.
+    assert.equal(i.sample(E, 1)?.px, 1);
+  });
+});

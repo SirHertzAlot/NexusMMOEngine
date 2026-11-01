@@ -42,6 +42,7 @@ import { mountPcgService } from "../pcg/boot.js";
 import { propMesh } from "./prop-mesh.js";
 import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
+import type { ScaleResolver } from "../scale.js";
 import { BreakSystem, breakDefsOf, ChestSystem } from "../interact/index.js";
 import { GatheringSystem } from "../gathering/index.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
@@ -109,6 +110,8 @@ export interface DungeonInstanceOptions {
   artAssets?: Record<string, string>;
   /** The overlay's size factors by kind: a model drawn smaller or larger than a real one of its kind. */
   artScales?: Record<string, number>;
+  /** The global scale (content/scale.json): multiplied into every prop, debris and chest the run spawns. */
+  scale?: ScaleResolver;
   game: GameRules;
   members: InstanceMember[];
   credentialStore: CredentialStore;
@@ -320,7 +323,7 @@ export class DungeonInstance {
       built.assetId = archetype.asset;
       built.assetHash = fnv1a32(archetype.asset);
     }
-    spawnScatterEntity(sim, built);
+    spawnScatterEntity(sim, built, undefined, this.opts.scale);
   }
 
   /** Prop kinds the bake placed that props.json has no entry for (so nothing spawned): kind -> count. */
@@ -401,7 +404,7 @@ export class DungeonInstance {
     built.sx = built.sy = built.sz = p.scale * (this.opts.artScales?.[p.kind] ?? 1);
     // The bake's own footprint beats the table's default one.
     if (p.radius > 0 && archetype.collision) built.archetype = { ...archetype, collision: { ...archetype.collision, halfExtents: [p.radius, half[1], p.radius] } };
-    return spawnScatterEntity(this.world, built);
+    return spawnScatterEntity(this.world, built, undefined, this.opts.scale);
   }
 
   /** Bind the port and start the tick. Returns the port. */

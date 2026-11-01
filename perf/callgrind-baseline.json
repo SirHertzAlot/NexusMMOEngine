@@ -4,17 +4,17 @@
   "platform": "linux-x64",
   "workloads": {
     "sim-tick-1000": {
-      "irPerOp": 14699285,
+      "irPerOp": 14320105,
       "unit": "tick",
       "n": 60
     },
     "physics-step-200": {
-      "irPerOp": 3016304,
+      "irPerOp": 2412770,
       "unit": "step",
       "n": 60
     },
     "crowd-tick-100": {
-      "irPerOp": 6118847,
+      "irPerOp": 6232899,
       "unit": "tick",
       "n": 60
     },
@@ -47,6 +47,11 @@
       "irPerOp": 17619027,
       "unit": "tick",
       "n": 60
+    },
+    "residents-tick": {
+      "irPerOp": 5228114,
+      "unit": "second",
+      "n": 40
     }
   }
 }

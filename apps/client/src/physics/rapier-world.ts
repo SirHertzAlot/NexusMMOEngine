@@ -10,6 +10,7 @@ import {
   RAGDOLL_PARTS,
   type PhysicsWorld,
   type Vec3,
+  type WalkerState,
 } from "./physics-world.js";
 import { RIG_JOINTS, RIG_PARTS } from "./ragdoll-rig.js";
 
@@ -17,10 +18,24 @@ interface Rig {
   readonly bodies: RAPIER.RigidBody[];
 }
 
+interface Walker {
+  readonly body: RAPIER.RigidBody;
+  readonly collider: RAPIER.Collider;
+  readonly controller: RAPIER.KinematicCharacterController;
+}
+
+const DEG = Math.PI / 180;
+/** Step height a walker climbs without jumping, metres. */
+const STEP_HEIGHT = 0.35;
+/** Gap kept between a walker and what it touches, metres. */
+const SKIN = 0.01;
+
 export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   const rigs = new Map<number, Rig>();
+  const statics = new Map<number, RAPIER.Collider>();
+  const walkers = new Map<number, Walker>();
   let nextHandle = 1;
 
   return {
@@ -44,10 +59,19 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
     },
 
     addStaticBox(centre: Vec3, half: Vec3): number {
-      world.createCollider(
+      const collider = world.createCollider(
         RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z).setTranslation(centre.x, centre.y, centre.z),
       );
-      return nextHandle++;
+      const handle = nextHandle++;
+      statics.set(handle, collider);
+      return handle;
+    },
+
+    removeStaticBox(handle: number): void {
+      const collider = statics.get(handle);
+      if (!collider) return;
+      world.removeCollider(collider, true);
+      statics.delete(handle);
     },
 
     spawnRagdoll(root: Vec3): number {
@@ -87,6 +111,23 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
       });
     },
 
+    ragdollPartPoses(handle: number, out: Float32Array): void {
+      const rig = rigs.get(handle);
+      if (!rig) return;
+      if (out.length < RAGDOLL_PARTS * 7) throw new Error("pose buffer too small");
+      rig.bodies.forEach((body, i) => {
+        const t = body.translation();
+        const r = body.rotation();
+        out[i * 7] = t.x;
+        out[i * 7 + 1] = t.y;
+        out[i * 7 + 2] = t.z;
+        out[i * 7 + 3] = r.x;
+        out[i * 7 + 4] = r.y;
+        out[i * 7 + 5] = r.z;
+        out[i * 7 + 6] = r.w;
+      });
+    },
+
     removeRagdoll(handle: number): void {
       const rig = rigs.get(handle);
       if (!rig) return;
@@ -94,9 +135,53 @@ export async function createRapierPhysicsWorld(): Promise<PhysicsWorld> {
       rigs.delete(handle);
     },
 
+    spawnWalker(centre: Vec3, radius: number, halfHeight: number): number {
+      const body = world.createRigidBody(
+        RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(centre.x, centre.y, centre.z),
+      );
+      const collider = world.createCollider(RAPIER.ColliderDesc.capsule(halfHeight, radius), body);
+      const controller = world.createCharacterController(SKIN);
+      controller.setUp({ x: 0, y: 1, z: 0 });
+      controller.setMaxSlopeClimbAngle(45 * DEG);
+      controller.setMinSlopeSlideAngle(30 * DEG);
+      controller.enableAutostep(STEP_HEIGHT, radius / 2, false);
+      controller.enableSnapToGround(0.3);
+      controller.setSlideEnabled(true);
+      const handle = nextHandle++;
+      walkers.set(handle, { body, collider, controller });
+      return handle;
+    },
+
+    moveWalker(handle: number, delta: Vec3): WalkerState {
+      const w = walkers.get(handle);
+      if (!w) return { x: 0, y: 0, z: 0, grounded: false };
+      w.controller.computeColliderMovement(w.collider, { x: delta.x, y: delta.y, z: delta.z });
+      const m = w.controller.computedMovement();
+      const t = w.body.translation();
+      const next = { x: t.x + m.x, y: t.y + m.y, z: t.z + m.z };
+      w.body.setNextKinematicTranslation(next);
+      return { ...next, grounded: w.controller.computedGrounded() };
+    },
+
+    teleportWalker(handle: number, centre: Vec3): void {
+      const w = walkers.get(handle);
+      if (!w) return;
+      w.body.setTranslation({ x: centre.x, y: centre.y, z: centre.z }, true);
+      w.body.setNextKinematicTranslation({ x: centre.x, y: centre.y, z: centre.z });
+    },
+
+    removeWalker(handle: number): void {
+      const w = walkers.get(handle);
+      if (!w) return;
+      world.removeCharacterController(w.controller);
+      world.removeRigidBody(w.body);
+      walkers.delete(handle);
+    },
+
     dispose(): void {
       world.free();
       rigs.clear();
+      walkers.clear();
     },
   };
 }

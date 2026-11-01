@@ -1,9 +1,9 @@
 // @mmo-engine/addon-physics tests: the point-velocity sleep threshold.
 //
-// Jolt's default is 0.03 m/s. A larger threshold lets resting bodies sleep sooner;
-// the question these tests answer is whether a sleeping rig still wakes when
-// something lands on it. The sweep that measures the cost is in
-// bench/addon-sleep-threshold.mjs.
+// A new world starts at 0.05 m/s (Jolt's own is 0.03). A larger threshold lets resting
+// bodies sleep sooner; the question these tests answer is whether a sleeping rig still
+// wakes when something lands on it. The sweep that chose the default is in
+// bench/addon-sleep-ensemble.mjs.
 
 'use strict';
 
@@ -11,7 +11,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { createWorld, ShapeKind, MotionType, RagdollRig } = require('../index.js');
 
-const DEFAULT_THRESHOLD = 0.03;
+const DEFAULT_THRESHOLD = 0.05;
 
 function ids(n, first = 100n) {
   const out = new BigUint64Array(n);
@@ -55,7 +55,7 @@ function rootOf(w, id) {
   return out;
 }
 
-test('the sleep threshold defaults to 0.03 m/s and round-trips', (t) => {
+test('the sleep threshold defaults to 0.05 m/s and round-trips', (t) => {
   const w = createWorld();
   t.after(() => w.destroy());
   assert.ok(Math.abs(w.sleepThreshold() - DEFAULT_THRESHOLD) < 1e-6);

@@ -51,8 +51,13 @@ import { AnimationLibrary, CharacterAnimator } from "./character/character-anima
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
+import { CorpseProxy } from "./animal/corpse-proxy.js";
+import { animalIsFar } from "./animal/far-lod.js";
 import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
+import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
+import { CorpseRagdolls } from "../physics/corpse-ragdolls.js";
+import { SharedBodyTracks, type BodyPose } from "./shared-body-tracks.js";
 
 export interface EntityLayerOptions {
   /** The region's Pcg service: props whose AssetRef is a PCG asset show its cooked mesh. */
@@ -79,6 +84,8 @@ interface TrackedMesh {
   actionKey?: string;
   /** A static animal model given a procedural skeleton and gait (see animal/animal-rig.ts). */
   animal?: AnimalRig;
+  /** Far from the camera: the animal is one stand-in in the instanced batch, and its own mesh is hidden. */
+  far?: boolean;
   /** The animal rig was tried (a model without a quadruped shape stays as it is). */
   animalTried?: boolean;
   /** Nameplate sprite above the head, and the name it shows. */
@@ -177,6 +184,7 @@ const TURN_RATE = 12;
 
 const tmpColor = new THREE.Color();
 const tmpEye = new THREE.Vector3();
+const tmpAnimal = new THREE.Vector3();
 const tmpSpawn = new THREE.Vector3();
 /** Warn-once log (missing bones, missing models: per session, not per frame). */
 const warned = new Set<string>();
@@ -185,6 +193,9 @@ function warnOnce(message: string): void {
   warned.add(message);
   console.warn(message);
 }
+
+/** How far behind the clock shared bodies are drawn: 0.15 s, tuned by scripts/shared-delay-sweep.mjs. */
+const SHARED_DELAY_SECONDS = 0.15;
 
 export class EntityLayer {
   /** Everything this layer draws that isn't FX: add it to the scene. */
@@ -246,6 +257,20 @@ export class EntityLayer {
   private disposed = false;
   /** Nameplate textures, one per distinct name (sprites share them). */
   private readonly plateTextures = new Map<string, THREE.CanvasTexture>();
+  /**
+   * Dead animals' ragdoll corpses. The physics world loads asynchronously; until
+   * it is ready a death keeps the animal's own fall, and no corpse is made.
+   */
+  private corpseWorld: PhysicsWorld | null = null;
+  private corpses: CorpseRagdolls | null = null;
+  /** Live corpses: wire id -> the drawn body. The animal is hidden while its corpse exists. */
+  private readonly corpseProxies = new Map<bigint, CorpseProxy>();
+  private nextCorpseKey = 1;
+  private readonly corpsePose = new Float32Array(RAGDOLL_PARTS * 7);
+  /** Shared bodies drawn from snapshots, a little behind the clock (see shared-body-tracks). */
+  private readonly shared = new SharedBodyTracks({ delaySeconds: SHARED_DELAY_SECONDS });
+  private sharedFrom: Interpolator | null = null;
+  private detachShared: (() => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -286,6 +311,16 @@ export class EntityLayer {
         if (json && !this.disposed) this.clipMap = indexClipMap(parseClipMap(json));
       })
       .catch((e: unknown) => console.info(`[world] default clip map: ${e instanceof Error ? e.message : e}`));
+    createClientPhysicsWorld("physx")
+      .then((world) => {
+        if (this.disposed) {
+          world.dispose();
+          return;
+        }
+        this.corpseWorld = world;
+        this.corpses = new CorpseRagdolls(world);
+      })
+      .catch((e: unknown) => console.info(`[world] dead animals keep their fall: ${e instanceof Error ? e.message : e}`));
   }
 
   /** Scenery counts (dev tools, probes, the HUD). */
@@ -464,6 +499,22 @@ export class EntityLayer {
   }
 
   /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node or broken (BROKEN_VARIANT). */
+  /**
+   * Far LOD for an animal (WL2): past the radius (with a band, animal/far-lod.ts) its own posed mesh
+   * is hidden and it is one instance in the shared InstancedProps batch, a stand-in box or sphere
+   * sized to its body. Near again, the batch instance goes and the mesh shows. Called every frame
+   * the entity is in view, before the props and tracked-mesh paths pick it up.
+   */
+  private gateFarAnimal(wid: bigint, tracked: TrackedMesh, t: TransformRow, body: BodyConfigRow | null): void {
+    const eye = this.camera.getWorldPosition(tmpEye);
+    const far = animalIsFar(tracked.far === true, eye.distanceTo(tmpAnimal.set(t.px, t.py, t.pz)));
+    if (far === (tracked.far === true)) return;
+    tracked.far = far;
+    tracked.object.visible = !far;
+    if (far) this.props.add(wid, ...this.shown(wid, t, body), placeholderColor(wid), null);
+    else this.props.remove(wid);
+  }
+
   private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null, asset?: AssetRefRow): [TransformRow, BodyConfigRow | null] {
     if (!this.depleted.has(wid) && asset?.variant !== BROKEN_VARIANT) {
       this.lowRows.delete(wid);
@@ -493,11 +544,16 @@ export class EntityLayer {
         this.pickMap.delete(t.object);
         disposeTracked(t);
         this.meshes.delete(key);
+        this.dropCorpse(key);
+        this.shared.forget(key);
       }
     }
     const now = performance.now() / 1000;
     const dt = this.lastFrame < 0 ? 1 / 60 : Math.min(0.1, now - this.lastFrame);
     this.lastFrame = now;
+    this.stepCorpses(dt);
+    this.shared.setTickHz(clock.tickHz || 30);
+    this.attachShared(interpolator);
     const gone: bigint[] = [];
     for (const wid of this.terrain.chunkWireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.terrain.removeChunk(wid);
@@ -516,6 +572,9 @@ export class EntityLayer {
         this.terrain.ensureChunk(wid, e.chunk);
         continue;
       }
+      // A far animal is one stand-in in the instanced batch (WL2 far LOD): see gateFarAnimal.
+      const animalMesh = this.meshes.get(wid);
+      if (animalMesh?.animal && e.transform) this.gateFarAnimal(wid, animalMesh, e.transform, e.body ?? null);
       // Batched static props: follow their rows (unchanged rows cost nothing).
       if (this.props.has(wid)) {
         if (e.transform) {
@@ -578,7 +637,10 @@ export class EntityLayer {
 
       if (!e.transform) continue;
 
-      const t = interpolator.sample(wid, alpha) ?? e.transform;
+      // Shared bodies come from the server's snapshots; the local player is predicted elsewhere.
+      const isPlayerBody = playerWireId !== null && wid === playerWireId;
+      const sharedT = isPlayerBody ? undefined : this.sharedPose(wid, clock, alpha);
+      const t = sharedT ?? interpolator.sample(wid, alpha) ?? e.transform;
       tracked.object.position.set(t.px, t.py, t.pz);
       if (tracked.character) {
         const acting = e.action && e.action.move !== 0 ? e.action : null;
@@ -604,17 +666,20 @@ export class EntityLayer {
         turnToward(tracked, e.velocity, dt, acting?.yaw);
         tracked.object.scale.set(t.sx, t.sy, t.sz);
         const move = acting ? combatMove(acting.move) : undefined;
-        tracked.animal.update(
-          dt,
-          {
-            speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
-            attackT: acting && move ? Math.max(0, (clock.tick - acting.started) / clock.tickHz) : -1,
-            hitAt: move?.hitAt ?? (move ? move.duration * 0.5 : 0),
-            attackDuration: move?.duration ?? 0,
-            dead: e.health !== undefined && e.health.current <= 0,
-          },
-          this.camera.getWorldPosition(tmpEye).distanceTo(tracked.object.position) < ANIMAL_LOD_RADIUS,
-        );
+        // A dead animal lies as a ragdoll corpse; its rig is not posed while the corpse is drawn.
+        if (!this.syncCorpse(wid, tracked, e.health !== undefined && e.health.current <= 0)) {
+          tracked.animal.update(
+            dt,
+            {
+              speed: e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0,
+              attackT: acting && move ? Math.max(0, (clock.tick - acting.started) / clock.tickHz) : -1,
+              hitAt: move?.hitAt ?? (move ? move.duration * 0.5 : 0),
+              attackDuration: move?.duration ?? 0,
+              dead: e.health !== undefined && e.health.current <= 0,
+            },
+            this.camera.getWorldPosition(tmpEye).distanceTo(tracked.object.position) < ANIMAL_LOD_RADIUS,
+          );
+        }
       } else {
         tracked.object.quaternion.set(t.qx, t.qy, t.qz, t.qw);
         tracked.object.scale.set(t.sx, this.depleted.has(wid) ? t.sy * DEPLETED_HEIGHT : t.sy, t.sz);
@@ -685,9 +750,77 @@ export class EntityLayer {
     this.props.matte();
   }
 
+  /** A shared body's pose from snapshots, or undefined until it has some. Time runs with the frame's alpha, so motion is smooth between ticks. */
+  private sharedPose(wid: bigint, clock: ServerClock, alpha: number): BodyPose | undefined {
+    this.shared.want(wid);
+    const hz = clock.tickHz || 30;
+    return this.shared.sample(wid, (clock.tick - 1 + alpha) / hz);
+  }
+
+  private attachShared(interp: Interpolator): void {
+    if (this.sharedFrom === interp) return;
+    this.detachShared?.();
+    this.sharedFrom = interp;
+    this.detachShared = this.shared.attach(interp);
+  }
+
+  /** A dead animal's corpse, spawned on its death. True while the corpse is what is drawn. */
+  private syncCorpse(wid: bigint, tracked: TrackedMesh, dead: boolean): boolean {
+    const proxy = this.corpseProxies.get(wid);
+    if (!dead) {
+      if (proxy) this.dropCorpse(wid);
+      tracked.object.visible = true;
+      return false;
+    }
+    if (proxy) {
+      tracked.object.visible = false;
+      return true;
+    }
+    if (!this.corpses) return false; // the world is still loading: the animal falls as before
+    const key = this.nextCorpseKey++;
+    const p = tracked.object.position;
+    if (!this.corpses.spawn(key, { x: p.x, y: p.y, z: p.z })) return false;
+    const drawn = new CorpseProxy(key);
+    if (this.corpses.pose(key, this.corpsePose)) drawn.place(this.corpsePose); // never drawn at the origin
+    this.group.add(drawn.group);
+    this.corpseProxies.set(wid, drawn);
+    tracked.object.visible = false;
+    return true;
+  }
+
+  /** Forget an animal's corpse: its ragdoll and drawing are removed. Unknown ids are ignored. */
+  private dropCorpse(wid: bigint): void {
+    const proxy = this.corpseProxies.get(wid);
+    if (!proxy) return;
+    this.corpses?.remove(proxy.key);
+    proxy.dispose();
+    this.corpseProxies.delete(wid);
+  }
+
+  /** Steps the corpse world and moves the drawn corpses to their poses; an expired corpse stops being drawn. */
+  private stepCorpses(dt: number): void {
+    if (!this.corpses) return;
+    this.corpses.update(dt);
+    for (const proxy of this.corpseProxies.values()) {
+      if (proxy.spent) continue;
+      if (!this.corpses.has(proxy.key)) {
+        proxy.retire();
+        continue;
+      }
+      if (this.corpses.pose(proxy.key, this.corpsePose)) proxy.place(this.corpsePose);
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.detachShared?.();
+    this.detachShared = null;
+    for (const proxy of this.corpseProxies.values()) proxy.dispose();
+    this.corpseProxies.clear();
+    this.corpseWorld?.dispose();
+    this.corpseWorld = null;
+    this.corpses = null;
     this.fx.dispose();
     this.showcase.dispose();
     this.vfx.dispose();
