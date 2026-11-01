@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**256 items built, 15 in progress, 3 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**256 items built, 15 in progress, 4 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -426,6 +426,7 @@ split's slices, not the editor's E items.
 | E5b | Push encode off the tick (if E5a is not enough) | not needed | |
 | E5c | Drop the unused base64 mirror stream (E3b follow-up) | ✅ | `perf/drop-tick-delta-push`. Since E3b players get their snapshots and deltas as relayed `wire.*` frames, so the core stops pushing `tick.delta` every tick and a full `snapshot` every 300th; `tick.events`, requests and heartbeats stay. The edge drops its unread mirror and tick buffers and the two `mmo_edge_mirror_*` metrics (the Grafana panel now shows relayed frames). B3 added tick cost 0.69 → 0.23 ms (median of 7). Makes E5a/E5b moot |
 | IM | **Interest management**: per-sector deltas encoded once and shared, per-client interest sets with hysteresis, enter/leave via one `DeltaSet` per client per tick assembled at the edge, pinned entities (own avatar, party, targets, quest NPCs), interest snapshots, `all` mode for the debugger and admins, cross-region view at borders | 🚧 | Spec: [`2026-10-23-interest-management-design.md`](superpowers/specs/2026-10-23-interest-management-design.md). IM0 B7 bench (`feat/im0-bench`); IM1 one publish per tick (`feat/im1-one-publish`); IM2 `DeltaSet` (`feat/im2-deltaset`); IM3 per-sector encode and interest sets behind `MMO_INTEREST=1` (`feat/im3-interest`); IM4 edge assembly (`feat/im4-edge-assembly`); IM5 pins and events (`feat/im5-pins-events`); IM6 `all` mode, debugger toggle, on by default (`feat/im6-all-mode`); IM8 cross-region view (`feat/im8-border-view`). IM7 (rate LOD) not needed by B7 |
+| — | **B7 spawn-burst run with repeat counts**: the interest bench (`test/bench/b7-interest.mjs`) with a spawn-burst axis, run three or more times per cell, so the burst cost can be confirmed or dropped. Gates IM7 | 📋 | IM5 drops burst cost is unconfirmed: a median rise of about 1.2 ms over three runs with overlapping ranges (#563). The bench's `B7_BURSTS` axis exists; the repeats and the named-creature burst (needs the creature service wired into the bench) do not |
 | E6 | Network health: `/metrics`, JSON network logs, Prometheus and Grafana configs | ✅ | (#117) |
 
 ## 6. World server
@@ -484,6 +485,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 Newest first. One line per merged PR or decision.
 - **2026-11-01**: GS2 global scale closed: dungeon runs apply the scale to their spawns (#529); `feat/scale-apply` is dead and should not be merged. TL0 closed: gltfpack and lil-gui pinned in `apps/client` (#530), 3 baseline assets already on main.
+- **2026-11-01**: Completeness audit (`/mnt/project-files/roadmap/completeness-2026-11-01.md`): added the B7 spawn-burst row (📋), which gates IM7; M5 and WL2 duplicates and the WL2 branch references flagged for the merger.
 - **2026-11-01**: CharacterVirtual slice 1 (#576): the physics addon gets an upright capsule character, outside the body pool and `step()`. It sweeps against static and moving bodies. Four addon tests. Not yet used by the engine. The Ragdolls row stays 📋; the CharacterVirtual row is 🚧.
 - **2026-11-01**: Ragdoll rows verified on main and set to ✅: cost gate (#488), slice 2 (#489), sleep threshold (#490, default #532), four-thread physics (#491, default one thread #539), contact cap (#493), and prop blocking's JS side (#521, valgrind baseline `prop-collision-tick` on main). Slice 1 stays 🚧 until the client corpses' live check. Physics library and other live checks unchanged.
 - **2026-11-01**: Admin `spawnlist` names creature kinds as well as props (#574): the gateway's creature adapter now has `kinds()`, so creatures were missing from the list. A3 stays ✅.
