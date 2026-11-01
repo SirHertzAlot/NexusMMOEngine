@@ -39,6 +39,9 @@
 #include <cstdint>
 
 #include <FastNoise/FastNoise.h>
+// -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
+static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 namespace mmo_procgen {
 
@@ -93,7 +96,7 @@ bool CheckedCoord(Napi::Env env, Napi::Value value, const char* name,
     return false;
   }
   const double d = value.As<Napi::Number>().DoubleValue();
-  if (!std::isfinite(d) || std::trunc(d) != d || d < -2147483648.0 ||
+  if (!fp_finite(d) || std::trunc(d) != d || d < -2147483648.0 ||
       d > 2147483647.0) {
     Napi::RangeError::New(env, std::string(name) + " must be an int32")
         .ThrowAsJavaScriptException();
@@ -157,7 +160,7 @@ Napi::Value GenerateChunk(const Napi::CallbackInfo& info) {
       return env.Undefined();
     }
     frequency = info[5].As<Napi::Number>().DoubleValue();
-    if (!std::isfinite(frequency) || frequency <= 0 || frequency > 1) {
+    if (!fp_finite(frequency) || frequency <= 0 || frequency > 1) {
       Napi::RangeError::New(env, "frequency must be in (0, 1]")
           .ThrowAsJavaScriptException();
       return env.Undefined();
