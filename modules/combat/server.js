@@ -23,7 +23,8 @@ import { BodySystem } from "../../packages/engine-core/dist/src/body.js";
 import { DeathSystem } from "../../packages/engine-core/dist/src/death.js";
 import { MagicSystem } from "../../packages/engine-core/dist/src/magic.js";
 import { StaminaSystem } from "../../packages/engine-core/dist/src/stats/stamina-system.js";
-import { Health, God, CharacterRef } from "../../packages/engine-core/dist/src/components.js";
+import { Health, God, CharacterRef, Transform } from "../../packages/engine-core/dist/src/components.js";
+import { defineQuery } from "bitecs";
 
 const ABILITIES_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "content", "combat", "abilities.json");
 
@@ -31,6 +32,17 @@ const ABILITIES_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "
 export function loadAbilityDefs(file = ABILITIES_FILE) {
   const raw = JSON.parse(readFileSync(file, "utf8"));
   return raw.abilities.map((a) => ({ id: a.id, gcdMs: a.gcdMs, cooldownMs: a.cooldownMs, castMs: a.castMs }));
+}
+
+/** The statuses the placeholder abilities apply (guard's "guarded"), defined on the status system. */
+export function loadAbilityStatuses(file = ABILITIES_FILE) {
+  return JSON.parse(readFileSync(file, "utf8")).statuses ?? [];
+}
+
+/** The effects the placeholder abilities carry (id -> effect), read from the same file. */
+export function loadAbilityEffects(file = ABILITIES_FILE) {
+  const raw = JSON.parse(readFileSync(file, "utf8"));
+  return new Map(raw.abilities.filter((a) => a.effect).map((a) => [a.id, a.effect]));
 }
 
 export function createSystems(ctx) {
@@ -60,8 +72,40 @@ export function createSystems(ctx) {
     tuning: config.getCombatTuning,
   };
 
-  const abilities = new AbilitySystem(30);
-  // The placeholder starter set (content/combat/abilities.json, M5 ability bar): defined once here.
+  // The placeholder starter set (content/combat/abilities.json, M5 ability bar): defined once here,
+  // with the effect each one has when it fires.
+  const effects = loadAbilityEffects();
+  const living = defineQuery([Health, Transform]);
+  const applyEffect = (e, id, tick) => {
+    const eff = effects.get(id);
+    if (!eff) return;
+    if (eff.kind === "buff") {
+      status.apply(e, eff.status, e, tick);
+      return;
+    }
+    if (!hasComponent(sim.ecs, Health, e)) return;
+    if (eff.kind === "heal") {
+      Health.current[e] = Math.min(Health.max[e], Health.current[e] + eff.amount);
+      return;
+    }
+    if (eff.kind === "damage") {
+      // The nearest living thing in reach that this caster may hurt (duel rules apply).
+      let best = -1;
+      let bestD2 = eff.reachM * eff.reachM;
+      for (const t of living(sim.ecs)) {
+        if (t === e || Health.current[t] <= 0 || hasComponent(sim.ecs, God, t)) continue;
+        const dx = Transform.px[t] - Transform.px[e];
+        const dz = Transform.pz[t] - Transform.pz[e];
+        const d2 = dx * dx + dz * dz;
+        if (d2 <= bestD2 && combatDamage.canHit(e, t)) {
+          best = t;
+          bestD2 = d2;
+        }
+      }
+      if (best >= 0) Health.current[best] = Math.max(0, Health.current[best] - eff.amount);
+    }
+  };
+  const abilities = new AbilitySystem(30, (e, id, tick) => applyEffect(e, id, tick));
   for (const def of loadAbilityDefs()) abilities.define(def);
   const status = new StatusSystem(
     30,
@@ -73,6 +117,7 @@ export function createSystems(ctx) {
       if (hasComponent(sim.ecs, Health, t)) Health.current[t] = Math.min(Health.max[t], Health.current[t] + amount);
     },
   );
+  for (const def of loadAbilityStatuses()) status.define(def);
   const telegraphs = new TelegraphSystem(30);
   const duels = new DuelSystem(30);
 

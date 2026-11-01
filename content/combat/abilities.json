@@ -1,10 +1,58 @@
 {
   "version": 1,
   "placeholder": true,
-  "note": "Placeholder starter set (M5 ability bar). No damage or healing yet; the values are the ones the ability tests run against (30 Hz ticks). Real design replaces this file.",
+  "note": "Placeholder starter set (M5 ability bar). Timings and effect sizes are starting points, checked by packages/engine-core/test/abilities-content.test.ts against the existing balance: strike is one blow's base damage (content/rules/combat.json), heal is Mend (content/rules/spells.json), guard halves incoming damage for the Guard move's length (content/combat/moves.json, and combat.json defence failedLetsThrough). Real design replaces this file.",
   "abilities": [
-    { "id": "strike", "name": "Strike", "gcdMs": 1000, "cooldownMs": 0, "castMs": 0 },
-    { "id": "guard", "name": "Guard", "gcdMs": 1000, "cooldownMs": 4000, "castMs": 0 },
-    { "id": "heal", "name": "Heal", "gcdMs": 1000, "cooldownMs": 8000, "castMs": 1500 }
+    {
+      "id": "strike",
+      "name": "Strike",
+      "gcdMs": 1000,
+      "cooldownMs": 0,
+      "castMs": 0,
+      "effect": {
+        "kind": "damage",
+        "amount": 10,
+        "reachM": 2.5
+      }
+    },
+    {
+      "id": "guard",
+      "name": "Guard",
+      "gcdMs": 1000,
+      "cooldownMs": 4000,
+      "castMs": 0,
+      "effect": {
+        "kind": "buff",
+        "status": "guarded"
+      }
+    },
+    {
+      "id": "heal",
+      "name": "Heal",
+      "gcdMs": 1000,
+      "cooldownMs": 8000,
+      "castMs": 1500,
+      "effect": {
+        "kind": "heal",
+        "amount": 15
+      }
+    }
+  ],
+  "statuses": [
+    {
+      "id": "guarded",
+      "kind": "buff",
+      "durationMs": 2500,
+      "maxStacks": 1,
+      "refresh": "refresh",
+      "dispellable": false,
+      "mods": [
+        {
+          "stat": "armour",
+          "mode": "mul",
+          "value": -0.5
+        }
+      ]
+    }
   ]
 }
