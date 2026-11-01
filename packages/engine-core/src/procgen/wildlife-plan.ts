@@ -36,6 +36,8 @@ export const WILDLIFE_KINDS: readonly WildlifeKind[] = [
   // Sea floor, below the surface (habitat water, depths in metres below it): sessile flora and fauna.
   { id: "seaFlora", names: "coral|kelp|seaweed|anemone|sea_anemone|sponge", layer: { ...prop, habitat: "water", aboveWater: [-9, -1], place: { kind: "field", spacing: 5 }, chance: 0.4, scale: [0.8, 1.3] } },
   { id: "seaBed", names: "starfish|sea_urchin|urchin|clam|nautilus_shell|crab|lobster|octopus|seahorse", not: NO_BODY, layer: { ...prop, habitat: "water", aboveWater: [-9, -1], place: { kind: "field", spacing: 9 }, chance: 0.25, scale: [0.9, 1.2] } },
+  // Free swimmers: fish and sea mammals in the open water, from the surface down to 30 m. Static for now (a mover needs the agent path).
+  { id: "freeSwimmers", names: "shark|dolphin|whale|orca|manta|stingray|ray|tuna|salmon|cod|trout|eel|seal|marlin|angelfish|clownfish|goldfish|koi|fish", not: "rack|hook|bone|bowl|fry|fin", layer: { ...prop, habitat: "water", aboveWater: [-30, -1], place: { kind: "field", spacing: 12 }, chance: 0.15, scale: [0.9, 1.2] } },
   // Shore: birds standing at the water line.
   { id: "shoreBirds", names: "pelican|seagull|gull|duck|goose|mallard_duck", not: NO_BODY, layer: { ...prop, habitat: "shore", aboveWater: [-0.2, 0.6], place: { kind: "field", spacing: 14 }, chance: 0.12, scale: [0.9, 1.1] } },
   // Land: ambient wildlife (static), thin in the open, denser in the woods.
