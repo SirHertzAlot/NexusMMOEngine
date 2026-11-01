@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**208 items built, 50 in progress, 12 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**209 items built, 49 in progress, 12 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -43,7 +43,6 @@ What is left, by area:
 - **World and content**: terrain relief and plains (TE1, TE2), sea-level placement (TE2), wildlife and megafauna (WL1, WL2), creature brains (WL2), global and architectural scale (GS2, SA1), prop collision (PH1), and the bake-all command (BA1).
 - **Physics**: ragdolls (the cost gate and slices 1 and 2, with the sleep threshold, threads and contact cap; ragdolls and CharacterVirtual are planned), dungeon physics, prop blocking without CharacterVirtual, and the zero-copy data plane.
 - **Scale and edge**: binary mirror frames (E5a) and pushing the encode off the tick (E5b) are planned. Dropping the base64 mirror stream (E5c) is in progress, and interest management (IM) and the region↔world event stream (S2) are open.
-- **Client**: web workers (U14) are built and wired but not yet checked in a browser.
 - **Checks**: Helgrind's gate counts only our own code (#496 and #497 are merged). ThreadSanitizer is still the separate check for races in Jolt, and it isn't automated.
 - **CI**: GitHub Actions is out of credits, so every change is checked locally with `npm test` and valgrind.
 
@@ -274,7 +273,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | U12 | Injury display and hit feedback | ✅ | Hit feedback and target frame (U12a); injuries on a body doll in the player frame (#124) |
 | U13 | Follow the party into dungeon runs and back | ✅ | Entrances in the world, party enter, run HUD, result and return (#126) |
 | U4b | Recorded sounds and positional audio | 📋 | U4 |
-| U14 | Client web workers: terrain blocks, PCG decode and BVH build off the main thread | 🚧 | Built and wired: `WorkerPool` (least-busy of up to 4 workers), `TerrainRenderer` block meshes, `PcgMeshes` decode and `ensureBoundsTreeAsync`, all falling back to inline without workers. Unit-tested; the running client has not been checked in a browser yet |
+| U14 | Client web workers: terrain blocks, PCG decode and BVH build off the main thread | ✅ | `WorkerPool` (least-busy of up to 4 workers), `TerrainRenderer` block meshes, `PcgMeshes` decode and `ensureBoundsTreeAsync`, all falling back to inline without workers. Unit-tested. Checked in Chromium on 2026-11-01: 3 workers answered 4 terrain-block, 44 PCG and 33 BVH tasks with no errors, and the inline fallback draws the same spawn view. The spawn area offloads only about 30 ms of main-thread time per 45 s, so the gain under terrain streaming is not measured yet |
 
 ## 3. Characters, combat and social
 
@@ -895,3 +894,4 @@ Newest first. One line per merged PR or decision.
 - **2026-10-31**: Helgrind follow-up: a ThreadSanitizer build of the physics addon (local, not committed) runs the physics suite clean in our code. 39 of 39 pass, and no report has a Jolt or addon frame. The reports left are inside node's V8 (compiler init, platform job-worker teardown). So Helgrind's Jolt reports are false positives on the paths the tests exercise: 0, 1, 4 and 64 threads, determinism in fresh processes, and world teardown. `valgrind:helgrind` still exits 1 for physics, because it counts Jolt inside `physics.node` as ours; filtering by source file is a follow-up.
 - **2026-10-31**: Helgrind gate counts only our own code. `scripts/valgrind/helgrind-report.mjs` classifies each thread error by the file of its faulting frame: the addon's sources are ours, `third_party` is vendored (Jolt), and Node's and V8's own reports are left out. The standard library and node-addon-api are blamed on their caller. Physics (built with `-g`) gives 0 in our code, 1,561 vendored and 90 Node/V8; picg gives 0, 0 and 18. Before, physics counted 2,001 errors in its binary, all Jolt's. Without debug info every error in an addon's binary still counts as ours, and the run says so. Report counts vary between runs (2,094 without debug info, then 1,800 and 1,651 with it), so the classes are what to read. The ThreadSanitizer check from the Helgrind row above stays the check for races inside Jolt, which the gate no longer fails on.
 - **2026-11-01**: At a glance refreshed to the status rows. It had listed the client cutover (E3b), accounts (C1), armour (U10), dungeon results (D4) and the admin player and loot tools (A4, A5) as open; all five are built. It now lists 208 built, 50 in progress and 12 planned, and the modular editor's only open row is the docking shell (EA1).
+- **2026-11-01**: U14 (client web workers) checked in Chromium against the running server, as its row asked. Three workers came up on a 4-core machine and answered 4 terrain-block, 44 PCG and 33 BVH tasks with no errors. With `Worker` hidden, the inline fallback ran clean and drew the same spawn view. One CPU profile of each mode over 45 s puts the main-thread time in that code at about 30 ms inline and 27 ms with workers, so the spawn area has little to offload, and the gain under terrain streaming is not measured yet. Long-task totals over the window were 27.4 to 27.6 s inline and 23.4 to 27.6 s with workers across two pairs of runs, with single stalls of about 12 to 14 s in both modes. Those come mostly from software GL and GPU detection, not from this code. U14 is now ✅; the At a glance counts are 209 built and 49 in progress.
