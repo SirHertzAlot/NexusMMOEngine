@@ -186,8 +186,10 @@ export async function physxAdapter() {
         rigs.push(bodies);
       }
 
+      let lastT = 0;
       return {
         step(t) {
+          lastT = t;
           const target = characterAt(t);
           const p = posOf(walker);
           const inv = 1 / SCENE.dt;
@@ -207,8 +209,10 @@ export async function physxAdapter() {
             else if (p.y < terrainHeight(p.x, p.z) - 1) fellThrough++;
           }
           const cp = posOf(walker);
+          const want = characterAt(lastT);
+          const charErr = Math.hypot(cp.x - want.x, cp.y - want.y, cp.z - want.z);
           return { bodies: scene.getNbActors(P.PxActorTypeFlagEnum.eRIGID_DYNAMIC), fellThrough, nonFinite,
-            charErr: NaN, charX: cp.x };
+            charErr, charX: cp.x };
         },
         free() { scene.release?.(); },
       };

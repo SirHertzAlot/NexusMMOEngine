@@ -5,9 +5,9 @@ import { SCENE, rapierAdapter, joltAdapter, physxAdapter } from "./bench-scene.m
 
 // One library per page (?lib=rapier|jolt|physx), a smaller sweep, and a result
 // published as soon as that library finishes.
-const rigCounts = [0, 50, 100];
+const rigCounts = [0, 50, 100, 200];
 const modes = [["sleeping", false], ["awake", true]];
-const WARM = 30, STEPS = 120, REPEATS = 1;
+const WARM = 60, STEPS = 300, REPEATS = 3;
 const LIBS = { rapier: rapierAdapter, jolt: joltAdapter, physx: physxAdapter };
 
 function summarise(samples) {
