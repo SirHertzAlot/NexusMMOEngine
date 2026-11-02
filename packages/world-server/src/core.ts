@@ -58,6 +58,9 @@ import {
   type SnapshotReportInput,
   type SocialRecord,
   type StoredLedgerEvent,
+  type AccountRecord,
+  type CreateAccountInput,
+  type GetAccountInput,
   type AllocateSocialIdsInput,
   type GetSocialRecordsInput,
   type PutSocialRecordInput,
@@ -716,6 +719,30 @@ export class WorldCoreImpl implements WorldCore {
   async getCharacterState(caller: string, input: GetCharacterStateInput): Promise<CharacterStateRecord | null> {
     await this.knownRegion(caller, input.regionId);
     return this.store.getCharacterState(input.characterId);
+  }
+
+  /** Slice C: the account for a username, or null. */
+  async getAccount(caller: string, input: GetAccountInput): Promise<AccountRecord | null> {
+    await this.knownRegion(caller, input.regionId);
+    return this.store.getAccount(input.username);
+  }
+
+  /** Slice C: create an account (409 when the username exists); a retry with the same opId replays its result. */
+  async createAccount(caller: string, input: CreateAccountInput): Promise<AccountRecord> {
+    await this.knownRegion(caller, input.regionId);
+    const prior = await this.store.getOpResult(input.opId);
+    if (prior !== null) return prior as AccountRecord;
+    if ((await this.store.getAccount(input.username)) !== null) {
+      throw new WorldError(409, `account ${input.username} already exists`);
+    }
+    const account: AccountRecord = {
+      username: input.username,
+      passwordHash: input.passwordHash,
+      createdAt: Date.now(),
+    };
+    await this.store.createAccount(account);
+    await this.store.storeOpResult(input.opId, account);
+    return account;
   }
 
   /** PL3c: a guild, party, friends or blocks record; version-guarded (409 when the writer's view is stale). */

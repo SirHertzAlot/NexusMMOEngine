@@ -311,6 +311,18 @@ export const PutSocialRecordSchema = z
   })
   .strict();
 
+/** Slice C: accounts. Usernames match the region's hello schema; hashes are argon2id strings. */
+const ACCOUNT_USERNAME = z.string().regex(/^[A-Za-z0-9_-]{3,32}$/);
+export const GetAccountSchema = z.object({ regionId: REGION_ID, username: ACCOUNT_USERNAME }).strict();
+export const CreateAccountSchema = z
+  .object({
+    regionId: REGION_ID,
+    username: ACCOUNT_USERNAME,
+    passwordHash: z.string().min(1).max(512).regex(/^\$argon2id\$[\x21-\x7e]+$/),
+    opId: OP_ID,
+  })
+  .strict();
+
 export const GetSocialRecordsSchema = z.object({ regionId: REGION_ID, kind: SOCIAL_KIND }).strict();
 
 export const AllocateSocialIdsSchema = z
