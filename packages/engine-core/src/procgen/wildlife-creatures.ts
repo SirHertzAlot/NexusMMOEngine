@@ -47,6 +47,7 @@ export function wildlifeCreatures(t: WildlifeTable, natural: NaturalWeapons): Cr
       aggroRadius: Math.max(1, s.danger.noticeM),
       leashRadius: clamp(s.territoryM * 0.2, 25, 150),
       respawnSeconds: 300,
+      farVisible: false,
       pack: [s.group.size[0], s.group.size[1]],
       weapons: [weapon],
       chaseSpeed: Math.min(1, 0.75 + 0.05 * tier),

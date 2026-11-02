@@ -316,6 +316,7 @@ export class CreatureSystem implements SimSystem {
     C.NavAgent.speed[eid] = this.runSpeed(def) * this.walkSpeed;
     C.NavAgent.tx[eid] = NaN;
     C.NavAgent.seq[eid] = 0;
+    if (def.farVisible) addComponent(sim.ecs, C.FarVisible, eid);
     const look = this.opts.lookOf?.(kind);
     if (look) sim.setLook(eid, look);
     const model = this.opts.modelOf?.(kind);

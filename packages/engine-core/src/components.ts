@@ -119,6 +119,9 @@ export const Breakable = defineComponent();
 // Tag: no data, so no SAB backing — plain defineComponent().
 export const Noclip = defineComponent();
 
+/** Tag (IM5): seen from `farM` by every session, not only near it (megafauna, world bosses). Set at spawn from the creature's `farVisible`. */
+export const FarVisible = defineComponent();
+
 /**
  * BodyConfig — rigid-body description for the Jolt physics addon
  * (Phase 2). JS owns this component (authoritative config); the native

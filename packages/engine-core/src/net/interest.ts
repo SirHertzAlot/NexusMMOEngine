@@ -13,7 +13,7 @@
  * ring of their own (spec `chunkM`) when terrain bytes show up in B7.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { hasComponent } from "bitecs";
+import { defineQuery, hasComponent } from "bitecs";
 import { GLOBAL_SECTOR } from "@mmo-engine/protocol";
 import * as C from "../components.js";
 import { encodeEidsFromSim, fullEidLists, spawnedSlotsOf, type DeltaTracker, type DiffResult, type SoAEidLists } from "../snapshot.js";
@@ -24,9 +24,18 @@ import { SECTOR_SIZE } from "./sector.js";
 export interface InterestRadii {
   enterM: number;
   leaveM: number;
+  /** How far a FarVisible entity is seen (IM5), metres. Default 400. */
+  farM?: number;
 }
 
-export const DEFAULT_INTEREST: InterestRadii = { enterM: 96, leaveM: 128 };
+export const DEFAULT_INTEREST: InterestRadii = { enterM: 96, leaveM: 128, farM: 400 };
+
+const farVisibleQuery = defineQuery([C.FarVisible]);
+
+/** Every FarVisible entity (IM5): seen by each session within farM, pinned rather than sectored. */
+export function farVisibleOf(sim: SimWorld): readonly number[] {
+  return farVisibleQuery(sim.ecs);
+}
 
 type Key = keyof SoAEidLists;
 const KEYS: Array<[Key, object]> = [
