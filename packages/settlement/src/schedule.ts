@@ -60,6 +60,12 @@ export const WORSHIP_HOUR = 9;
 export const WORSHIP_HOURS = 1.5;
 
 /**
+ * Compline: the gates shut and the curfew starts (the last office of the day). From this hour
+ * everyone is at home, the tavern keepers included, until the morning (see the night rule below).
+ */
+export const COMPLINE_HOUR = 21;
+
+/**
  * Where `npc` is at `timeOfDay` (0..1, 0 midnight). `town` says what its structures are.
  * A resident whose anchor is unknown to the town falls back to the square.
  * `day` is the game day (0 is a Sunday); absent, it is an ordinary day. On a Sunday the
@@ -85,14 +91,14 @@ export function scheduleAt(npc: Npc, timeOfDay: number, town: TownView, day?: nu
   if (npc.workplace && WORKING.has(npc.cohort) && !sunday) {
     const keeper = (town.archetypeOf(npc.workplace) ?? "").match(/^(tavern|inn)$/) !== null;
     // Tavern and inn keepers work the afternoon and evening, the rest the day.
-    if (keeper ? within(hour, 12, 24) : within(hour, 8, 17)) return at(npc.workplace, "work");
-    if (!keeper && within(hour, 17, 21) && seed % 100 < 40) {
+    if (keeper ? within(hour, 12, COMPLINE_HOUR) : within(hour, 8, 17)) return at(npc.workplace, "work");
+    if (!keeper && within(hour, 17, COMPLINE_HOUR) && seed % 100 < 40) {
       const tavern = town.tavernNear(npc.home);
       if (tavern) return { anchor: tavern, outdoors: false, activity: "tavern" };
     }
     return homeAt();
   }
-  if (within(hour, 22, 6)) return homeAt();
+  if (within(hour, COMPLINE_HOUR, 6)) return homeAt();
   if (npc.cohort === "child") return within(hour, 9, 16) ? at(SQUARE, "idle") : homeAt();
   if (!home) return at(SQUARE, "idle"); // the homeless are about the square all day
   return within(hour, 9, 17) ? at(SQUARE, "idle") : homeAt();

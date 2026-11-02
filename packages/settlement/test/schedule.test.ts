@@ -48,6 +48,21 @@ describe("scheduleAt", () => {
     assert.ok(outAt8.includes("work") && outAt8.includes("sleep"), "some are at work and some still home at 08:00");
   });
 
+  it("is curfew from compline: the square and the tavern empty, keepers closed, everyone home", () => {
+    const keeper: Npc = { ...baker, id: "npc_k", class: "artisan", workplace: "t1" };
+    // Block edges move by up to half an hour, so 21:55 is past compline for every id.
+    for (const npc of [baker, keeper, child]) {
+      const p = scheduleAt(npc, at(21.9), town);
+      assert.equal(p.activity, "sleep", npc.id);
+      assert.equal(p.anchor, "h1", npc.id);
+    }
+    // The homeless have no home to go to; they stay where they sleep, as before.
+    assert.equal(scheduleAt(beggar, at(21.9), town).anchor, SQUARE);
+    // Before compline the keeper is still at the tavern's counter.
+    assert.equal(scheduleAt(keeper, at(19), town).anchor, "t1");
+    assert.equal(scheduleAt(keeper, at(19), town).activity, "work");
+  });
+
   it("falls back to the square for an anchor the town does not know", () => {
     assert.equal(scheduleAt({ ...baker, workplace: "gone" }, at(12), town).anchor, SQUARE);
   });
