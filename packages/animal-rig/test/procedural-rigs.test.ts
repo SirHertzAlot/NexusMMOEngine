@@ -91,6 +91,8 @@ describe("Multi-rig procedural classification & segmentation", () => {
     assert.equal(namedRigType("synty:animals/SM_Raven_01"), "avian");
     assert.equal(namedRigType("animals/SM_Bear_01"), "quadruped");
     assert.equal(namedRigType("structure:house"), undefined, "a name that says nothing");
+    assert.equal(namedRigType("standin/SM_Whale_Giant_01"), "aquatic", "giant is not an ant");
+    assert.equal(namedRigType("Combat_Bat_01"), "avian", "a word, not a substring");
     const named = AnimalTemplate.from(syntheticAvian(), undefined, "animals/SM_Raven_01");
     assert.ok(named);
     assert.equal(named.seg.type, "avian");
