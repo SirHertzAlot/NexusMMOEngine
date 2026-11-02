@@ -61,6 +61,7 @@
     "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",
     "bench:sab-assets": "npm run build:lib && node scripts/bench-sab-assets.mjs",
     "bench:art-baselines": "node scripts/art-baselines.mjs",
+    "bench:client-frame": "node scripts/frame-bench.mjs",
     "surfaces:fetch": "node scripts/fetch-surfaces.mjs",
     "models:generate": "gltfjsx --types --output src/render/generated --transform",
     "bench:physics": "node scripts/bench-physics.mjs --out scripts/physics-bench-results.json"
