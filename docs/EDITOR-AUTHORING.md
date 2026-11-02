@@ -284,12 +284,28 @@ and vendor stocking rides the existing `vendor stock` sub-action.
 
 `apps/editor/src/authoring/templates.ts` (pure, tested in
 `authoring-templates.test.ts`). A **view template** is data, not code:
-`{ id, slot, version, status, definition }` where the definition names a
-layout, its panes, and — by reference only — the widget ids it can summon
-and the hierarchy role filters it exposes (both validated against the
-registries in `relevance.ts` / `hierarchy.ts`). No component code lives in
-a template, so a template version can be created, pinned and rolled back
-without a build.
+`{ id, slot, version, status, definition }` where the definition describes
+the interface as a **regions tree** of pane instances — each pane a
+reference into the component registry (`INTERFACE_COMPONENTS`), with data
+bindings (Graphify graph / editor state / live overlay), visibility
+predicates as data, verb-only actions, and Mustache content templates —
+plus, by reference only, the widget ids it can summon and the hierarchy
+role filters it exposes (validated against the registries in
+`relevance.ts` / `hierarchy.ts`). No component code lives in a template,
+so a template version can be created, pinned and rolled back without a
+build.
+
+**T1 — interface templates (2026-11-02).** The definition was deepened
+from a named layout + flat pane list to the regions-tree shape above
+(the VC + templating design: the editor changes by versioning its
+interface documents, not by deleting panels). `validateTemplateDefinition`
+extends the reference checks with the interface structure — unique
+region/pane ids, pane components against the registry, binding sources
+each component accepts, predicate/action references (canonical verbs
+only, arguments bound by name), and Mustache tag/section balance — and
+the resolver now refuses on it, falling back exactly as before. Both
+builtins are expressed in the new shape. Rendering the shell from the
+resolved template is T2; template documents on disk are T3.
 
 - **Version immutability.** Published versions never change. An edit
   creates the next version as a draft; the earlier published version is
@@ -385,6 +401,17 @@ deletion; Art/audio kept (emitter-field projection gap); Vendor closed as
 N/A (widget functions pass, but no standalone vendor panel exists — the
 Modules panel is the registry itself). The legacy presentation and the
 templating system are untouched, as Phase C requires.
+
+**Superseded (Joey, 2026-11-02): the panels are not going to be removed.**
+The removal slate above is closed as a plan, not merely blocked: the
+editor instead changes through a VC system for its interface, driven by
+templating (Mustache as the content/expression layer), so surfaces are
+reconfigured through versioned interface templates rather than deleted
+as widgets replace them. Nothing was removed because nothing has been
+changed yet, by design. The per-panel findings above remain a capability
+inventory for widget/registry work. The first slice of the new direction
+(T1, interface-template definitions) is recorded in the templating
+section of this doc.
 **Joey set the grace window on 2026-10-24: 7 days, starting
 2026-10-24 — the window closed 2026-10-31; see the 2026-10-31 evaluation
 above for the outcome: removals are eligible on/after

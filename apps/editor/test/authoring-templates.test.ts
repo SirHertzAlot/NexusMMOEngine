@@ -7,8 +7,11 @@ import {
   PresentationResolver,
   TemplateRegistry,
   createBuiltinRegistry,
+  interfaceComponentById,
   retireTemplate,
+  validateTemplateDefinition,
   type Provenance,
+  type ViewTemplate,
   type ViewTemplateDefinition,
 } from "../src/authoring/index.js";
 
@@ -20,8 +23,35 @@ const prov = (why: string): Provenance => ({
   why,
 });
 
-const defA: ViewTemplateDefinition = { layout: "authoring-three-pane", panes: ["hierarchy", "stage", "widgets"], widgets: ["vendor"], filters: ["vendors"] };
-const defB: ViewTemplateDefinition = { layout: "authoring-three-pane", panes: ["hierarchy", "widgets"], widgets: ["vendor", "combat"], filters: ["vendors"] };
+const defA: ViewTemplateDefinition = {
+  regions: [
+    {
+      id: "main",
+      direction: "row",
+      panes: [
+        { id: "hierarchy", component: "hierarchy" },
+        { id: "stage", component: "stage" },
+        { id: "widgets", component: "widgets" },
+      ],
+    },
+  ],
+  widgets: ["vendor"],
+  filters: ["vendors"],
+};
+const defB: ViewTemplateDefinition = {
+  regions: [
+    {
+      id: "main",
+      direction: "row",
+      panes: [
+        { id: "hierarchy", component: "hierarchy" },
+        { id: "widgets", component: "widgets" },
+      ],
+    },
+  ],
+  widgets: ["vendor", "combat"],
+  filters: ["vendors"],
+};
 
 function freshRegistry(): TemplateRegistry {
   const registry = new TemplateRegistry();
@@ -144,7 +174,7 @@ describe("presentation resolver", () => {
   it("falls back to the last known-good when the pinned template references an unknown widget, reporting the reason", () => {
     const registry = createBuiltinRegistry(prov("builtins"));
     registry.register(
-      { id: "broken-view", slot: "authoring", version: 1, status: "published", definition: { layout: "x", panes: [], widgets: ["no-such-widget"], filters: [] } },
+      { id: "broken-view", slot: "authoring", version: 1, status: "published", definition: { regions: [], widgets: ["no-such-widget"], filters: [] } },
       prov("register broken"),
     );
     const pins = new PresentationPins();
@@ -161,7 +191,7 @@ describe("presentation resolver", () => {
   it("with no known-good, a broken pin falls back to the built-in legacy template, with the reason", () => {
     const registry = createBuiltinRegistry(prov("builtins"));
     registry.register(
-      { id: "broken-view", slot: "authoring", version: 1, status: "published", definition: { layout: "x", panes: [], widgets: [], filters: ["no-such-filter"] } },
+      { id: "broken-view", slot: "authoring", version: 1, status: "published", definition: { regions: [], widgets: [], filters: ["no-such-filter"] } },
       prov("register broken"),
     );
     const pins = new PresentationPins();
@@ -180,9 +210,141 @@ describe("presentation resolver", () => {
     registryB.transition(LEGACY_TEMPLATE_ID, 1, "deprecated", prov("legacy is old here"));
     // Resolve against a registry that lacks the pinned template entirely:
     const empty = new TemplateRegistry();
-    empty.register({ id: LEGACY_TEMPLATE_ID, slot: "authoring", version: 1, status: "published", definition: { layout: "workspace-tabs", panes: [], widgets: [], filters: [] } }, prov("legacy only"));
+    empty.register({ id: LEGACY_TEMPLATE_ID, slot: "authoring", version: 1, status: "published", definition: { regions: [], widgets: [], filters: [] } }, prov("legacy only"));
     const resolved = new PresentationResolver().resolve("authoring", pins, empty);
     assert.equal(resolved.template.id, LEGACY_TEMPLATE_ID);
     assert.ok(resolved.fallbackReason?.includes("unknown template"), resolved.fallbackReason);
+  });
+});
+
+describe("interface template definition (T1) — regions, component registry, bindings, predicates, actions, Mustache content", () => {
+  function customTemplate(definition: ViewTemplateDefinition): ViewTemplate {
+    const registry = new TemplateRegistry();
+    registry.register({ id: "custom-view", slot: "authoring", version: 1, status: "published", definition }, prov("register custom"));
+    return registry.get("custom-view", 1)!;
+  }
+
+  it("built-ins are expressed as regions trees whose panes resolve in the component registry, and both validate clean", () => {
+    const registry = createBuiltinRegistry(prov("builtins"));
+    const legacy = registry.get(LEGACY_TEMPLATE_ID, 1)!;
+    const authoring = registry.get(AUTHORING_TEMPLATE_ID, 1)!;
+    assert.deepEqual(validateTemplateDefinition(legacy), []);
+    assert.deepEqual(validateTemplateDefinition(authoring), []);
+    const root = authoring.definition.regions[0];
+    assert.equal(root.children?.length, 3);
+    const paneComponents = (root.children ?? []).flatMap((r) => (r.panes ?? []).map((p) => p.component));
+    assert.deepEqual(paneComponents, ["hierarchy", "stage", "widgets"]);
+    for (const c of paneComponents) assert.ok(interfaceComponentById(c), `component ${c} is registered`);
+    assert.equal(legacy.definition.regions[0].panes?.length, 3);
+  });
+
+  it("a rich pane — bindings, a compound predicate, a verb action with bound/literal/template args, Mustache content — validates clean", () => {
+    const rich: ViewTemplateDefinition = {
+      regions: [
+        {
+          id: "main",
+          direction: "row",
+          panes: [
+            {
+              id: "summary",
+              component: "content",
+              bindings: [
+                { name: "selection", source: "editor", path: "selection" },
+                { name: "facts", source: "graph", path: "selection.facts" },
+              ],
+              visibleWhen: { kind: "all", predicates: [{ kind: "hasSelection" }, { kind: "bindingPresent", binding: "facts" }] },
+              actions: [
+                {
+                  id: "spawn",
+                  verb: "spawnCreature",
+                  label: "Spawn {{selection.name}}",
+                  args: { kind: { fromBinding: "selection" }, count: { literal: 1 }, note: { template: "for {{selection.name}}" } },
+                },
+              ],
+              content: { title: "{{selection.name}}", body: "{{#facts.components}}{{name}} {{/facts.components}}", empty: "Nothing selected" },
+            },
+          ],
+        },
+      ],
+      widgets: [],
+      filters: [],
+    };
+    assert.deepEqual(validateTemplateDefinition(customTemplate(rich)), []);
+  });
+
+  it("the resolver refuses a template whose pane references an unknown component, falling back with the reason", () => {
+    const registry = createBuiltinRegistry(prov("builtins"));
+    registry.register(
+      { id: "bad-component", slot: "authoring", version: 1, status: "published", definition: { regions: [{ id: "main", panes: [{ id: "x", component: "no-such-component" }] }], widgets: [], filters: [] } },
+      prov("register bad component"),
+    );
+    const pins = new PresentationPins();
+    const resolver = new PresentationResolver();
+    pins.pin("authoring", { templateId: AUTHORING_TEMPLATE_ID, version: 1 }, prov("known good first"), registry);
+    assert.equal(resolver.resolve("authoring", pins, registry).template.id, AUTHORING_TEMPLATE_ID);
+    pins.pin("authoring", { templateId: "bad-component", version: 1 }, prov("pin the broken one"), registry);
+    const resolved = resolver.resolve("authoring", pins, registry);
+    assert.equal(resolved.template.id, AUTHORING_TEMPLATE_ID);
+    assert.ok(resolved.fallbackReason?.includes('unknown component "no-such-component"'), resolved.fallbackReason);
+  });
+
+  it("duplicate region ids and duplicate pane instance ids are reported", () => {
+    const dup: ViewTemplateDefinition = {
+      regions: [
+        { id: "main", panes: [{ id: "p", component: "content" }] },
+        { id: "main", panes: [{ id: "p", component: "content" }] },
+      ],
+      widgets: [],
+      filters: [],
+    };
+    const problems = validateTemplateDefinition(customTemplate(dup));
+    assert.ok(problems.some((p) => p.includes('reuses region id "main"')), problems.join("\n"));
+    assert.ok(problems.some((p) => p.includes('reuses pane instance id "p"')), problems.join("\n"));
+  });
+
+  it("a binding from a source the component does not accept is reported", () => {
+    const bad: ViewTemplateDefinition = {
+      regions: [{ id: "main", panes: [{ id: "mods", component: "modules-panel", bindings: [{ name: "liveMods", source: "live", path: "modules" }] }] }],
+      widgets: [],
+      filters: [],
+    };
+    const problems = validateTemplateDefinition(customTemplate(bad));
+    assert.ok(problems.some((p) => p.includes('binding "liveMods"') && p.includes("does not accept")), problems.join("\n"));
+  });
+
+  it("predicate, action-verb, and action-arg references to things the pane does not have are reported", () => {
+    const bad: ViewTemplateDefinition = {
+      regions: [
+        {
+          id: "main",
+          panes: [
+            {
+              id: "summary",
+              component: "content",
+              bindings: [{ name: "selection", source: "editor", path: "selection" }],
+              visibleWhen: { kind: "bindingPresent", binding: "nope" },
+              actions: [{ id: "act", verb: "noSuchVerb", args: { target: { fromBinding: "ghost" } } }],
+            },
+          ],
+        },
+      ],
+      widgets: [],
+      filters: [],
+    };
+    const problems = validateTemplateDefinition(customTemplate(bad));
+    assert.ok(problems.some((p) => p.includes('unknown binding "nope"')), problems.join("\n"));
+    assert.ok(problems.some((p) => p.includes('unknown verb "noSuchVerb"')), problems.join("\n"));
+    assert.ok(problems.some((p) => p.includes('unknown binding "ghost"')), problems.join("\n"));
+  });
+
+  it("unbalanced Mustache content — an unclosed tag and a never-closed section — is reported", () => {
+    const bad: ViewTemplateDefinition = {
+      regions: [{ id: "main", panes: [{ id: "c", component: "content", content: { title: "{{selection.name", body: "{{#selection}}never closed" } }] }],
+      widgets: [],
+      filters: [],
+    };
+    const problems = validateTemplateDefinition(customTemplate(bad));
+    assert.ok(problems.some((p) => p.includes("content.title") && p.includes("unclosed")), problems.join("\n"));
+    assert.ok(problems.some((p) => p.includes("content.body") && p.includes("never closed")), problems.join("\n"));
   });
 });
