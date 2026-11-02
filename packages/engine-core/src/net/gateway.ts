@@ -2311,6 +2311,12 @@ export class Gateway {
         else out.push(wid);
       }
     }
+    // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
+    const quests = this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined;
+    for (const name of quests?.pinnedResidentsOf?.(s.character?.id ?? null) ?? []) {
+      const e = this.residents?.entityOf(name);
+      if (e !== undefined) out.push(this.world.wireId(e));
+    }
     return out;
   }
 
