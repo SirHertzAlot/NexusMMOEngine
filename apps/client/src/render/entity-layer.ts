@@ -55,7 +55,7 @@ import { CorpseProxy } from "./animal/corpse-proxy.js";
 import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
-import { CorpseRagdolls } from "../physics/corpse-ragdolls.js";
+import { CORPSE_SHOT_OPTIONS, CorpseRagdolls, corpseShotRequested } from "../physics/corpse-ragdolls.js";
 import { SharedBodyTracks, type BodyPose } from "./shared-body-tracks.js";
 
 export interface EntityLayerOptions {
@@ -253,6 +253,8 @@ export class EntityLayer {
   private flashes: ReadonlyMap<bigint, number> = new Map();
   private quality: QualitySettings | null = null;
   private lastFrame = -1;
+  /** Capture-only (`?corpseShot`): corpses step by real elapsed time and live longer. */
+  private readonly corpseShot = corpseShotRequested();
   private disposed = false;
   /** Nameplate textures, one per distinct name (sprites share them). */
   private readonly plateTextures = new Map<string, THREE.CanvasTexture>();
@@ -317,7 +319,7 @@ export class EntityLayer {
           return;
         }
         this.corpseWorld = world;
-        this.corpses = new CorpseRagdolls(world);
+        this.corpses = new CorpseRagdolls(world, this.corpseShot ? CORPSE_SHOT_OPTIONS : undefined);
       })
       .catch((e: unknown) => console.info(`[world] dead animals keep their fall: ${e instanceof Error ? e.message : e}`));
   }
@@ -549,8 +551,9 @@ export class EntityLayer {
     }
     const now = performance.now() / 1000;
     const dt = this.lastFrame < 0 ? 1 / 60 : Math.min(0.1, now - this.lastFrame);
+    const rawDt = this.lastFrame < 0 ? 1 / 60 : Math.min(2, now - this.lastFrame);
     this.lastFrame = now;
-    this.stepCorpses(dt);
+    this.stepCorpses(this.corpseShot ? rawDt : dt);
     this.shared.setTickHz(clock.tickHz || 30);
     this.attachShared(interpolator);
     const gone: bigint[] = [];
