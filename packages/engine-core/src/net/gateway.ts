@@ -364,6 +364,8 @@ export interface GatewayOptions {
   needs?: { eatSeconds: number };
   /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
   lessons?: Lessons | null;
+  /** The game day at a tick (0 is a Sunday): a pupil takes one lesson a day. Absent: a real day. */
+  gameDay?: (tick: number) => number;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -877,6 +879,7 @@ export class Gateway {
       | "extensions"
       | "needs"
       | "lessons"
+      | "gameDay"
       | "items"
       | "sectorBroadcast"
       | "interest"
@@ -1064,6 +1067,7 @@ export class Gateway {
     if (opts.social) this.setSocial(opts.social);
     this.eatSeconds = opts.needs?.eatSeconds ?? 0;
     this.lessons = opts.lessons ?? null;
+    this.gameDay = opts.gameDay;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -3878,7 +3882,7 @@ export class Gateway {
     const i = skill === undefined ? -1 : this.mastery.index.of(skill);
     if (i < 0) return;
     const who = s.character?.id ?? -1;
-    const day = Math.floor(Date.now() / 86_400_000); // ponytail: a real day, not the game's; the game clock is not visible here
+    const day = this.gameDay ? this.gameDay(this.tick) : Math.floor(Date.now() / 86_400_000);
     const key = `${who}/${info.npc}`;
     if (this.lessonDay.get(key) === day) return this.sendSystem(s, "They have taught you what they can for today.");
     const sheet = this.mastery.sheetOf(avatar);
@@ -5989,6 +5993,7 @@ export class Gateway {
   /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
   private readonly eatSeconds: number;
   private readonly lessons: Lessons | null;
+  private readonly gameDay: ((tick: number) => number) | undefined;
   /** The game day a pupil last took a lesson from a master, by character and npc. */
   private readonly lessonDay = new Map<string, number>();
 
