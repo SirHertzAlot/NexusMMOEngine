@@ -52,6 +52,16 @@
       "irPerOp": 5228114,
       "unit": "second",
       "n": 40
+    },
+    "channel-sectors-push": {
+      "irPerOp": 6697511,
+      "unit": "push",
+      "n": 200
+    },
+    "channel-sectors-push-base64": {
+      "irPerOp": 12130617,
+      "unit": "push",
+      "n": 200
     }
   }
 }
