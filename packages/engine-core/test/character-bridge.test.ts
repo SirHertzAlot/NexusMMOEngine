@@ -12,6 +12,7 @@ import {
   CharacterBridgeSystem,
   createJoltBackend,
   MotionType,
+  PhysicsSystem,
   PlayerIntent,
   PropCollisionSystem,
   ShapeKind,
@@ -155,6 +156,22 @@ test("a disabled bridge leaves walkers alone", () => {
     bridge.step(sim, DT);
     assert.equal(Transform.px[walker], 3);
     assert.equal(bridge.has(walker), false);
+  } finally {
+    backend.destroy();
+  }
+});
+
+test("a bridged walker gets no physics body, so it cannot push its own character", () => {
+  const backend = createJoltBackend();
+  try {
+    const sim = new SimWorld();
+    const walker = spawnWalker(sim, 0);
+    const bridge = new CharacterBridgeSystem(backend);
+    const physics = new PhysicsSystem(backend, 2, undefined, bridge);
+    bridge.step(sim, DT);
+    physics.step(sim, DT);
+    assert.equal(bridge.has(walker), true);
+    assert.equal(backend.bodyCount(), 0, "the walker's own kinematic body is not in the world");
   } finally {
     backend.destroy();
   }

@@ -659,6 +659,8 @@ export class PhysicsSystem implements SimSystem {
     private readonly backend: PhysicsBackend,
     private readonly subSteps = 2,
     private readonly warn: (message: string) => void = stdioWarn,
+    // Walkers a physics character drives (CharacterBridgeSystem) get no body: a body at the walker would push its own character.
+    private readonly characters?: { has(e: number): boolean },
   ) {}
 
   /** Bodies the backend could not create since start (its pool is full, or it rejected a shape). */
@@ -732,7 +734,8 @@ export class PhysicsSystem implements SimSystem {
     const T = Transform;
     const V = Velocity;
 
-    const eids = this.query(sim.ecs);
+    const all = this.query(sim.ecs);
+    const eids = this.characters ? all.filter((e) => !this.characters!.has(e as number)) : all;
     const n = eids.length;
     const prevIds = this.prevSel === 0 ? this.prevA : this.prevB;
     const prevEids = this.prevSel === 0 ? this.prevAEids : this.prevBEids;

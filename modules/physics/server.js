@@ -26,9 +26,10 @@ export function createSystems(ctx) {
 
   // One Jolt world for the bodies and the characters: the walkers' sweeps must see the same props.
   const jolt = createJoltBackend();
-  const physics = new PhysicsSystem(jolt);
-  // Off unless MMO_CHARACTER_BRIDGE=1: the live walker-at-prop check regressed with it on (walkers drift off the face).
-  const characters = new CharacterBridgeSystem(jolt, process.env.MMO_CHARACTER_BRIDGE === "1");
+  // On by default; MMO_CHARACTER_BRIDGE=0 turns it off (the JS prop push-out then resolves walkers).
+  const characters = new CharacterBridgeSystem(jolt, process.env.MMO_CHARACTER_BRIDGE !== "0");
+  // Bridged walkers get no body, so the physics system skips them.
+  const physics = new PhysicsSystem(jolt, undefined, undefined, characters);
 
   const navBackend = createNavigationBackend({
     originX: 0,
