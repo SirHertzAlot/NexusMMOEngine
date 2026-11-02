@@ -641,7 +641,9 @@ export class EntityLayer {
       const sharedT = isPlayerBody ? undefined : this.sharedPose(wid, now);
       const t = sharedT ?? interpolator.sample(wid, alpha) ?? e.transform;
       tracked.object.position.set(t.px, t.py, t.pz);
-      if (tracked.character) {
+      // Another player who dies lies as a ragdoll corpse too (cosmetic, as for animals). Our own body keeps its "you died" view.
+      const characterCorpse = tracked.character !== undefined && !isPlayerBody && this.syncCorpse(wid, tracked, e.health !== undefined && e.health.current <= 0);
+      if (tracked.character && !characterCorpse) {
         const acting = e.action && e.action.move !== 0 ? e.action : null;
         turnToward(tracked, e.velocity, dt, acting?.yaw);
         if (!tracked.animator && this.animations) {
