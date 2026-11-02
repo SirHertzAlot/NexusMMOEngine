@@ -98,6 +98,9 @@ export class PropCollisionSystem implements SimSystem {
   private readonly obstacles = defineQuery([Transform, BodyConfig]);
   private readonly foot: Footprint = { radius: 0, y0: 0, y1: 0 };
 
+  /** Walkers driven by a physics character (CharacterBridgeSystem) resolve there, not here. */
+  constructor(private readonly bridged?: { has(e: number): boolean }) {}
+
   step(sim: SimWorld): void {
     const movers = this.movers(sim.ecs);
     if (movers.length === 0) return;
@@ -107,6 +110,7 @@ export class PropCollisionSystem implements SimSystem {
       const e = movers[i] as number;
       if (BodyConfig.motionType[e] !== MotionType.Kinematic) continue;
       if (hasComponent(sim.ecs, Noclip, e)) continue;
+      if (this.bridged?.has(e)) continue;
       const px = Transform.px[e];
       const pz = Transform.pz[e];
       if (!Number.isFinite(px) || !Number.isFinite(pz) || !Number.isFinite(Transform.py[e])) continue;
