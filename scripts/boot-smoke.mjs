@@ -22,6 +22,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { waitForJoinBaseline } from "./boot-smoke-baseline.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const engineDist = path.join(root, "packages", "engine-core", "dist");
@@ -104,15 +105,15 @@ async function main() {
 
   // Handshake with the repo's own protocol client.
   const { HeadlessClient } = await import(pathToFileURL(path.join(engineDist, "test", "net", "headless-client.js")).href);
-  const { MessageType, decodeSnapshot } = await import("@mmo-engine/protocol");
+  const { MessageType } = await import("@mmo-engine/protocol");
   const client = new HeadlessClient();
   await client.connect(`ws://127.0.0.1:${PORT}`);
-  const snapP = client.waitFor(MessageType.Snapshot, 1, 15000);
+  const baseP = waitForJoinBaseline(client, 15000);
+  baseP.catch(() => {}); // awaited below; this only keeps an early reject from being unhandled
   const welcome = await client.hello(USER, { username: USER, password: PASSWORD }).catch((e) => fail("hello", e.message));
   say(`welcome: player_entity=${welcome.player_entity} session_token=${welcome.session_token ? "issued" : "MISSING"}`);
-  const [snapPayload] = await snapP.catch((e) => fail("snapshot", e.message));
-  const snap = decodeSnapshot(snapPayload);
-  say(`snapshot: ${snapPayload.length} bytes on the wire, tick=${snap.tick}, transform rows=${snap.transforms.length}, chunk rows=${snap.chunks.length}`);
+  const base = await baseP.catch((e) => fail("snapshot", e.message));
+  say(`snapshot: ${base.wireBytes} bytes on the wire, tick=${base.tick}, transform rows=${base.transforms}, chunk rows=${base.chunks} — ${base.detail}`);
   const deltas = await client.waitFor(MessageType.Delta, 1, 10000).catch(() => null);
   say(deltas ? `delta: received (${deltas[0].length} bytes) — tick stream live` : "delta: none within 10s (recorded, not fatal)");
   await client.close();
