@@ -83,6 +83,7 @@ import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 import { PerfSampler, type PerfSample } from "./perf-stats.js";
 import { LoadGate, type LoadProgress } from "./load-gate.js";
+import { nextTarget, type TargetCandidate } from "./target-cycle.js";
 
 /** Haze colour before the first frame sets it from the time of day. */
 const SKY = 0x9fc0dc;
@@ -715,6 +716,30 @@ function MirrorWorld({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [viewProp, onViewChange]);
+
+  // Tab targets the nearest living body in reach, then the next one on each press; Escape clears the target (M5).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.repeat || (e.code !== "Tab" && e.code !== "Escape")) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const feedback = latest.current.combat;
+      if (!feedback) return;
+      e.preventDefault();
+      if (e.code === "Escape") {
+        feedback.select(null);
+        return;
+      }
+      const candidates: TargetCandidate[] = [];
+      for (const [wid, row] of client.state.entities) {
+        if (wid === client.playerEntity || !row.transform || !row.health || row.health.current <= 0) continue;
+        candidates.push({ wid, x: row.transform.px, z: row.transform.pz });
+      }
+      feedback.select(nextTarget(candidates, rt.current?.layer.player ?? null, feedback.target));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [client]);
 
   useEffect(() => {
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);

@@ -6,7 +6,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { loadHudLayout, DEFAULT_LAYOUT } from "../src/ui/hud-layout.js";
+import { loadHudLayout, DEFAULT_LAYOUT, withDefaults } from "../src/ui/hud-layout.js";
 
 describe("loadHudLayout", () => {
   it("loads a valid layout", () => {
@@ -62,5 +62,19 @@ describe("anchor CSS", () => {
     assert.equal(center.left, "50%");
     assert.equal(center.top, "50%");
     assert.ok(String(center.transform).includes("5px"), "offset appears in the transform");
+  });
+});
+
+describe("withDefaults", () => {
+  it("no served layout is the defaults", () => {
+    assert.equal(withDefaults(null), DEFAULT_LAYOUT);
+  });
+
+  it("a served layout keeps the widgets it places and the defaults for the ones it does not", () => {
+    const served = loadHudLayout({ widgets: { "player-frame": { anchor: "top-left", offset: { x: 1, y: 2 }, visible: true } } });
+    const merged = withDefaults(served);
+    assert.deepEqual(merged.widgets["player-frame"], { anchor: "top-left", offset: { x: 1, y: 2 }, visible: true });
+    assert.deepEqual(merged.widgets["duel-panel"], DEFAULT_LAYOUT.widgets["duel-panel"]);
+    assert.deepEqual(merged.widgets["ability-bar"], DEFAULT_LAYOUT.widgets["ability-bar"]);
   });
 });
