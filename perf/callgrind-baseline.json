@@ -62,6 +62,11 @@
       "irPerOp": 12130617,
       "unit": "push",
       "n": 200
+    },
+    "prop-bridge-tick": {
+      "irPerOp": 3794328,
+      "unit": "tick",
+      "n": 60
     }
   }
 }
