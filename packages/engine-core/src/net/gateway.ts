@@ -4727,8 +4727,11 @@ export class Gateway {
     // entity is first-shown here (catalog §0x12).
     const names = this.namesFor(null);
     if (names) this.deliver(s, names, this.tick);
-    const drops = this.dropsFor(null);
-    if (drops) this.deliver(s, drops, this.tick);
+    // With interest on, drops follow interest per session (deliverDropsFor), not a region-wide list.
+    if (!this.interest) {
+      const drops = this.dropsFor(null);
+      if (drops) this.deliver(s, drops, this.tick);
+    }
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
     const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world, (e) => this.residents?.isResident(e) === true) ?? [])];
