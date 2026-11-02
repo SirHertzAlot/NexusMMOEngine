@@ -11,6 +11,8 @@ import { ChannelTransport } from "../../src/net/channel-transport.js";
 import { MirrorState } from "@mmo-engine/mirror";
 import { Gateway } from "../../src/net/gateway.js";
 import { interestSectors } from "../../src/net/interest.js";
+import { addComponent } from "bitecs";
+import { FarVisible } from "../../src/components.js";
 import { applyTeleport } from "../../src/admin/player.js";
 import { HeadlessClient } from "./headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
@@ -191,6 +193,30 @@ it("quest NPCs: a resident the active quest steps need is pinned, wherever it st
   needed = [];
   await step(2, alice, bob);
   assert.ok(!alice.mirror.entities.has(bob.entity), "the quest is done: the pin ends");
+  alice.client.close();
+  bob.client.close();
+});
+
+it("far visible: an entity tagged FarVisible is pinned to every session within farM, not beyond", async () => {
+  now = 1_000_000;
+  gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), interest: { enterM: 96, leaveM: 128, farM: 400 } });
+  const url = `ws://127.0.0.1:${await gw.listen()}`;
+  gw.frame(now);
+  const alice = await join(url, "alice");
+  const bob = await join(url, "user-a");
+  const bobEid = gw.world.resolveWireId(bob.entity);
+  addComponent(gw.world.ecs, FarVisible, bobEid);
+
+  // 300 m away: beyond enterM, within farM: seen with his rows.
+  assert.equal(applyTeleport(gw.world, bob.entity, 300, 0, null).ok, true);
+  await step(3, alice, bob);
+  assert.ok(alice.mirror.entities.get(bob.entity)?.transform, "a far-visible entity 300 m away is seen");
+  assert.equal(alice.mirror.home.get(bob.entity), "pin");
+
+  // 600 m away: beyond farM, not seen.
+  assert.equal(applyTeleport(gw.world, bob.entity, 600, 0, null).ok, true);
+  await step(3, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity), "beyond farM it is not seen");
   alice.client.close();
   bob.client.close();
 });

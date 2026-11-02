@@ -137,7 +137,7 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
@@ -2309,6 +2309,17 @@ export class Gateway {
       for (const [wid, until] of s.combatPins) {
         if (until < this.tick) s.combatPins.delete(wid);
         else out.push(wid);
+      }
+    }
+    // FarVisible entities (IM5) within farM of the session's avatar, wherever they stand.
+    const far = farVisibleOf(this.world);
+    const avatar = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    if (far.length > 0 && avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
+      const farM = this.interest?.farM ?? 400;
+      const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
+      for (const eid of far) {
+        if (eid === avatar) continue;
+        if (Math.hypot(C.Transform.px[eid]! - x, C.Transform.pz[eid]! - z) <= farM) out.push(this.world.wireId(eid));
       }
     }
     // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
