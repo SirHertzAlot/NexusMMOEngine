@@ -15,6 +15,15 @@
  *   budget (33 ms) pays for the fan-out;
  * - resident memory, and messages delivered each way (nothing dropped).
  *
+ * Two fan-out modes, both 30 Hz with the same 1.2 KB delta:
+ *
+ * - send: one `send()` per socket per tick. The pre-gateway shape.
+ * - publish: one `publish()` to a sector topic per tick, which is what the
+ *   gateway does for sector deltas (gateway.ts, sector broadcast). uWS
+ *   fans out natively; ws loops over its members.
+ *
+ * Use `--publish-only` or `--send-only` to run one mode.
+ *
  * It measures the transport alone (no sim, no encoding): the part the
  * socket library decides.
  */
@@ -31,6 +40,7 @@ const INTENT_BYTES = 48;
 
 interface Result {
   transport: "uws" | "ws";
+  mode: Mode;
   clients: number;
   seconds: number;
   cpuPercent: number;
@@ -42,19 +52,25 @@ interface Result {
   intentsPerSec: number;
 }
 
+/** "send": one send per socket per tick. "publish": the server's path, one publish to the sector topic (gateway.ts). */
+type Mode = "send" | "publish";
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const quantile = (xs: number[], q: number): number => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.floor(q * s.length))] ?? 0;
 };
 
-async function runOne(kind: "uws" | "ws", clients: number, seconds: number): Promise<Result> {
+const TOPIC = "sector";
+
+async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode: Mode): Promise<Result> {
   const transport = createTransport(kind);
   const sockets = new Set<WireSocket>();
   let intents = 0;
   const port = await transport.listen(0, {
     connection: (s) => {
       sockets.add(s);
+      if (mode === "publish") s.subscribe(TOPIC);
       s.listen({ message: () => void intents++, close: () => sockets.delete(s) });
     },
     http: null,
@@ -71,7 +87,8 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number): Pro
   const tickMs: number[] = [];
   const tick = (): void => {
     const t0 = performance.now();
-    for (const s of sockets) s.send(delta);
+    if (mode === "publish") transport.publish(TOPIC, delta);
+    else for (const s of sockets) s.send(delta);
     if (measuring) {
       tickMs.push(performance.now() - t0);
       sent += sockets.size;
@@ -102,6 +119,7 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number): Pro
 
   return {
     transport: kind,
+    mode,
     clients,
     seconds: Math.round(wall * 10) / 10,
     cpuPercent: Math.round(((cpu.user + cpu.system) / 1e6 / wall) * 1000) / 10,
@@ -155,15 +173,17 @@ async function main(): Promise<void> {
   };
   const seconds = Number(flag("--seconds", "8"));
   const out = flag("--out", "");
-  const counts = args.length ? args.map(Number) : [100, 250, 500, 1000];
+  const modes: Mode[] = args.includes("--send-only") ? ["send"] : args.includes("--publish-only") ? ["publish"] : ["send", "publish"];
+  const counts = args.filter((a) => !a.startsWith("--")).map(Number);
+  const finalCounts = counts.length ? counts : [100, 250, 500, 1000];
   const kinds: Array<"uws" | "ws"> = loadUws() ? ["uws", "ws"] : ["ws"];
   const results: Result[] = [];
-  for (const clients of counts) {
-    for (const kind of kinds) {
-      const r = await runOne(kind, clients, seconds);
+  for (const clients of finalCounts) {
+    for (const mode of modes) for (const kind of kinds) {
+      const r = await runOne(kind, clients, seconds, mode);
       results.push(r);
       console.log(
-        `${kind.padEnd(3)} ${String(clients).padStart(5)} clients: CPU ${String(r.cpuPercent).padStart(5)}% | ` +
+        `${kind.padEnd(3)} ${mode.padEnd(7)} ${String(clients).padStart(5)} clients: CPU ${String(r.cpuPercent).padStart(5)}% | ` +
           `broadcast p50 ${r.tickP50Ms} ms, p99 ${r.tickP99Ms} ms | RSS ${r.rssMb} MB | ` +
           `${r.sentPerSec}/s sent, ${r.deliveredPerSec}/s delivered, ${r.intentsPerSec}/s intents in`,
       );

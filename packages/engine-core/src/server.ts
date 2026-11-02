@@ -155,6 +155,7 @@ import {
   installShutdownHook,
   NavmeshTileRegistry,
   CsvCredentialStore,
+  WorldCredentialStore,
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
@@ -706,9 +707,14 @@ async function main(): Promise<void> {
   // colliders, which need the physics module's terrainColliders hook.
 
   // ---- auth + gateway ----------------------------------------------------
-  const credentialStore = new CsvCredentialStore(
+  // Slice C: with a world the accounts live there (the CSV backs sign-ins
+  // the world doesn't know yet); without one the region keeps its CSV.
+  const usersCsv = new CsvCredentialStore(
     process.env.MMO_USERS_CSV ?? path.join(DATA_DIR, "users.csv"),
   );
+  const credentialStore = worldClient?.registered
+    ? new WorldCredentialStore(worldClient, usersCsv)
+    : usersCsv;
   // Domain stores (characters, guilds, social, parties, instance results)
   // are built by their modules during assembly and published on
   // moduleCtx.stores; server.ts reads them back post-assembly below.

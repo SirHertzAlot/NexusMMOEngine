@@ -54,6 +54,14 @@ export class WorldTransportError extends Error {
   }
 }
 
+/** A world account as the region sees it (slice C). */
+export interface AccountRecordView {
+  username: string;
+  /** argon2id hash (modular crypt format). */
+  passwordHash: string;
+  createdAt: number;
+}
+
 /**
  * A region-side atomic-operation request (slice A2): the A1 wire input
  * without `regionId` (the client always sends its own — a caller naming
@@ -639,6 +647,31 @@ export class WorldClient {
       this.token(),
     );
     return (res["lock"] as CharacterSessionLock | null) ?? null;
+  }
+
+  // ------------------------------------------- accounts (slice C)
+  // Thin mirrors of GetAccount / CreateAccount. Both throw on transport
+  // failure, and a duplicate username throws WorldTransportError with
+  // code 409: the caller decides what that means (see WorldCredentialStore).
+
+  /** The world's account for a username, or null when none exists. */
+  async getAccount(username: string): Promise<AccountRecordView | null> {
+    const res = await this.transport.call(
+      "GetAccount",
+      { input: { regionId: this.opts.regionId, username } },
+      this.token(),
+    );
+    return (res["account"] as AccountRecordView | null) ?? null;
+  }
+
+  /** Create an account at the world. A taken username throws WorldTransportError (409). */
+  async createAccount(username: string, passwordHash: string): Promise<AccountRecordView> {
+    const res = await this.transport.call(
+      "CreateAccount",
+      { input: { regionId: this.opts.regionId, username, passwordHash, opId: newOpId() } },
+      this.token(),
+    );
+    return res["account"] as AccountRecordView;
   }
 
   // -------------------------------------------- atomic operations (slice A2)
