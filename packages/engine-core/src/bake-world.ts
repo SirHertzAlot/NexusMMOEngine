@@ -1,12 +1,12 @@
 /**
- * bake-world: pre-generate terrain + scatter into a world.db offline.
+ * bake-world: pre-generate terrain + scatter into a region.db offline.
  *
  * Usage:
  *   npm run bake:world          bake if no world exists yet
  *   npm run bake:world:force    replace an existing world (stop the server first)
  *
  * Env:
- *   MMO_DATA_DIR    where world.db is written (default ./data)
+ *   MMO_DATA_DIR    where region.db is written (default ./data)
  *   MMO_WORLD_SEED  u64 region seed (default 1234)
  *   MMO_CHUNK_SIZE  chunk world size in units (default 16)
  *   MMO_WORLD_SPEC  world spec JSON (default worlds/default.world.json: a
@@ -15,7 +15,7 @@
  *   MMO_BAKE_RADIUS spawn-area chunk radius around the spawn point that gets
  *                   entities and scatter (default 1 = 3x3; the server keeps
  *                   the same area loaded, MMO_WORLD_RADIUS)
- *   MMO_BAKE_FORCE=1 overwrite an existing world.db (default: refuse);
+ *   MMO_BAKE_FORCE=1 overwrite an existing region.db (default: refuse);
  *                   same as the --force flag / bake:world:force script
  *   MMO_TERRAIN_AMPLITUDE / MMO_TERRAIN_FREQUENCY  terrain shape; the
  *                   server must run with the same values (it warns on a
@@ -25,7 +25,7 @@
  *                   without regenerating tiles
  *
  * Flags:
- *   --force          overwrite an existing world.db (same as MMO_BAKE_FORCE=1)
+ *   --force          overwrite an existing region.db (same as MMO_BAKE_FORCE=1)
  *   --region rx,rz   re-bake only this region's tiles (incremental)
  *   --survey-only    re-run the survey and invalidate the tile cache
  *   --shape=island|peninsula|continents|pangaea
@@ -36,7 +36,7 @@
  *
  * With a world spec, the WHOLE world's terrain is baked once (survey,
  * erosion, rivers, biomes -> 16x16-sample chunk tiles + survey maps in
- * world.db, catalog in SurrealDB); entities and scatter are placed only in
+ * region.db, catalog in SurrealDB); entities and scatter are placed only in
  * the spawn area — the rest of the world streams in later. The server reads
  * the stored tiles instead of regenerating, and the editor sculpts them.
  *
@@ -50,6 +50,7 @@
 
 import { makeWorldPopulator } from "./procgen/world-populator.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
+import { migrateLegacyRegionDb } from "./persist/region-db.js";
 import { biomeAtFromMap } from "./terrain/biome-lookup.js";
 import { waterSurfaceFromMaps } from "./terrain/water-surface.js";
 import * as fs from "node:fs";
@@ -115,8 +116,9 @@ async function main(): Promise<void> {
   if (!Number.isInteger(RADIUS) || RADIUS < 0) {
     throw new Error(`MMO_BAKE_RADIUS must be a non-negative integer (got ${process.env.MMO_BAKE_RADIUS})`);
   }
+  migrateLegacyRegionDb(DATA_DIR);
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  const dbPath = path.join(DATA_DIR, "world.db");
+  const dbPath = path.join(DATA_DIR, "region.db");
 
   const probe = new SnapshotStore({ dbPath });
   const existing = probe.snapshotCount();
@@ -133,7 +135,7 @@ async function main(): Promise<void> {
     );
   }
   // A forced FULL bake starts clean: drop the db and its WAL sidecars so a
-  // stale world.db-wal can't replay old pages into the new world. Incremental
+  // stale region.db-wal can't replay old pages into the new world. Incremental
   // mode keeps the existing db — it updates the world in place.
   if (existing > 0 && !incremental && FORCE) {
     for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
@@ -145,7 +147,7 @@ async function main(): Promise<void> {
           throw new Error(
             `${path.basename(f)} is open in another program — usually the ` +
               `game server (Ctrl+C in its terminal) or a SQLite viewer/editor ` +
-              `tab showing world.db. Close it, then run the bake again.`,
+              `tab showing region.db. Close it, then run the bake again.`,
           );
         }
         throw err;

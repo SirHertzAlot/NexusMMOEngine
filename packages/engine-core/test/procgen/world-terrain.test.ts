@@ -1,7 +1,7 @@
 /**
  * Whole-world terrain: the spec, the coarse survey (landmass, erosion,
  * water, climate, emergent biomes), the fine heights built on it, and the
- * bake into world.db + the SurrealDB catalog. Small worlds (512 m, 1 km)
+ * bake into region.db + the SurrealDB catalog. Small worlds (512 m, 1 km)
  * keep it fast; the default 4 km world runs the same code.
  */
 
@@ -493,7 +493,7 @@ describe("WorldHeights", () => {
 describe("bakeWorldTerrain", () => {
   test("tiles, survey maps, and the SurrealDB catalog", { timeout: 120_000 }, async () => {
     const dir = tmpDir();
-    const dbPath = path.join(dir, "world.db");
+    const dbPath = path.join(dir, "region.db");
     const catalogDir = path.join(dir, "surreal");
     const report = await bakeWorldTerrain(SMALL, { dbPath, catalogDir });
     assert.equal(report.chunks, 32 * 32);
@@ -557,7 +557,7 @@ describe("worldInfoFor (the welcome's world map)", () => {
   });
 
   test("16 m map of the baked survey, with bounds and biome ids", { timeout: 120_000 }, async () => {
-    const dbPath = path.join(tmpDir(), "world.db");
+    const dbPath = path.join(tmpDir(), "region.db");
     await bakeWorldTerrain(SMALL, { dbPath, catalogDir: null });
     const meta = new Map<string, string>([
       ["world_bounds", JSON.stringify({ minChunk: -16, maxChunk: 15 })],
@@ -607,7 +607,7 @@ describe("worldInfoFor (the welcome's world map)", () => {
 
 describe("TerrainTileStore storage", () => {
   test("migrates a WITHOUT ROWID tile table in place (tiles kept)", () => {
-    const dbPath = path.join(tmpDir(), "world.db");
+    const dbPath = path.join(tmpDir(), "region.db");
     const raw = new Database(dbPath);
     raw.exec(
       "CREATE TABLE terrain_tiles (cx INTEGER NOT NULL, cz INTEGER NOT NULL, heights BLOB NOT NULL, PRIMARY KEY (cx, cz)) WITHOUT ROWID",
@@ -629,7 +629,7 @@ describe("TerrainTileStore storage", () => {
   });
 
   test("survey maps round-trip each dtype", () => {
-    const store = new TerrainTileStore(path.join(tmpDir(), "world.db"));
+    const store = new TerrainTileStore(path.join(tmpDir(), "region.db"));
     const base = { width: 3, depth: 2, cell: 8, originX: -24, originZ: 16 };
     store.putMap("f", { ...base, data: Float32Array.of(1.5, -2, 3, 4, 5, 6) });
     store.putMap("b", { ...base, data: Uint8Array.of(0, 1, 2, 3, 4, 255) });

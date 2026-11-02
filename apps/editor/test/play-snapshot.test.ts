@@ -1,5 +1,5 @@
 /**
- * play-snapshot: the world.db backup around one owned play server
+ * play-snapshot: the region.db backup around one owned play server
  * (Play menu fresh/keep), with real files in a temp dir.
  */
 
@@ -17,7 +17,7 @@ describe("play-snapshot", () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "play-snap-"));
-    db = join(dir, "world.db");
+    db = join(dir, "region.db");
     writeFileSync(db, "authored");
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));

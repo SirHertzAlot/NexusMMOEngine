@@ -4,7 +4,7 @@
  * Picks a character (by account username, then character) and shows its
  * name, look (canonical JSON, summarized), deaths, saved state and ledger
  * items. All data comes from the dev host's read-only character routes
- * (characters.db + world.db opened read-only); this panel has no edit
+ * (characters.db + region.db opened read-only); this panel has no edit
  * path, like the ECS inspector.
  */
 
@@ -271,7 +271,7 @@ export function CharacterRecordPanel(): React.JSX.Element {
                 <div className="mt-1 flex flex-col gap-2">
                   {!hasWorldDb && (
                     <p className="text-xs text-muted-foreground">
-                      No world.db in this world — no ledger items to show.
+                      No region.db in this world — no ledger items to show.
                     </p>
                   )}
                   {hasWorldDb && !defsResolved && view.items.length > 0 && (

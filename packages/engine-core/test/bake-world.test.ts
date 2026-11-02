@@ -89,7 +89,7 @@ function tmpDir(): string {
 }
 
 function makeSpecDbPath(dir: string): string {
-  return path.join(dir, "world.db");
+  return path.join(dir, "region.db");
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ describe("regionOf / regionChunks", () => {
 // ---------------------------------------------------------------------------
 
 describe("full bake", () => {
-  it("produces tiles + maps + catalog in world.db", async () => {
+  it("produces tiles + maps + catalog in region.db", async () => {
     const dir = tmpDir();
     const dbPath = makeSpecDbPath(dir);
     const logLines: string[] = [];

@@ -97,7 +97,7 @@ LOD > 0 tiles go into a separate `terrain_tile_data` table, so the existing
 - `npm run bake:world -- --survey-only` — re-run just the survey (maps +
   catalog), invalidating the tile cache for the new survey hash.
 
-The `--force` overwrite gate deletes `world.db` + WAL sidecars ONLY on a forced
+The `--force` overwrite gate deletes `region.db` + WAL sidecars ONLY on a forced
 full bake; incremental mode (`--region`/`--survey-only`) updates the world in
 place and never deletes it.
 

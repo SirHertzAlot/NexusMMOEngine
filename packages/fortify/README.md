@@ -100,7 +100,7 @@ The full chain runs in the real bake now:
 5. **Persistence** — engine-core's `terrain/fortify-settlements.ts`
    runs the chain on the bake's own survey (hooked via
    `bakeWorldTerrain`'s `onSurvey`), and `bake-world` stores the
-   resulting `SettlementBake[]` as world.db meta
+   resulting `SettlementBake[]` as region.db meta
    (`fortified_settlements`), next to `spawn_point` and
    `world_biomes`. Integration tests run the whole chain on a real
    `surveyWorld` output.
