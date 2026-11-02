@@ -226,6 +226,49 @@ export const WORKLOADS = {
     },
   },
 
+  /** The bridge version of prop-collision-tick (CharacterBridgeSystem, Jolt CharacterVirtual): the same 500 static props as Jolt bodies, the same 100 walkers as physics characters, one bridge step per tick. */
+  "prop-bridge-tick": {
+    n: 60, warm: 20, unit: "tick",
+    async setup() {
+      const C = await core();
+      const { addComponent } = await import("bitecs");
+      const { createJoltBackend } = C;
+      const prng = mulberry32(11);
+      const sim = new C.SimWorld();
+      const backend = createJoltBackend();
+      const count = 500;
+      const ids = new BigUint64Array(count), shape = new Uint8Array(count), half = new Float32Array(count * 3);
+      const radius = new Float32Array(count), mass = new Float32Array(count), friction = new Float32Array(count);
+      const restitution = new Float32Array(count), motion = new Uint8Array(count), layer = new Uint8Array(count);
+      const pos = new Float32Array(count * 3), quat = new Float32Array(count * 4), lin = new Float32Array(count * 3), ang = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const rock = i % 4 === 0;
+        ids[i] = BigInt(100000 + i);
+        shape[i] = rock ? C.ShapeKind.Sphere : C.ShapeKind.Box;
+        half[i * 3] = rock ? 0 : 0.8; half[i * 3 + 1] = rock ? 0 : 2.5; half[i * 3 + 2] = rock ? 0 : 0.8;
+        radius[i] = rock ? 0.6 : 0; friction[i] = 0.8;
+        pos[i * 3] = (prng() - 0.5) * 64; pos[i * 3 + 1] = 0; pos[i * 3 + 2] = (prng() - 0.5) * 64;
+        quat[i * 4 + 3] = 1;
+      }
+      backend.addBodies({ count, entityIds: ids, shapeKind: shape, halfExtents: half, radius, mass, friction, restitution, motionType: motion, layer, pos, quat, linVel: lin, angVel: ang });
+      for (let i = 0; i < 100; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        addComponent(sim.ecs, C.Velocity, e);
+        addComponent(sim.ecs, C.PlayerIntent, e);
+        C.attachDefaultCollider(sim, e);
+        C.Transform.px[e] = (prng() - 0.5) * 64;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 64;
+        C.Transform.qw[e] = 1;
+      }
+      return { sim, bridge: new C.CharacterBridgeSystem(backend, true), backend };
+    },
+    run(s) {
+      s.bridge.step(s.sim, 1 / 30);
+    },
+  },
+
   /** Residents (RS3): a town of 600 people placed by the schedule, one simulated second per operation (the system steps once a second), a player in the square. */
   "residents-tick": {
     n: 40, warm: 10, unit: "second",
