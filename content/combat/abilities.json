@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "placeholder": true,
-  "note": "Placeholder starter set (M5 ability bar). Timings and effect sizes are starting points, checked by packages/engine-core/test/abilities-content.test.ts against the existing balance: strike is one blow's base damage (content/rules/combat.json), heal is Mend (content/rules/spells.json), guard halves incoming damage for the Guard move's length (content/combat/moves.json, and combat.json defence failedLetsThrough). Real design replaces this file.",
+  "placeholder": false,
+  "note": "M5 starter set, designed from the existing balance rather than picked by hand: strike is one blow's base damage (content/rules/combat.json damage.base), heal is Mend's amount (content/rules/spells.json), guard lasts the Guard move (content/combat/moves.json) and takes the share of a blow a failed block lets through (combat.json defence.failedLetsThrough). Timings are whole 30 Hz ticks. abilities-content.test.ts ties every value to those files.",
   "abilities": [
     {
       "id": "strike",

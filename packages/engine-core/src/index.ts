@@ -130,6 +130,7 @@ export type { DecodedIntentMessage } from "./net/intent.js";
 
 export {
   CsvCredentialStore,
+  WorldCredentialStore,
   DEFAULT_USERS_CSV_PATH,
   USERNAME_RE,
   hashPassword,

@@ -1,5 +1,5 @@
 /**
- * The placeholder ability set (content/combat/abilities.json) run through
+ * The M5 starter ability set (content/combat/abilities.json) run through
  * AbilitySystem at the 30 Hz tick: each value must behave as written.
  */
 
@@ -18,7 +18,7 @@ const file = fileURLToPath(new URL("../../../../content/combat/abilities.json", 
 type Def = { id: string; gcdMs: number; cooldownMs: number; castMs: number };
 const defs: Def[] = (JSON.parse(readFileSync(file, "utf8")) as { abilities: Def[] }).abilities;
 
-describe("content/combat/abilities.json (placeholder starter set)", () => {
+describe("content/combat/abilities.json (M5 starter set)", () => {
   it("names unique ids and whole-tick timings", () => {
     const ids = defs.map((d) => d.id);
     assert.equal(new Set(ids).size, ids.length);
@@ -60,7 +60,7 @@ describe("content/combat/abilities.json (placeholder starter set)", () => {
   });
 });
 
-describe("the placeholder effects match the existing balance", () => {
+describe("the starter effects match the existing balance", () => {
   const rule = (f: string): unknown => JSON.parse(readFileSync(fileURLToPath(new URL(`../../../../content/rules/${f}`, import.meta.url)), "utf8"));
   const effectOf = (id: string): { kind: string; amount: number; reachM?: number } | undefined =>
     (defs as Array<Def & { effect?: { kind: string; amount: number; reachM?: number } }>).find((d) => d.id === id)?.effect;

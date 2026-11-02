@@ -94,3 +94,35 @@ it("a far drop is not sent; it arrives when its item comes into view", async () 
 
   client.close();
 });
+
+it("a join is not sent the drops out of view (no region-wide list with interest on)", async () => {
+  now = 1_000_000;
+  const items = makeItems();
+  gw = new Gateway({
+    clock: () => now,
+    credentialStore: await makeCredentialStore(),
+    systems: [items],
+    items,
+    interest: { enterM: 96, leaveM: 128 },
+  });
+  const url = `ws://127.0.0.1:${await gw.listen()}`;
+  gw.frame(now);
+
+  // A drop lies 1.4 km away before alice joins: her welcome must not name it.
+  const far = items.spawnDrop(gw.world, 0, 1000, 1000, 0);
+  const wid = String(gw.world.wireId(far.eid));
+
+  const client = new HeadlessClient();
+  await client.connect(url);
+  await client.hello("alice", { username: "alice", password: TEST_PASSWORD });
+  await run(3, client);
+  assert.ok(!droppedIds(client).has(wid), "a join does not name a drop out of view");
+
+  // Walking into view still names it.
+  Transform.px[far.eid] = 20;
+  Transform.pz[far.eid] = 20;
+  await run(3, client);
+  assert.ok(droppedIds(client).has(wid), "the drop is named once it is in view");
+
+  client.close();
+});

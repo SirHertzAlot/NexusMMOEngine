@@ -62,3 +62,50 @@ test("a blob that runs past the body throws", () => {
   bad.writeUInt32BE(bad.readUInt32BE(0) - 1, 0);
   assert.throws(() => new FrameReader().push(bad.subarray(0, good.length - 1)), /invalid frame/);
 });
+
+/** The encoder before the single-walk rewrite: a JSON.stringify replacer picks out the blobs. Kept as the reference for byte equality. */
+function referenceEncode(obj: unknown): Buffer {
+  const blobs: Uint8Array[] = [];
+  const json = JSON.stringify(obj, function (this: Record<string, unknown>, key: string, value: unknown) {
+    const raw = this[key];
+    if (raw instanceof Uint8Array) {
+      blobs.push(raw);
+      return { $bin: blobs.length - 1 };
+    }
+    return value;
+  });
+  if (blobs.length === 0) {
+    const body = Buffer.from(json, "utf8");
+    const header = Buffer.alloc(4);
+    header.writeUInt32BE(body.length, 0);
+    return Buffer.concat([header, body]);
+  }
+  const env = Buffer.from(`{"o":${json},"b":${JSON.stringify(blobs.map((b) => b.length))}}`, "utf8");
+  const body = Buffer.concat([Buffer.from([0, 0, 0, 0, 0]), env, ...blobs]);
+  body.writeUInt32BE(env.length, 1);
+  const header = Buffer.alloc(4);
+  header.writeUInt32BE(body.length, 0);
+  return Buffer.concat([header, body]);
+}
+
+test("encodes byte-identically to the reference encoder, JSON and binary", () => {
+  const packets: unknown[] = [
+    { n: 1, s: "é", a: [1, null, undefined, true], d: new Date(0), nested: { deep: [{ x: 1 }] } },
+    { type: "wire.sectors", payload: { bytes: { k0: Buffer.from([1, 2, 3]), k1: new Uint8Array(0) }, plans: [{ sid: "e", entries: [[0, "s", "k"]] }] } },
+    [Buffer.from("abc"), "tail", { raw: Buffer.alloc(5, 7) }],
+    { only: Buffer.from("x") },
+    { keep: "no blobs here", empty: {} },
+  ];
+  for (const p of packets) {
+    assert.deepEqual(encodeFrame(p), referenceEncode(p));
+  }
+});
+
+test("binary frames still round-trip blobs at their original positions", () => {
+  const blob = Buffer.from([9, 8, 7]);
+  const obj = { a: blob, b: [blob, "x"], c: { d: blob } };
+  const [back] = new FrameReader().push(encodeFrame(obj)) as [typeof obj];
+  assert.deepEqual(back.a, blob);
+  assert.deepEqual(back.b, [blob, "x"]);
+  assert.deepEqual(back.c.d, blob);
+});

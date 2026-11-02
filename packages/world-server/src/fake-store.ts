@@ -13,6 +13,7 @@ import {
   type AtomicOutcome,
 } from "./atomic.js";
 import type {
+  AccountRecord,
   AtomicLedgerEntry,
   AtomicOpKind,
   AtomicOpResult,
@@ -188,6 +189,7 @@ export class MemoryWorldStore implements WorldStore {
   private characterLocks = new Map<number, CharacterSessionLock>();
   private characterLockEpochs = new Map<number, number>();
   private socialRecords = new Map<string, SocialRecord>();
+  private accounts = new Map<string, AccountRecord>();
   private socialIds = new Map<string, number>();
 
   async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {
@@ -201,6 +203,16 @@ export class MemoryWorldStore implements WorldStore {
 
   async listSocialRecords(kind: SocialKind): Promise<SocialRecord[]> {
     return [...this.socialRecords.values()].filter((r) => r.kind === kind).map((r) => ({ ...r }));
+  }
+
+  async getAccount(username: string): Promise<AccountRecord | null> {
+    const a = this.accounts.get(username);
+    return a ? { ...a } : null;
+  }
+
+  async createAccount(a: AccountRecord): Promise<void> {
+    if (this.accounts.has(a.username)) throw new Error(`account ${a.username} already exists`);
+    this.accounts.set(a.username, { ...a });
   }
 
   async allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]> {

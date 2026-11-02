@@ -5,8 +5,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ANIMAL_LOD_RADIUS } from "../src/render/animal/animal-rig.js";
-import { ANIMAL_FAR_HYSTERESIS, animalIsFar } from "../src/render/animal/far-lod.js";
+import { ANIMAL_LOD_RADIUS } from "../src/animal-rig.js";
+import { ANIMAL_FAR_HYSTERESIS, animalIsFar } from "../src/far-lod.js";
 
 describe("animal far LOD", () => {
   it("a near animal turns far only past the radius plus the band", () => {

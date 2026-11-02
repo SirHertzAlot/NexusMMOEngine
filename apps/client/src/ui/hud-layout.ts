@@ -60,6 +60,16 @@ export function anchorStyle(
  * The default layout, matching the hardcoded positions the client used
  * before hud.json existed. content/ui/hud.json starts as a copy of this.
  */
+/**
+ * The layout to render: the served layout (content/ui/hud.json) over the
+ * defaults, so a widget the file does not place (a new one, or one not yet
+ * listed) keeps its default place rather than vanishing. No layout: the defaults.
+ */
+export function withDefaults(layout: HudLayout | null | undefined): HudLayout {
+  if (!layout) return DEFAULT_LAYOUT;
+  return { widgets: { ...DEFAULT_LAYOUT.widgets, ...layout.widgets } };
+}
+
 export const DEFAULT_LAYOUT: HudLayout = {
   widgets: {
     "player-frame": { anchor: "bottom-left", offset: { x: 16, y: 16 }, visible: true },
@@ -75,7 +85,7 @@ export const DEFAULT_LAYOUT: HudLayout = {
     "character-sheet": { anchor: "bottom-right", offset: { x: 16, y: 400 }, visible: true },
     "party-frame": { anchor: "top-left", offset: { x: 16, y: 64 }, visible: true },
     "guild-frame": { anchor: "top-left", offset: { x: 16, y: 200 }, visible: true },
-    "ability-bar": { anchor: "bottom-center", offset: { x: 0, y: 16 }, visible: true },
+    "ability-bar": { anchor: "bottom-center", offset: { x: 0, y: 250 }, visible: true },
     "status-frame": { anchor: "top-right", offset: { x: 16, y: 260 }, visible: true },
   },
 };

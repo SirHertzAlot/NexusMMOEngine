@@ -51,9 +51,63 @@ async function writeModel(io, entry, index) {
   await io.write(resolve(OUT, `${entry.name}.glb`), doc);
 }
 
+/**
+ * Stand-in quadrupeds (no licensed art): a body, head, tail and four legs, as plain boxes.
+ * Each id is the server's model path (content/wildlife/flora-fauna-models.json), so the
+ * client's catalog lookup finds it by the same hash; the name's word picks the rig (quadruped).
+ */
+const ANIMALS = [
+  { id: "models/glb/forest-creatures/Forest_Creatures/Wolf_6K9M8f0j1P.glb", name: "StandIn_Animal_Wolf" },
+  { id: "models/glb/forest-creatures/Forest_Creatures/Bear_0PXWfxfb0Hu.glb", name: "StandIn_Animal_Bear" },
+  { id: "models/glb/forest-creatures/Forest_Creatures/Boar_57fSWum6F1P.glb", name: "StandIn_Animal_Boar" },
+];
+
+/** The quadruped's boxes: [size, centre x, base y, centre z]. */
+const QUADRUPED = [
+  [[0.7, 0.55, 1.2], 0, 0.75, 0], // body
+  [[0.4, 0.4, 0.45], 0, 1.0, 0.85], // head
+  [[0.1, 0.1, 0.45], 0, 0.9, -0.75], // tail
+  [[0.16, 0.7, 0.16], -0.25, 0, 0.4], // front legs
+  [[0.16, 0.7, 0.16], 0.25, 0, 0.4],
+  [[0.16, 0.7, 0.16], -0.25, 0, -0.4], // back legs
+  [[0.16, 0.7, 0.16], 0.25, 0, -0.4],
+];
+
+function quadrupedTriangles() {
+  const pos = [];
+  const nrm = [];
+  for (const [size, cx, y, cz] of QUADRUPED) {
+    const box = boxTriangles(size);
+    for (let i = 0; i < box.pos.length; i += 3) {
+      pos.push(box.pos[i] + cx, box.pos[i + 1] + y, box.pos[i + 2] + cz);
+    }
+    nrm.push(...box.nrm);
+  }
+  return { pos: new Float32Array(pos), nrm: new Float32Array(nrm) };
+}
+
+async function writeAnimal(io, entry, index) {
+  const doc = new Document();
+  const buffer = doc.createBuffer();
+  const { pos, nrm } = quadrupedTriangles();
+  const material = doc.createMaterial(entry.name).setBaseColorFactor([...PALETTE[index % PALETTE.length], 1]).setRoughnessFactor(0.9).setMetallicFactor(0);
+  const prim = doc
+    .createPrimitive()
+    .setAttribute("POSITION", doc.createAccessor().setType("VEC3").setArray(pos).setBuffer(buffer))
+    .setAttribute("NORMAL", doc.createAccessor().setType("VEC3").setArray(nrm).setBuffer(buffer))
+    .setMaterial(material);
+  const node = doc.createNode(entry.name).setMesh(doc.createMesh(entry.name).addPrimitive(prim));
+  doc.createScene(entry.name).addChild(node);
+  await io.write(resolve(OUT, `${entry.name}.glb`), doc);
+}
+
 mkdirSync(OUT, { recursive: true });
 const io = new NodeIO();
 for (let i = 0; i < PLACEHOLDER_ART.length; i++) await writeModel(io, PLACEHOLDER_ART[i], i);
-const catalog = placeholderCatalog().models.map((m) => ({ ...m, file: `${m.name}.glb` }));
+for (let i = 0; i < ANIMALS.length; i++) await writeAnimal(io, ANIMALS[i], i);
+const catalog = [
+  ...placeholderCatalog().models.map((m) => ({ ...m, file: `${m.name}.glb` })),
+  ...ANIMALS.map((a) => ({ id: a.id, name: a.name, skinned: false, size: [1, 1.5, 2], file: `${a.name}.glb` })),
+];
 writeFileSync(resolve(OUT, "catalog.json"), JSON.stringify({ models: catalog }, null, 2) + "\n");
-console.log(`wrote ${PLACEHOLDER_ART.length} placeholder models to ${OUT}`);
+console.log(`wrote ${PLACEHOLDER_ART.length} placeholder models and ${ANIMALS.length} stand-in animals to ${OUT}`);

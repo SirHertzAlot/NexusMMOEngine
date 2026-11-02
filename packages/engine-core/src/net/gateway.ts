@@ -137,7 +137,7 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
@@ -364,6 +364,8 @@ export interface GatewayOptions {
   needs?: { eatSeconds: number };
   /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
   lessons?: Lessons | null;
+  /** The game day at a tick (0 is a Sunday): a pupil takes one lesson a day. Absent: a real day. */
+  gameDay?: (tick: number) => number;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -877,6 +879,7 @@ export class Gateway {
       | "extensions"
       | "needs"
       | "lessons"
+      | "gameDay"
       | "items"
       | "sectorBroadcast"
       | "interest"
@@ -1064,6 +1067,7 @@ export class Gateway {
     if (opts.social) this.setSocial(opts.social);
     this.eatSeconds = opts.needs?.eatSeconds ?? 0;
     this.lessons = opts.lessons ?? null;
+    this.gameDay = opts.gameDay;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -2311,6 +2315,23 @@ export class Gateway {
         else out.push(wid);
       }
     }
+    // FarVisible entities (IM5) within farM of the session's avatar, wherever they stand.
+    const far = farVisibleOf(this.world);
+    const avatar = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    if (far.length > 0 && avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
+      const farM = this.interest?.farM ?? 400;
+      const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
+      for (const eid of far) {
+        if (eid === avatar) continue;
+        if (Math.hypot(C.Transform.px[eid]! - x, C.Transform.pz[eid]! - z) <= farM) out.push(this.world.wireId(eid));
+      }
+    }
+    // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
+    const quests = this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined;
+    for (const name of quests?.pinnedResidentsOf?.(s.character?.id ?? null) ?? []) {
+      const e = this.residents?.entityOf(name);
+      if (e !== undefined) out.push(this.world.wireId(e));
+    }
     return out;
   }
 
@@ -2421,9 +2442,18 @@ export class Gateway {
       ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
       : new Set([GLOBAL_SECTOR]);
     const entries: DeltaSetEntry[] = [];
+    // IM7: sectors beyond enterM (kept only by hysteresis) send a rate-limited delta, when a rate is set.
+    const every = this.interest!.outerEvery;
+    const at = s.observer
+      ? { x: s.observer.x, z: s.observer.z }
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid) ? { x: C.Transform.px[eid], z: C.Transform.pz[eid] } : null;
     for (const sector of next) {
       if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-      else {
+      else if (every && at && sectorDistance(sector, at.x, at.z) > this.interest!.enterM) {
+        if (frame.tick % every !== 0) continue;
+        const d = frame.rateDelta(sector, every);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      } else {
         const d = frame.delta(sector);
         if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
       }
@@ -3852,7 +3882,7 @@ export class Gateway {
     const i = skill === undefined ? -1 : this.mastery.index.of(skill);
     if (i < 0) return;
     const who = s.character?.id ?? -1;
-    const day = Math.floor(Date.now() / 86_400_000); // ponytail: a real day, not the game's; the game clock is not visible here
+    const day = this.gameDay ? this.gameDay(this.tick) : Math.floor(Date.now() / 86_400_000);
     const key = `${who}/${info.npc}`;
     if (this.lessonDay.get(key) === day) return this.sendSystem(s, "They have taught you what they can for today.");
     const sheet = this.mastery.sheetOf(avatar);
@@ -4712,8 +4742,11 @@ export class Gateway {
     // entity is first-shown here (catalog §0x12).
     const names = this.namesFor(null);
     if (names) this.deliver(s, names, this.tick);
-    const drops = this.dropsFor(null);
-    if (drops) this.deliver(s, drops, this.tick);
+    // With interest on, drops follow interest per session (deliverDropsFor), not a region-wide list.
+    if (!this.interest) {
+      const drops = this.dropsFor(null);
+      if (drops) this.deliver(s, drops, this.tick);
+    }
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
     const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world, (e) => this.residents?.isResident(e) === true) ?? [])];
@@ -5960,6 +5993,7 @@ export class Gateway {
   /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
   private readonly eatSeconds: number;
   private readonly lessons: Lessons | null;
+  private readonly gameDay: ((tick: number) => number) | undefined;
   /** The game day a pupil last took a lesson from a master, by character and npc. */
   private readonly lessonDay = new Map<string, number>();
 

@@ -155,6 +155,7 @@ import {
   installShutdownHook,
   NavmeshTileRegistry,
   CsvCredentialStore,
+  WorldCredentialStore,
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
@@ -706,9 +707,14 @@ async function main(): Promise<void> {
   // colliders, which need the physics module's terrainColliders hook.
 
   // ---- auth + gateway ----------------------------------------------------
-  const credentialStore = new CsvCredentialStore(
+  // Slice C: with a world the accounts live there (the CSV backs sign-ins
+  // the world doesn't know yet); without one the region keeps its CSV.
+  const usersCsv = new CsvCredentialStore(
     process.env.MMO_USERS_CSV ?? path.join(DATA_DIR, "users.csv"),
   );
+  const credentialStore = worldClient?.registered
+    ? new WorldCredentialStore(worldClient, usersCsv)
+    : usersCsv;
   // Domain stores (characters, guilds, social, parties, instance results)
   // are built by their modules during assembly and published on
   // moduleCtx.stores; server.ts reads them back post-assembly below.
@@ -732,6 +738,8 @@ async function main(): Promise<void> {
     process.env.MMO_DAY_SECONDS ?? String(worldSettings.settings.daySeconds),
     process.env.MMO_DAY_OFFSET ?? String(worldSettings.settings.dayOffset),
   );
+  // The game day at a tick (0 is a Sunday); absent when the server keeps no calendar.
+  const gameDayOf = dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined;
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
@@ -793,8 +801,13 @@ async function main(): Promise<void> {
     return ids[n % ids.length];
   };
   // EM1: enemy kinds' art models from the gitignored content/enemies/models.local.json (see enemy-models.ts).
+  // Without the licensed art's local map, the committed stand-in map gives the quadrupeds the stand-in models
+  // (scripts/gen-placeholder-art.mjs), so an animal gets its rig and corpse on a checkout with no art.
+  const enemyModelsFile = fs.existsSync(new URL("../../content/enemies/models.local.json", import.meta.url))
+    ? new URL("../../content/enemies/models.local.json", import.meta.url)
+    : new URL("../../content/enemies/models.placeholder.json", import.meta.url);
   const enemyModelOf = enemyModelPicker(
-    loadEnemyModels(new URL("../../content/enemies/models.local.json", import.meta.url), (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
+    loadEnemyModels(enemyModelsFile, (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
   );
   const wildlifeSettlements: RaidSettlement[] =
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
@@ -1277,7 +1290,7 @@ async function main(): Promise<void> {
     detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
-    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined,
+    dayOf: gameDayOf,
   };
   const moduleCtx: ServerModuleContext = {
     sim,
@@ -1469,6 +1482,8 @@ async function main(): Promise<void> {
     social: game.rules.social,
     needs: game.rules.needs,
     lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
+    // A pupil takes one lesson a game day (a real day with no calendar).
+    gameDay: gameDayOf,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {

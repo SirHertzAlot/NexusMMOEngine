@@ -510,12 +510,14 @@ export const IngressSchema = z.strictObject({
  * Interest management (IM): a session sees the sectors whose rectangle is
  * within enterM of its avatar and drops one only past leaveM (hysteresis).
  * farM is how far a farVisible entity (megafauna, landmarks) is seen.
+ * outerEvery (IM7): sectors beyond enterM, kept only by hysteresis, send a delta every that many ticks; absent: every tick.
  */
 export const InterestSchema = z
   .strictObject({
     enterM: z.number().positive().default(96),
     leaveM: z.number().positive().default(128),
     farM: z.number().positive().default(400),
+    outerEvery: z.number().int().positive().optional(),
   })
   .refine((r) => r.leaveM >= r.enterM, { message: "leaveM must be at least enterM" });
 
@@ -662,6 +664,8 @@ export const CreatureSchema = z.strictObject({
   leashRadius: positive,
   /** Seconds a killed creature stays down before it rises at home. */
   respawnSeconds: z.number().min(0),
+  /** Seen from farM (interest management, IM5): megafauna and world bosses stay in view across the region. */
+  farVisible: z.boolean().default(false),
   /** How many spawn together (inclusive range). */
   pack: z.tuple([z.number().int().min(1), z.number().int().min(1)]).default([1, 1]),
   /** Item bases a spawned creature may carry; one is chosen at random. */

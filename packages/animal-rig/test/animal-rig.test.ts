@@ -8,11 +8,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { advancePhase, attackPose, deathProgress, gaitAt, legCurve, MAX_SWEEP } from "../src/render/animal/gait.js";
+import { advancePhase, attackPose, deathProgress, gaitAt, legCurve, MAX_SWEEP } from "../src/gait.js";
 import {
   BONE_BODY, BONE_FL, BONE_FR, BONE_HEAD, BONE_HL, BONE_HR, BONE_LOWER, BONE_TAIL, findFrame, segmentQuadruped,
-} from "../src/render/animal/segment.js";
-import { AnimalTemplate } from "../src/render/animal/animal-rig.js";
+} from "../src/segment.js";
+import { AnimalTemplate } from "../src/animal-rig.js";
 
 /** A box from x/y/z ranges, with segments so its vertices cover its volume. */
 function box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, seg = [1, 1, 1]): THREE.BufferGeometry {

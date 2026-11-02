@@ -23,8 +23,11 @@ and `docs/MESSAGE-CATALOG.md` (the wire protocol this extends).
 
 ## 2. Where it is today
 
-- An account is a username and password in the region's `users.csv`
-  (world-server slice C, which moves accounts to SurrealDB, is not built).
+- An account is a username and an argon2id hash. With a world server the
+  accounts live in its SurrealDB `account` table (slice C,
+  `WorldCredentialStore`), and a region's `users.csv` only backs sign-ins
+  the world does not know yet: such an account is copied up on first sign-in.
+  Without a world the region keeps its CSV.
 - A login spawns an anonymous avatar (Transform, Velocity, PlayerIntent,
   Health, Locomotion) at the spawn grid. Nothing about it is saved: no
   name, appearance or skills, and not its position. It is despawned when
