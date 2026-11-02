@@ -33,7 +33,7 @@ in the browser** — that is the load-bearing rule of the whole design.
                         └──────────────────────────────────────────┘
                                           │
                                           ▼  (optional)
-                              world server (region registry)
+                              world server (record store)
 ```
 
 Heavy or numerics-bound work lives in C++ N-API addons compiled into the same
@@ -394,12 +394,16 @@ reflections and weather from it.
 
 ## The optional world server
 
-`packages/world-server` is a separate service and an HTTP/webrpc region
-registry. A game server becomes a *region* of a larger world when `WORLD_URL`
-is set: it registers, heartbeats, and reports snapshots. **All of that runs
-off the tick loop**, because a slow or absent world server must never stall
-the simulation. Without `WORLD_URL` the game server runs standalone, which is
-the normal development setup. See [WORLD-SERVER-SPEC.md](WORLD-SERVER-SPEC.md).
+`packages/world-server` is a separate service and the world's durable record
+store, reached over webrpc. It holds region leases and fencing epochs, shard
+snapshots, character state and the item ledger, and runs the atomic
+operations (trade, auction, loot, inventory, craft) and region migrations. A
+game server becomes a *region* of a larger world when `WORLD_URL` is set: it
+registers, and the state shipper sends it state. **All of that runs off the
+tick loop**, because a slow or absent world server must never stall the
+simulation. Without `WORLD_URL` the game server runs standalone on its local
+SQLite stores, which is the normal development setup. See
+[WORLD-SERVER-SPEC.md](WORLD-SERVER-SPEC.md).
 
 ## Where to look next
 
