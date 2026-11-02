@@ -26,6 +26,11 @@ export interface InterestRadii {
   leaveM: number;
   /** How far a FarVisible entity is seen (IM5), metres. Default 400. */
   farM?: number;
+  /**
+   * IM7 rate LOD: sectors kept only by hysteresis (beyond enterM) send a delta every this many ticks,
+   * carrying the union of the changed rows since the last send. Unset: every tick (today's path).
+   */
+  outerEvery?: number;
 }
 
 export const DEFAULT_INTEREST: InterestRadii = { enterM: 96, leaveM: 128, farM: 400 };
@@ -78,8 +83,23 @@ export function interestSectors(x: number, z: number, r: InterestRadii, prev: Re
   return out;
 }
 
+/**
+ * Distance in metres from (x, z) to the rectangle of a sector key ("sx,sz"). The global sector is
+ * always 0: it is never rate limited.
+ */
+export function sectorDistance(key: string, x: number, z: number): number {
+  if (key === GLOBAL_SECTOR) return 0;
+  const [sx, sz] = key.split(",").map(Number);
+  const dx = Math.max(sx * SECTOR_SIZE - x, 0, x - (sx + 1) * SECTOR_SIZE);
+  const dz = Math.max(sz * SECTOR_SIZE - z, 0, z - (sz + 1) * SECTOR_SIZE);
+  return Math.hypot(dx, dz);
+}
+
 /** One tick's per-sector bytes. Build before tracker.commit() and sim.endTick(). */
 export class SectorFrame {
+  /** The frames of the previous ticks, newest first (IM7 reads their changed rows). */
+  prior: readonly SectorFrame[] = [];
+  private readonly rateCache = new Map<string, Uint8Array | null>();
   /** Sector -> what it has to say this tick; encoded on first ask, so sectors nobody sees cost nothing. */
   readonly pending = new Map<string, { lists: Record<Key, number[]>; spawned: bigint[]; despawned: bigint[] }>();
   private readonly deltas = new Map<string, Uint8Array>();
@@ -101,6 +121,39 @@ export class SectorFrame {
       b = encodeEidsFromSim(this.sim, this.tick, this.tick - 1, p.lists, p, this.chunkSource);
       this.deltas.set(sector, b);
     }
+    return b;
+  }
+
+  /**
+   * IM7: a sector's delta over the last `window` ticks (this one and the prior frames): the union of
+   * their changed rows, read at current values. Rows are absolute, so one send covers every skipped tick.
+   * Returns undefined when nothing changed in the window; cached per frame.
+   */
+  rateDelta(sector: string, window: number): Uint8Array | undefined {
+    const cached = this.rateCache.get(sector);
+    if (cached !== undefined) return cached ?? undefined;
+    const lists = emptyLists();
+    const seen = new Map<Key, Set<number>>();
+    const spawned = new Set<bigint>(), despawned = new Set<bigint>();
+    let any = false;
+    for (const f of [this, ...this.prior.slice(0, window - 1)]) {
+      const p = f.pending.get(sector);
+      if (!p) continue;
+      any = true;
+      for (const [k] of KEYS) {
+        let set = seen.get(k);
+        if (!set) seen.set(k, (set = new Set()));
+        for (const eid of p.lists[k]) if (!set.has(eid)) { set.add(eid); lists[k].push(eid); }
+      }
+      for (const w of p.spawned) spawned.add(w);
+      for (const w of p.despawned) despawned.add(w);
+    }
+    if (!any) {
+      this.rateCache.set(sector, null);
+      return undefined;
+    }
+    const b = encodeEidsFromSim(this.sim, this.tick, this.tick - window, lists, { spawned: [...spawned], despawned: [...despawned] }, this.chunkSource);
+    this.rateCache.set(sector, b);
     return b;
   }
 
@@ -142,14 +195,20 @@ function bucketAll(sim: SimWorld): Map<string, Record<Key, number[]>> {
 }
 
 /** Keeps every entity's home sector across ticks and cuts each tick into sector deltas. */
+/** Frames kept for IM7's windows (the widest rate period it can read is this many ticks). */
+export const RATE_HISTORY = 8;
+
 export class SectorIndex {
   /** wire id -> home sector, as of the last frame. */
   private readonly home = new Map<bigint, string>();
+  private recent: SectorFrame[] = [];
   private seeded = false;
 
   /** This tick's sector deltas. Read-only w.r.t. the tracker (the caller commits after). */
   frame(sim: SimWorld, tick: number, tracker: DeltaTracker, chunkSource: ChunkDataSource | null): SectorFrame {
     const f = new SectorFrame(sim, tick, chunkSource);
+    f.prior = this.recent;
+    this.recent = [f, ...this.recent].slice(0, RATE_HISTORY);
     if (!this.seeded) {
       this.seeded = true;
       const t = fullEidLists(sim).transforms;

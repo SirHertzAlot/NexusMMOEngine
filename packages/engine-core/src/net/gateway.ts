@@ -137,7 +137,7 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
@@ -2322,6 +2322,12 @@ export class Gateway {
         if (Math.hypot(C.Transform.px[eid]! - x, C.Transform.pz[eid]! - z) <= farM) out.push(this.world.wireId(eid));
       }
     }
+    // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
+    const quests = this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined;
+    for (const name of quests?.pinnedResidentsOf?.(s.character?.id ?? null) ?? []) {
+      const e = this.residents?.entityOf(name);
+      if (e !== undefined) out.push(this.world.wireId(e));
+    }
     return out;
   }
 
@@ -2432,9 +2438,18 @@ export class Gateway {
       ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
       : new Set([GLOBAL_SECTOR]);
     const entries: DeltaSetEntry[] = [];
+    // IM7: sectors beyond enterM (kept only by hysteresis) send a rate-limited delta, when a rate is set.
+    const every = this.interest!.outerEvery;
+    const at = s.observer
+      ? { x: s.observer.x, z: s.observer.z }
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid) ? { x: C.Transform.px[eid], z: C.Transform.pz[eid] } : null;
     for (const sector of next) {
       if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-      else {
+      else if (every && at && sectorDistance(sector, at.x, at.z) > this.interest!.enterM) {
+        if (frame.tick % every !== 0) continue;
+        const d = frame.rateDelta(sector, every);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      } else {
         const d = frame.delta(sector);
         if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
       }
@@ -4723,8 +4738,11 @@ export class Gateway {
     // entity is first-shown here (catalog §0x12).
     const names = this.namesFor(null);
     if (names) this.deliver(s, names, this.tick);
-    const drops = this.dropsFor(null);
-    if (drops) this.deliver(s, drops, this.tick);
+    // With interest on, drops follow interest per session (deliverDropsFor), not a region-wide list.
+    if (!this.interest) {
+      const drops = this.dropsFor(null);
+      if (drops) this.deliver(s, drops, this.tick);
+    }
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
     const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world, (e) => this.residents?.isResident(e) === true) ?? [])];

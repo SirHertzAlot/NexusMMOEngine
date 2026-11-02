@@ -50,9 +50,8 @@ import { DEFAULT_CLIP_MAP, indexClipMap, parseClipMap, planClip } from "@mmo-eng
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
-import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate } from "./animal/animal-rig.js";
+import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate, animalIsFar } from "@mmo-engine/animal-rig";
 import { CorpseProxy } from "./animal/corpse-proxy.js";
-import { animalIsFar } from "./animal/far-lod.js";
 import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
@@ -908,7 +907,8 @@ export class EntityLayer {
     tracked.animalTried = true;
     let template = this.animalTemplates.get(asset.assetHash);
     if (template === undefined) {
-      template = AnimalTemplate.from(ready.geometry);
+      // The model's key is "synty:<catalog id>": the id's name picks the rig (a bird, a snake, a fish).
+      template = AnimalTemplate.from(ready.geometry, undefined, ready.key.replace(/^synty:/, ""));
       this.animalTemplates.set(asset.assetHash, template);
     }
     if (!template) return;

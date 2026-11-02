@@ -10,6 +10,8 @@ import { generateSettlement, MANIFEST_FORMAT, type GenerationResult, type Settle
 import { contentHash } from "./hash.js";
 import { BUILTIN_RULES } from "./rules.js";
 import { settlementScene, type SceneOptions } from "./scene.js";
+import { civilWorks } from "./civil-works.js";
+import { streetRibbons } from "./street-ribbons.js";
 
 export type BakeResult = (Extract<GenerationResult, { ok: true }> & { file: string }) | Extract<GenerationResult, { ok: false }>;
 
@@ -25,6 +27,8 @@ export function bakeSettlement(request: SettlementRequest, out: string, opts: { 
   if (scene && opts.scene) {
     mkdirSync(opts.scene.dir, { recursive: true });
     writeFileSync(join(opts.scene.dir, `${scene.name}.scene.json`), JSON.stringify(scene, null, 2) + "\n");
+    // The street ribbons and civil works (SG2b) beside the scene: the client draws them over the slabs the scene keeps for the server.
+    writeFileSync(join(opts.scene.dir, `${scene.name}.ribbons.json`), JSON.stringify({ scene: scene.name, streets: streetRibbons(r.manifest), civil: civilWorks(r.manifest) }) + "\n");
   }
   return { ...r, file };
 }
