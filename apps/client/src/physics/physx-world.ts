@@ -8,7 +8,6 @@
 
 import { PHYSICS_SUBSTEPS, RAGDOLL_PARTS, type PhysicsWorld, type Vec3, type WalkerState } from "./physics-world.js";
 import { RIG_JOINTS, RIG_PARTS } from "./ragdoll-rig.js";
-import physxWasmUrl from "physx-js-webidl/physx-js-webidl.wasm?url";
 
 // physx-js-webidl's typings are loose for the parts used here; `Px` keeps the
 // rest of the surface readable without a second declaration file.
@@ -35,13 +34,17 @@ const SKIN = 0.01;
  */
 const GROUND_PULL = 0.1;
 const MOVE_DT = 1 / 60;
+/** Sideways speed every ragdoll part gets on spawn, m/s, so a corpse topples. */
+const RAGDOLL_SHOVE = 1.5;
 
 export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
   const { default: PHYSX } = (await import("physx-js-webidl")) as {
     default: (opts?: { locateFile?: (path: string) => string }) => Promise<Px>;
   };
   // The loader finds its .wasm next to the module, which the dev server's pre-bundle moves: point it at the asset
-  // Vite serves (in dev and in the build), else the page's HTML fallback is compiled as WebAssembly.
+  // Vite serves (in dev and in the build), else the page's HTML fallback is compiled as WebAssembly. The ?url
+  // import is loaded here, not at module top, so Node test runs (which cannot resolve ?url) still import this file.
+  const { default: physxWasmUrl } = await import("physx-js-webidl/physx-js-webidl.wasm?url");
   const P: Px = await PHYSX({ locateFile: (path) => (path.endsWith(".wasm") ? physxWasmUrl : path) });
   const T: Px = P;
   const version = T.PHYSICS_VERSION;
@@ -154,6 +157,9 @@ export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
           new P.PxBoxGeometry(hx, hy, hz),
           1,
         );
+        // A rig dropped exactly upright is balanced on its own axis and stands still.
+        // A small sideways push topples it onto the ground.
+        actor.setLinearVelocity(vec(RAGDOLL_SHOVE, 0, 0));
         scene.addActor(actor);
         return actor;
       });
