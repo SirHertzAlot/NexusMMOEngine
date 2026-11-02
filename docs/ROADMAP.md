@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**269 items built, 3 in progress, 2 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**270 items built, 3 in progress, 1 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -436,7 +436,7 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 | --- | --- | --- |
 | A | Core and registry: `WorldCore`, SurrealDB schema, webrpc, region auth, heartbeats | ✅ |
 | B | Region migration (border hand-off) | ✅ (arbitration #119, live hand-off #122) |
-| C | Accounts on the world server | 📋 (folded into C1 above) |
+| C | Accounts on the world server | ✅ | #618: the world server owns accounts (SurrealDB `account` table, argon2id hashes, webrpc GetAccount and CreateAccount); the region signs players in through a world-backed credential store and copies CSV-only accounts up. |
 | D | Stress harness and the published number | ✅ (`npm run stress:world`, [`WORLD-STRESS-RESULTS.md`](WORLD-STRESS-RESULTS.md), #120) |
 | PL1 | World ingestion accepts real region state: request bodies are sized from the schema caps (snapshots 4 MiB, ledger batches 1 MiB, character state 256 KiB; everything else 256 KiB) inside the webrpc router. Before, the global 256 KB parser was below them, and a 1,377-entity region's snapshot (257 KB in base64) was ~23 entities from being refused on every upload. And snapshots come due: the shipper keeps a range's upload slot (every 300 ticks plus its phase) when a fresher save takes over. Before, the region offered every 1 s save, each offer pushed the slot back, and no snapshot ever reached the world (checked live: 40 s of a real region, 0 rows) | ✅ (`fix/world-body-limit`) |
 | PL2 | The world server embeds SurrealDB (`@surrealdb/node`, RocksDB in its data dir; no separate DB server), and the SurrealDB store contracts run in `npm test` | ✅ (`feat/world-embedded-surreal`): default `WORLD_DB_URL` is `rocksdb:<WORLD_DATA_DIR>/surreal`; `mem://` embeds in memory; `ws://` still reaches a server; `mem:` is the plain JS store. Four store contracts run embedded by default; the define-functions check still needs a server (it opens several clients on one database) |
@@ -496,6 +496,7 @@ Newest first. One line per merged PR or decision.
 - **2026-11-02**: RS5 lessons per game day, RS3 nearest-town-first budget test, and a rules fix (#612): `interest.json` `outerEvery` was rejected by the strict schema, which broke rules load and the server boot. RS3 and RS5 stay 🚧 until the residents panel and talk flow are captured in the running client.
 - **2026-11-02**: M5 closed (#614): starter abilities designed from the existing balance with no placeholder flag, Tab targets the nearest body (Esc clears), the dev client serves the ability and HUD content (`clientContent` was unregistered, so the ability bar was empty), the HUD layout merges over the defaults (the duel panel was hidden), and the two-account live check: strike 10, guarded 5.
 - **2026-11-02**: RS3 and RS5 closed on live evidence (#612 body): the talk dialog is captured in `marketing/residents/` (a town guard's panel over the world), and town 0182 runs tier `full` with 668 people, budget 800.
+- **2026-11-02**: Row C closed (#618): the world server owns accounts. The region signs players in through a world-backed credential store and copies CSV-only accounts up.
 - **2026-11-01**: Duel strikes row closed ✅ (#587): the cause and fix are on main, with the two-account live check. Recount on main after #595 (B7, still a draft) and the other open PRs: no other status changed.
 - **2026-11-01**: D4g decal spawn (#585): dungeon decal kinds (cracks, moss, roots, bones, icicles) spawn as placeholder props, reusing existing prop shapes. Row closed ✅ on placeholder props, per the art-blocked rule (stand-ins count as done; real art can swap in later).
 - **2026-11-01**: WL1 free swimmers (#590): fish and sea mammals placed as static props in open water, 1 to 30 m. Moving swimmers still need the simulated-agent path. Row stays 🚧.
