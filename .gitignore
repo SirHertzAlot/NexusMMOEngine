@@ -81,3 +81,23 @@ content/dungeons/props.local.json
 # Graphify indexing caches and reports
 graphify-out/
 packages/graphify-out/
+
+# Engine-core runtime data written by a running server (world, saves, logs,
+# bake output). Generated locally; never commit. Tracked files are unaffected.
+packages/engine-core/*.db-shm
+packages/engine-core/*.db-wal
+packages/engine-core/characters.db
+packages/engine-core/gathering.db
+packages/engine-core/guilds.db
+packages/engine-core/instances.db
+packages/engine-core/parties.db
+packages/engine-core/places.db
+packages/engine-core/quests.db
+packages/engine-core/social.db
+packages/engine-core/world.db
+packages/engine-core/users.csv
+packages/engine-core/dungeons/
+packages/engine-core/logs/
+packages/engine-core/loot/
+packages/engine-core/navmesh/
+packages/engine-core/surreal/
