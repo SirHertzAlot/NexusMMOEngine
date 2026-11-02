@@ -510,12 +510,14 @@ export const IngressSchema = z.strictObject({
  * Interest management (IM): a session sees the sectors whose rectangle is
  * within enterM of its avatar and drops one only past leaveM (hysteresis).
  * farM is how far a farVisible entity (megafauna, landmarks) is seen.
+ * outerEvery (IM7): sectors beyond enterM, kept only by hysteresis, send a delta every that many ticks; absent: every tick.
  */
 export const InterestSchema = z
   .strictObject({
     enterM: z.number().positive().default(96),
     leaveM: z.number().positive().default(128),
     farM: z.number().positive().default(400),
+    outerEvery: z.number().int().positive().optional(),
   })
   .refine((r) => r.leaveM >= r.enterM, { message: "leaveM must be at least enterM" });
 

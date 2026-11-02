@@ -732,6 +732,8 @@ async function main(): Promise<void> {
     process.env.MMO_DAY_SECONDS ?? String(worldSettings.settings.daySeconds),
     process.env.MMO_DAY_OFFSET ?? String(worldSettings.settings.dayOffset),
   );
+  // The game day at a tick (0 is a Sunday); absent when the server keeps no calendar.
+  const gameDayOf = dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined;
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
@@ -1277,7 +1279,7 @@ async function main(): Promise<void> {
     detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
-    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined,
+    dayOf: gameDayOf,
   };
   const moduleCtx: ServerModuleContext = {
     sim,
@@ -1469,6 +1471,8 @@ async function main(): Promise<void> {
     social: game.rules.social,
     needs: game.rules.needs,
     lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
+    // A pupil takes one lesson a game day (a real day with no calendar).
+    gameDay: gameDayOf,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
