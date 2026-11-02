@@ -33,8 +33,15 @@ describe("placeholder art", () => {
     }
   });
 
-  it("the committed client catalog is the table's catalog", () => {
+  it("the committed client catalog is the table's catalog plus the stand-in animals", () => {
     const served = JSON.parse(readFileSync(resolve(REPO, "apps/client/public/placeholder-art/catalog.json"), "utf8")) as { models: (CatalogModel & { file: string })[] };
-    assert.deepEqual(served.models.map(({ file: _file, ...m }) => m), placeholderCatalog().models);
+    // The generator also writes the quadruped stand-ins (StandIn_Animal_*, not structure kinds); they are not in the table.
+    const isAnimal = (m: CatalogModel) => m.name.startsWith("StandIn_Animal_");
+    const structures = served.models.filter((m) => !isAnimal(m));
+    assert.deepEqual(structures.map(({ file: _file, ...m }) => m), placeholderCatalog().models);
+    assert.deepEqual(
+      served.models.filter(isAnimal).map((m) => m.name).sort(),
+      ["StandIn_Animal_Bear", "StandIn_Animal_Boar", "StandIn_Animal_Wolf"],
+    );
   });
 });
