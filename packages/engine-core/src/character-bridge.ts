@@ -111,3 +111,4 @@ export class CharacterBridgeSystem implements SimSystem {
     }
   }
 }
+
