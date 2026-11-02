@@ -42,7 +42,15 @@ export class CharacterBridgeSystem implements SimSystem {
   private readonly bridged = new Map<number, Bridged>();
   private readonly seen = new Set<number>();
 
-  constructor(private readonly backend: CharacterBackend) {}
+  /**
+   * `enabled: false` makes the system a no-op (nothing is bridged, nothing
+   * is moved), so the JS prop push-out keeps the walkers. Off by default in
+   * the physics module until the live walker-at-prop check passes.
+   */
+  constructor(
+    private readonly backend: CharacterBackend,
+    private readonly enabled: boolean = true,
+  ) {}
 
   /** True if the entity is driven by a character this tick. */
   has(e: number): boolean {
@@ -50,6 +58,7 @@ export class CharacterBridgeSystem implements SimSystem {
   }
 
   step(sim: SimWorld, dtSeconds: number): void {
+    if (!this.enabled) return;
     const dt = dtSeconds;
     this.seen.clear();
     const list = this.walkers(sim.ecs);
