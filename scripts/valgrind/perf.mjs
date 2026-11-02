@@ -16,8 +16,9 @@
  *   --check      exit 1 if a workload is slower than the baseline by more
  *                than --threshold percent (default 3)
  *
- * Node runs with --single-threaded (no background compiler or GC threads),
- * so the counts don't depend on thread scheduling. The baseline records
+ * Node runs with --single-threaded (no background compiler or GC threads)
+ * and --no-memory-reducer (its wall-clock timers can trigger GCs at varying
+ * points), so the counts don't depend on thread scheduling or timing. The baseline records
  * the Node version it was measured with; counts from another Node (or
  * compiler) aren't comparable, and the comparison says so.
  */
@@ -37,8 +38,31 @@ const thresholdAt = args.indexOf("--threshold");
 const threshold = thresholdAt >= 0 ? Number(args[thresholdAt + 1]) : 3;
 const names = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--threshold");
 
-/** Run the workloads once under callgrind; returns { name: { ir, n, unit } } and the skipped ones. */
-export function measure(list = names) {
+/** Every workload's name, in the order workloads.mjs defines them. */
+function allWorkloadNames() {
+  const src = readFileSync(join(root, "scripts", "valgrind", "workloads.mjs"), "utf8");
+  return [...src.matchAll(/^  "([a-z0-9-]+)": \{/gm)].map((m) => m[1]);
+}
+
+/**
+ * Run each workload in its own process under callgrind; returns { name: { ir, n, unit } }
+ * and the skipped ones. One process per workload: in a shared process, the
+ * heap and JIT state a workload inherits from the ones before it changes its
+ * count (residents-tick measured 5.0 M alone, 7.8 M after the others).
+ */
+export function measure(list = names.length ? names : allWorkloadNames()) {
+  const measured = {};
+  const skipped = {};
+  for (const name of list) {
+    const r = measureOne([name]);
+    Object.assign(measured, r.measured);
+    Object.assign(skipped, r.skipped);
+  }
+  return { measured, skipped };
+}
+
+/** Run the named workloads in one process under callgrind; returns { name: { ir, n, unit } } and the skipped ones. */
+function measureOne(list) {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   const r = spawnSync(
@@ -49,6 +73,10 @@ export function measure(list = names) {
       `--callgrind-out-file=${join(outDir, "cg.out")}`,
       process.execPath,
       "--single-threaded",
+      // V8's memory reducer runs on wall-clock timers, so a run can take a GC
+      // that another run doesn't: the same workload measured 5.0 M to 8.3 M
+      // instructions per second. Off here, the counts repeat run to run.
+      "--no-memory-reducer",
       join(root, "scripts", "valgrind", "workloads.mjs"),
       ...list,
     ],
