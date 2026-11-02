@@ -32,6 +32,7 @@
  *   addon adapter (createJoltBackend), tests pass a mock.
  */
 
+import type { CharacterBackend } from "./character-bridge.js";
 import { tileHeightAt } from "@mmo-engine/protocol";
 import { createRequire } from "node:module";
 import { addComponent, defineQuery, hasComponent, Not } from "bitecs";
@@ -975,6 +976,11 @@ interface JoltAddonModule {
     addTerrain(key: bigint, originX: number, originZ: number, spacing: number, samples: Float32Array, friction: number): boolean;
     removeTerrain(key: bigint): void;
     terrainCount(): number;
+    addCharacter(id: bigint, radius: number, halfHeight: number, x: number, y: number, z: number): boolean;
+    removeCharacter(id: bigint): void;
+    setCharacterVelocity(id: bigint, vx: number, vy: number, vz: number): void;
+    updateCharacter(id: bigint, dt: number, gx: number, gy: number, gz: number): void;
+    characterPosition(id: bigint): [number, number, number];
   };
   ShapeKind: { Box: 0; Sphere: 1 };
   MotionType: { Static: 0; Kinematic: 1; Dynamic: 2 };
@@ -989,7 +995,7 @@ interface JoltAddonModule {
  * importing systems.ts never touches the native module, so unit tests
  * with a mock backend stay build-free.
  */
-export function createJoltBackend(): PhysicsBackend {
+export function createJoltBackend(): PhysicsBackend & CharacterBackend {
   const require = createRequire(import.meta.url);
   const addon = require("@mmo-engine/addon-physics") as JoltAddonModule;
   const world = addon.createWorld();
@@ -1008,5 +1014,10 @@ export function createJoltBackend(): PhysicsBackend {
       world.addTerrain(key, originX, originZ, spacing, samples, friction),
     removeTerrain: (key) => world.removeTerrain(key),
     terrainCount: () => world.terrainCount(),
+    addCharacter: (id, radius, halfHeight, x, y, z) => world.addCharacter(id, radius, halfHeight, x, y, z),
+    removeCharacter: (id) => world.removeCharacter(id),
+    setCharacterVelocity: (id, vx, vy, vz) => world.setCharacterVelocity(id, vx, vy, vz),
+    updateCharacter: (id, dt, gx, gy, gz) => world.updateCharacter(id, dt, gx, gy, gz),
+    characterPosition: (id) => world.characterPosition(id),
   };
 }
