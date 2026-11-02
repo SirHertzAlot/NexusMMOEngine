@@ -176,3 +176,58 @@ test("a bridged walker gets no physics body, so it cannot push its own character
     backend.destroy();
   }
 });
+
+test("a walker that spawns inside a static box is nudged out once, and its first sweep does not move it", () => {
+  // The live spawn at (-14.44, -13.60) sits 4 cm inside a tall box (see docs): the walker must start clear of it.
+  const backend = createJoltBackend();
+  try {
+    const bx = -13.91, by = -0.25, bz = -14.58;
+    const hx = 0.71, hy = 7.79, hz = 0.67;
+    backend.addBodies({
+      count: 1,
+      entityIds: new BigUint64Array([9003n]),
+      shapeKind: new Uint8Array([ShapeKind.Box]),
+      halfExtents: new Float32Array([hx, hy, hz]),
+      radius: new Float32Array([0]),
+      mass: new Float32Array([0]),
+      friction: new Float32Array([0.8]),
+      restitution: new Float32Array([0]),
+      motionType: new Uint8Array([MotionType.Static]),
+      layer: new Uint8Array([0]),
+      pos: new Float32Array([bx, by, bz]),
+      quat: new Float32Array([0, 0, 0, 1]),
+      linVel: new Float32Array(3),
+      angVel: new Float32Array(3),
+    });
+    const sim = new SimWorld();
+    const box = sim.spawn();
+    addComponent(sim.ecs, Transform, box);
+    addComponent(sim.ecs, BodyConfig, box);
+    Transform.px[box] = bx; Transform.py[box] = by; Transform.pz[box] = bz; Transform.qw[box] = 1;
+    BodyConfig.shapeKind[box] = ShapeKind.Box;
+    BodyConfig.halfX[box] = hx; BodyConfig.halfY[box] = hy; BodyConfig.halfZ[box] = hz;
+    BodyConfig.radius[box] = 0; BodyConfig.mass[box] = 0; BodyConfig.motionType[box] = MotionType.Static;
+    BodyConfig.layer[box] = 0; BodyConfig.friction[box] = 0.8; BodyConfig.restitution[box] = 0;
+
+    const walker = spawnWalker(sim, -14.44);
+    Transform.pz[walker] = -13.6;
+    Transform.py[walker] = -0.665; // the live spawn height
+    const bridge = new CharacterBridgeSystem(backend);
+    const spawn = [Transform.px[walker], Transform.pz[walker]];
+    bridge.step(sim, DT);
+    const afterSpawn = [Transform.px[walker], Transform.pz[walker]];
+    // The first step may only nudge the walker out of the box (about 9 cm); without the nudge the sweep moves it about 0.7 m.
+    const first = Math.hypot(afterSpawn[0] - spawn[0], afterSpawn[1] - spawn[1]);
+    assert.ok(first < 0.15, `first step moved ${first} m`);
+    // Clear of the box's XZ footprint by the capsule radius (0.35 m).
+    const dx = Math.max(0, Math.abs(afterSpawn[0] - bx) - hx);
+    const dz = Math.max(0, Math.abs(afterSpawn[1] - bz) - hz);
+    assert.ok(Math.hypot(dx, dz) >= 0.35 - 1e-3, `clear of the box by the radius, got ${Math.hypot(dx, dz)}`);
+    // Zero input from here: the settle must be about 0.
+    for (let t = 0; t < 10; t++) bridge.step(sim, DT);
+    const settle = Math.hypot(Transform.px[walker] - afterSpawn[0], Transform.pz[walker] - afterSpawn[1]);
+    assert.ok(settle < 0.01, `zero-input settle ${settle} m`);
+  } finally {
+    backend.destroy();
+  }
+});

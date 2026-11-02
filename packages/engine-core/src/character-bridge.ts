@@ -17,9 +17,13 @@ import { defineQuery, hasComponent } from "bitecs";
 import { BodyConfig, MotionType, Noclip, ShapeKind, Transform, Velocity } from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import { clearOfStatics } from "./prop-collision.js";
 
 /** Walkers that move further than this in one tick are teleported. */
 export const TELEPORT_DISTANCE = 2;
+
+/** Clearance added to the capsule radius when a walker is first placed: a spawn inside a static body is pushed out before its character is created. */
+export const SPAWN_CLEARANCE = 0.05;
 
 /** The character calls the bridge needs; the Jolt adapter implements them. */
 export interface CharacterBackend {
@@ -70,15 +74,21 @@ export class CharacterBridgeSystem implements SimSystem {
       const radius = BodyConfig.radius[e];
       if (!(radius > 0)) continue;
       const halfHeight = BodyConfig.halfY[e];
-      const px = Transform.px[e];
+      let px = Transform.px[e];
       const py = Transform.py[e];
-      const pz = Transform.pz[e];
+      let pz = Transform.pz[e];
       if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) continue;
       this.seen.add(e);
       const offset = halfHeight + radius;
       let b = this.bridged.get(e);
       if (!b) {
         b = { id: BigInt(e), offset };
+        // One-time placement: nudge the walker out of any static body it starts in (a spawn inside a wall), so its first sweep does not push it.
+        const clear = clearOfStatics(sim, px, pz, radius + SPAWN_CLEARANCE);
+        Transform.px[e] = clear.x;
+        Transform.pz[e] = clear.z;
+        px = clear.x;
+        pz = clear.z;
         if (!this.backend.addCharacter(b.id, radius, halfHeight, px, py + offset, pz)) continue;
         this.bridged.set(e, b);
       }
