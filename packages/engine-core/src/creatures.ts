@@ -35,7 +35,7 @@ import { type CreaturesRules, type ItemBaseRules, CreatureAiSchema, type Creatur
 import { fnv1a32 } from "@mmo-engine/scatter";
 import * as C from "./components.js";
 import type { Weapon } from "./combat.js";
-import { CHARACTER_CAPSULE, PLAYER_SPEED, type SimSystem } from "./systems.js";
+import { attachDefaultCollider, CHARACTER_CAPSULE, PLAYER_SPEED, type SimSystem } from "./systems.js";
 import { clearOfStatics } from "./prop-collision.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
@@ -325,6 +325,9 @@ export class CreatureSystem implements SimSystem {
       C.AssetRef.assetHash[eid] = fnv1a32(model);
       C.AssetRef.variant[eid] = 0;
     }
+    // ColliderSystem skips entities with an AssetRef (scatter props), so a creature with a model would have no
+    // body: it would never collide and the client would draw it as scenery. Give it the collider here.
+    if (!hasComponent(sim.ecs, C.BodyConfig, eid)) attachDefaultCollider(sim, eid);
     // damageX scales the blow: damage goes as mass^massPower, so mass goes as damageX^(1/massPower).
     const mass = base.mass * Math.pow(def.damageX ?? 1, 1 / (this.opts.massPower ?? 0.5));
     this.brains.set(eid, {
