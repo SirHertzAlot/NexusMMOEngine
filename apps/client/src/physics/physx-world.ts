@@ -8,6 +8,7 @@
 
 import { PHYSICS_SUBSTEPS, RAGDOLL_PARTS, type PhysicsWorld, type Vec3, type WalkerState } from "./physics-world.js";
 import { RIG_JOINTS, RIG_PARTS } from "./ragdoll-rig.js";
+import physxWasmUrl from "physx-js-webidl/physx-js-webidl.wasm?url";
 
 // physx-js-webidl's typings are loose for the parts used here; `Px` keeps the
 // rest of the surface readable without a second declaration file.
@@ -36,8 +37,12 @@ const GROUND_PULL = 0.1;
 const MOVE_DT = 1 / 60;
 
 export async function createPhysxPhysicsWorld(): Promise<PhysicsWorld> {
-  const { default: PHYSX } = (await import("physx-js-webidl")) as { default: () => Promise<Px> };
-  const P: Px = await PHYSX();
+  const { default: PHYSX } = (await import("physx-js-webidl")) as {
+    default: (opts?: { locateFile?: (path: string) => string }) => Promise<Px>;
+  };
+  // The loader finds its .wasm next to the module, which the dev server's pre-bundle moves: point it at the asset
+  // Vite serves (in dev and in the build), else the page's HTML fallback is compiled as WebAssembly.
+  const P: Px = await PHYSX({ locateFile: (path) => (path.endsWith(".wasm") ? physxWasmUrl : path) });
   const T: Px = P;
   const version = T.PHYSICS_VERSION;
   const foundation = T.CreateFoundation(version, new P.PxDefaultAllocator(), new P.PxDefaultErrorCallback());

@@ -801,8 +801,13 @@ async function main(): Promise<void> {
     return ids[n % ids.length];
   };
   // EM1: enemy kinds' art models from the gitignored content/enemies/models.local.json (see enemy-models.ts).
+  // Without the licensed art's local map, the committed stand-in map gives the quadrupeds the stand-in models
+  // (scripts/gen-placeholder-art.mjs), so an animal gets its rig and corpse on a checkout with no art.
+  const enemyModelsFile = fs.existsSync(new URL("../../content/enemies/models.local.json", import.meta.url))
+    ? new URL("../../content/enemies/models.local.json", import.meta.url)
+    : new URL("../../content/enemies/models.placeholder.json", import.meta.url);
   const enemyModelOf = enemyModelPicker(
-    loadEnemyModels(new URL("../../content/enemies/models.local.json", import.meta.url), (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
+    loadEnemyModels(enemyModelsFile, (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
   );
   const wildlifeSettlements: RaidSettlement[] =
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
