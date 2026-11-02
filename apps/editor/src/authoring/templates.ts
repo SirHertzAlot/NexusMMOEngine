@@ -1,9 +1,13 @@
 /**
  * The templating system — pseudo version control for presentation.
  *
- * A view template is DATA, not code: it names a slot, a layout, panes,
- * and — by reference only — the widget ids it can summon and the
- * hierarchy role filters it exposes (both drawn from the existing
+ * A view template is DATA, not code: it names a slot and describes the
+ * interface for that slot as a regions tree of pane instances — each
+ * pane a reference into the component registry below, with data
+ * bindings, visibility predicates, verb-only actions, and Mustache
+ * content (the VC + templating design, T1: EDITOR-VC-TEMPLATING-DESIGN).
+ * It also names — by reference only — the widget ids it can summon and
+ * the hierarchy role filters it exposes (both drawn from the existing
  * registries in relevance.ts / hierarchy.ts). Which template version a
  * project actually presents is decided by ONE thing: the presentation
  * pin for that slot. Moving the pin is the retirement step for an old
@@ -29,18 +33,139 @@
 
 import { ROLE_FILTERS } from "./hierarchy.js";
 import { WIDGET_IDS } from "./relevance.js";
-import { validateProvenance, type Provenance } from "./verbs.js";
+import { validateProvenance, verbByName, type Provenance } from "./verbs.js";
 
 export type TemplateStatus = "draft" | "published" | "deprecated" | "retired";
 
 /** The status chain, in order. Transitions move exactly one step forward. */
 export const TEMPLATE_STATUS_CHAIN: readonly TemplateStatus[] = ["draft", "published", "deprecated", "retired"];
 
+// ------------------------------------------------- interface templates (T1)
+
+/**
+ * Where a pane binding reads from. `graph` = the Graphify ECS graph
+ * (object → entity → components → fields), `editor` = editor/session
+ * state (selection, scene, transport), `live` = the live overlay
+ * (streaming values; panes bound here carry the live decorators).
+ */
+export type InterfaceBindingSource = "graph" | "editor" | "live";
+
+export interface InterfaceBinding {
+  /** Name the rest of the pane instance references (predicates, action args). Unique within the pane. */
+  name: string;
+  source: InterfaceBindingSource;
+  /** Dotted path inside the source (e.g. "selection.object.components"). Paths are data, never expressions. */
+  path: string;
+}
+
+export type InterfacePlayState = "edit" | "simulate" | "play" | "paused";
+
+/**
+ * Visibility as data: a pane instance shows when its predicate holds for
+ * the current context. This is "only show what's necessary at that
+ * moment" in a form the resolver can validate and the shell can evaluate
+ * without any code living in the template.
+ */
+export type InterfacePredicate =
+  | { kind: "always" }
+  | { kind: "hasSelection" }
+  | { kind: "selectionKind"; kinds: readonly string[] }
+  | { kind: "hasComponent"; component: string }
+  | { kind: "playState"; states: readonly InterfacePlayState[] }
+  | { kind: "bindingPresent"; binding: string }
+  | { kind: "all"; predicates: readonly InterfacePredicate[] }
+  | { kind: "any"; predicates: readonly InterfacePredicate[] }
+  | { kind: "not"; predicate: InterfacePredicate };
+
+/** One action argument: from a pane binding, a literal, or a Mustache template rendered against the binding context. */
+export type InterfaceArgumentValue = { fromBinding: string } | { literal: string | number | boolean | null } | { template: string };
+
+export interface InterfaceAction {
+  /** Unique within the pane instance. */
+  id: string;
+  /** A canonical verb name or alias (verbs.ts) — actions name verbs, never code. */
+  verb: string;
+  /** Optional Mustache label template. */
+  label?: string;
+  args?: Readonly<Record<string, InterfaceArgumentValue>>;
+  when?: InterfacePredicate;
+}
+
+/**
+ * Pane text as Mustache templates, rendered against the pane's binding
+ * context (T2 renders; T1 validates tag/section balance). Content only —
+ * Mustache is the expression layer, never the layout format.
+ */
+export interface InterfaceContent {
+  title?: string;
+  body?: string;
+  empty?: string;
+  /** Named Mustache partials this pane's templates can include. */
+  partials?: Readonly<Record<string, string>>;
+}
+
+export interface InterfacePaneInstance {
+  /** Instance id, unique across the whole template — this is what semantic diffs key on. */
+  id: string;
+  /** Component type from INTERFACE_COMPONENTS — a reference, never code. */
+  component: string;
+  bindings?: readonly InterfaceBinding[];
+  visibleWhen?: InterfacePredicate;
+  actions?: readonly InterfaceAction[];
+  content?: InterfaceContent;
+  /** Component-specific configuration; plain JSON data only. */
+  config?: Readonly<Record<string, unknown>>;
+}
+
+export type InterfaceMobilePresentation = "inline" | "drawer" | "bottom-sheet" | "hidden";
+
+export interface InterfaceRegion {
+  /** Region id, unique across the whole template. */
+  id: string;
+  direction?: "row" | "column" | "stack";
+  /** Size token the shell interprets ("1fr", "320px", …) — presentation data, not a layout engine. */
+  size?: string;
+  /** How this region presents on the phone-shaped view. */
+  mobile?: { presentation: InterfaceMobilePresentation };
+  panes?: readonly InterfacePaneInstance[];
+  children?: readonly InterfaceRegion[];
+}
+
+export interface InterfaceComponentDef {
+  id: string;
+  kind: "viewport" | "navigation" | "inspector" | "panel" | "widget-stack" | "content";
+  label: string;
+  /** Binding sources a pane of this type may read from. */
+  accepts: readonly InterfaceBindingSource[];
+}
+
+/**
+ * The component registry: every surface type a template may instantiate.
+ * Adding a type is a code change (reviewed, tested); arranging instances
+ * of existing types is a template change (drafted, diffed, published,
+ * pinned, rolled back). T1 declares the registry in the model; the shell
+ * renders from it in T2.
+ */
+export const INTERFACE_COMPONENTS: readonly InterfaceComponentDef[] = [
+  { id: "hierarchy", kind: "navigation", label: "Hierarchy", accepts: ["editor", "graph"] },
+  { id: "stage", kind: "viewport", label: "Scene stage", accepts: ["editor", "graph", "live"] },
+  { id: "widgets", kind: "widget-stack", label: "Summoned widgets", accepts: ["editor", "graph", "live"] },
+  { id: "modules-panel", kind: "panel", label: "Modules panel", accepts: ["editor"] },
+  { id: "ecs-inspector", kind: "inspector", label: "ECS inspector", accepts: ["editor", "graph", "live"] },
+  { id: "data-tables", kind: "panel", label: "Data tables", accepts: ["editor"] },
+  { id: "content", kind: "content", label: "Templated content", accepts: ["editor", "graph", "live"] },
+];
+
+const COMPONENT_BY_ID: ReadonlyMap<string, InterfaceComponentDef> = new Map(INTERFACE_COMPONENTS.map((c) => [c.id, c]));
+
+/** Resolve a component type id to its registry def; undefined = not a registered component. */
+export function interfaceComponentById(id: string): InterfaceComponentDef | undefined {
+  return COMPONENT_BY_ID.get(id);
+}
+
 export interface ViewTemplateDefinition {
-  /** Layout identifier (a named arrangement the shell knows how to mount). */
-  layout: string;
-  /** Pane identifiers shown in that layout. */
-  panes: readonly string[];
+  /** The layout as a regions tree: named regions, their pane instances, their mobile shape. */
+  regions: readonly InterfaceRegion[];
   /** Widget ids this view can summon — references into the relevance registry, never code. */
   widgets: readonly string[];
   /** Hierarchy role-filter ids this view exposes — references into the hierarchy registry. */
@@ -141,6 +266,201 @@ export function validateTemplateRefs(template: ViewTemplate): string[] {
   return problems;
 }
 
+const BINDING_SOURCES: readonly string[] = ["graph", "editor", "live"];
+const PLAY_STATES: readonly string[] = ["edit", "simulate", "play", "paused"];
+const REGION_DIRECTIONS: readonly string[] = ["row", "column", "stack"];
+const MOBILE_PRESENTATIONS: readonly string[] = ["inline", "drawer", "bottom-sheet", "hidden"];
+const BINDING_PATH = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[\d+\])*$/;
+
+/**
+ * Schema-level Mustache check: every tag closed, every section closed by
+ * the name that opened it. Rendering is T2; this is what lets the
+ * resolver refuse a malformed content template before it can render.
+ */
+function mustacheProblems(text: string, where: string): string[] {
+  const problems: string[] = [];
+  const sections: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const open = text.indexOf("{{", i);
+    if (open === -1) break;
+    const triple = text.startsWith("{{{", open);
+    const closeToken = triple ? "}}}" : "}}";
+    const end = text.indexOf(closeToken, open + (triple ? 3 : 2));
+    if (end === -1) {
+      problems.push(`${where}: unclosed "{{" tag`);
+      break;
+    }
+    if (!triple) {
+      const tag = text.slice(open + 2, end).trim();
+      const sigil = tag.charAt(0);
+      if (sigil === "#" || sigil === "^") sections.push(tag.slice(1).trim());
+      else if (sigil === "/") {
+        const name = tag.slice(1).trim();
+        const expected = sections.pop();
+        if (expected !== name) problems.push(`${where}: section "{{/${name}}}" ${expected ? `closes "{{#${expected}}}"` : "has no opening section"}`);
+      }
+    }
+    i = end + closeToken.length;
+  }
+  for (const name of sections) problems.push(`${where}: section "{{#${name}}}" is never closed`);
+  return problems;
+}
+
+function predicateProblems(predicate: InterfacePredicate, where: string, bindingNames: ReadonlySet<string>, problems: string[], depth: number): void {
+  if (depth > 8) {
+    problems.push(`${where}: predicate nesting is too deep (max 8)`);
+    return;
+  }
+  if (!predicate || typeof predicate !== "object") {
+    problems.push(`${where}: predicate must be an object`);
+    return;
+  }
+  switch (predicate.kind) {
+    case "always":
+    case "hasSelection":
+      return;
+    case "selectionKind":
+      if (!Array.isArray(predicate.kinds) || predicate.kinds.length === 0 || predicate.kinds.some((k) => typeof k !== "string" || k === "")) problems.push(`${where}: selectionKind needs a non-empty kinds list`);
+      return;
+    case "hasComponent":
+      if (typeof predicate.component !== "string" || predicate.component === "") problems.push(`${where}: hasComponent needs a component name`);
+      return;
+    case "playState":
+      if (!Array.isArray(predicate.states) || predicate.states.length === 0) problems.push(`${where}: playState needs a non-empty states list`);
+      else for (const s of predicate.states) if (!PLAY_STATES.includes(s)) problems.push(`${where}: unknown play state "${s}"`);
+      return;
+    case "bindingPresent":
+      if (!bindingNames.has(predicate.binding)) problems.push(`${where}: bindingPresent references unknown binding "${predicate.binding}" in this pane`);
+      return;
+    case "all":
+    case "any":
+      if (!Array.isArray(predicate.predicates) || predicate.predicates.length === 0) problems.push(`${where}: ${predicate.kind} needs a non-empty predicates list`);
+      else for (const p of predicate.predicates) predicateProblems(p, where, bindingNames, problems, depth + 1);
+      return;
+    case "not":
+      predicateProblems(predicate.predicate, where, bindingNames, problems, depth + 1);
+      return;
+    default:
+      problems.push(`${where}: unknown predicate kind "${(predicate as unknown as { kind: string }).kind}"`);
+  }
+}
+
+function argumentProblems(value: InterfaceArgumentValue, where: string, bindingNames: ReadonlySet<string>, problems: string[]): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    problems.push(`${where}: argument must be { fromBinding }, { literal }, or { template }`);
+    return;
+  }
+  const keys = Object.keys(value);
+  if (keys.length !== 1) {
+    problems.push(`${where}: argument needs exactly one of fromBinding / literal / template`);
+    return;
+  }
+  if ("fromBinding" in value) {
+    if (!bindingNames.has(value.fromBinding)) problems.push(`${where}: argument references unknown binding "${value.fromBinding}" in this pane`);
+  } else if ("template" in value) {
+    if (typeof value.template !== "string") problems.push(`${where}: template argument must be a string`);
+    else problems.push(...mustacheProblems(value.template, where));
+  } else if (!("literal" in value)) {
+    problems.push(`${where}: argument needs exactly one of fromBinding / literal / template`);
+  }
+}
+
+/**
+ * Full definition validation: the reference checks (validateTemplateRefs)
+ * plus the interface structure — regions tree shape, pane instances
+ * against the component registry, binding sources and paths, predicate
+ * and action references (verbs only, bindings by name), and Mustache
+ * content balance. The resolver refuses — and falls back on — any
+ * template with problems, so a malformed interface can never render.
+ */
+export function validateTemplateDefinition(template: ViewTemplate): string[] {
+  const problems: string[] = [...validateTemplateRefs(template)];
+  const label = `template ${keyOf(template.id, template.version)}`;
+  const def = template.definition;
+  if (!def || !Array.isArray(def.regions)) {
+    problems.push(`${label} definition has no regions tree`);
+    return problems;
+  }
+  const regionIds = new Set<string>();
+  const paneIds = new Set<string>();
+
+  const visitPane = (pane: InterfacePaneInstance, regionId: string): void => {
+    if (!pane || typeof pane.id !== "string" || pane.id === "") {
+      problems.push(`${label} has a pane with no id in region "${regionId}"`);
+      return;
+    }
+    const where = `${label} pane "${pane.id}" in region "${regionId}"`;
+    if (paneIds.has(pane.id)) problems.push(`${label} reuses pane instance id "${pane.id}" — instance ids are unique across a template`);
+    paneIds.add(pane.id);
+    const component = interfaceComponentById(pane.component);
+    if (!component) {
+      problems.push(`${where} references unknown component "${pane.component}"`);
+      return;
+    }
+    const bindingNames = new Set<string>();
+    for (const binding of pane.bindings ?? []) {
+      if (!binding || typeof binding.name !== "string" || binding.name === "") {
+        problems.push(`${where} has a binding with no name`);
+        continue;
+      }
+      if (bindingNames.has(binding.name)) problems.push(`${where} reuses binding name "${binding.name}"`);
+      bindingNames.add(binding.name);
+      if (!BINDING_SOURCES.includes(binding.source)) problems.push(`${where} binding "${binding.name}" has unknown source "${binding.source}"`);
+      else if (!component.accepts.includes(binding.source)) problems.push(`${where} binding "${binding.name}" reads from "${binding.source}", which component "${component.id}" does not accept`);
+      if (typeof binding.path !== "string" || !BINDING_PATH.test(binding.path)) problems.push(`${where} binding "${binding.name}" has a malformed path "${binding.path}"`);
+    }
+    if (pane.visibleWhen) predicateProblems(pane.visibleWhen, `${where} visibleWhen`, bindingNames, problems, 0);
+    const actionIds = new Set<string>();
+    for (const action of pane.actions ?? []) {
+      if (!action || typeof action.id !== "string" || action.id === "") {
+        problems.push(`${where} has an action with no id`);
+        continue;
+      }
+      if (actionIds.has(action.id)) problems.push(`${where} reuses action id "${action.id}"`);
+      actionIds.add(action.id);
+      if (!verbByName(action.verb)) problems.push(`${where} action "${action.id}" references unknown verb "${action.verb}"`);
+      if (action.label !== undefined) {
+        if (typeof action.label !== "string") problems.push(`${where} action "${action.id}" label must be a Mustache template string`);
+        else problems.push(...mustacheProblems(action.label, `${where} action "${action.id}" label`));
+      }
+      if (action.when) predicateProblems(action.when, `${where} action "${action.id}" when`, bindingNames, problems, 0);
+      for (const [argName, argValue] of Object.entries(action.args ?? {})) argumentProblems(argValue, `${where} action "${action.id}" arg "${argName}"`, bindingNames, problems);
+    }
+    if (pane.content) {
+      for (const field of ["title", "body", "empty"] as const) {
+        const text = pane.content[field];
+        if (text !== undefined) {
+          if (typeof text !== "string") problems.push(`${where} content.${field} must be a Mustache template string`);
+          else problems.push(...mustacheProblems(text, `${where} content.${field}`));
+        }
+      }
+      for (const [name, partial] of Object.entries(pane.content.partials ?? {})) {
+        if (typeof partial !== "string") problems.push(`${where} partial "${name}" must be a Mustache template string`);
+        else problems.push(...mustacheProblems(partial, `${where} partial "${name}"`));
+      }
+    }
+    if (pane.config !== undefined && (typeof pane.config !== "object" || pane.config === null || Array.isArray(pane.config))) problems.push(`${where} config must be a plain object`);
+  };
+
+  const visitRegion = (region: InterfaceRegion): void => {
+    if (!region || typeof region.id !== "string" || region.id === "") {
+      problems.push(`${label} has a region with no id`);
+      return;
+    }
+    if (regionIds.has(region.id)) problems.push(`${label} reuses region id "${region.id}" — region ids are unique across a template`);
+    regionIds.add(region.id);
+    if (region.direction !== undefined && !REGION_DIRECTIONS.includes(region.direction)) problems.push(`${label} region "${region.id}" has unknown direction "${region.direction}"`);
+    if (region.size !== undefined && (typeof region.size !== "string" || region.size === "")) problems.push(`${label} region "${region.id}" has an empty size token`);
+    if (region.mobile !== undefined && !MOBILE_PRESENTATIONS.includes(region.mobile.presentation)) problems.push(`${label} region "${region.id}" has unknown mobile presentation "${region.mobile?.presentation}"`);
+    for (const pane of region.panes ?? []) visitPane(pane, region.id);
+    for (const child of region.children ?? []) visitRegion(child);
+  };
+
+  for (const region of def.regions) visitRegion(region);
+  return problems;
+}
+
 // ----------------------------------------------------------------- pins
 
 export interface PresentationPin {
@@ -230,7 +550,7 @@ export class PresentationResolver {
       if (!template) return this.fallback(slot, registry, `pin points at unknown template ${keyOf(pin.templateId, pin.version)}`);
       if (template.status === "retired") return this.fallback(slot, registry, `pinned template ${keyOf(pin.templateId, pin.version)} is retired`);
       if (template.status === "draft") return this.fallback(slot, registry, `pinned template ${keyOf(pin.templateId, pin.version)} is still a draft`);
-      const refProblems = validateTemplateRefs(template);
+      const refProblems = validateTemplateDefinition(template);
       if (refProblems.length > 0) return this.fallback(slot, registry, refProblems.join("; "));
       this.knownGood.set(slot, template);
       return { slot, template, deprecated: template.status === "deprecated" };
@@ -240,7 +560,7 @@ export class PresentationResolver {
 
   private fallback(slot: string, registry: TemplateRegistry, reason: string): Resolution {
     const good = this.knownGood.get(slot);
-    if (good && good.status !== "retired" && validateTemplateRefs(good).length === 0) {
+    if (good && good.status !== "retired" && validateTemplateDefinition(good).length === 0) {
       return { slot, template: good, deprecated: good.status === "deprecated", fallbackReason: `${reason} — fell back to the last known-good ${keyOf(good.id, good.version)}` };
     }
     const legacy = registry.versionsOf(LEGACY_TEMPLATE_ID).find((t) => t.slot === slot && t.status !== "retired" && t.status !== "draft");
@@ -281,8 +601,24 @@ export function createBuiltinRegistry(provenance: Provenance): TemplateRegistry 
       version: 1,
       status: "published",
       definition: {
-        layout: "workspace-tabs",
-        panes: ["modules-panel", "ecs-inspector", "data-tables"],
+        regions: [
+          {
+            id: "legacy-main",
+            direction: "row",
+            panes: [
+              { id: "modules", component: "modules-panel", bindings: [{ name: "modules", source: "editor", path: "project.modules" }] },
+              {
+                id: "inspector",
+                component: "ecs-inspector",
+                bindings: [
+                  { name: "selection", source: "editor", path: "selection" },
+                  { name: "liveEntity", source: "live", path: "selection.entity" },
+                ],
+              },
+              { id: "tables", component: "data-tables", bindings: [{ name: "tables", source: "editor", path: "project.dataTables" }] },
+            ],
+          },
+        ],
         widgets: [],
         filters: [],
       },
@@ -296,8 +632,66 @@ export function createBuiltinRegistry(provenance: Provenance): TemplateRegistry 
       version: 1,
       status: "published",
       definition: {
-        layout: "authoring-three-pane",
-        panes: ["hierarchy", "stage", "widgets"],
+        regions: [
+          {
+            id: "authoring-main",
+            direction: "row",
+            children: [
+              {
+                id: "left-rail",
+                direction: "column",
+                size: "1fr",
+                mobile: { presentation: "drawer" },
+                panes: [
+                  {
+                    id: "hierarchy",
+                    component: "hierarchy",
+                    bindings: [
+                      { name: "tree", source: "editor", path: "scene.hierarchy" },
+                      { name: "scene", source: "graph", path: "scene" },
+                      { name: "selection", source: "editor", path: "selection" },
+                    ],
+                    content: { title: "Hierarchy — {{scene.name}}" },
+                  },
+                ],
+              },
+              {
+                id: "center",
+                direction: "column",
+                size: "2fr",
+                panes: [
+                  {
+                    id: "stage",
+                    component: "stage",
+                    bindings: [
+                      { name: "scene", source: "graph", path: "scene" },
+                      { name: "selection", source: "editor", path: "selection" },
+                      { name: "liveSelection", source: "live", path: "selection" },
+                    ],
+                  },
+                ],
+              },
+              {
+                id: "right-shelf",
+                direction: "column",
+                size: "1fr",
+                mobile: { presentation: "bottom-sheet" },
+                panes: [
+                  {
+                    id: "widgets",
+                    component: "widgets",
+                    bindings: [
+                      { name: "selection", source: "editor", path: "selection" },
+                      { name: "facts", source: "graph", path: "selection.facts" },
+                    ],
+                    visibleWhen: { kind: "hasSelection" },
+                    content: { title: "Widgets — {{selection.name}}", empty: "Select something in the scene" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
         widgets: [...WIDGET_IDS],
         filters: ROLE_FILTERS.map((f) => f.id),
       },
