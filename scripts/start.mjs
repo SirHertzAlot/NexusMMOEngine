@@ -15,7 +15,7 @@
  *      changed since the last start (npm ci never rewrites the lockfile)
  *   2. FlatBuffers bindings: `npm run codegen` when they're missing or older
  *      than the schema
- *   3. the world: `npm run bake:world` when there's no world.db
+ *   3. the world: `npm run bake:world` when there's no region.db
  *   4. the loot pool: `npm run loot:bake` when there's no pool.jsonl
  *   5. dungeons: `npm run dungeon:bake` when the dungeon pool is empty
  *   6. the native entries of the modules under modules/: `npm run build:native`
@@ -42,6 +42,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { migrateLegacyRegionDb } from "./lib/region-db.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -94,7 +95,8 @@ function setup() {
   if (!existsSync(generated) || statSync(generated).mtimeMs < statSync(schema).mtimeMs) npm(["run", "codegen"]);
 
   // 3-5. Baked data, where the server will look for it.
-  if (!existsSync(join(data, "world.db"))) {
+  migrateLegacyRegionDb(data);
+  if (!existsSync(join(data, "region.db"))) {
     log(`no world in ${data}: baking it`);
     npm(["run", "bake:world"], { MMO_DATA_DIR: data, ...(shape ? { MMO_BAKE_SHAPE: shape } : {}) });
   }
@@ -141,7 +143,7 @@ if (!standalone) {
   const { default: Database } = await import("better-sqlite3");
   let bounds = null;
   try {
-    const db = new Database(join(data, "world.db"), { readonly: true, fileMustExist: true });
+    const db = new Database(join(data, "region.db"), { readonly: true, fileMustExist: true });
     bounds = db.prepare("SELECT value FROM meta WHERE key = 'world_bounds'").get()?.value ?? null;
     db.close();
   } catch {}
@@ -151,7 +153,7 @@ if (!standalone) {
     WORLD = { name: "world", args: ["run", "world"], env: { WORLD_PORT: port, WORLD_API_KEY: key, WORLD_DATA_DIR: join(data, "world-server") } };
     Object.assign(SERVER.env, { WORLD_URL: `http://127.0.0.1:${port}`, WORLD_API_KEY: key, REGION_CHUNK_RANGE: regionRangeOf(bounds) });
   } else {
-    log("no baked world bounds in world.db: running without the world server");
+    log("no baked world bounds in region.db: running without the world server");
     standalone = true;
   }
 }

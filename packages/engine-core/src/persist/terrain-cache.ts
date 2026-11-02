@@ -21,7 +21,7 @@ import { TerrainTileStore } from "./terrain-tiles.js";
 import { heightsFingerprint } from "../procgen/chunk-source.js";
 
 export interface TerrainCacheOptions {
-  /** Path to world.db. */
+  /** Path to region.db. */
   dbPath: string;
   /** The terrain pass version; bumping it invalidates every cached tile. */
   terrainVersion: number;

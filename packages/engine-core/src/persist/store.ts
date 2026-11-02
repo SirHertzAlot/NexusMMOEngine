@@ -37,7 +37,7 @@ import {
 import { collectFullState, decodeSnapshot, encodeSnapshot } from "../snapshot.js";
 import type { SimWorld } from "../world.js";
 
-export const DEFAULT_DB_PATH = "./data/world.db";
+export const DEFAULT_DB_PATH = "./data/region.db";
 export const DEFAULT_KEEP_SNAPSHOTS = 6;
 export const DEFAULT_SAVE_EVERY_TICKS = 300;
 /** Bumped whenever the on-disk layout changes incompatibly. */
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick);
 `;
 
 export interface SnapshotStoreOptions {
-  /** DB file path. Default "./data/world.db" (relative to the process cwd). */
+  /** DB file path. Default "./data/region.db" (relative to the process cwd). */
   dbPath?: string;
   /** How many of the newest snapshots to keep. Default 6. */
   keepSnapshots?: number;
@@ -385,7 +385,7 @@ export class SnapshotStore {
 
   /**
    * Run `fn` in one SQLite transaction on this store's connection: other
-   * world.db data written through `db` (e.g. a TerrainTileStore borrowing
+   * region.db data written through `db` (e.g. a TerrainTileStore borrowing
    * it) commits or rolls back together with any snapshot saved inside.
    */
   transaction<T>(fn: (db: Database.Database) => T): T {

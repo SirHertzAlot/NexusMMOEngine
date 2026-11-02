@@ -117,7 +117,7 @@ Pushes to every connected edge, every tick: `tick.events`
 empty). Players' deltas and snapshots travel as their own relayed `wire.*`
 frames (E3b), so there is no separate base64 mirror stream.
 
-Sessions: tokens live in `world.db`'s `sessions` table
+Sessions: tokens live in `region.db`'s `sessions` table
 (`token, playerId, createdAt, expiresAt`), so a core restart keeps them.
 Expiry is unchanged (24 h wall-clock TTL), which is why the columns are
 milliseconds rather than the plan's ticks. The character a session last

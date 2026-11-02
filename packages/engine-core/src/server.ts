@@ -15,7 +15,7 @@
  *   MMO_EDGE       "1": players connect to the edge (EDGE_GAME_PORT), which
  *                  relays them over the core channel; the core binds no
  *                  player port (E3b). Unset: players connect here directly.
- *   MMO_DATA_DIR   server state dir: world.db, navmesh/, users.csv,
+ *   MMO_DATA_DIR   server state dir: region.db, navmesh/, users.csv,
  *                  characters.db (default ./data, relative to the process cwd)
  *   MMO_CHARACTER_CATALOG the modular part catalog new characters are checked
  *                  against (default: the converted pack's catalog.json under
@@ -99,7 +99,7 @@
  *
  *   CORE_CHANNEL_PORT the edge's internal channel, loopback only (default
  *                  4000; see docs/EDGE-CORE-SPLIT.md). Session tokens are
- *                  kept in world.db's sessions table.
+ *                  kept in region.db's sessions table.
  *
  * Region/world (slice A): when WORLD_URL is set (e.g.
  * http://localhost:7780), this instance registers as a region with the
@@ -225,6 +225,7 @@ import { catalogBounds } from "./procgen/prop-shape.js";
 import { loadScale } from "./scale.js";
 import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
+import { migrateLegacyRegionDb } from "./persist/region-db.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
 import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
@@ -380,11 +381,15 @@ async function main(): Promise<void> {
   const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
   if (combatLine) console.log(`[server] ${combatLine}`);
 
+  // region.db is the region hot cache (see persist/region-db.ts). Earlier builds named it world.db.
+  const migration = migrateLegacyRegionDb(DATA_DIR);
+  if (migration === "renamed") console.log(`[server] renamed world.db to region.db in ${DATA_DIR}`);
+  if (migration === "both-present") console.warn(`[server] world.db and region.db both exist in ${DATA_DIR}: using region.db, world.db left as is`);
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
   // ---- persistence: restore the world if a snapshot exists --------------
   const store = new SnapshotStore({
-    dbPath: path.join(DATA_DIR, "world.db"),
+    dbPath: path.join(DATA_DIR, "region.db"),
     saveEveryTicks: SAVE_EVERY_TICKS,
     keepSnapshots: persistenceSettings.settings.keepSnapshots,
     walSizeLimitBytes: persistenceSettings.settings.walLimitMb * 1024 * 1024,
@@ -410,10 +415,11 @@ async function main(): Promise<void> {
   // the P2 shipper use for the rest of the boot, so every post-boot
   // state-plane write carries the post-boot epoch. Standalone mode
   // (no WORLD_URL) engages none of this: local restore, unchanged.
-  // Every item change, appended to world.db and written each second
+  // Every item change, appended to region.db and written each second
   // (roadmap P2a); created here so recall can import into it.
-  const itemLedger = new ItemLedger(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  const itemLedger = new ItemLedger(path.join(DATA_DIR, "region.db"), { autoCheckpoint: false });
   const WORLD_URL = process.env.WORLD_URL;
+  if (WORLD_URL) console.log(`[server] region.db is a hot cache; the world server at ${WORLD_URL} is the source of truth`);
   const REGION_ID = process.env.REGION_ID ?? "region-1";
   const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
   let worldClient: WorldClient | null = null;
@@ -536,7 +542,7 @@ async function main(): Promise<void> {
   // The world heightmap is DATA once generated: stored tiles (baked or
   // sculpted in the editor) win; chunks without a tile — never baked, the
   // world beyond the edge — come from the generator.
-  const tiles = new TerrainTileStore(path.join(DATA_DIR, "world.db"));
+  const tiles = new TerrainTileStore(path.join(DATA_DIR, "region.db"));
   const storedTiles = tiles.count();
   // One memoized source for every consumer (spawn, navmesh bake,
   // grounding, the network height channel): heights are read or generated
@@ -552,7 +558,7 @@ async function main(): Promise<void> {
     const bakedWith = store.getMeta("terrain_version");
     if (bakedWith !== terrainVersion) {
       console.warn(
-        `[server] WARNING: world.db was baked for terrain ${bakedWith ?? "(unrecorded)"}, ` +
+        `[server] WARNING: region.db was baked for terrain ${bakedWith ?? "(unrecorded)"}, ` +
           `but this server generates terrain ${terrainVersion} ` +
           `(amplitude ${terrain.amplitude}, frequency ${terrain.frequency}). ` +
           `Scatter will not sit on the ground. Rebake: npm run bake:world:force`,
@@ -618,7 +624,7 @@ async function main(): Promise<void> {
 
   // ---- streaming ---------------------------------------------------------
   // Chunks (terrain entity + scatter + navmesh tile) load around players
-  // and unload behind them; unloaded chunks' entities live in world.db
+  // and unload behind them; unloaded chunks' entities live in region.db
   // (ChunkEntityStore) and come back exactly as they were left. The spawn
   // area stays loaded. Restored chunks are adopted, never loaded twice.
   // Chunk navmesh (slice 8): created by the physics module via
@@ -628,10 +634,10 @@ async function main(): Promise<void> {
   let chunkNavmeshRef: any = null;
   let physicsRef: { terrainColliders(s: number): (...a: unknown[]) => unknown } | null = null;
   // Unload passes write rows on the tick thread. The snapshot store's
-  // background worker already checkpoints world.db after every save, so
+  // background worker already checkpoints region.db after every save, so
   // this connection leaves checkpoints (and their fsync) to it.
-  const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
-  const formationTiles = new FormationTileStore(path.join(DATA_DIR, "world.db"), { autoCheckpoint: false });
+  const chunkStore = new ChunkEntityStore(path.join(DATA_DIR, "region.db"), { autoCheckpoint: false });
+  const formationTiles = new FormationTileStore(path.join(DATA_DIR, "region.db"), { autoCheckpoint: false });
   // The item ledger (roadmap P2a) is created with the snapshot store
   // above, so the P3 recall could import world events into it.
   // Baked worlds have a sea: nothing is scattered below it.
@@ -1391,7 +1397,7 @@ async function main(): Promise<void> {
   );
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
-  const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "world.db"));
+  const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "region.db"));
   // Cross-region presence (S2): the gateway reports online names and asks
   // where friends play; without a world client both are inert. `worldClient`
   // was assigned during the fleet boot block when WORLD_URL is set; these closures
@@ -1734,7 +1740,7 @@ async function main(): Promise<void> {
   gw.startTicking();
   reloader.watch();
   // "A server owns this world" marker: offline tools (terrain save) refuse
-  // to edit world.db under a running server, whose next periodic save
+  // to edit region.db under a running server, whose next periodic save
   // would silently overwrite the edit. Removed on exit; a stale file from
   // a crash is ignored because its pid is no longer alive.
   const pidFile = path.join(DATA_DIR, SERVER_PID_FILE);

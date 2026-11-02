@@ -4,7 +4,7 @@
  *
  * The editor shows a character's name, look (canonical JSON, summarized),
  * deaths, saved state (`character_state` in characters.db) and its items
- * (the item ledger `item_events` in world.db: bag/held/ground rows with
+ * (the item ledger `item_events` in region.db: bag/held/ground rows with
  * the definition name from the loot pool, plus durability).
  *
  * READ-ONLY BY CONSTRUCTION: every query here is a SELECT. Callers open
@@ -132,7 +132,7 @@ export function listCharacters(charsDb: Database.Database, username?: string): C
 }
 
 export interface ReadCharacterViewOptions {
-  /** Open handle on world.db (read-only); omitted: no items, but the rest still loads. */
+  /** Open handle on region.db (read-only); omitted: no items, but the rest still loads. */
   worldDb?: Database.Database | null;
   /** Definition names for item rows; omitted: `def <n>` placeholders. */
   defs?: ItemDefNames | null;

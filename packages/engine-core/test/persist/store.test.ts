@@ -162,7 +162,7 @@ function buildThousandEntityWorld(): SimWorld {
 describe("persist: fresh boot", () => {
   test("loadLatest/restoreInto return null and the world is untouched", () => {
     const dir = tmpDir("mmo-persist-");
-    const store = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+    const store = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
     assert.equal(store.loadLatest(), null);
     assert.equal(store.snapshotCount(), 0);
     const sim = new SimWorld();
@@ -175,7 +175,7 @@ describe("persist: fresh boot", () => {
 describe("persist: save/load round-trip", () => {
   test("restores exact state: wire ids, components, generations", () => {
     const dir = tmpDir("mmo-persist-");
-    const store = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+    const store = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
     const { sim, respawned } = buildWorld(42, true);
 
     const saved = store.saveWorld(300, sim);
@@ -212,7 +212,7 @@ describe("persist: save/load round-trip", () => {
 
   test("a restored world keeps simulating with correct identity", () => {
     const dir = tmpDir("mmo-persist-");
-    const store = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+    const store = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
     const { sim } = buildWorld(7, true);
     store.saveWorld(300, sim);
     const gensBefore = sim.exportGenerations();
@@ -236,7 +236,7 @@ describe("persist: save/load round-trip", () => {
 
   test("empty worlds round-trip", () => {
     const dir = tmpDir("mmo-persist-");
-    const store = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+    const store = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
     const sim = new SimWorld();
     const saved = store.saveWorld(300, sim);
     assert.equal(saved.entityCount, 0);
@@ -253,7 +253,7 @@ describe("persist: save/load round-trip", () => {
 
   test("DB parent directories are created automatically", () => {
     const dir = tmpDir("mmo-persist-");
-    const dbPath = path.join(dir, "nested", "deep", "world.db");
+    const dbPath = path.join(dir, "nested", "deep", "region.db");
     const store = new SnapshotStore({ dbPath });
     store.saveWorld(300, new SimWorld());
     assert.ok(fs.existsSync(dbPath), "db file created with parents");
@@ -294,7 +294,7 @@ describe("persist: restore guards", () => {
 describe("persist: retention", () => {
   test("prune keeps exactly the newest snapshots (default 6)", () => {
     const dir = tmpDir("mmo-persist-");
-    const store = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+    const store = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
     const { sim } = buildWorld(3, false);
     for (let i = 1; i <= 10; i++) store.saveWorld(i * 100, sim);
     assert.equal(store.snapshotCount(), 6);
@@ -306,7 +306,7 @@ describe("persist: retention", () => {
   test("keepSnapshots is configurable", () => {
     const dir = tmpDir("mmo-persist-");
     const store = new SnapshotStore({
-      dbPath: path.join(dir, "world.db"),
+      dbPath: path.join(dir, "region.db"),
       keepSnapshots: 2,
     });
     const { sim } = buildWorld(3, false);
@@ -347,7 +347,7 @@ describe("persist: latency budget", () => {
     // saveSnapshotBytes — no re-collection, no re-encode. We measure
     // that path here (production-sized snapshot, written 40 times).
     const dir = tmpDir("mmo-persist-");
-    const store = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+    const store = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
     const sim = buildThousandEntityWorld();
     // Encode once: SQLite write latency depends on byte SIZE, not content.
     const bytes = encodeSnapshot(collectFullState(sim, 300));
@@ -414,7 +414,7 @@ describe("persist: snapshot codec reuse", () => {
 describe("persist: meta + background checkpoint", () => {
   test("meta values round-trip and survive reopen", () => {
     const dir = tmpDir("mmo-persist-");
-    const dbPath = path.join(dir, "world.db");
+    const dbPath = path.join(dir, "region.db");
     const store = new SnapshotStore({ dbPath });
     assert.equal(store.getMeta("terrain_version"), null);
     store.setMeta("terrain_version", "123");
@@ -427,7 +427,7 @@ describe("persist: meta + background checkpoint", () => {
 
   test("off-thread checkpoints let SQLite rewind the WAL", async () => {
     const dir = tmpDir("mmo-persist-");
-    const dbPath = path.join(dir, "world.db");
+    const dbPath = path.join(dir, "region.db");
     const store = new SnapshotStore({ dbPath });
     const sim = buildThousandEntityWorld();
     const bytes = encodeSnapshot(collectFullState(sim, 1));
@@ -450,7 +450,7 @@ describe("persist: meta + background checkpoint", () => {
 
   test("save bursts can't ratchet the WAL file past its size limit", async () => {
     const dir = tmpDir("mmo-persist-");
-    const dbPath = path.join(dir, "world.db");
+    const dbPath = path.join(dir, "region.db");
     const limit = 256 * 1024;
     const store = new SnapshotStore({ dbPath, walSizeLimitBytes: limit });
     const sim = buildThousandEntityWorld();
@@ -476,7 +476,7 @@ describe("persist: meta + background checkpoint", () => {
     const index = new URL("../../src/index.js", import.meta.url).href;
     const script =
       `import { SnapshotStore, SimWorld } from ${JSON.stringify(index)};` +
-      `const s = new SnapshotStore({ dbPath: ${JSON.stringify(path.join(dir, "world.db"))} });` +
+      `const s = new SnapshotStore({ dbPath: ${JSON.stringify(path.join(dir, "region.db"))} });` +
       `s.saveWorld(1, new SimWorld()); s.saveWorld(2, new SimWorld());`;
     const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
       timeout: 20_000,

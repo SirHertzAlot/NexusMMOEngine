@@ -66,7 +66,7 @@ npm run bake:world
 This reads [`packages/engine-core/worlds/default.world.json`](../packages/engine-core/worlds/default.world.json)
 and, in under a minute, produces a **4 × 4 km peninsula**: a mountain spine
 with a volcano, glaciers in the frozen north, a rain-shadow desert, rivers,
-lakes and 12 biomes. It lands in `packages/engine-core/data/world.db`
+lakes and 12 biomes. It lands in `packages/engine-core/data/region.db`
 (about 92 MB, git-ignored).
 
 Want to see what you are about to bake? `npm run preview:world` draws the

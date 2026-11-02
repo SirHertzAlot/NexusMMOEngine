@@ -189,7 +189,7 @@ wide concentric scarps around the massif rather than as hand-made field walls.
 ## Baking
 
 ```bash
-npm run bake:world          # refuses to overwrite an existing world.db
+npm run bake:world          # refuses to overwrite an existing region.db
 npm run bake:world:force    # stop the server first, then overwrite
 ```
 
@@ -204,7 +204,7 @@ The bake shares the server's data folder and seed variables, plus:
 
 Only the spawn area is populated during the bake; the rest of the world fills
 in as players explore it. The output lands in `MMO_DATA_DIR` (default
-`packages/engine-core/data/world.db`, roughly 92 MB for the 4 km world — partly
+`packages/engine-core/data/region.db`, roughly 92 MB for the 4 km world — partly
 SQLite page overhead over ~61 MB of heights) and is gitignored.
 
 **Tuning loop:** `npm run preview:world` draws the spec's biomes, rainfall,
@@ -222,7 +222,7 @@ baking anything. Use it to iterate on a spec, then bake once you are happy.
 ## Scenery
 
 The first time a chunk loads, its scenery is placed and then **persisted**.
-Every unload writes the chunk's entities to its row in `world.db` — even an
+Every unload writes the chunk's entities to its row in `region.db` — even an
 empty one — so a chunk is populated exactly once, ever, and a restart restores
 from those rows instead of re-running scatter.
 
@@ -290,7 +290,7 @@ walk into.
 
 Candidates are **world-space cells**, so a candidate belongs to exactly one
 chunk and chunks agree at their borders no matter what order they load in.
-Formation tiles are solved at bake time and cached in `world.db`
+Formation tiles are solved at bake time and cached in `region.db`
 (`formation_tiles`), keyed by world seed, terrain version, plan hash, layer and
 tile index, because solving a tile takes tens of milliseconds — far too long
 for a tick. A tile missing from the cache is solved on demand.

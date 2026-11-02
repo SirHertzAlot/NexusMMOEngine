@@ -346,7 +346,7 @@ export function makeEcologyPopulator(
     scale?: ScaleResolver;
     /** The terrain, for formation layers (their tiles span and border other chunks). */
     terrain?: ChunkDataSource;
-    /** Where solved formation tiles persist (world.db): the bake fills it, the server reads it. */
+    /** Where solved formation tiles persist (region.db): the bake fills it, the server reads it. */
     formationTiles?: FormationTileBacking;
   },
 ): {

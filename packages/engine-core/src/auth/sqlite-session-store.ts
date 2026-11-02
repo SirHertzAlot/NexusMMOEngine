@@ -1,7 +1,7 @@
 /**
  * SQLite-backed session tokens (edge/core split E3): a core restart keeps
  * players' sessions, so the edge's resync finds them and nobody has to log
- * in again. Table `sessions` in the server's world.db.
+ * in again. Table `sessions` in the server's region.db.
  *
  * Expiry is unchanged from the in-memory manager (wall-clock ms TTL); the
  * plan's tick-based columns would have changed the policy, which E3 rules

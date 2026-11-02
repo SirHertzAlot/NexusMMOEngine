@@ -1,5 +1,5 @@
 /**
- * TerrainTileStore — the world heightmap's chunk tiles, stored in world.db.
+ * TerrainTileStore — the world heightmap's chunk tiles, stored in region.db.
  *
  * Terrain is generated once (bake or fresh boot) and from then on it is
  * data: the server reads these tiles instead of re-running noise, and the
@@ -7,7 +7,7 @@
  * little-endian float32s (1 KiB); neighbouring tiles share their border
  * samples (see @mmo-engine/protocol terrain-grid).
  *
- * Lives in world.db beside the snapshots, so a world's terrain and the
+ * Lives in region.db beside the snapshots, so a world's terrain and the
  * entities placed on it are baked, backed up, and replaced together.
  */
 
@@ -101,7 +101,7 @@ function dtypeOf(data: WorldMap["data"]): keyof typeof DTYPES {
 }
 
 /**
- * Older world.db files stored tiles in a WITHOUT ROWID table. Those keep
+ * Older region.db files stored tiles in a WITHOUT ROWID table. Those keep
  * rows in the primary-key b-tree, and a 1 KiB row is past its inline limit,
  * so every tile spilled into overflow pages (a 4 km world took ~4x the
  * space). Rebuild such a table as an ordinary rowid table, in place.
@@ -135,7 +135,7 @@ export class TerrainTileStore {
   private readonly putManyTx: (tiles: readonly TerrainTile[]) => void;
 
   /**
-   * Open world.db by path, or borrow an open connection (e.g. inside
+   * Open region.db by path, or borrow an open connection (e.g. inside
    * SnapshotStore.transaction, so tiles and a snapshot commit atomically).
    */
   constructor(db: string | Database.Database) {

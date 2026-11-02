@@ -1,5 +1,5 @@
 /**
- * Baked formation tiles: the bake solves every tile into world.db, and a
+ * Baked formation tiles: the bake solves every tile into region.db, and a
  * server over that store only reads them (solving nothing); tiles round-
  * trip exactly, a changed plan or terrain misses, and a missing tile is
  * solved on demand and written back.
@@ -50,7 +50,7 @@ const plan: EcologyPlan = parseEcologyPlan({
 });
 const env: FormationEnv = { seed32: 11, chunkWorldSize: W, heightsOf: heights };
 const key = { worldSeed: 1234n, terrainVersion: "7", planHash: "abc" };
-const db = (): string => join(mkdtempSync(join(tmpdir(), "formations-")), "world.db");
+const db = (): string => join(mkdtempSync(join(tmpdir(), "formations-")), "region.db");
 
 describe("formation tile store", () => {
   it("round-trips points exactly", () => {

@@ -1,6 +1,6 @@
 /**
  * ChunkEntityStore — what each UNLOADED chunk holds (trees, rocks, …), in
- * world.db beside the snapshots and terrain tiles.
+ * region.db beside the snapshots and terrain tiles.
  *
  * With streaming (see streaming/chunk-streamer.ts) the live world holds
  * only chunks near players. When a chunk unloads, its entities are encoded
@@ -48,7 +48,7 @@ export class ChunkEntityStore {
   private readonly putManyTx: (rows: readonly ChunkEntitiesRow[]) => void;
 
   /**
-   * Open world.db by path, or borrow an open connection (one transaction
+   * Open region.db by path, or borrow an open connection (one transaction
    * with a snapshot). `autoCheckpoint: false` leaves WAL checkpoints to
    * another connection — the server's SnapshotStore runs them on a worker
    * after every save — so writes here never pay a checkpoint's fsync.

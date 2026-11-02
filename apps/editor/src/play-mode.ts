@@ -66,7 +66,7 @@ export interface PlayStartOptions {
    */
   clients?: number;
   /**
-   * Fresh state: back up world.db before starting; on stop, restore
+   * Fresh state: back up region.db before starting; on stop, restore
    * unless keep is set.
    */
   fresh?: boolean;

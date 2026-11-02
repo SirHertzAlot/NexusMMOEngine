@@ -3,7 +3,7 @@
  *
  * Like server-control.ts, this module only speaks HTTP to the dev-host
  * routes (`GET /api/editor/characters`), so the character record panel
- * can import it safely. The dev host opens characters.db and world.db
+ * can import it safely. The dev host opens characters.db and region.db
  * read-only; nothing here (or there) writes.
  */
 
