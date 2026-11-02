@@ -1,5 +1,7 @@
 {
   "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@mmo-engine/animal-rig": "0.1.0",
     "@mmo-engine/art": "0.1.0",
     "@mmo-engine/compose": "0.1.0",
     "@mmo-engine/mirror": "0.1.0",
@@ -15,6 +17,8 @@
     "@takram/three-geospatial": "^0.9.1",
     "animouse": "^0.8.0",
     "flatbuffers": "^25.9.23",
+    "gltfpack": "1.3.0",
+    "lil-gui": "0.21.0",
     "meshoptimizer": "^1.3.0",
     "postprocessing": "^6.39.5",
     "react": "^19.3.0",
@@ -35,7 +39,9 @@
     "autoprefixer": "^10.4.20",
     "babel-plugin-react-compiler": "^1.0.0",
     "gltfjsx": "^6.5.3",
+    "jolt-physics": "^1.1.1",
     "leva": "^0.10.1",
+    "physx-js-webidl": "^2.9.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.6.3",
@@ -46,7 +52,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && npm run build:lib && vite build",
-    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/compose",
+    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/animal-rig",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",
@@ -54,8 +60,11 @@
     "pretest": "npm run build:deps",
     "test": "npm run build:lib && node --test \"dist/test/**/*.test.js\"",
     "bench:sab-assets": "npm run build:lib && node scripts/bench-sab-assets.mjs",
+    "bench:art-baselines": "node scripts/art-baselines.mjs",
+    "bench:client-frame": "node scripts/frame-bench.mjs",
     "surfaces:fetch": "node scripts/fetch-surfaces.mjs",
-    "models:generate": "gltfjsx --types --output src/render/generated --transform"
+    "models:generate": "gltfjsx --types --output src/render/generated --transform",
+    "bench:physics": "node scripts/bench-physics.mjs --out scripts/physics-bench-results.json"
   },
   "type": "module",
   "version": "0.1.0",

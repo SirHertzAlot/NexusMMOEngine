@@ -35,6 +35,36 @@ const refused = (issues: GameplayIssue[]): Error => new GameplaySaveError(issues
 export const loadGameplay = (base = ""): Promise<GameplaySnapshot> =>
   requestJson(`${base}/api/editor/gameplay`, { fail: "gameplay load failed", refused });
 
+/** One species of the wildlife table, as the read-only view shows it (the host's WildlifeRow). */
+export interface WildlifeSpecies {
+  id: string;
+  role: string;
+  habitat: string;
+  temperament: string;
+  activity: string;
+  tier: number;
+  health: number;
+  noticeM: number;
+  territoryM: number;
+  wanderM: number;
+  group: string;
+  groupMin: number;
+  groupMax: number;
+  raidRangeM: number | null;
+  biomes: string[];
+  boss: boolean;
+}
+
+export interface WildlifeView {
+  species: WildlifeSpecies[];
+  problems: string[];
+  biomes: string[];
+}
+
+/** The wildlife table as the server loads it, with the table's own checks. Read only. */
+export const loadWildlife = (base = ""): Promise<WildlifeView> =>
+  requestJson(`${base}/api/editor/gameplay/wildlife`, { fail: "wildlife load failed" });
+
 /** Validate a candidate on the host (the server's own loaders); nothing is written. */
 export async function checkGameplayRemote(table: GameplayTable, content: unknown, base = ""): Promise<GameplayIssue[]> {
   return (await requestJson<{ issues: GameplayIssue[] }>(`${base}/api/editor/gameplay/check`, { body: { table, content }, fail: "gameplay check failed", refused })).issues;

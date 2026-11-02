@@ -62,7 +62,15 @@ export interface SettlementRequest {
    * point. A parcel whose footprint (centre, corners, edge midpoints) is not dry is dropped before the structures
    * are solved: the town is built on what is left, or fails with the solver's reason. Without it, the ground is not considered.
    */
-  site?: { origin: [number, number]; dry: (x: number, z: number) => boolean };
+  site?: {
+    origin: [number, number];
+    dry: (x: number, z: number) => boolean;
+    /**
+     * Routes a paved street over the ground from `from` to `to` (world metres), returning its centreline in world metres with
+     * each point's height `h` above the ground at `centre`; null when there is no route. Without it, streets stay straight.
+     */
+    route?: (from: [number, number], to: [number, number], centre: [number, number]) => Array<{ x: number; z: number; h: number }> | null;
+  };
   verbosity?: Verbosity;
 }
 
@@ -214,7 +222,24 @@ const STAGES: Stage[] = [
             const [w, d] = a.z === b.z ? [Math.abs(b.x - a.x) + e.widthMm, e.widthMm] : [e.widthMm, Math.abs(b.z - a.z) + e.widthMm];
             return FOOTPRINT_SAMPLES.every((fx) => FOOTPRINT_SAMPLES.every((fz) => dryMm((a.x + b.x) / 2 + fx * w - c.x, (a.z + b.z) / 2 + fz * d - c.z)));
           };
-          const edges = full.roads.edges.map((e) => (e.surface === "paved" && !slabDry(e) ? { ...e, surface: "dirt" as const } : e));
+          const surfaced = full.roads.edges.map((e) => (e.surface === "paved" && !slabDry(e) ? { ...e, surface: "dirt" as const } : e));
+          // Each paved street routed over the ground, when the site gives a router; its ends stay on the junctions.
+          const route = site.route;
+          const edges = route
+            ? surfaced.map((e) => {
+                if (e.surface !== "paved") return e;
+                const a = at.get(e.from)!;
+                const b = at.get(e.to)!;
+                const toWorld = (p: { x: number; z: number }): [number, number] => [site.origin[0] + (p.x - c.x) / 1000, site.origin[1] + (p.z - c.z) / 1000];
+                const pts = route(toWorld(a), toWorld(b), site.origin);
+                if (!pts || pts.length < 2) return e;
+                const path = pts.map((p) => ({ x: Math.round((p.x - site.origin[0]) * 1000), z: Math.round((p.z - site.origin[1]) * 1000), h: Math.round(p.h * 100) / 100 }));
+                // The ends are the junctions themselves, so the street meets its crossings exactly.
+                path[0] = { x: a.x - c.x, z: a.z - c.z, h: path[0]!.h };
+                path[path.length - 1] = { x: b.x - c.x, z: b.z - c.z, h: path[path.length - 1]!.h };
+                return { ...e, path };
+              })
+            : surfaced;
           const kept = { ...full, roads: { ...full.roads, edges }, parcels: full.parcels.filter(dry), fortifications, wallOpenToWater: full.fortifications.length - fortifications.length, square: squareDry ? sq : null };
           ctx.events.emit("summary", "structures", "wet_parcels_dropped", { extraBlocks: extra, dropped: full.parcels.length - kept.parcels.length, kept: kept.parcels.length });
           // Too few dry farm plots: the farms and food are capped to what they hold. If even that cannot be solved (a lone master

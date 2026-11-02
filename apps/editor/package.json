@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@mmo-engine/animal-rig": "0.1.0",
     "@mmo-engine/art": "0.1.0",
     "@mmo-engine/build": "0.1.0",
     "@mmo-engine/dungeon": "0.1.0",

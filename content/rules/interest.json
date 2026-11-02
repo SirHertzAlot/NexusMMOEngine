@@ -1,5 +1,6 @@
 {
   "enterM": 96,
   "leaveM": 128,
-  "farM": 400
+  "farM": 400,
+  "outerEvery": 3
 }

@@ -87,6 +87,7 @@
    "role": "large_herbivore",
    "models": "deer|mule_deer",
    "habitat": "land",
+   "wanderM": 12,
    "group": {
     "kind": "herd",
     "size": [
@@ -177,6 +178,7 @@
    "role": "large_herbivore",
    "models": "bighorn",
    "habitat": "land",
+   "wanderM": 12,
    "group": {
     "kind": "herd",
     "size": [
@@ -232,6 +234,7 @@
    "role": "small_prey",
    "models": "rabbit|cottontail_rabbit",
    "habitat": "land",
+   "wanderM": 6,
    "group": {
     "kind": "herd",
     "size": [
@@ -264,6 +267,7 @@
    "role": "small_prey",
    "models": "squirrel|chipmunk",
    "habitat": "land",
+   "wanderM": 6,
    "group": {
     "kind": "pair",
     "size": [
@@ -292,6 +296,7 @@
    "role": "small_prey",
    "models": "quail|pheasant|sparrow",
    "habitat": "land",
+   "wanderM": 5,
    "group": {
     "kind": "flock",
     "size": [
@@ -418,7 +423,7 @@
    },
    "territoryM": 500,
    "activity": "crepuscular",
-   "temperament": "hunt",
+   "temperament": "raid",
    "danger": {
     "tier": 3,
     "health": 45,
@@ -430,7 +435,14 @@
    "biomes": {
     "plains": 0.8
    },
-   "note": "Small packs that test lone travellers."
+   "raid": {
+    "rangeM": 900,
+    "minStructures": 1,
+    "hungerSeconds": 900,
+    "satiateSeconds": 40,
+    "weights": { "player": 0.6, "livestock": 1.5, "structure": 0.3 }
+   },
+   "note": "Small packs that raid the pens at a settlement's edge and test lone travellers."
   },
   "bobcat": {
    "role": "mesopredator",
@@ -627,7 +639,7 @@
    },
    "territoryM": 80,
    "activity": "nocturnal",
-   "temperament": "defend",
+   "temperament": "raid",
    "danger": {
     "tier": 1,
     "health": 45,
@@ -641,12 +653,20 @@
     "plains": 0.5,
     "swamp": 1
    },
-   "note": "Forages at edges and camps; bites when grabbed."
+   "raid": {
+    "rangeM": 300,
+    "minStructures": 2,
+    "hungerSeconds": 600,
+    "satiateSeconds": 30,
+    "weights": { "player": 0.3, "livestock": 1, "structure": 0.6 }
+   },
+   "note": "Raids larders and bins at the edge of towns; bites when grabbed."
   },
   "cow": {
    "role": "livestock",
    "models": "cow|bull",
    "habitat": "land",
+   "wanderM": 8,
    "group": {
     "kind": "herd",
     "size": [
@@ -675,6 +695,7 @@
    "role": "livestock",
    "models": "sheep",
    "habitat": "land",
+   "wanderM": 10,
    "group": {
     "kind": "flock",
     "size": [
@@ -703,6 +724,7 @@
    "role": "livestock",
    "models": "goat",
    "habitat": "land",
+   "wanderM": 8,
    "group": {
     "kind": "herd",
     "size": [
@@ -731,6 +753,7 @@
    "role": "livestock",
    "models": "pig",
    "habitat": "land",
+   "wanderM": 8,
    "group": {
     "kind": "herd",
     "size": [
@@ -759,6 +782,7 @@
    "role": "livestock",
    "models": "horse|donkey|llama",
    "habitat": "land",
+   "wanderM": 12,
    "group": {
     "kind": "pair",
     "size": [
@@ -787,6 +811,7 @@
    "role": "livestock",
    "models": "hen|rooster|chick|turkey",
    "habitat": "land",
+   "wanderM": 4,
    "group": {
     "kind": "flock",
     "size": [

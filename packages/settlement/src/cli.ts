@@ -58,6 +58,8 @@ async function main(): Promise<void> {
   let access = o.access as Access | undefined;
   /** The world's dryness test at a point (with --world): parcels that are not dry are dropped from the town. */
   let dry: ((x: number, z: number) => boolean) | undefined;
+  /** The router for paved streets over the ground (with --world): streets follow the land. */
+  let route: SettlementSiteRoute | undefined;
   /** The land around the site (with --world): the town's industry reads it. */
   let land: Land | undefined;
   if (o.world) {
@@ -67,6 +69,7 @@ async function main(): Promise<void> {
     const extent = townHalfExtentM(households, rules, buildingScale);
     const found = await findSites(fromUser(o.world), here, rules, extent);
     dry = found.dry;
+    route = found.route;
     if (o["list-sites"]) {
       // How many towns of this size the world supports, for `bake:all --sites max`; the line is machine-read.
       console.log(`SITES ${found.sites.length}`);
@@ -103,7 +106,7 @@ async function main(): Promise<void> {
     console.log(`  [scale] building factor ${scale}`);
   }
   const r = bakeSettlement(
-    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population, ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry } } : {}) },
+    { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population, ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry, ...(route ? { route } : {}) } } : {}) },
     out,
     o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
   );
@@ -117,7 +120,9 @@ async function main(): Promise<void> {
 const MAX_SITES = 500;
 
 /** The world's sites, best first (the survey from the built engine-core, read by selectSites), and its dryness test: a point is dry when its survey cell is green land (a green biome, no water, river or ice, the safe floor above the sea). */
-export async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean }> {
+export type SettlementSiteRoute = (from: [number, number], to: [number, number], centre: [number, number]) => Array<{ x: number; z: number; h: number }> | null;
+
+export async function findSites(worldFile: string, here: string, rules: SettlementRules, extentM: number): Promise<{ sites: Site[]; dry: (x: number, z: number) => boolean; route: SettlementSiteRoute }> {
   const terrain = pathToFileURL(resolve(here, "../../../engine-core/dist/src/terrain")).href;
   const { greenMask, greenSquares } = (await import(`${terrain}/green.js`)) as { greenMask(f: unknown, ids: readonly string[], green: readonly string[], floorM: number): Uint8Array; greenSquares(mask: Uint8Array, grid: unknown, minCells: number): { cx: number; cz: number; cells: number }[] };
   const { surveyWorld } = (await import(`${terrain}/survey.js`)) as { surveyWorld(spec: unknown): TerrainFields & { spec: { biomes: { id: string }[] } } };
@@ -140,7 +145,21 @@ export async function findSites(worldFile: string, here: string, rules: Settleme
     const v = Math.round((z - g.originZ) / g.cell);
     return u >= 0 && v >= 0 && u < g.width && v < g.depth && green[v * g.width + u] === 1;
   };
-  return { sites: selectSites(fields, rules.sites, MAX_SITES, extentM), dry };
+  // Streets over the survey: the engine's road router (A* with a cart grade, around water), its heights read off the survey.
+  const { routeEdge } = (await import(`${terrain}/road-router.js`)) as { routeEdge(grid: unknown, a: [number, number], b: [number, number], opts: unknown): [number, number][] };
+  const heightAt = (x: number, z: number): number => {
+    const u = Math.min(g.width - 1, Math.max(0, Math.round((x - g.originX) / g.cell)));
+    const v = Math.min(g.depth - 1, Math.max(0, Math.round((z - g.originZ) / g.cell)));
+    return survey.height[v * g.width + u]!;
+  };
+  const grid = { heights: survey.height, width: g.width, depth: g.depth, cell: g.cell, originX: g.originX, originZ: g.originZ };
+  const seaLevel = survey.seaLevel ?? 0;
+  const route: SettlementSiteRoute = (from, to, centre) => {
+    const base = heightAt(centre[0], centre[1]);
+    const pts = routeEdge(grid, from, to, { seaLevel, blocked: (i: number) => survey.water[i] !== 0 || survey.river[i] !== 0 });
+    return pts.map(([x, z]) => ({ x, z, h: heightAt(x, z) - base }));
+  };
+  return { sites: selectSites(fields, rules.sites, MAX_SITES, extentM), dry, route };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1454,16 +1454,16 @@
     "roadside": {
       "outpostSpacingM": 2400,
       "townClearM": 350,
-      "innMinTownDistM": 900,
+      "innMinTownDistM": 600,
       "innBesideOutpostM": 70,
       "shackSpacingM": 1300,
       "shackOffsetM": [
         25,
         60
       ],
-      "campSpacingM": 2600,
+      "campSpacingM": 1600,
       "campWaterM": 250,
-      "campClearOfGuardM": 700
+      "campClearOfGuardM": 350
     },
     "homesteads": {
       "perTown": 3,

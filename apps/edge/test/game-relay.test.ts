@@ -21,12 +21,12 @@ async function fakeCore() {
     const o = p.payload as Record<string, string>;
     seen.push(p.type);
     if (p.type === "wire.open") {
-      push("wire.send", { sid: o.sid, data: b64("welcome") });
+      push("wire.send", { sid: o.sid, data: Buffer.from("welcome") });
       push("wire.sub", { sid: o.sid, topic: "sector:1" });
     } else if (p.type === "wire.msg") {
-      const text = Buffer.from(o.data, "base64").toString();
+      const text = Buffer.from(o.data as unknown as Uint8Array).toString();
       if (text === "bye") push("wire.end", { sid: o.sid, code: 4000, reason: "done" });
-      else push("wire.send", { sid: o.sid, data: b64("echo:" + text) });
+      else push("wire.send", { sid: o.sid, data: Buffer.from("echo:" + text) });
     } else if (p.type === "http") {
       return { status: 200, headers: { "content-type": "text/plain" }, body: b64(`${o.method} ${o.url} ${Buffer.from(o.body, "base64").toString()}`) };
     }
@@ -49,8 +49,8 @@ test("a player's socket and HTTP go through the edge to the core and back", asyn
     ws.send("hi");
     await until(() => got.includes("echo:hi"));
     // A topic publish reaches subscribed sockets only.
-    push("wire.publish", { topic: "sector:1", data: b64("delta") });
-    push("wire.publish", { topic: "sector:2", data: b64("elsewhere") });
+    push("wire.publish", { topic: "sector:1", data: Buffer.from("delta") });
+    push("wire.publish", { topic: "sector:2", data: Buffer.from("elsewhere") });
     await until(() => got.includes("delta"));
     await sleep(50);
     assert.ok(!got.includes("elsewhere"));

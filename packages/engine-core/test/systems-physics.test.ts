@@ -47,12 +47,23 @@ class MockBackend implements PhysicsBackend {
   readonly removedBatches: bigint[][] = [];
   readonly syncCalls: { count: number; flags: number[] }[] = [];
   destroyed = false;
+  /** Bodies the pool can hold: a batch past it is refused, as a full native pool refuses. */
+  capacity = Infinity;
+  /** Refused by the pool: no body, so copy and sync skip them, as the native backend does. */
+  readonly refused = new Set<bigint>();
 
-  addBodies(batch: PhysicsAddBatch): void {
+  addBodies(batch: PhysicsAddBatch): number {
     const ids: bigint[] = [];
+    let refused = 0;
     for (let k = 0; k < batch.count; k++) {
       const id = batch.entityIds[k];
+      if (this.bodies.size >= this.capacity) {
+        refused++;
+        this.refused.add(id);
+        continue;
+      }
       ids.push(id);
+      this.refused.delete(id);
       this.bodies.set(id, {
         id,
         motion: batch.motionType[k],
@@ -61,11 +72,15 @@ class MockBackend implements PhysicsBackend {
       });
     }
     this.addedBatches.push(ids);
+    return refused;
   }
 
   removeBodies(entityIds: BigUint64Array): void {
     const ids = [...entityIds];
-    for (const id of ids) this.bodies.delete(id);
+    for (const id of ids) {
+      this.bodies.delete(id);
+      this.refused.delete(id);
+    }
     this.removedBatches.push(ids);
   }
 
@@ -80,6 +95,10 @@ class MockBackend implements PhysicsBackend {
     const fl: number[] = [];
     for (let k = 0; k < count; k++) {
       const b = this.bodies.get(entityIds[k]);
+      if (!b && this.refused.has(entityIds[k])) {
+        fl.push(flags[k]);
+        continue;
+      }
       assert.ok(b, "sync of unknown body");
       if (b.motion === MotionType.Kinematic || (flags[k] & 0x01) !== 0) {
         const e = eids[k];
@@ -112,6 +131,7 @@ class MockBackend implements PhysicsBackend {
   ): void {
     for (let k = 0; k < count; k++) {
       const b = this.bodies.get(entityIds[k]);
+      if (!b && this.refused.has(entityIds[k])) continue; // refused: no body, as the native backend skips it
       assert.ok(b, "copy of unknown body");
       const e = eids[k];
       px[e] = b.px; py[e] = b.py; pz[e] = b.pz;
@@ -338,4 +358,54 @@ describe("colliders: every entity is a physics body", () => {
     assert.equal(BodyConfig.shapeKind[e], ShapeKind.Sphere);
     assert.equal(BodyConfig.motionType[e], MotionType.Dynamic);
   });
+});
+
+test("physics: a batch the pool refuses is counted, and warned about once per run", () => {
+  const sim = new SimWorld();
+  const backend = new MockBackend();
+  backend.capacity = 2;
+  const warnings: string[] = [];
+  const sys = new PhysicsSystem(backend, 2, (m) => warnings.push(m));
+  try {
+    for (let i = 0; i < 5; i++) spawnBody(sim, ShapeKind.Sphere, MotionType.Dynamic, i * 2, 10, 0);
+    sys.step(sim, dt);
+    assert.equal(backend.bodyCount(), 2, "the pool holds two");
+    assert.equal(sys.droppedBodies, 3);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /3 of 5 new bodies/);
+
+    spawnBody(sim, ShapeKind.Sphere, MotionType.Dynamic, 20, 10, 0);
+    sys.step(sim, dt);
+    assert.equal(sys.droppedBodies, 4, "still counted");
+    assert.equal(warnings.length, 1, "but not warned again in the same run");
+
+    backend.capacity = Infinity;
+    spawnBody(sim, ShapeKind.Sphere, MotionType.Dynamic, 22, 10, 0);
+    sys.step(sim, dt);
+    assert.equal(sys.droppedBodies, 4, "a batch that fits drops nothing");
+
+    backend.capacity = 0;
+    spawnBody(sim, ShapeKind.Sphere, MotionType.Dynamic, 24, 10, 0);
+    sys.step(sim, dt);
+    assert.equal(sys.droppedBodies, 5);
+    assert.equal(warnings.length, 2, "a new run of drops warns again");
+  } finally {
+    sys.close();
+  }
+});
+
+test("physics: a step whose batch fits reports nothing", () => {
+  const sim = new SimWorld();
+  const backend = new MockBackend();
+  const warnings: string[] = [];
+  const sys = new PhysicsSystem(backend, 2, (m) => warnings.push(m));
+  try {
+    for (let i = 0; i < 3; i++) spawnBody(sim, ShapeKind.Sphere, MotionType.Dynamic, i * 2, 10, 0);
+    sys.step(sim, dt);
+    assert.equal(backend.bodyCount(), 3);
+    assert.equal(sys.droppedBodies, 0);
+    assert.deepEqual(warnings, []);
+  } finally {
+    sys.close();
+  }
 });

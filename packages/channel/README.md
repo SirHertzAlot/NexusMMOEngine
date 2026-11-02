@@ -1,7 +1,7 @@
 # Channel (`@mmo-engine/channel`)
 
 The private link between the edge (`apps/edge`) and engine-core: framed
-JSON over one TCP connection, request/response matched by id, pushes from
+JSON (and raw bytes, E5a) over one TCP connection, request/response matched by id, pushes from
 the core, heartbeats and reconnect backoff. Slice E2 of
 [`docs/EDGE-CORE-SPLIT.md`](../../docs/EDGE-CORE-SPLIT.md). The edge uses
 `ChannelClient`; E3 wires the core side (`serveChannel`).
@@ -20,6 +20,21 @@ One frame is one packet. A body over 8 MiB (8388608 bytes) throws
 refused when reading. A complete frame that is not valid JSON throws
 `invalid frame JSON`; the reader's owner closes that socket (the server
 keeps serving everyone else).
+
+### Binary frames (E5a)
+
+A packet that carries bytes (any `Uint8Array`, Buffers included) is sent
+as a binary frame, with the bytes raw instead of base64 inside JSON:
+
+```
+ len (uint32 BE) | 0x00 | envLen (uint32 BE) | envelope JSON (envLen bytes) | blob 0 | blob 1 | ...
+```
+
+The first body byte is `0x00`, which JSON text never starts with, so a
+reader tells the two kinds apart. The envelope is `{"o": packet, "b": [sizes]}`. Each blob's place in the packet is a
+`{"$bin": i}` reference (`$bin` is reserved for that); the reader puts a
+`Buffer` back in its place. A packet with no bytes is an ordinary JSON
+frame, so both kinds share one stream.
 
 ## Packets
 

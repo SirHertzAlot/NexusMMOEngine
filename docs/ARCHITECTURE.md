@@ -359,7 +359,9 @@ inside a per-tick time budget; chunks beyond the unload radius unload. The
 - **Physics colliders follow chunks**: a static Jolt height field per loaded
   chunk, so bodies rest on the surface characters walk on and clients render.
 - **An entity budget** stops loading at 90,000 live entities (bitECS holds
-  100,000) and warns, rather than failing mid-tick.
+  100,000) and warns, rather than failing mid-tick. The physics body pool
+  (131,072 bodies) holds those entities and each loaded chunk's ground; a
+  chunk whose ground has no room waits, with a warning.
 
 ## Determinism
 

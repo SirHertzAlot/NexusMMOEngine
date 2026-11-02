@@ -24,7 +24,7 @@ import {
   DEFAULT_LOCOMOTION, crossfadeWeights, manifestLocomotion, pickLocomotion, playhead,
   type AnimationClipInfo, type AnimationManifest, type ClipPlan, type LocomotionGraph,
 } from "@mmo-engine/art/browser";
-import { DEFAULT_KIT_URL } from "./character-kit.js";
+import { DEFAULT_KIT_URL, kitBase } from "./character-kit.js";
 
 export class AnimationLibrary {
   private constructor(
@@ -37,7 +37,8 @@ export class AnimationLibrary {
    * The library next to the character kit (animations.json + a GLB per
    * source); reference takes only when asked for (the dev preview).
    */
-  static async load(baseUrl = DEFAULT_KIT_URL, opts: { reference?: boolean } = {}): Promise<AnimationLibrary> {
+  static async load(requested = DEFAULT_KIT_URL, opts: { reference?: boolean } = {}): Promise<AnimationLibrary> {
+    const baseUrl = await kitBase(requested);
     const res = await fetch(`${baseUrl}animations.json`);
     if (!res.ok) throw new Error(`animations: ${baseUrl}animations.json (${res.status}) — run npm run convert:animations -w @mmo-engine/art`);
     const manifest = (await res.json()) as AnimationManifest;

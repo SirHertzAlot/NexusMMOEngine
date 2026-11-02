@@ -31,7 +31,7 @@ function issuesFor(map: ClipMap): ClipMapIssue[] {
 const TABS: Array<[AnimationTab, string]> = [["clipmap", "Clip map"], ["clips", "Clips"], ["locomotion", "Locomotion"], ["combat", "Combat timeline"]];
 
 export function AnimationPanel(): React.JSX.Element {
-  const { tab } = animationStore.use();
+  const { tab } = animationStore.useValue();
   const anim = useMediaDoc("animation");
   const combat = useMediaDoc("combat");
   const [rigState, setRigState] = React.useState<{ rig: AnimationManifest | null; loading: boolean }>({ rig: null, loading: true });

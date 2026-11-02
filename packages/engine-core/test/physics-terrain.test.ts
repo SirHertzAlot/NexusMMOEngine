@@ -21,6 +21,7 @@ import {
   Transform,
   Velocity,
 } from "../src/index.js";
+import { ENTITY_BUDGET } from "../src/streaming/chunk-streamer.js";
 
 const require = createRequire(import.meta.url);
 const joltBuilt = (): boolean => {
@@ -129,6 +130,50 @@ test("removing a chunk's collider drops what stood on it", (t) => {
     colliders.remove(0, 0);
     for (let i = 0; i < 60; i++) physics.step(sim, dt);
     assert.ok(Transform.py[ball] < 0, `falls once the chunk is gone (y=${Transform.py[ball]})`);
+  } finally {
+    physics.close();
+  }
+});
+
+test("a full body pool refuses a chunk's ground instead of throwing", (t) => {
+  if (!joltBuilt()) return t.skip("native physics addon (with terrain) not built");
+  const backend = createJoltBackend();
+  Object.assign(backend, { addTerrain: () => false }); // what a full pool answers
+  const physics = new PhysicsSystem(backend);
+  try {
+    const colliders = physics.terrainColliders(SIZE);
+    assert.equal(colliders.add(0, 0, tileOf(() => 0)), false);
+    assert.throws(() => colliders.add(0, 0, new Float32Array(25)), /even square/, "a malformed tile is a bug, not a full pool");
+  } finally {
+    physics.close();
+  }
+});
+
+test("the body pool holds the streamer's entity budget, with a chunk's ground on top", (t) => {
+  if (!joltBuilt()) return t.skip("native physics addon (with terrain) not built");
+  const backend = createJoltBackend();
+  const sim = new SimWorld();
+  const physics = new PhysicsSystem(backend);
+  try {
+    for (let i = 0; i < ENTITY_BUDGET; i++) {
+      const e = sim.spawn();
+      addComponent(sim.ecs, Transform, e);
+      addComponent(sim.ecs, Velocity, e);
+      addComponent(sim.ecs, BodyConfig, e);
+      Transform.px[e] = (i % 300) * 2;
+      Transform.py[e] = 0;
+      Transform.pz[e] = Math.floor(i / 300) * 2;
+      Transform.qw[e] = 1;
+      BodyConfig.shapeKind[e] = ShapeKind.Sphere;
+      BodyConfig.radius[e] = 0.3;
+      BodyConfig.mass[e] = 1;
+      BodyConfig.motionType[e] = MotionType.Static;
+      BodyConfig.layer[e] = 1;
+      BodyConfig.friction[e] = 0.5;
+    }
+    physics.step(sim, dt);
+    assert.equal(backend.bodyCount(), ENTITY_BUDGET, "every entity in the budget has a body");
+    assert.equal(physics.terrainColliders(SIZE).add(0, 0, tileOf(() => 0)), true, "and a chunk's ground still fits");
   } finally {
     physics.close();
   }

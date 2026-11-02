@@ -7,7 +7,6 @@ import { decodeDeltaSet, decodeEnvelope, MessageType } from "@mmo-engine/protoco
 import { startGameRelay } from "../src/game-relay.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const b64 = (b: number[]) => Buffer.from(b).toString("base64");
 
 test("wire.sectors: one push, a DeltaSet per session from the shared bytes", async () => {
   const sids: string[] = [];
@@ -30,7 +29,7 @@ test("wire.sectors: one push, a DeltaSet per session from the shared bytes", asy
     while (sids.length < 2) await sleep(10);
     box.server.pushToAll("wire.sectors", {
       tick: 7,
-      bytes: { "0:0,0": b64([1, 2]), "1:1,0": b64([3]) },
+      bytes: { "0:0,0": Buffer.from([1, 2]), "1:1,0": Buffer.from([3]) },
       plans: [
         { sid: sids[0], replace: false, entries: [[0, "0,0", "0:0,0"], [2, "5,5", "2:5,5"]] },
         { sid: sids[1], replace: true, entries: [[1, "1,0", "1:1,0"], [0, "0,0", "0:0,0"]] },

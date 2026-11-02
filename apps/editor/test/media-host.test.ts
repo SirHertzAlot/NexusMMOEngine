@@ -44,7 +44,7 @@ describe("media routes", () => {
     doc.moves[0].hitAt = 0.25;
     assert.equal((await put(root, "combat", doc)).status, 200);
     assert.equal(JSON.parse(disk(root, "combat/moves.json")).moves[0].hitAt, 0.25);
-    assert.deepEqual(readdirSync(join(root, "content", "combat")), ["moves.json"]);
+    assert.deepEqual(readdirSync(join(root, "content", "combat")).sort(), readdirSync(join(repoContent, "combat")).sort(), "no temp files left beside the copied content");
     rmSync(root, { recursive: true });
   });
 

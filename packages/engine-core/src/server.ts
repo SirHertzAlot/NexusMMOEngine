@@ -127,6 +127,7 @@ import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
 import { HybridDataPlaneServer } from "./data-plane-server.js";
+import { resolveDataPlaneDbUrl } from "./persist-worker.js";
 import { DATA_PLANE_ENTITY_CAPACITY } from "./sab-store.js";
 import {
   Gateway,
@@ -154,6 +155,7 @@ import {
   installShutdownHook,
   NavmeshTileRegistry,
   CsvCredentialStore,
+  WorldCredentialStore,
   makeDebugSource,
   WorldClient,
   WebrpcWorldTransport,
@@ -263,6 +265,7 @@ import {
 } from "./logging/index.js";
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
+import { enemyModelPicker, loadEnemyModels } from "./enemy-models.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -677,7 +680,7 @@ async function main(): Promise<void> {
     // revision wrapped it as a bare function, which crashed warm() with
     // "colliders?.add is not a function".
     colliders: ((() => {
-      type Hook = { add(cx: number, cz: number, heights: Float32Array): void; remove(cx: number, cz: number): void };
+      type Hook = { add(cx: number, cz: number, heights: Float32Array): boolean; remove(cx: number, cz: number): void };
       let hook: Hook | null = null;
       const get = (): Hook => {
         if (hook) return hook;
@@ -704,9 +707,14 @@ async function main(): Promise<void> {
   // colliders, which need the physics module's terrainColliders hook.
 
   // ---- auth + gateway ----------------------------------------------------
-  const credentialStore = new CsvCredentialStore(
+  // Slice C: with a world the accounts live there (the CSV backs sign-ins
+  // the world doesn't know yet); without one the region keeps its CSV.
+  const usersCsv = new CsvCredentialStore(
     process.env.MMO_USERS_CSV ?? path.join(DATA_DIR, "users.csv"),
   );
+  const credentialStore = worldClient?.registered
+    ? new WorldCredentialStore(worldClient, usersCsv)
+    : usersCsv;
   // Domain stores (characters, guilds, social, parties, instance results)
   // are built by their modules during assembly and published on
   // moduleCtx.stores; server.ts reads them back post-assembly below.
@@ -730,6 +738,8 @@ async function main(): Promise<void> {
     process.env.MMO_DAY_SECONDS ?? String(worldSettings.settings.daySeconds),
     process.env.MMO_DAY_OFFSET ?? String(worldSettings.settings.dayOffset),
   );
+  // The game day at a tick (0 is a Sunday); absent when the server keeps no calendar.
+  const gameDayOf = dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined;
   // The body system is made below with the hooks; hard landings reach it through this.
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
@@ -790,6 +800,15 @@ async function main(): Promise<void> {
     modelPick.set(kind, n + 1);
     return ids[n % ids.length];
   };
+  // EM1: enemy kinds' art models from the gitignored content/enemies/models.local.json (see enemy-models.ts).
+  // Without the licensed art's local map, the committed stand-in map gives the quadrupeds the stand-in models
+  // (scripts/gen-placeholder-art.mjs), so an animal gets its rig and corpse on a checkout with no art.
+  const enemyModelsFile = fs.existsSync(new URL("../../content/enemies/models.local.json", import.meta.url))
+    ? new URL("../../content/enemies/models.local.json", import.meta.url)
+    : new URL("../../content/enemies/models.placeholder.json", import.meta.url);
+  const enemyModelOf = enemyModelPicker(
+    loadEnemyModels(enemyModelsFile, (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
+  );
   const wildlifeSettlements: RaidSettlement[] =
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
@@ -813,7 +832,8 @@ async function main(): Promise<void> {
     attackerOf: (e: number) => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
     waterSurfaceAt: water ? (x: number, z: number) => surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z) : undefined,
     waterDepthAt: water ? (x: number, z: number) => { const s = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return s === null ? 0 : Math.max(0, s - characterOf().groundHeight(x, z)); } : undefined,
-    modelOf: wildlifeModelOf,
+    // Wildlife models first, then the enemies' (EM1); a kind in neither spawns on its stand-in block.
+    modelOf: (kind: string) => wildlifeModelOf(kind) ?? enemyModelOf(kind),
     settlements: () => wildlifeSettlements,
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
@@ -1171,6 +1191,7 @@ async function main(): Promise<void> {
     dungeonDir: process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT,
     dataDir: DATA_DIR,
     instanceHost: process.env.MMO_INSTANCE_HOST || "localhost",
+    scale,
     getGame: () => game,
     credentialStore,
     getGateway: () => gw,
@@ -1269,7 +1290,7 @@ async function main(): Promise<void> {
     detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
-    dayOf: dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined,
+    dayOf: gameDayOf,
   };
   const moduleCtx: ServerModuleContext = {
     sim,
@@ -1432,6 +1453,8 @@ async function main(): Promise<void> {
       // its budget overruns become records instead of stdio formatting.
       logRingSab: logRing.sab,
       logRingCapacity: logRing.capacity,
+      // Durable by default under <MMO_DATA_DIR>/data-plane; MMO_DATA_PLANE_DB overrides it (mem:// = volatile).
+      dbUrl: resolveDataPlaneDbUrl(process.env.MMO_DATA_PLANE_DB, DATA_DIR),
     });
     await dataPlaneServer.startWorkers();
     console.log(
@@ -1459,6 +1482,8 @@ async function main(): Promise<void> {
     social: game.rules.social,
     needs: game.rules.needs,
     lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
+    // A pupil takes one lesson a game day (a real day with no calendar).
+    gameDay: gameDayOf,
     // GET /health for deploy health checks (EA19); PCG's handler composes with it.
     http: healthHttpHandler,
     presence: {
@@ -1487,6 +1512,8 @@ async function main(): Promise<void> {
     groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
     creatures: {
       has: (k) => k in game.rules.creatures.creatures,
+      // The admin spawnlist names creature kinds from the rules (A3); without this only props show.
+      kinds: () => Object.keys(game.rules.creatures.creatures).sort(),
       spawnPack: (w, k, x, z) => creaturesOf().spawnPack(w, k, x, z),
       nameOf: (e) => creaturesOf().nameOf(e),
       entities: () => creaturesOf().entities(),

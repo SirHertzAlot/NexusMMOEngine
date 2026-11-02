@@ -6,7 +6,7 @@
  * it. Moving a widget is a hud.json edit, never a code change.
  */
 import * as React from "react";
-import { anchorStyle, DEFAULT_LAYOUT, type HudLayout } from "./hud-layout.js";
+import { anchorStyle, DEFAULT_LAYOUT, withDefaults, type HudLayout } from "./hud-layout.js";
 import { useHudJson } from "../hooks/swr";
 
 const HudLayoutContext = React.createContext<HudLayout>(DEFAULT_LAYOUT);
@@ -18,8 +18,9 @@ export function HudLayoutProvider({
   layout?: HudLayout | null;
   children: React.ReactNode;
 }): React.JSX.Element {
+  const merged = React.useMemo(() => withDefaults(layout), [layout]);
   return (
-    <HudLayoutContext.Provider value={layout ?? DEFAULT_LAYOUT}>
+    <HudLayoutContext.Provider value={merged}>
       {children}
     </HudLayoutContext.Provider>
   );

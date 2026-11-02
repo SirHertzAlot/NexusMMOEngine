@@ -22,6 +22,7 @@
  */
 
 import type { CredentialStore } from "../auth/credentials.js";
+import type { ScaleResolver } from "../scale.js";
 import type { CharacterStore } from "../characters/store.js";
 import type { Weapon } from "../combat.js";
 import type { GameRules } from "../rules/boot.js";
@@ -36,6 +37,8 @@ import type { InstanceResultStore } from "./results.js";
 export interface InstanceManagerOptions {
   content: DungeonContent;
   pool: DungeonPool;
+  /** The global scale (content/scale.json), passed to every run's spawns. */
+  scale?: ScaleResolver;
   game: () => GameRules;
   credentialStore: CredentialStore;
   characterStore: CharacterStore;
@@ -151,6 +154,7 @@ export class InstanceManager implements GatewayExtension {
         ...(content.looks ? { looks: content.looks } : {}),
         artAssets: content.artAssets,
         artScales: content.artScales,
+        ...(this.opts.scale ? { scale: this.opts.scale } : {}),
         game: this.opts.game(),
         members,
         credentialStore: this.opts.credentialStore,

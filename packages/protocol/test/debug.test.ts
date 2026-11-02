@@ -13,6 +13,7 @@ test("debug queries round-trip as control JSON (0x0a)", () => {
   const queries: DebugQuery[] = [
     { kind: "debug", query: "waypoints", entity: "18446744073709551615" },
     { kind: "debug", query: "tiles" },
+    { kind: "debug", query: "colliders", x: 512, z: 632, radius: 64 },
   ];
   for (const q of queries) {
     const wire = encodeEnvelope(MessageType.Debug, encodeControl(q));
@@ -46,6 +47,14 @@ test("debug responses round-trip as control JSON (0x0a)", () => {
       kind: "debug",
       query: "tiles",
       tiles: [[0, 0, 16, 16]],
+    },
+    {
+      kind: "debug",
+      query: "colliders",
+      total: 1,
+      colliders: [
+        { id: "7", shape: 0, motion: 0, x: 1, y: 2, z: 3, hx: 5, hy: 6, hz: 9, r: 0, yaw: 0.5, asset: 123 },
+      ],
     },
   ];
   for (const r of responses) {

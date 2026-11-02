@@ -2,6 +2,11 @@
   "version": 1,
   "archetypes": {
     "dungeon:debris": {"asset":"dungeon:rubble","category":"prop","collision":{"shape":"none","halfExtents":[0.5,0.6,0.5]}},
+    "dungeon:bones": {"asset":"dungeon:bones","category":"prop","collision":{"shape":"none","halfExtents":[0.5,0.44,0.4]}},
+    "dungeon:roots": {"asset":"dungeon:roots","category":"prop","collision":{"shape":"none","halfExtents":[0.6,1.1,0.6]}},
+    "dungeon:icicle": {"asset":"dungeon:icicle","category":"prop","collision":{"shape":"none","halfExtents":[0.2,0.8,0.2]}},
+    "dungeon:moss": {"asset":"dungeon:moss","category":"prop","collision":{"shape":"none","halfExtents":[0.5,0.48,0.5]}},
+    "dungeon:crack": {"asset":"dungeon:crack","category":"prop","collision":{"shape":"none","halfExtents":[0.5,0.5,0.5]}},
     "dungeon:pillar": {"asset":"dungeon:pillar","category":"prop","collision":{"halfExtents":[0.5,5.2,0.5],"motion":"static","shape":"box"}},
     "dungeon:brazier": {"asset":"dungeon:brazier","category":"prop","collision":{"halfExtents":[0.5,1.2,0.5],"motion":"static","shape":"box"}},
     "dungeon:banner": {"asset":"dungeon:banner","category":"prop","collision":{"halfExtents":[0.5,1.1,0.05],"motion":"static","shape":"box"}},

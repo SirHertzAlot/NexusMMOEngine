@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { addComponent } from "bitecs";
+import { addComponent, hasComponent } from "bitecs";
 import { IntentButton } from "@mmo-engine/protocol";
 import { CreatureAiSchema, CreaturesSchema, type CreaturesRules } from "@mmo-engine/rules";
 import { fnv1a32 } from "@mmo-engine/scatter";
@@ -330,6 +330,18 @@ describe("looks: the animal model by asset hash, scaled by size", () => {
     assert.equal(C.AssetRef.assetHash[e], fnv1a32("animals/SM_Bear_01"));
     assert.equal(C.Transform.sx[e], 2.5);
     assert.ok(w.sys.weaponOf(e)!.reach > 2.5 * 0.5, "reach grows with size");
+  });
+});
+
+describe("a creature with a model has a body", () => {
+  it("gets a collider even though it has an AssetRef, as one without a model does", () => {
+    const withModel = setup(kind({}), { modelOf: () => "animals/SM_Wolf_01" });
+    const [m] = withModel.sys.spawnPack(withModel.sim, "beast", 0, 0, [1, 1]);
+    assert.ok(hasComponent(withModel.sim.ecs, C.AssetRef, m));
+    assert.ok(hasComponent(withModel.sim.ecs, C.BodyConfig, m), "model creature has BodyConfig");
+    const plain = setup(kind({}));
+    const [p] = plain.sys.spawnPack(plain.sim, "beast", 0, 0, [1, 1]);
+    assert.ok(hasComponent(plain.sim.ecs, C.BodyConfig, p));
   });
 });
 

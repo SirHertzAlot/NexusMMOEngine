@@ -14,6 +14,7 @@ import { SceneView, type GizmoMode } from "./scene-view.js";
 import { Button, CheckField } from "./components.js";
 import { clearViewportActions, registerViewportActions, viewportFlags } from "./viewport-actions.js";
 import { setSceneCameraPos } from "./camera-position.js";
+import { parseGoTo } from "./scene-camera.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
@@ -41,6 +42,9 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   const [content, setContent] = React.useState<Placeables | null>(null);
   const [note, setNote] = React.useState("");
   const [webgl, setWebgl] = React.useState(true);
+  const [flying, setFlying] = React.useState(false);
+  const [goTo, setGoTo] = React.useState("");
+  const [goToError, setGoToError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -53,6 +57,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
         onPlace: (prefab, position) => latest.current.onPlace(prefab, position),
         // Play menu "Start from camera position" reads this store.
         onCameraGround: (p) => setSceneCameraPos(p),
+        onFly: (on) => setFlying(on),
       });
     } catch {
       setWebgl(false);
@@ -92,7 +97,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   }, []);
 
   // Grid / gizmos / wireframe follow the toolbar's viewport options.
-  const flags = viewportFlags.use();
+  const flags = viewportFlags.useValue();
   React.useEffect(() => viewRef.current?.setGrid(flags.grid), [flags.grid, webgl]);
   React.useEffect(() => viewRef.current?.setGizmos(flags.gizmos), [flags.gizmos, webgl]);
   React.useEffect(() => viewRef.current?.setWireframe(flags.wireframe), [flags.wireframe, webgl, content]);
@@ -106,11 +111,28 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
 
   const onKey = (e: React.KeyboardEvent): void => {
     if ((e.target as HTMLElement).tagName === "INPUT") return;
+    // While flying, W/A/S/D/Q/E move the camera, not the gizmo mode.
+    if (flying) return;
     const hit = MODES.find(([, , key]) => key === e.key.toLowerCase());
     if (hit) setMode(hit[0]);
     else if (e.key === "Delete" || e.key === "Backspace") {
       if (props.selected) props.onDelete(props.selected);
     } else if (e.key.toLowerCase() === "f") viewRef.current?.frame();
+  };
+  const toggleFly = (): void => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.setFly(!view.isFlying);
+    setFlying(view.isFlying);
+  };
+  const goToPoint = (): void => {
+    const p = parseGoTo(goTo);
+    if (!p) {
+      setGoToError("Enter two numbers, like 344, 576");
+      return;
+    }
+    setGoToError(null);
+    viewRef.current?.lookAt(p.x, p.z);
   };
   const placeAtCentre = (id: string): void => props.onPlace(id, viewRef.current?.centre() ?? [0, 0, 0]);
 
@@ -149,6 +171,26 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
         <CheckField checked={snapTerrain} onChange={setSnapTerrain} label="Snap to terrain" />
         <CheckField checked={snapGrid} onChange={setSnapGrid} label="Grid snap" />
         <Button size="sm" variant="outline" title="Frame selection (F)" onClick={() => viewRef.current?.frame()}>Frame</Button>
+        <label className="flex items-center gap-1 text-xs">
+          <span className="opacity-70">Go to x, z</span>
+          <input
+            aria-label="Go to x, z"
+            aria-invalid={goToError ? true : undefined}
+            data-testid="scene-goto"
+            value={goTo}
+            placeholder="344, 576"
+            onChange={(e) => setGoTo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") goToPoint();
+            }}
+            className="w-28 rounded-md border border-border bg-transparent px-2 py-0.5 text-xs"
+          />
+        </label>
+        <Button size="sm" variant="outline" title="Move the view to that ground point" onClick={goToPoint}>Go</Button>
+        <Button size="sm" variant={flying ? "default" : "outline"} aria-pressed={flying} title="Free camera: W/S forward and back, A/D left and right, Q/E down and up, Shift faster, Esc to stop" onClick={toggleFly}>
+          Fly
+        </Button>
+        {goToError && <span className="text-xs text-red-400">{goToError}</span>}
         <Button size="sm" variant="outline" disabled={!props.selected} title="Delete (Del)" onClick={() => props.selected && props.onDelete(props.selected)}>Delete</Button>
         {note && <span className="text-xs opacity-70">{note}</span>}
       </div>

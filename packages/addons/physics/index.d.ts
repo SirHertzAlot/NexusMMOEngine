@@ -37,7 +37,8 @@ export interface AddBodiesDescriptor {
 export declare class PhysicsWorld {
   /** Use createWorld(); the argument is the threads option. */
   constructor(threads?: number);
-  addBodies(desc: AddBodiesDescriptor): void;
+  /** Returns how many bodies it could not create (the pool is full, or a shape was rejected). */
+  addBodies(desc: AddBodiesDescriptor): number;
   removeBodies(entityIds: BigUint64Array): void;
   /**
    * Phase 2 (zero-copy): px..qw are the SAB-backed bitECS Transform
@@ -83,6 +84,8 @@ export declare class PhysicsWorld {
     az: Float32Array,
   ): void;
   bodyCount(): number;
+  /** The most bodies this world can hold: the body pool's size. */
+  readonly bodyCapacity: number;
   /**
    * One static height-field body per terrain chunk, keyed by `key` (its
    * own id space). samples: side*side heights, row-major, X inner; sample
@@ -119,7 +122,7 @@ export declare class PhysicsWorld {
   ragdollBudget(): number;
   /** A lower budget refuses new rigs; rigs already present stay. */
   setRagdollBudget(units: number): void;
-  /** Jolt's point-velocity sleep threshold in m/s (default 0.03). A larger value lets resting bodies sleep sooner. */
+  /** Point-velocity sleep threshold in m/s (default 0.05, chosen by the sleep benchmark; Jolt's own is 0.03). A larger value lets resting bodies sleep sooner. */
   sleepThreshold(): number;
   setSleepThreshold(metresPerSecond: number): void;
   /** Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
@@ -130,6 +133,23 @@ export declare class PhysicsWorld {
    * bit means the contact cap was full: Jolt dropped contacts that step.
    */
   lastStepErrors(): number;
+  /**
+   * Jolt CharacterVirtual: an upright capsule that moves by sweeping against the
+   * world's bodies. It is not a body and takes no part in step(); each character
+   * moves only when updateCharacter runs. radius and halfHeight give a capsule
+   * centred on the position (halfHeight is half the straight section). Returns
+   * false, and changes nothing, for a duplicate id, a radius that is not
+   * positive, or a negative halfHeight.
+   */
+  addCharacter(id: bigint, radius: number, halfHeight: number, x: number, y: number, z: number): boolean;
+  /** Removes a character; unknown ids are ignored. */
+  removeCharacter(id: bigint): void;
+  setCharacterVelocity(id: bigint, vx: number, vy: number, vz: number): void;
+  /** One Jolt update of the character over dt seconds under gravity (gx, gy, gz). */
+  updateCharacter(id: bigint, dt: number, gx: number, gy: number, gz: number): void;
+  /** The character's position; each axis is NaN for an unknown id. */
+  characterPosition(id: bigint): [number, number, number];
+  characterCount(): number;
   destroy(): void;
 }
 

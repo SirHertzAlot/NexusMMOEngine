@@ -54,22 +54,26 @@ mj_physics_world_t *mj_physics_create(void);
 mj_physics_world_t *mj_physics_create_with_threads(int threads);
 void mj_physics_destroy(mj_physics_world_t *world);
 
+/* The most bodies a world can hold: the body pool's size, fixed at build. */
+int mj_physics_body_capacity(void);
+
 // Bulk-add bodies. All arrays have `n` elements; vector arrays are
-// packed xyz (3*n) / xyzw (4*n).
-void mj_physics_add_bodies(mj_physics_world_t *world, int n,
-                           const uint64_t *entity_ids,
-                           const uint8_t *shape_kind,
-                           const float *half_extents, // 3*n
-                           const float *radius,       // n
-                           const float *mass,         // n
-                           const float *friction,     // n
-                           const float *restitution,   // n
-                           const uint8_t *motion_type,
-                           const uint8_t *layer,
-                           const float *pos,   // 3*n
-                           const float *quat,  // 4*n, xyzw
-                           const float *lin_vel, // 3*n, initial linear velocity
-                           const float *ang_vel);// 3*n, initial angular velocity
+// packed xyz (3*n) / xyzw (4*n). Returns how many could not be created (the
+// pool is full, or the shape was rejected): those entities have no body.
+int mj_physics_add_bodies(mj_physics_world_t *world, int n,
+                          const uint64_t *entity_ids,
+                          const uint8_t *shape_kind,
+                          const float *half_extents, // 3*n
+                          const float *radius,       // n
+                          const float *mass,         // n
+                          const float *friction,     // n
+                          const float *restitution,   // n
+                          const uint8_t *motion_type,
+                          const uint8_t *layer,
+                          const float *pos,   // 3*n
+                          const float *quat,  // 4*n, xyzw
+                          const float *lin_vel, // 3*n, initial linear velocity
+                          const float *ang_vel);// 3*n, initial angular velocity
 
 void mj_physics_remove_bodies(mj_physics_world_t *world, int n,
                               const uint64_t *entity_ids);
@@ -159,7 +163,8 @@ int mj_physics_ragdoll_units(mj_physics_world_t *world);
 int mj_physics_ragdoll_budget(mj_physics_world_t *world);
 void mj_physics_set_ragdoll_budget(mj_physics_world_t *world, int units);
 /* Point-velocity sleep threshold for the whole world, in metres per second.
- * Jolt's default is 0.03. A larger value lets resting bodies sleep sooner. */
+ * A new world starts at 0.05 (the sleep benchmark's choice; Jolt's own is 0.03).
+ * A larger value lets resting bodies sleep sooner. */
 void mj_physics_set_sleep_threshold(mj_physics_world_t *world, float metres_per_second);
 float mj_physics_sleep_threshold(mj_physics_world_t *world);
 /* Ragdoll bodies Jolt is simulating now; sleeping bodies do not count. */
@@ -182,6 +187,31 @@ int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
 #define MJ_UPDATE_BODY_PAIR_CACHE_FULL 2u
 #define MJ_UPDATE_CONTACT_CONSTRAINTS_FULL 4u
 uint32_t mj_physics_last_step_errors(mj_physics_world_t *world);
+
+/*
+ * Jolt CharacterVirtual: an upright capsule that moves by sweeping against the
+ * world's bodies. It is not a body and takes no part in mj_physics_step: each
+ * character moves only when mj_character_update runs. radius and half_height
+ * give a capsule centred on the position: half_height is half the straight
+ * section, and radius extends beyond it on every side. The position is that
+ * centre; where the capsule meets a surface, Jolt keeps it about 0.02 m clear
+ * (its contact padding). Ids are the caller's u64 ids, in their own space.
+ * mj_character_add returns 1 when the character is added, and 0 for a
+ * duplicate id, a radius that is not positive, or a negative half_height
+ * (nothing changes).
+ */
+int mj_character_add(mj_physics_world_t *world, uint64_t id, float radius,
+                     float half_height, float x, float y, float z);
+void mj_character_remove(mj_physics_world_t *world, uint64_t id);
+void mj_character_set_velocity(mj_physics_world_t *world, uint64_t id,
+                               float vx, float vy, float vz);
+/* One Jolt update over dt seconds under gravity (gx, gy, gz). Unknown ids,
+ * and a dt that is not positive, do nothing. */
+void mj_character_update(mj_physics_world_t *world, uint64_t id, float dt,
+                         float gx, float gy, float gz);
+/* Writes the character's position (3 floats); NaN for an unknown id. */
+void mj_character_position(mj_physics_world_t *world, uint64_t id, float *out3);
+int mj_character_count(mj_physics_world_t *world);
 
 #ifdef __cplusplus
 }

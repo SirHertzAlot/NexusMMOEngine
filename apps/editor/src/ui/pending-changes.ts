@@ -17,4 +17,4 @@ const store = createStore<PendingReport | null>(null);
 export const setPendingChanges = store.set;
 export const getPendingChanges = store.get;
 export const subscribePendingChanges = store.subscribe;
-export const usePendingChanges = store.use;
+export const usePendingChanges = store.useValue;

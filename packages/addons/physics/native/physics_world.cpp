@@ -28,9 +28,12 @@
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
+#include <Jolt/Physics/Collision/ShapeFilter.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -173,6 +176,9 @@ constexpr int kRagdollLightUnits = 2;
 constexpr int kRagdollDefaultBudget = 240;
 
 constexpr float kRagdollDegrees = 3.14159265358979f / 180.0f;
+// The sleep threshold (m/s) a world starts with. Jolt's own default is 0.03; 0.05 is the value
+// the sleep benchmark chose (bench/addon-sleep-ensemble.mjs, docs/addon-sleep-threshold-ensemble-results.json).
+constexpr float kDefaultSleepThreshold = 0.05f;
 
 const RagdollPart *RigParts(int rig_kind, int *count) {
   if (rig_kind == MJ_RAGDOLL_LIGHT) {
@@ -261,7 +267,12 @@ JPH::Ref<JPH::RagdollSettings> MakeRagdollSettings(
 // --- Native world ------------------------------------------------------------
 
 struct mj_physics_world {
-  static constexpr int kMaxBodies = 65536;
+  // Room for the streamer's entity budget (ChunkStreamer, 90,000 live
+  // entities, one body each at most) plus one body per loaded chunk's
+  // ground, with headroom for bodies outside the budget. At 65,536 a
+  // crowded world filled the pool: addBodies then dropped bodies silently,
+  // and addTerrain refused a chunk's ground, which threw in the tick.
+  static constexpr int kMaxBodies = 131072;
   static constexpr int kNumBodyMutexes = 0;
   static constexpr int kMaxBodyPairs = 65536;
   static constexpr int kMaxContactConstraints = 10240;
@@ -290,19 +301,23 @@ struct mj_physics_world {
                   kMaxContactConstraints, mBroadPhaseLayerInterface,
                   mObjectVsBroadPhaseLayerFilter, mObjectLayerPairFilter);
     mSystem->SetGravity(JPH::Vec3(0.0f, -9.81f, 0.0f));
+    JPH::PhysicsSettings settings = mSystem->GetPhysicsSettings();
+    settings.mPointVelocitySleepThreshold = kDefaultSleepThreshold;
+    mSystem->SetPhysicsSettings(settings);
   }
 
   mj_physics_world(const mj_physics_world &) = delete;
   mj_physics_world &operator=(const mj_physics_world &) = delete;
 
-  void addBodies(int n, const uint64_t *entity_ids,
-                 const uint8_t *shape_kind, const float *half_extents,
-                 const float *radius, const float *mass,
-                 const float *friction, const float *restitution,
-                 const uint8_t *motion_type, const uint8_t *layer,
-                 const float *pos, const float *quat, const float *lin_vel,
-                 const float *ang_vel) {
+  int addBodies(int n, const uint64_t *entity_ids,
+                const uint8_t *shape_kind, const float *half_extents,
+                const float *radius, const float *mass,
+                const float *friction, const float *restitution,
+                const uint8_t *motion_type, const uint8_t *layer,
+                const float *pos, const float *quat, const float *lin_vel,
+                const float *ang_vel) {
     JPH::BodyInterface &bi = mSystem->GetBodyInterface();
+    int dropped = 0;
     for (int i = 0; i < n; ++i) {
       const uint64_t eid = entity_ids[i];
       if (mBodies.find(eid) != mBodies.end())
@@ -354,9 +369,12 @@ struct mj_physics_world {
           mass[i] > 0.0f ? mass[i] : 1.0f;
 
       JPH::Body *body = bi.CreateBody(bcs);
-      if (body == nullptr)
-        continue; // invalid config (e.g. degenerate shape): skip loudly
-                  // via bodyCount() mismatch rather than crashing
+      if (body == nullptr) {
+        // The pool is full, or Jolt rejected the shape. Skip it and count
+        // it for the caller: a throw here would take the tick down.
+        ++dropped;
+        continue;
+      }
       bi.AddBody(body->GetID(), JPH::EActivation::Activate);
       bi.SetLinearVelocity(
           body->GetID(),
@@ -366,6 +384,7 @@ struct mj_physics_world {
           JPH::Vec3(ang_vel[3 * i], ang_vel[3 * i + 1], ang_vel[3 * i + 2]));
       mBodies.emplace(eid, BodyRecord{body->GetID(), motion_type[i]});
     }
+    return dropped;
   }
 
   void removeBodies(int n, const uint64_t *entity_ids) {
@@ -691,6 +710,62 @@ struct mj_physics_world {
     return active;
   }
 
+  // --- CharacterVirtual ----------------------------------------------------
+  // Upright capsules that sweep against the bodies. A character is not a body:
+  // it takes no part in step(), and updateCharacter is what moves it. The
+  // sweep uses the MOVING object layer, so it stops at static and moving bodies.
+
+  bool addCharacter(uint64_t id, float radius, float half_height, float x,
+                    float y, float z) {
+    if (!(radius > 0.0f) || !(half_height >= 0.0f) ||
+        mCharacters.count(id) != 0)
+      return false;
+    JPH::CharacterVirtualSettings settings;
+    // The capsule is centred on the character's position.
+    settings.mShape = new JPH::CapsuleShape(half_height, radius);
+    mCharacters.emplace(
+        id, new JPH::CharacterVirtual(&settings, JPH::RVec3(x, y, z),
+                                      JPH::Quat::sIdentity(), mSystem.get()));
+    return true;
+  }
+
+  void removeCharacter(uint64_t id) { mCharacters.erase(id); }
+
+  void setCharacterVelocity(uint64_t id, float vx, float vy, float vz) {
+    auto it = mCharacters.find(id);
+    if (it != mCharacters.end())
+      it->second->SetLinearVelocity(JPH::Vec3(vx, vy, vz));
+  }
+
+  void updateCharacter(uint64_t id, float dt, float gx, float gy, float gz) {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end() || !(dt > 0.0f))
+      return;
+    JPH::BodyFilter body_filter;
+    JPH::ShapeFilter shape_filter;
+    it->second->Update(
+        dt, JPH::Vec3(gx, gy, gz),
+        mSystem->GetDefaultBroadPhaseLayerFilter(Layers::MOVING),
+        mSystem->GetDefaultLayerFilter(Layers::MOVING), body_filter,
+        shape_filter, *mTempAllocator);
+  }
+
+  // Writes the position into out3; NaN on all three for an unknown id.
+  void characterPosition(uint64_t id, float *out3) const {
+    auto it = mCharacters.find(id);
+    if (it == mCharacters.end()) {
+      const float nan = std::numeric_limits<float>::quiet_NaN();
+      out3[0] = out3[1] = out3[2] = nan;
+      return;
+    }
+    const JPH::RVec3 p = it->second->GetPosition();
+    out3[0] = p.GetX();
+    out3[1] = p.GetY();
+    out3[2] = p.GetZ();
+  }
+
+  int characterCount() const { return static_cast<int>(mCharacters.size()); }
+
 private:
   BPLayerInterfaceImpl mBroadPhaseLayerInterface;
   ObjectVsBroadPhaseLayerFilterImpl mObjectVsBroadPhaseLayerFilter;
@@ -700,6 +775,9 @@ private:
   std::unique_ptr<JPH::PhysicsSystem> mSystem;
   std::unordered_map<uint64_t, BodyRecord> mBodies;
   std::unordered_map<uint64_t, JPH::BodyID> mTerrain;
+  // Declared after mSystem, so it is destroyed first: every character leaves
+  // before the system it sweeps against.
+  std::unordered_map<uint64_t, JPH::Ref<JPH::CharacterVirtual>> mCharacters;
 
   struct RagdollRecord {
     JPH::Ref<JPH::Ragdoll> ragdoll;
@@ -728,20 +806,22 @@ mj_physics_world_t *mj_physics_create_with_threads(int threads) {
 
 void mj_physics_destroy(mj_physics_world_t *world) { delete world; }
 
-void mj_physics_add_bodies(mj_physics_world_t *world, int n,
-                           const uint64_t *entity_ids,
-                           const uint8_t *shape_kind,
-                           const float *half_extents, const float *radius,
-                           const float *mass, const float *friction,
-                           const float *restitution,
-                           const uint8_t *motion_type, const uint8_t *layer,
-                           const float *pos, const float *quat,
-                           const float *lin_vel, const float *ang_vel) {
+int mj_physics_body_capacity(void) { return mj_physics_world::kMaxBodies; }
+
+int mj_physics_add_bodies(mj_physics_world_t *world, int n,
+                          const uint64_t *entity_ids,
+                          const uint8_t *shape_kind,
+                          const float *half_extents, const float *radius,
+                          const float *mass, const float *friction,
+                          const float *restitution,
+                          const uint8_t *motion_type, const uint8_t *layer,
+                          const float *pos, const float *quat,
+                          const float *lin_vel, const float *ang_vel) {
   if (world == nullptr || n <= 0)
-    return;
-  world->addBodies(n, entity_ids, shape_kind, half_extents, radius, mass,
-                   friction, restitution, motion_type, layer, pos, quat,
-                   lin_vel, ang_vel);
+    return 0;
+  return world->addBodies(n, entity_ids, shape_kind, half_extents, radius,
+                          mass, friction, restitution, motion_type, layer, pos,
+                          quat, lin_vel, ang_vel);
 }
 
 void mj_physics_remove_bodies(mj_physics_world_t *world, int n,
@@ -873,6 +953,46 @@ int mj_physics_copy_ragdoll_bodies(mj_physics_world_t *world, int n,
     return -1;
   }
   return world->copyRagdollBodies(n, ids, out, capacity);
+}
+
+int mj_character_add(mj_physics_world_t *world, uint64_t id, float radius,
+                     float half_height, float x, float y, float z) {
+  if (world == nullptr)
+    return 0;
+  return world->addCharacter(id, radius, half_height, x, y, z) ? 1 : 0;
+}
+
+void mj_character_remove(mj_physics_world_t *world, uint64_t id) {
+  if (world != nullptr)
+    world->removeCharacter(id);
+}
+
+void mj_character_set_velocity(mj_physics_world_t *world, uint64_t id,
+                               float vx, float vy, float vz) {
+  if (world != nullptr)
+    world->setCharacterVelocity(id, vx, vy, vz);
+}
+
+void mj_character_update(mj_physics_world_t *world, uint64_t id, float dt,
+                         float gx, float gy, float gz) {
+  if (world != nullptr)
+    world->updateCharacter(id, dt, gx, gy, gz);
+}
+
+void mj_character_position(mj_physics_world_t *world, uint64_t id,
+                           float *out3) {
+  if (out3 == nullptr)
+    return;
+  if (world == nullptr) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    out3[0] = out3[1] = out3[2] = nan;
+    return;
+  }
+  world->characterPosition(id, out3);
+}
+
+int mj_character_count(mj_physics_world_t *world) {
+  return world == nullptr ? 0 : world->characterCount();
 }
 
 } // extern "C"

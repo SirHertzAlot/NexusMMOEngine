@@ -14,7 +14,7 @@
  *
  * Usage (inside a worker thread):
  *   import { BotClient } from "./bot-client.mjs";
- *   const bot = new BotClient({ url, username, password });
+ *   const bot = new BotClient({ url, username, password, id });
  *   await bot.connect();
  *   setInterval(() => bot.tick(), 1000 / 30); // 30 Hz intents
  */
@@ -27,40 +27,39 @@ import {
   MessageType,
   PROTOCOL_VERSION,
   IntentButton,
-  type IntentFields,
 } from "@mmo-engine/protocol";
 
 const CONNECT_TIMEOUT_MS = 10000;
-const INTENT_HZ = 30;
 
 /** One bot: one WebSocket, one player entity, one stream of intents. */
 export class BotClient {
-  readonly url: string;
-  readonly username: string;
-  readonly password: string;
-  readonly id: string;
+  constructor({ url, username, password, id }) {
+    this.url = url;
+    this.username = username;
+    this.password = password;
+    this.id = id;
 
-  private ws: WebSocket | null = null;
-  private connected = false;
-  private authenticated = false;
-  private playerEntity: bigint | null = null;
-  private serverTick = 0;
-  private clientTick = 0;
+    this.ws = null;
+    this.connected = false;
+    this.authenticated = false;
+    this.playerEntity = null;
+    this.serverTick = 0;
+    this.clientTick = 0;
 
-  intentsSent = 0;
-  intentsFailed = 0;
-  messagesIn = 0;
-  messagesOut = 0;
-  errors = 0;
-  connectedAt: number | null = null;
+    this.intentsSent = 0;
+    this.intentsFailed = 0;
+    this.messagesIn = 0;
+    this.messagesOut = 0;
+    this.errors = 0;
+    this.connectedAt = null;
 
-  private intentQueue: IntentFields[] = [];
-  private pendingWelcome: ((w: any) => void) | null = null;
-  private pendingReject: ((e: Error) => void) | null = null;
-  private connectTimer: NodeJS.Timeout | null = null;
+    this.pendingWelcome = null;
+    this.pendingReject = null;
+    this.connectTimer = null;
+  }
 
   /** Open the WebSocket, send hello, resolve on welcome. */
-  async connect(): Promise<void> {
+  async connect() {
     return new Promise((resolve, reject) => {
       this.pendingWelcome = resolve;
       this.pendingReject = reject;
@@ -79,7 +78,7 @@ export class BotClient {
         this.messagesIn++;
         const data = ev.data instanceof ArrayBuffer
           ? new Uint8Array(ev.data)
-          : new Uint8Array(ev.data as ArrayBufferLike);
+          : new Uint8Array(ev.data);
         this.handleMessage(data);
       };
 
@@ -99,16 +98,15 @@ export class BotClient {
       this.ws.onerror = (err) => {
         this.errors++;
         if (this.pendingReject) {
-          this.pendingReject(err as Error);
+          this.pendingReject(err);
           this.pendingWelcome = null;
           this.pendingReject = null;
         }
       };
     });
   }
-  }
 
-  private startConnectTimer(): void {
+  startConnectTimer() {
     this.stopConnectTimer();
     this.connectTimer = setTimeout(() => {
       if (!this.authenticated) {
@@ -118,12 +116,17 @@ export class BotClient {
     }, CONNECT_TIMEOUT_MS);
   }
 
+  stopConnectTimer() {
+    if (this.connectTimer) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
   }
 
-  private sendHello(): void {
+  sendHello() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    const hello: any = {
+    const hello = {
       protocol: PROTOCOL_VERSION,
       client: `bot-${this.username}`,
       want_snapshot: true,
@@ -131,15 +134,11 @@ export class BotClient {
       password: this.password,
     };
 
-    const payload = encodeEnvelope(
-      MessageType.Hello,
-      encodeControl(hello),
-    );
-    this.ws.send(payload);
+    this.ws.send(encodeEnvelope(MessageType.Hello, encodeControl(hello)));
     this.messagesOut++;
   }
 
-  private handleMessage(data: Uint8Array): void {
+  handleMessage(data) {
     if (data.length === 0) return;
 
     const type = data[0];
@@ -161,7 +160,7 @@ export class BotClient {
     }
   }
 
-  private handleWelcome(payload: Uint8Array): void {
+  handleWelcome(payload) {
     try {
       const obj = JSON.parse(new TextDecoder().decode(payload));
       this.playerEntity = BigInt(obj.entity ?? 0);
@@ -176,14 +175,14 @@ export class BotClient {
     } catch (err) {
       this.errors++;
       if (this.pendingReject) {
-        this.pendingReject(err as Error);
+        this.pendingReject(err);
         this.pendingWelcome = null;
         this.pendingReject = null;
       }
     }
   }
 
-  private handleError(payload: Uint8Array): void {
+  handleError(payload) {
     try {
       const obj = JSON.parse(new TextDecoder().decode(payload));
       this.errors++;
@@ -193,35 +192,28 @@ export class BotClient {
     }
   }
 
-  tick(): void {
+  /** One 30 Hz step: a slow circle of movement, attack held for a second in every two. */
+  tick() {
     if (!this.authenticated || !this.playerEntity) return;
 
     this.clientTick++;
 
     const t = this.clientTick * 0.1;
-    const mx = Math.sin(t) * 2;
-    const mz = Math.cos(t) * 2;
-    const my = 0;
-
     const buttons =
-      Math.floor(this.clientTick / 60) % 2 === 0
-        ? IntentButton.Attack
-        : 0;
+      Math.floor(this.clientTick / 60) % 2 === 0 ? IntentButton.Attack : 0;
 
-    const intent: IntentFields = {
-      mx,
-      my,
-      mz,
+    this.sendIntent({
+      mx: Math.sin(t) * 2,
+      my: 0,
+      mz: Math.cos(t) * 2,
       lookYaw: t,
       lookPitch: 0,
       jump: false,
       buttons,
-    };
-
-    this.sendIntent(intent);
+    });
   }
 
-  private sendIntent(intent: IntentFields): void {
+  sendIntent(intent) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.intentsFailed++;
       return;
@@ -237,8 +229,7 @@ export class BotClient {
         this.playerEntity,
         intent,
       );
-      const envelope = encodeEnvelope(MessageType.Intent, payload);
-      this.ws.send(envelope);
+      this.ws.send(encodeEnvelope(MessageType.Intent, payload));
       this.messagesOut++;
       this.intentsSent++;
     } catch {
@@ -246,18 +237,7 @@ export class BotClient {
     }
   }
 
-  getStats(): {
-    id: string;
-    connected: boolean;
-    authenticated: boolean;
-    playerEntity: string | null;
-    serverTick: number;
-    intentsSent: number;
-    intentsFailed: number;
-    messagesIn: number;
-    messagesOut: number;
-    errors: number;
-  } {
+  getStats() {
     return {
       id: this.id,
       connected: this.connected,
@@ -272,7 +252,7 @@ export class BotClient {
     };
   }
 
-  disconnect(): void {
+  disconnect() {
     this.stopConnectTimer();
     this.connected = false;
     this.authenticated = false;
@@ -280,4 +260,3 @@ export class BotClient {
     this.ws = null;
   }
 }
-

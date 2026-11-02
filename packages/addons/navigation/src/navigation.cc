@@ -70,6 +70,9 @@
 #include "DetourTileCacheBuilder.h"
 #include "Recast.h"
 #include "RecastAlloc.h"
+// -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
+static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 namespace mmo_navigation {
 
@@ -1199,7 +1202,7 @@ class NavServiceWrap : public Napi::ObjectWrap<NavServiceWrap> {
         continue;
       }
       const float *t = target + i * 3;
-      if (std::isnan(t[0])) {
+      if (fp_nan(t[0])) {
         crowd_->resetMoveTarget(idx);
         out[i] = TARGET_CLEARED;
         continue;

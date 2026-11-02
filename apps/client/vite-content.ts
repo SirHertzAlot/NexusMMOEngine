@@ -11,7 +11,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, normalize, relative, resolve } from "node:path";
 import type { Plugin } from "vite";
 
-export const SERVED_CONTENT = ["ui", "animation"] as const;
+export const SERVED_CONTENT = ["ui", "animation", "combat"] as const;
 
 export function clientContent(contentRoot: string): Plugin {
   const root = resolve(contentRoot);

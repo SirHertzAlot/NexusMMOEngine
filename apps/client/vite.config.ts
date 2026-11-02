@@ -6,6 +6,7 @@ import { localAssets } from "./vite-local-assets.js";
 import { gpuBenchmarks } from "./vite-gpu-benchmarks.js";
 import { animationDoc, audioEvents, combatMoves, gameFlow, materialsDoc, vfxBudgets } from "./vite-game-flow.js";
 import { gameStrings } from "./vite-game-strings.js";
+import { clientContent } from "./vite-content.js";
 import compression from "vite-plugin-compression";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
@@ -84,6 +85,8 @@ export default defineConfig(({ mode }) => {
       materialsDoc(fileURLToPath(new URL("../../content/materials/materials.json", import.meta.url))),
       vfxBudgets(fileURLToPath(new URL("../../content/vfx/budgets.json", import.meta.url))),
       gameStrings(fileURLToPath(new URL("../../content/strings", import.meta.url))),
+      // The HUD layout and the ability bar read these at run time (dev server only; the served folders are in vite-content.ts).
+      clientContent(fileURLToPath(new URL("../../content", import.meta.url))),
       localAssets(fileURLToPath(new URL("../../assets", import.meta.url))),
       gpuBenchmarks(),
       resourceHintsPlugin(),

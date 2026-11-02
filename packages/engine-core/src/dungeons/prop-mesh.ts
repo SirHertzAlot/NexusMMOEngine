@@ -170,6 +170,15 @@ const RECIPES: Record<string, () => Tri[]> = {
   "grand-sarcophagus": () => all(box("stone", 0, 0.075, 0, 3.6, 0.15, 2.4), box("stone", 0, 0.225, 0, 3.2, 0.15, 2.0), box("stone", 0, 0.65, 0, 2.8, 0.7, 1.3), box("gold", 0, 0.88, 0, 2.84, 0.05, 1.34), box("stone", 0, 1.0, 0, 2.9, 0.18, 1.4), box("stone", 0, 1.14, 0, 2.2, 0.1, 0.5), cyl("stone", 1.0, 1.19, 0, 0.22, 0.2, 0.2, 8), box("metal", -0.2, 1.2, 0, 1.6, 0.03, 0.07), box("gold", -0.95, 1.22, 0, 0.07, 0.04, 0.4), ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => cyl("gold", x * 1.4, 0.3, z * 0.65, 0.09, 0.9, 0.07, 6))),
 };
 
+// D4g decals: the dungeon generator's surface dressing (bones, cracks, icicles, moss, roots). Until
+// their art exists they are placeholder meshes: each reuses the nearest prop shape already drawn here.
+// Placeholder, not art; replace each alias with its own recipe when the model is licensed or generated.
+RECIPES.bones = RECIPES["bone-pile"]!;
+RECIPES.roots = RECIPES["root-knot"]!;
+RECIPES.icicle = RECIPES.iceShard!;
+RECIPES.moss = RECIPES.mushrooms!;
+RECIPES.crack = RECIPES.debris!;
+
 export const PROP_KINDS: readonly string[] = Object.keys(RECIPES);
 
 /** A kind's mesh as PCGM bytes (positions, flat normals and one material slot per triangle), or null for a kind with no recipe. */

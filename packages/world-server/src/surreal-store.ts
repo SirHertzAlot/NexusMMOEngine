@@ -46,6 +46,7 @@ import type {
   PendingCredit,
   RegionRecord,
   ShardSnapshotRecord,
+  AccountRecord,
   SocialKind,
   SocialRecord,
   StoredDungeonRun,
@@ -138,7 +139,9 @@ DEFINE TABLE IF NOT EXISTS character_lock SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_character_lock_id ON character_lock FIELDS characterId UNIQUE;
 -- PL3c: guilds, parties, friends and blocks every region shares (doc null: a tombstone).
 DEFINE TABLE IF NOT EXISTS social_record SCHEMALESS;
+DEFINE TABLE IF NOT EXISTS account SCHEMALESS;
 DEFINE INDEX IF NOT EXISTS idx_social_record_key ON social_record FIELDS kind, key UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_account_username ON account FIELDS username UNIQUE;
 -- Persistence P5: host resource reports (sidecar upserts, TTL'd).
 DEFINE TABLE IF NOT EXISTS host_report SCHEMAFULL;
 DEFINE FIELD IF NOT EXISTS hostId ON host_report TYPE string;
@@ -599,6 +602,18 @@ export class SurrealWorldStore implements WorldStore {
       await this.db.query("SELECT * FROM ONLY epoch_counter WHERE key = $key", { key }),
     );
     return row === null ? 0 : Number(row["value"] ?? 0);
+  }
+
+  async getAccount(username: string): Promise<AccountRecord | null> {
+    const row = singleRow<Record<string, unknown>>(
+      await this.db.query("SELECT * FROM ONLY account WHERE username = $username LIMIT 1", { username }),
+    );
+    return row === null ? null : stripId<AccountRecord>(row);
+  }
+
+  /** CREATE fails on the unique username index, so a racing duplicate cannot slip in. */
+  async createAccount(a: AccountRecord): Promise<void> {
+    await this.db.query("CREATE ONLY account CONTENT $data", { data: { ...a } });
   }
 
   async getSocialRecord(kind: SocialKind, key: string): Promise<SocialRecord | null> {

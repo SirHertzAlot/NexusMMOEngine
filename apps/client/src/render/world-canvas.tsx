@@ -75,12 +75,15 @@ import type { AudioEngine } from "../audio/engine.js";
 import { Footsteps, footstepEvent, footstepStride } from "../audio/footsteps.js";
 import { gameContent } from "./game-content.js";
 import { updateTerrainFx } from "./terrain-fx.js";
+import { groundPoint } from "./ground-pick.js";
 import { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import { StreamingCoordinator } from "./terrain/streaming-coordinator.js";
 import { WorkerPool } from "../workers/pool.js";
 import { loadSurfaces, type Surfaces } from "./terrain/surfaces.js";
 import { WaterRenderer } from "./water.js";
 import { PerfSampler, type PerfSample } from "./perf-stats.js";
+import { LoadGate, type LoadProgress } from "./load-gate.js";
+import { nextTarget, type TargetCandidate } from "./target-cycle.js";
 
 /** Haze colour before the first frame sets it from the time of day. */
 const SKY = 0x9fc0dc;
@@ -147,6 +150,8 @@ export interface WorldCanvasProps {
   /** "auto": the preset for this GPU, stepped down (and back up) by the frame-rate governor; else a pinned preset. */
   quality: "auto" | QualityTier;
   onGpu?: (gpu: GpuInfo) => void;
+  /** The three.js scene once the canvas exists (the editor's debugger adds its overlays to it). */
+  onScene?: (scene: THREE.Scene) => void;
   /** The preset running now, and the one detected for the GPU (null until known). */
   onQuality?: (active: QualityTier, detected: QualityTier | null) => void;
   onHud?: (hud: HudData) => void;
@@ -166,6 +171,8 @@ export interface WorldCanvasProps {
   onUseHotkey?: () => void;
   /** The ground item in pickup range changed (null: none in range). */
   onNearDrop?: (drop: NearDrop | null) => void;
+  /** Editor place-at-cursor (E4): a left click on bare ground reports its x/z. Absent: clicks on the ground do nothing. */
+  onGroundPick?: (x: number, z: number) => void;
   /** The resource node in gathering range changed (its wire id; null: none in range). */
   onNearResource?: (node: bigint | null) => void;
   /** The world chest E would open (its wire id; null: none in reach). */
@@ -193,6 +200,8 @@ export interface WorldCanvasProps {
   equippedOff?: string | null;
   equippedMainColor?: string;
   onReticle?: (telemetry: CombatReticleTelemetry) => void;
+  /** LS1: where the world's load stands (null once it is revealed). */
+  onLoading?: (progress: LoadProgress | null) => void;
   /** Optional ref to receive the streaming coordinator for region-change notifications. */
   streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
   /** The audio engine for weather sound (rain bed). */
@@ -292,7 +301,8 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       dpr={dpr}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       camera={{ fov: 60, near: CAMERA_NEAR, far: CAMERA_FAR }}
-      onCreated={({ gl }) => {
+      onCreated={({ gl, scene }) => {
+        props.onScene?.(scene);
         const gpu = detectGpu(gl);
         onGpu?.(gpu);
         void detectQuality(gl, gpu.software).then((r) => setDetected(r.tier));
@@ -385,10 +395,12 @@ function MirrorWorld({
   assets,
   pcg,
   lastStateAt,
+  onLoading,
   wireframe,
   showcase,
   bindings,
   onHud,
+  onGroundPick,
   listener,
   onFootstep,
   onBag,
@@ -425,8 +437,8 @@ function MirrorWorld({
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
   // Latest ref includes stance, equipped items, and reticle callback.
-  const latest = useRef({ observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings });
-  latest.current = { observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, settings };
+  const latest = useRef({ onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings });
+  latest.current = { onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings };
   const fpsCamState = useRef(createFirstPersonCameraState());
   const fpsMotion = useRef<FirstPersonMotionSample>({
     right: 0,
@@ -472,6 +484,8 @@ function MirrorWorld({
     targetName: "",
   });
   const perf = useRef(new PerfSampler(performance.now()));
+  const loadGate = useRef<LoadGate | null>(null);
+  const loadReportAt = useRef(-Infinity);
   const pointer = useRef(new THREE.Vector2());
   // Scratch eye position for first-person mode (no per-frame allocation).
   const eyePos = useRef(new THREE.Vector3());
@@ -582,7 +596,22 @@ function MirrorWorld({
     const onMouseDown = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const h = layer.hovered;
-      if (h !== null && h !== client.playerEntity) latest.current.combat?.select(h);
+      if (h !== null && h !== client.playerEntity) {
+        latest.current.combat?.select(h);
+        return;
+      }
+      const pick = latest.current.onGroundPick;
+      const terrain = rt.current?.terrain;
+      if (h === null && pick && terrain) {
+        raycaster.current.setFromCamera(pointer.current, camera);
+        const ray = raycaster.current.ray;
+        const p = groundPoint(
+          { ox: ray.origin.x, oy: ray.origin.y, oz: ray.origin.z, dx: ray.direction.x, dy: ray.direction.y, dz: ray.direction.z },
+          terrain,
+          camera.position.y,
+        );
+        if (p) pick(p.x, p.z);
+      }
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);
@@ -688,6 +717,30 @@ function MirrorWorld({
     return () => window.removeEventListener("keydown", onKey);
   }, [viewProp, onViewChange]);
 
+  // Tab targets the nearest living body in reach, then the next one on each press; Escape clears the target (M5).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.repeat || (e.code !== "Tab" && e.code !== "Escape")) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const feedback = latest.current.combat;
+      if (!feedback) return;
+      e.preventDefault();
+      if (e.code === "Escape") {
+        feedback.select(null);
+        return;
+      }
+      const candidates: TargetCandidate[] = [];
+      for (const [wid, row] of client.state.entities) {
+        if (wid === client.playerEntity || !row.transform || !row.health || row.health.current <= 0) continue;
+        candidates.push({ wid, x: row.transform.px, z: row.transform.pz });
+      }
+      feedback.select(nextTarget(candidates, rt.current?.layer.player ?? null, feedback.target));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [client]);
+
   useEffect(() => {
     rt.current?.layer.setShowcaseVisible(showcase, camera.position);
   }, [showcase, camera]);
@@ -697,6 +750,17 @@ function MirrorWorld({
     if (!r) return;
     const now = performance.now();
     const l = loop.current;
+    // LS1: hold the world back (the App shows progress) until its first snapshot and its models have settled.
+    loadGate.current ??= new LoadGate();
+    if (!loadGate.current.done) {
+      const m = r.layer.modelLoad();
+      const p = loadGate.current.sample({ now, stateSeen: latest.current.lastStateAt() > 0, ready: m.ready, pending: m.pending });
+      if (p.done) latest.current.onLoading?.(null);
+      else if (now - loadReportAt.current >= 250) {
+        loadReportAt.current = now;
+        latest.current.onLoading?.(p);
+      }
+    }
     const ear = latest.current.listener;
     if (ear) {
       const dir = camera.getWorldDirection(earDir);

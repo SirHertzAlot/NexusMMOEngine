@@ -30,3 +30,82 @@ test("a complete frame of invalid JSON throws", () => {
   header.writeUInt32BE(body.length, 0);
   assert.throws(() => new FrameReader().push(Buffer.concat([header, body])), /invalid frame JSON/);
 });
+
+test("bytes travel as raw blobs in a binary frame and come back as Buffers", () => {
+  const a = Buffer.from([0, 1, 2, 255]);
+  const obj = { type: "wire.send", id: "push-1", payload: { sid: "e-1", data: a, nested: [{ more: new Uint8Array([9, 8]) }] } };
+  const frame = encodeFrame(obj);
+  assert.equal(frame[4], 0x00, "binary body marker");
+  const [got] = new FrameReader().push(frame) as Array<{ payload: { data: Buffer; nested: Array<{ more: Buffer }> } }>;
+  assert.ok(Buffer.isBuffer(got.payload.data));
+  assert.deepEqual(got.payload.data, a);
+  assert.deepEqual(got.payload.nested[0].more, Buffer.from([9, 8]));
+});
+
+test("a frame with no bytes stays a JSON frame", () => {
+  const frame = encodeFrame({ n: 1 });
+  assert.equal(frame[4], 0x7b, "body starts with {");
+});
+
+test("binary and JSON frames interleave in one stream", () => {
+  const buf = Buffer.concat([encodeFrame({ n: 1 }), encodeFrame({ b: Buffer.from("x") }), encodeFrame({ n: 3 })]);
+  const r = new FrameReader();
+  const out = r.push(buf.subarray(0, 13)).concat(r.push(buf.subarray(13))) as Array<Record<string, unknown>>;
+  assert.deepEqual(out[0], { n: 1 });
+  assert.deepEqual(out[1].b, Buffer.from("x"));
+  assert.deepEqual(out[2], { n: 3 });
+});
+
+test("a blob that runs past the body throws", () => {
+  const good = encodeFrame({ b: Buffer.from("abc") });
+  const bad = Buffer.from(good);
+  bad.writeUInt32BE(bad.readUInt32BE(0) - 1, 0);
+  assert.throws(() => new FrameReader().push(bad.subarray(0, good.length - 1)), /invalid frame/);
+});
+
+/** The encoder before the single-walk rewrite: a JSON.stringify replacer picks out the blobs. Kept as the reference for byte equality. */
+function referenceEncode(obj: unknown): Buffer {
+  const blobs: Uint8Array[] = [];
+  const json = JSON.stringify(obj, function (this: Record<string, unknown>, key: string, value: unknown) {
+    const raw = this[key];
+    if (raw instanceof Uint8Array) {
+      blobs.push(raw);
+      return { $bin: blobs.length - 1 };
+    }
+    return value;
+  });
+  if (blobs.length === 0) {
+    const body = Buffer.from(json, "utf8");
+    const header = Buffer.alloc(4);
+    header.writeUInt32BE(body.length, 0);
+    return Buffer.concat([header, body]);
+  }
+  const env = Buffer.from(`{"o":${json},"b":${JSON.stringify(blobs.map((b) => b.length))}}`, "utf8");
+  const body = Buffer.concat([Buffer.from([0, 0, 0, 0, 0]), env, ...blobs]);
+  body.writeUInt32BE(env.length, 1);
+  const header = Buffer.alloc(4);
+  header.writeUInt32BE(body.length, 0);
+  return Buffer.concat([header, body]);
+}
+
+test("encodes byte-identically to the reference encoder, JSON and binary", () => {
+  const packets: unknown[] = [
+    { n: 1, s: "é", a: [1, null, undefined, true], d: new Date(0), nested: { deep: [{ x: 1 }] } },
+    { type: "wire.sectors", payload: { bytes: { k0: Buffer.from([1, 2, 3]), k1: new Uint8Array(0) }, plans: [{ sid: "e", entries: [[0, "s", "k"]] }] } },
+    [Buffer.from("abc"), "tail", { raw: Buffer.alloc(5, 7) }],
+    { only: Buffer.from("x") },
+    { keep: "no blobs here", empty: {} },
+  ];
+  for (const p of packets) {
+    assert.deepEqual(encodeFrame(p), referenceEncode(p));
+  }
+});
+
+test("binary frames still round-trip blobs at their original positions", () => {
+  const blob = Buffer.from([9, 8, 7]);
+  const obj = { a: blob, b: [blob, "x"], c: { d: blob } };
+  const [back] = new FrameReader().push(encodeFrame(obj)) as [typeof obj];
+  assert.deepEqual(back.a, blob);
+  assert.deepEqual(back.b, [blob, "x"]);
+  assert.deepEqual(back.c.d, blob);
+});

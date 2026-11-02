@@ -68,6 +68,9 @@ import {
   type HitMessage,
   type LifeMessage,
   type TelegraphMessage,
+  type AbilityMessage,
+  type AbilityTrigger,
+  type StatusMessage,
   type IntentFields,
   type NamesMessage,
   type RegisterMessage,
@@ -89,6 +92,8 @@ import {
   type ChestView,
   type VendorMessage,
   type WalletMessage,
+  type DuelAction,
+  type DuelMessage,
   decodeTileHeights,
 } from "@mmo-engine/protocol";
 import { Interpolator } from "./interpolate.js";
@@ -142,6 +147,8 @@ export interface MirrorEvents {
   onInventory?(inv: InventoryMessage): void;
   /** A shop answered (the price list when E opened it, or a buy / sell confirmed; protocol 0x21). */
   onVendor?(v: VendorMessage): void;
+  /** A duel was challenged, accepted, declined, started or ended (roadmap M5, protocol 0x20). */
+  onDuel?(d: DuelMessage): void;
   /** The player's gold changed (protocol 0x21). */
   onWallet?(w: WalletMessage): void;
   /** World chests were described or changed (all on joining; protocol 0x27). */
@@ -156,6 +163,10 @@ export interface MirrorEvents {
   onLife?(l: LifeMessage): void;
   /** A ground warning was cast, landed or was cancelled (roadmap M5, protocol 0x1e). */
   onTelegraph?(t: TelegraphMessage): void;
+  /** An ability was triggered, fired, queued, interrupted or rejected (roadmap M5, protocol 0x1d). */
+  onAbility?(a: AbilityMessage): void;
+  /** A buff or debuff was applied or removed on an entity (roadmap M5, protocol 0x1f). */
+  onStatus?(s: StatusMessage): void;
   /** The player's own body parts, injuries and blood changed (also on joining; roadmap M2, protocol 0x18). */
   onBody?(b: BodyMessage): void;
   /** A treatment the player gives or gets started, worked, failed or stopped (roadmap M4, protocol 0x1a). */
@@ -277,6 +288,8 @@ export class MirrorClient {
   constructor(
     private readonly createSocket: (url: string) => SocketLike,
     private readonly events: MirrorEvents,
+    /** `welcomeTimeoutMs`: how long to wait for the welcome (default 8 s; a slow dev box may need more). */
+    private readonly options: { welcomeTimeoutMs?: number } = {},
   ) {}
 
   /**
@@ -353,6 +366,13 @@ export class MirrorClient {
   }
 
   /** Sell a bag item to a shop (0x21). */
+  /** A duel action (roadmap M5, protocol 0x20): challenge a target by wire id, or answer or yield. */
+  duel(action: DuelAction["action"], target?: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: DuelAction = target === undefined ? { kind: "duel", action } : { kind: "duel", action, target };
+    this.send(this.socket, encodeEnvelope(MessageType.Duel, encodeControl(msg)));
+  }
+
   vendorSell(vendor: string, item: number): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Trade, encodeControl({ kind: "vendor", action: "sell", vendor, item })));
@@ -405,6 +425,13 @@ export class MirrorClient {
     const msg: CastMessage = { kind: "cast", spell };
     if (target !== undefined) msg.target = target;
     this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl(msg)));
+  }
+
+  /** Trigger an ability by id (M5, 0x1d). The server answers with onAbility. */
+  ability(id: string): void {
+    if (!this.socket || this.closed) return;
+    const msg: AbilityTrigger = { kind: "trigger", id };
+    this.send(this.socket, encodeEnvelope(MessageType.Ability, encodeControl(msg)));
   }
 
   /** Stop the cast under way (0x1c). */
@@ -543,7 +570,7 @@ export class MirrorClient {
         this.replyResolve = null;
         this.replyReject = null;
         reject(new Error("mirror-client: welcome timeout"));
-      }, CONNECT_TIMEOUT_MS);
+      }, this.options.welcomeTimeoutMs ?? CONNECT_TIMEOUT_MS);
       this.replyResolve = (r) => {
         clearTimeout(timer);
         resolve(r);
@@ -923,6 +950,15 @@ export class MirrorClient {
         break;
       case MessageType.Telegraph:
         this.events.onTelegraph?.(decodeControl<TelegraphMessage>(payload));
+        break;
+      case MessageType.Ability:
+        this.events.onAbility?.(decodeControl<AbilityMessage>(payload));
+        break;
+      case MessageType.Status:
+        this.events.onStatus?.(decodeControl<StatusMessage>(payload));
+        break;
+      case MessageType.Duel:
+        this.events.onDuel?.(decodeControl<DuelMessage>(payload));
         break;
       case MessageType.Body:
         this.body = decodeControl<BodyMessage>(payload);

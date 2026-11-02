@@ -39,7 +39,7 @@ const EXEMPT_DIRS = [join(root, "packages", "logging", "src")];
 const BUDGETS = [
   // Boot banners + fatal handler (docs/SAB-LOGGING-LAYER-SPEC.md §2.1 note in server.ts):
   // visible even when the log worker is not up.
-  { file: "packages/engine-core/src/server.ts", budget: 35, justification: "boot banners + fatal, spec-kept on stdio" },
+  { file: "packages/engine-core/src/server.ts", budget: 36, justification: "boot banners + fatal, spec-kept on stdio; + the enemy models file problem line (EM1, boot only)" },
   { file: "packages/world-server/src/server.ts", budget: 6, justification: "boot banners + fatal, spec-kept on stdio" },
   // CLI products: stdout is the report.
   { file: "packages/engine-core/src/sim.ts", budget: 12, justification: "CLI: the verification report is the product" },
@@ -48,7 +48,7 @@ const BUDGETS = [
   { file: "packages/engine-core/src/items/rebake.ts", budget: 1, justification: "CLI: one-line bake report" },
   { file: "packages/engine-core/src/auth/seed-user.ts", budget: 5, justification: "CLI: seed tool usage/report" },
   { file: "packages/engine-core/src/procgen/wildlife-plan.ts", budget: 1, justification: "CLI: one-line table report" },
-  { file: "packages/engine-core/src/procgen/wildlife-table.ts", budget: 2, justification: "CLI: artisan table report" },
+  { file: "packages/engine-core/src/procgen/wildlife-table.ts", budget: 3, justification: "CLI: artisan table report; + the megafauna own/base/none report line (#593 era)" },
   { file: "packages/engine-core/src/hybrid-data-plane-bench.ts", budget: 1, justification: "bench output as JSON" },
   { file: "packages/engine-core/src/sab-contention-bench.ts", budget: 17, justification: "bench report tables" },
   { file: "packages/engine-core/src/net/transport-bench.ts", budget: 2, justification: "bench report" },

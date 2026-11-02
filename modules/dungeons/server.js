@@ -35,6 +35,7 @@ export function createSystems(ctx) {
   const dungeons = new InstanceManager({
     content: loadDungeonContent(config.dungeonDir),
     pool: dungeonPool,
+    ...(config.scale ? { scale: config.scale } : {}),
     game: config.getGame,
     credentialStore: config.credentialStore,
     characterStore,

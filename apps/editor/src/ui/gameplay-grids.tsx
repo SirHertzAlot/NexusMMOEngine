@@ -13,6 +13,7 @@ import * as React from "react";
 import { DocBar } from "./doc-bar.js";
 import { useSaveTask } from "./use-save-task.js";
 import { useTableDrafts } from "./use-table-drafts.js";
+import { WildlifeViewPanel } from "./wildlife-view.js";
 import { issueCount } from "../save-outcome.js";
 import {
   addRow,
@@ -134,6 +135,7 @@ export function GameplayGridsPanel(): React.JSX.Element {
   const grids = useTableDrafts<GameplayTable, GridRow[]>();
   const { drafts: rows, saved: savedRows, load: loadRows } = grids;
   const [table, setTable] = React.useState<GameplayTable>("creatures");
+  const [wildlife, setWildlife] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [filterKey, setFilterKey] = React.useState("");
   const [filterText, setFilterText] = React.useState("");
@@ -173,6 +175,10 @@ export function GameplayGridsPanel(): React.JSX.Element {
     setPendingChanges(changes.length > 0 ? { label: "Gameplay tables", changes } : null);
   }, [snap, rows, savedRows]);
   React.useEffect(() => () => setPendingChanges(null), []);
+  // Deferred values are hooks: they must run before the early return below, or the hook count changes between renders.
+  const deferredSearch = React.useDeferredValue(search);
+  const deferredFilterKey = React.useDeferredValue(filterKey);
+  const deferredFilterText = React.useDeferredValue(filterText);
 
   if (!snap || !rows || !savedRows) {
     return (
@@ -193,9 +199,6 @@ export function GameplayGridsPanel(): React.JSX.Element {
     grids.edit(table, next);
     setStatus(null);
   };
-  const deferredSearch = React.useDeferredValue(search);
-  const deferredFilterKey = React.useDeferredValue(filterKey);
-  const deferredFilterText = React.useDeferredValue(filterText);
   const shownRows = viewRows(mine, { search: deferredSearch, filters: deferredFilterKey ? { [deferredFilterKey]: deferredFilterText } : {}, sort: sort ? { key: sort.id, dir: sort.dir } : undefined });
   const mainCols = def.columns.filter((c) => !c.nested);
   const nestedCols = def.columns.filter((c) => c.nested);
@@ -253,15 +256,32 @@ export function GameplayGridsPanel(): React.JSX.Element {
     setNewId("");
   };
 
+  if (wildlife) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Gameplay tables">
+          {GAMEPLAY_TABLES.map((t) => (
+            <Button key={t} role="tab" aria-selected={false} size="sm" variant="outline" onClick={() => { setWildlife(false); setTable(t); }}>
+              {TABLE_DEFS[t].label}
+            </Button>
+          ))}
+          <Button role="tab" aria-selected size="sm" variant="default" onClick={() => setWildlife(true)}>Wildlife</Button>
+        </div>
+        <WildlifeViewPanel />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Gameplay tables">
         {GAMEPLAY_TABLES.map((t) => (
-          <Button key={t} role="tab" aria-selected={t === table} size="sm" variant={t === table ? "default" : "outline"} onClick={() => { setTable(t); setSelected(new Set()); setIssues([]); setSort(null); React.startTransition(() => setFilterKey("")); }}>
+          <Button key={t} role="tab" aria-selected={t === table} size="sm" variant={t === table ? "default" : "outline"} onClick={() => { setWildlife(false); setTable(t); setSelected(new Set()); setIssues([]); setSort(null); React.startTransition(() => setFilterKey("")); }}>
             {TABLE_DEFS[t].label}
             {dirty(t) && <span aria-label="unsaved" className="h-2 w-2 rounded-full bg-yellow-400" />}
           </Button>
         ))}
+        <Button role="tab" aria-selected={false} size="sm" variant="outline" onClick={() => setWildlife(true)}>Wildlife</Button>
         <span className="ml-auto font-mono text-xs text-muted-foreground">{def.file}</span>
       </div>
 

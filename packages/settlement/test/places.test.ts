@@ -108,7 +108,8 @@ describe("placesScene", () => {
     assert.deepEqual(validateScene(scene), []);
     assert.equal(scene.name, "places");
     const homes = plan.places.filter((p) => p.kind === "homestead").length;
-    assert.equal(kids.length, plan.places.length + homes);
+    const farms = plan.places.filter((p) => p.kind === "homestead" && p.works === "farm").length;
+    assert.equal(kids.length, plan.places.length + homes + 3 * farms, "a place, a field or pen per homestead, and the three yard pieces per farm");
     for (const p of plan.places) assert.deepEqual(kids.find((k) => k.id === p.id)!.transform!.position, [p.x, 0, p.z]);
     assert.equal(kids.filter((k) => k.name === "farm_field" || k.name === "ranch_pen").length, homes);
   });

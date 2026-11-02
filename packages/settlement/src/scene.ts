@@ -102,6 +102,24 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
   const at = new Map(nodes.map((n) => [n.id, n]));
   for (const e of manifest.roads.edges) {
     if (e.surface !== "paved") continue;
+    // A routed street is a chain of slabs, one per leg of its centreline, each turned to its leg and set on the ground there.
+    if (e.path && e.path.length >= 2) {
+      for (let i = 0; i + 1 < e.path.length; i++) {
+        const p = e.path[i]!;
+        const q = e.path[i + 1]!;
+        const dx = q.x - p.x;
+        const dz = q.z - p.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 1) continue;
+        children.push({
+          id: `paving-${e.id}-${i}`,
+          name: "paved_road",
+          transform: { position: [(p.x + q.x) / 2000, (p.h + q.h) / 2, (p.z + q.z) / 2000], rotation: [0, (Math.atan2(dx, dz) * 180) / Math.PI, 0] },
+          components: { Structure: { kind: "paved_road", asset: "", width: e.widthMm / 1000 / f, depth: (len / 1000 + 0.1) / f, height: PAVING_M }, Collider: { shape: "none" } },
+        });
+      }
+      continue;
+    }
     const a = at.get(e.from)!;
     const b = at.get(e.to)!;
     const alongX = a.z === b.z;

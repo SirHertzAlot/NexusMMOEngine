@@ -27,6 +27,9 @@
 #include <string>
 
 #include "physics_c_api.h"
+// -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
+static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 namespace mmo_physics {
 
@@ -154,6 +157,7 @@ public:
             InstanceMethod("step", &PhysicsWorldWrap::Step),
             InstanceMethod("copyResults", &PhysicsWorldWrap::CopyResults),
             InstanceMethod("bodyCount", &PhysicsWorldWrap::BodyCount),
+            InstanceValue("bodyCapacity", Napi::Number::New(env, mj_physics_body_capacity())),
             InstanceMethod("addTerrain", &PhysicsWorldWrap::AddTerrain),
             InstanceMethod("removeTerrain", &PhysicsWorldWrap::RemoveTerrain),
             InstanceMethod("terrainCount", &PhysicsWorldWrap::TerrainCount),
@@ -169,6 +173,12 @@ public:
             InstanceMethod("sleepThreshold", &PhysicsWorldWrap::SleepThreshold),
             InstanceMethod("setSleepThreshold", &PhysicsWorldWrap::SetSleepThreshold),
             InstanceMethod("ragdollActiveBodies", &PhysicsWorldWrap::RagdollActiveBodies),
+            InstanceMethod("addCharacter", &PhysicsWorldWrap::AddCharacter),
+            InstanceMethod("removeCharacter", &PhysicsWorldWrap::RemoveCharacter),
+            InstanceMethod("setCharacterVelocity", &PhysicsWorldWrap::SetCharacterVelocity),
+            InstanceMethod("updateCharacter", &PhysicsWorldWrap::UpdateCharacter),
+            InstanceMethod("characterPosition", &PhysicsWorldWrap::CharacterPosition),
+            InstanceMethod("characterCount", &PhysicsWorldWrap::CharacterCount),
         });
     exports.Set("PhysicsWorld", ctor);
     return exports;
@@ -190,7 +200,7 @@ public:
         return nullptr;
       }
       const double v = info[0].As<Napi::Number>().DoubleValue();
-      if (!std::isfinite(v) || v != std::floor(v) || v < 0.0 ||
+      if (!fp_finite(v) || v != std::floor(v) || v < 0.0 ||
           v > static_cast<double>(kMaxThreads)) {
         Napi::RangeError::New(
             env, "createWorld({ threads }): threads must be an integer from 0 to 64")
@@ -236,19 +246,21 @@ private:
 
   // addBodies({ count, entityIds, shapeKind, halfExtents, radius, mass,
   //   friction, restitution, motionType, layer, pos, quat, linVel, angVel })
-  void AddBodies(const Napi::CallbackInfo &info) {
+  Napi::Value AddBodies(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!requireLive(env))
-      return;
+      return env.Undefined();
     if (!info[0].IsObject()) {
       Napi::TypeError::New(env, "addBodies expects a descriptor object")
           .ThrowAsJavaScriptException();
-      return;
+      return env.Undefined();
     }
     Napi::Object d = info[0].As<Napi::Object>();
     int n = 0;
-    if (!CheckedCount(env, d.Get("count"), &n) || n == 0)
-      return; // validator threw, or nothing to do
+    if (!CheckedCount(env, d.Get("count"), &n))
+      return env.Undefined(); // validator threw
+    if (n == 0)
+      return Napi::Number::New(env, 0);
     const size_t un = static_cast<size_t>(n);
     // NOTE: each validator throws at most once and returns null on
     // failure; bail out immediately so a second validator never throws
@@ -256,46 +268,47 @@ private:
     // NAPI_DISABLE_CPP_EXCEPTIONS).
     const uint64_t *entity_ids = CheckedU64(env, d.Get("entityIds"), "entityIds", un);
     if (!entity_ids)
-      return;
+      return env.Undefined();
     const uint8_t *shape_kind = CheckedU8(env, d.Get("shapeKind"), "shapeKind", un);
     if (!shape_kind)
-      return;
+      return env.Undefined();
     const float *half_extents = CheckedF32(env, d.Get("halfExtents"), "halfExtents", 3 * un);
     if (!half_extents)
-      return;
+      return env.Undefined();
     const float *radius = CheckedF32(env, d.Get("radius"), "radius", un);
     if (!radius)
-      return;
+      return env.Undefined();
     const float *mass = CheckedF32(env, d.Get("mass"), "mass", un);
     if (!mass)
-      return;
+      return env.Undefined();
     const float *friction = CheckedF32(env, d.Get("friction"), "friction", un);
     if (!friction)
-      return;
+      return env.Undefined();
     const float *restitution = CheckedF32(env, d.Get("restitution"), "restitution", un);
     if (!restitution)
-      return;
+      return env.Undefined();
     const uint8_t *motion_type = CheckedU8(env, d.Get("motionType"), "motionType", un);
     if (!motion_type)
-      return;
+      return env.Undefined();
     const uint8_t *layer = CheckedU8(env, d.Get("layer"), "layer", un);
     if (!layer)
-      return;
+      return env.Undefined();
     const float *pos = CheckedF32(env, d.Get("pos"), "pos", 3 * un);
     if (!pos)
-      return;
+      return env.Undefined();
     const float *quat = CheckedF32(env, d.Get("quat"), "quat", 4 * un);
     if (!quat)
-      return;
+      return env.Undefined();
     const float *lin_vel = CheckedF32(env, d.Get("linVel"), "linVel", 3 * un);
     if (!lin_vel)
-      return;
+      return env.Undefined();
     const float *ang_vel = CheckedF32(env, d.Get("angVel"), "angVel", 3 * un);
     if (!ang_vel)
-      return;
-    mj_physics_add_bodies(mWorld, n, entity_ids, shape_kind, half_extents,
-                          radius, mass, friction, restitution, motion_type,
-                          layer, pos, quat, lin_vel, ang_vel);
+      return env.Undefined();
+    const int dropped = mj_physics_add_bodies(
+        mWorld, n, entity_ids, shape_kind, half_extents, radius, mass, friction,
+        restitution, motion_type, layer, pos, quat, lin_vel, ang_vel);
+    return Napi::Number::New(env, dropped);
   }
 
   void RemoveBodies(const Napi::CallbackInfo &info) {
@@ -667,8 +680,8 @@ private:
     return Napi::Number::New(env, mj_physics_sleep_threshold(mWorld));
   }
 
-  // setSleepThreshold(metresPerSecond: number). Jolt's default is 0.03; a
-  // larger value lets resting bodies sleep sooner.
+  // setSleepThreshold(metresPerSecond: number). A world starts at 0.05 (the sleep
+  // benchmark's choice; Jolt's own is 0.03); a larger value lets resting bodies sleep sooner.
   void SetSleepThreshold(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
     if (!requireLive(env))
@@ -679,7 +692,7 @@ private:
       return;
     }
     const double v = info[0].As<Napi::Number>().DoubleValue();
-    if (!std::isfinite(v) || v < 0.0) {
+    if (!fp_finite(v) || v < 0.0) {
       Napi::RangeError::New(env, "sleep threshold must be a finite number >= 0")
           .ThrowAsJavaScriptException();
       return;
@@ -731,16 +744,115 @@ private:
     return Napi::Number::New(env, mj_physics_last_step_errors(mWorld));
   }
 
-  static bool CheckedKey(Napi::Env env, Napi::Value value, uint64_t *out) {
+  // addCharacter(id: bigint, radius, halfHeight, x, y, z) -> boolean
+  Napi::Value AddCharacter(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    uint64_t id = 0;
+    if (!CheckedKey(env, info[0], &id, "character id"))
+      return env.Undefined();
+    if (!info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsNumber() ||
+        !info[4].IsNumber() || !info[5].IsNumber()) {
+      Napi::TypeError::New(env, "addCharacter(id, radius, halfHeight, x, y, z)")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    const int ok = mj_character_add(
+        mWorld, id, info[1].As<Napi::Number>().FloatValue(),
+        info[2].As<Napi::Number>().FloatValue(),
+        info[3].As<Napi::Number>().FloatValue(),
+        info[4].As<Napi::Number>().FloatValue(),
+        info[5].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, ok != 0);
+  }
+
+  // removeCharacter(id: bigint). Unknown ids are ignored.
+  void RemoveCharacter(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    uint64_t id = 0;
+    if (!CheckedKey(env, info[0], &id, "character id"))
+      return;
+    mj_character_remove(mWorld, id);
+  }
+
+  // setCharacterVelocity(id: bigint, vx, vy, vz)
+  void SetCharacterVelocity(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    uint64_t id = 0;
+    if (!CheckedKey(env, info[0], &id, "character id"))
+      return;
+    if (!info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsNumber()) {
+      Napi::TypeError::New(env, "setCharacterVelocity(id, vx, vy, vz)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    mj_character_set_velocity(mWorld, id,
+                              info[1].As<Napi::Number>().FloatValue(),
+                              info[2].As<Napi::Number>().FloatValue(),
+                              info[3].As<Napi::Number>().FloatValue());
+  }
+
+  // updateCharacter(id: bigint, dt, gx, gy, gz): one Jolt update of the character.
+  void UpdateCharacter(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    uint64_t id = 0;
+    if (!CheckedKey(env, info[0], &id, "character id"))
+      return;
+    if (!info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsNumber() ||
+        !info[4].IsNumber()) {
+      Napi::TypeError::New(env, "updateCharacter(id, dt, gx, gy, gz)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    mj_character_update(mWorld, id, info[1].As<Napi::Number>().FloatValue(),
+                        info[2].As<Napi::Number>().FloatValue(),
+                        info[3].As<Napi::Number>().FloatValue(),
+                        info[4].As<Napi::Number>().FloatValue());
+  }
+
+  // characterPosition(id: bigint) -> [x, y, z]; each axis NaN for an unknown id.
+  Napi::Value CharacterPosition(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    uint64_t id = 0;
+    if (!CheckedKey(env, info[0], &id, "character id"))
+      return env.Undefined();
+    float p[3] = {0.0f, 0.0f, 0.0f};
+    mj_character_position(mWorld, id, p);
+    Napi::Array out = Napi::Array::New(env, 3);
+    for (uint32_t i = 0; i < 3; ++i)
+      out.Set(i, Napi::Number::New(env, p[i]));
+    return out;
+  }
+
+  Napi::Value CharacterCount(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return env.Undefined();
+    return Napi::Number::New(env, mj_character_count(mWorld));
+  }
+
+  // `what` names the id in the error text: terrain keys and character ids
+  // share this check.
+  static bool CheckedKey(Napi::Env env, Napi::Value value, uint64_t *out,
+                         const char *what = "terrain key") {
     if (!value.IsBigInt()) {
-      Napi::TypeError::New(env, "terrain key must be a bigint")
+      Napi::TypeError::New(env, std::string(what) + " must be a bigint")
           .ThrowAsJavaScriptException();
       return false;
     }
     bool lossless = false;
     *out = value.As<Napi::BigInt>().Uint64Value(&lossless);
     if (!lossless) {
-      Napi::RangeError::New(env, "terrain key must fit in a u64")
+      Napi::RangeError::New(env, std::string(what) + " must fit in a u64")
           .ThrowAsJavaScriptException();
       return false;
     }

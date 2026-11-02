@@ -14,7 +14,7 @@ export interface Store<T> {
   set: (next: T | ((prev: T) => T)) => void;
   subscribe: (fn: () => void) => () => void;
   /** The value as React state: the component re-renders when it changes. */
-  use: () => T;
+  useValue: () => T;
 }
 
 /** `equals` decides "unchanged" (default `Object.is`), so a set with the same value is silent. */
@@ -36,7 +36,7 @@ export function createStore<T>(initial: T, equals: (a: T, b: T) => boolean = Obj
       listeners.forEach((l) => l());
     },
     subscribe,
-    use: () => React.useSyncExternalStore(subscribe, () => value),
+    useValue: () => React.useSyncExternalStore(subscribe, () => value),
   };
 }
 

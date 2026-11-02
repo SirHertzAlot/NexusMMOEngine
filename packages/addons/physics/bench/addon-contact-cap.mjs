@@ -51,7 +51,7 @@ const UNITS = { full: 5, light: 2 };
 const DEFAULT_COUNT = { full: DEFAULT_BUDGET_UNITS / UNITS.full, light: DEFAULT_BUDGET_UNITS / UNITS.light };
 
 const SCENARIOS = {
-  settle: { spacing: 0.9, sleep: null, warm: 0, measure: 2 * TICK_HZ },
+  settle: { spacing: 0.9, sleep: 0.03, warm: 0, measure: 2 * TICK_HZ },
   awake: { spacing: 0.9, sleep: 0, warm: 1 * TICK_HZ, measure: 3 * TICK_HZ },
   apart: { spacing: 4.0, sleep: 0, warm: 1 * TICK_HZ, measure: 3 * TICK_HZ },
 };

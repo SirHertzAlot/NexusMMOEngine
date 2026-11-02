@@ -234,6 +234,31 @@ describe("ResidentSystem: tiers", () => {
     run(sys, sim, 60);
     assert.equal(sys.walking, 0);
   });
+
+  it("spends the region budget on the town nearest a player first", () => {
+    const sim = new SimWorld();
+    // The near town (full, 100 m from the player) and a far one (coarse, 300 m) share a budget of 12.
+    const far2: ResidentTown = { ...town(12), id: "u", npcs: npcs(12).map((n) => ({ ...n, id: `u${n.id}`, household: "hh2" })), centre: { x: -160, z: 0 }, radius: 50 };
+    const sys = new ResidentSystem({
+      towns: [far(12), far2],
+      place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view),
+      timeOfDay: () => 0.5,
+      catalog: null,
+      steer: true,
+      fullM: 150,
+      coarseM: 400,
+      maxEntities: 12,
+    });
+    player(sim, 190);
+    run(sys, sim, 30);
+    const [near, other] = sys.summary().towns;
+    assert.deepEqual([near!.id, other!.id], ["t", "u"], "the summary lists towns in their configured order");
+    assert.equal(near!.tier, "full");
+    assert.equal(other!.tier, "coarse");
+    assert.ok(near!.live > 0, "the near town has people in the world");
+    assert.ok(sys.count <= 12, "the budget holds");
+    assert.ok(near!.live >= other!.live, "the far town gets only what the near one leaves");
+  });
 });
 
 describe("ResidentSystem: attackable", () => {
@@ -378,6 +403,39 @@ describe("ResidentSystem: raids", () => {
     const sys = new ResidentSystem({ towns: [t], place: () => ({ anchor: "sq", outdoors: true, activity: "idle" }), raided: () => [{ x: 5000, z: 5000, radius: 30 }], catalog: null });
     run(sys, sim, 30);
     assert.equal(sys.count, 3);
+  });
+});
+
+describe("ResidentSystem: talk", () => {
+  it("answers with the bark for the resident's town and npc, at the game's hour and day, and names them by role", () => {
+    const seen: Array<{ npc: string; tod: number; day: number; raid: boolean }> = [];
+    const sim = new SimWorld();
+    const sys = new ResidentSystem({
+      towns: [town()],
+      place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view),
+      timeOfDay: () => 12 / 24,
+      dayOf: () => 7,
+      bark: (_t, npc, c) => (seen.push({ npc: npc.id, tod: c.timeOfDay, day: c.day, raid: c.raid ?? false }), `Hi from ${npc.id}`),
+      catalog: null,
+    });
+    run(sys, sim, 30);
+    const eid = town().npcs.map((n) => sys.entityOf(n.id)).find((e): e is number => e !== undefined);
+    assert.ok(eid !== undefined, "someone is out by day");
+    const said = sys.talk(eid, 30);
+    assert.ok(said);
+    assert.equal(said.text, `Hi from ${said.npc}`);
+    assert.equal(said.name, said.name.charAt(0).toUpperCase() + said.name.slice(1), "name is capitalised");
+    assert.deepEqual(seen.at(-1), { npc: said.npc, tod: 12 / 24, day: 7, raid: false });
+  });
+
+  it("is undefined for anything that is not a resident, and says '...' when no bark is wired", () => {
+    const sim = new SimWorld();
+    const sys = system({ hour: () => 12 / 24 });
+    run(sys, sim, 30);
+    const stranger = sim.spawn();
+    assert.equal(sys.talk(stranger, 30), undefined);
+    const eid = town().npcs.map((n) => sys.entityOf(n.id)).find((e): e is number => e !== undefined)!;
+    assert.equal(sys.talk(eid, 30)?.text, "...");
   });
 });
 

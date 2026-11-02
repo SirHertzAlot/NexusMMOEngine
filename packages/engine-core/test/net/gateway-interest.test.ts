@@ -11,6 +11,8 @@ import { ChannelTransport } from "../../src/net/channel-transport.js";
 import { MirrorState } from "@mmo-engine/mirror";
 import { Gateway } from "../../src/net/gateway.js";
 import { interestSectors } from "../../src/net/interest.js";
+import { addComponent } from "bitecs";
+import { FarVisible } from "../../src/components.js";
 import { applyTeleport } from "../../src/admin/player.js";
 import { HeadlessClient } from "./headless-client.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
@@ -104,7 +106,7 @@ it("through the edge: one wire.sectors push per tick carries the shared bytes an
   gw.frame(now);
   await transport.handle({ type: "wire.open", id: "p", payload: { sid: "e-1", ip: "127.0.0.1" } });
   const hello = encodeEnvelope(MessageType.Hello, encodeControl({ protocol: PROTOCOL_VERSION, client: "t", want_snapshot: true, username: "alice", password: TEST_PASSWORD }));
-  await transport.handle({ type: "wire.msg", id: "p", payload: { sid: "e-1", data: Buffer.from(hello).toString("base64") } });
+  await transport.handle({ type: "wire.msg", id: "p", payload: { sid: "e-1", data: Buffer.from(hello) } });
   for (let i = 0; i < 300 && !pushes.some((p) => p.type === "wire.send"); i++) await new Promise((r) => setTimeout(r, 10));
   pushes.length = 0;
   frames(2);
@@ -115,7 +117,7 @@ it("through the edge: one wire.sectors push per tick carries the shared bytes an
   assert.equal(plans[0].replace, true, "the first tick after welcome is a full replace");
   const bytes = sectors[0].payload.bytes as Record<string, string>;
   for (const [, , key] of plans[0].entries) assert.ok(key in bytes || key.startsWith("2:"));
-  assert.ok(!pushes.some((p) => p.type === "wire.send" && Buffer.from(p.payload.data as string, "base64")[0] === MessageType.DeltaSet), "no per-session DeltaSet from the core");
+  assert.ok(!pushes.some((p) => p.type === "wire.send" && Buffer.from(p.payload.data as Uint8Array)[0] === MessageType.DeltaSet), "no per-session DeltaSet from the core");
 });
 
 it("pinned: a foe far away stays visible through the pinned entry, and leaves when the pin ends", async () => {
@@ -166,4 +168,55 @@ it("interest all: an admin (the play debugger) sees everything; near again on re
   await err;
   await step(2, alice, bob);
   assert.ok(!bob.mirror.entities.has(alice.entity));
+});
+
+it("quest NPCs: a resident the active quest steps need is pinned, wherever it stands", async () => {
+  now = 1_000_000;
+  gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), interest: { enterM: 96, leaveM: 128 } });
+  const url = `ws://127.0.0.1:${await gw.listen()}`;
+  gw.frame(now);
+  const alice = await join(url, "alice");
+  const bob = await join(url, "user-a");
+  assert.equal(applyTeleport(gw.world, bob.entity, 1000, 1000, null).ok, true);
+  const bobEid = gw.world.resolveWireId(bob.entity);
+
+  // Stand in for the quest extension and the resident system: the warden is bob's entity, needed by a quest.
+  let needed: string[] = [];
+  (gw as unknown as { extensions: Map<string, unknown> }).extensions.set("quest", { pinnedResidentsOf: () => needed });
+  Object.defineProperty(gw, "residents", { configurable: true, get: () => ({ entityOf: (n: string) => (n === "warden" ? bobEid : undefined) }) });
+
+  await step(2, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity), "not needed: he stays out of view");
+  needed = ["warden"];
+  await step(2, alice, bob);
+  assert.ok(alice.mirror.entities.get(bob.entity)?.transform, "the quest's NPC is pinned into view");
+  needed = [];
+  await step(2, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity), "the quest is done: the pin ends");
+  alice.client.close();
+  bob.client.close();
+});
+
+it("far visible: an entity tagged FarVisible is pinned to every session within farM, not beyond", async () => {
+  now = 1_000_000;
+  gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), interest: { enterM: 96, leaveM: 128, farM: 400 } });
+  const url = `ws://127.0.0.1:${await gw.listen()}`;
+  gw.frame(now);
+  const alice = await join(url, "alice");
+  const bob = await join(url, "user-a");
+  const bobEid = gw.world.resolveWireId(bob.entity);
+  addComponent(gw.world.ecs, FarVisible, bobEid);
+
+  // 300 m away: beyond enterM, within farM: seen with his rows.
+  assert.equal(applyTeleport(gw.world, bob.entity, 300, 0, null).ok, true);
+  await step(3, alice, bob);
+  assert.ok(alice.mirror.entities.get(bob.entity)?.transform, "a far-visible entity 300 m away is seen");
+  assert.equal(alice.mirror.home.get(bob.entity), "pin");
+
+  // 600 m away: beyond farM, not seen.
+  assert.equal(applyTeleport(gw.world, bob.entity, 600, 0, null).ok, true);
+  await step(3, alice, bob);
+  assert.ok(!alice.mirror.entities.has(bob.entity), "beyond farM it is not seen");
+  alice.client.close();
+  bob.client.close();
 });

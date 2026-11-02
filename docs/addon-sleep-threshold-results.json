@@ -1,13 +1,19 @@
 {
   "tickHz": 30,
   "substeps": 2,
-  "scenario": "resting: 0.9 m grid, sleep on, 20 s warm-up, 2 s measured; wake check: 16 light rigs settled 20 s, a 5 kg sphere dropped 2 m onto the middle rig",
+  "scenario": "resting: 0.9 m grid, sleep on, 20 s warm-up (every step timed), then 2 s timed with each rig's root averaged; wake check: 16 light rigs settled 20 s, a 5 kg sphere dropped 2 m onto the middle rig",
   "defaultThreshold": 0.03,
   "repeats": 3,
+  "bar": {
+    "sleepWithinSeconds": 20,
+    "poseRmsMm": 10,
+    "poseMaxMm": 25,
+    "impactMetres": 0.02
+  },
   "machine": {
     "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
     "cpus": 4,
-    "node": "v22.22.0"
+    "node": "v22.22.2"
   },
   "results": [
     {
@@ -16,78 +22,25 @@
       "requested": 16,
       "accepted": 16,
       "bodies": 176,
-      "awakeAt5s": 165,
-      "awakeAt10s": 154,
+      "awakeAt5s": 154,
+      "awakeAt10s": 0,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
-      "timeToAsleepS": 15,
-      "stepMs": 0.001039499999990312,
-      "meanStepMs": 0.0028915833333324295,
+      "timeToAsleepS": 9,
+      "settleCostMs": 230.13,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 0,
+      "poseMaxMm": 0,
+      "jitterRmsMm": 0
     },
     {
-      "threshold": 0.03,
-      "rig": "full",
-      "requested": 48,
-      "accepted": 48,
-      "bodies": 528,
-      "awakeAt5s": 528,
-      "awakeAt10s": 528,
-      "awakeAt20s": 528,
-      "awakeAfterMeasure": 528,
-      "timeToAsleepS": null,
-      "stepMs": 3.5810034999997242,
-      "meanStepMs": 3.719545733333295,
-      "runsMs": [
-        3.555,
-        3.581,
-        3.689
-      ]
-    },
-    {
-      "threshold": 0.03,
-      "rig": "light",
-      "requested": 16,
-      "accepted": 16,
-      "bodies": 80,
-      "awakeAt5s": 70,
-      "awakeAt10s": 70,
-      "awakeAt20s": 0,
-      "awakeAfterMeasure": 0,
-      "timeToAsleepS": 13,
-      "stepMs": 0.0010270000000076607,
-      "meanStepMs": 0.0029662666666666836,
-      "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
-    },
-    {
-      "threshold": 0.03,
-      "rig": "light",
-      "requested": 120,
-      "accepted": 120,
-      "bodies": 600,
-      "awakeAt5s": 550,
-      "awakeAt10s": 550,
-      "awakeAt20s": 550,
-      "awakeAfterMeasure": 550,
-      "timeToAsleepS": null,
-      "stepMs": 3.326143000000002,
-      "meanStepMs": 3.3626954333333363,
-      "runsMs": [
-        3.326,
-        3.432,
-        3.32
-      ]
-    },
-    {
-      "threshold": 0.1,
+      "threshold": 0.05,
       "rig": "full",
       "requested": 16,
       "accepted": 16,
@@ -96,14 +49,202 @@
       "awakeAt10s": 0,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
-      "timeToAsleepS": 6,
-      "stepMs": 0.0010289999999884003,
-      "meanStepMs": 0.003144083333331575,
+      "timeToAsleepS": 7,
+      "settleCostMs": 172.14,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1.67,
+      "poseMaxMm": 6.23,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.1,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 11,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "settleCostMs": 134.17,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 9.37,
+      "poseMaxMm": 36.96,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.15,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 11,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "settleCostMs": 119.96,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 9.8,
+      "poseMaxMm": 38.71,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.2,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 11,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "settleCostMs": 129.06,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 9.49,
+      "poseMaxMm": 37.44,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.3,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "settleCostMs": 14.45,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1014.86,
+      "poseMaxMm": 1134.96,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.5,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 5,
+      "settleCostMs": 72,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 924.26,
+      "poseMaxMm": 1506.46,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 1,
+      "rig": "full",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 176,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 5,
+      "settleCostMs": 48,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 964.61,
+      "poseMaxMm": 1320.06,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.03,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 484,
+      "awakeAt10s": 484,
+      "awakeAt20s": 484,
+      "awakeAfterMeasure": 484,
+      "timeToAsleepS": null,
+      "settleCostMs": 1895.26,
+      "stepMs": 2.92,
+      "meanStepMs": 2.96,
+      "runsMs": [
+        2.98,
+        2.92,
+        2.84
+      ],
+      "poseRmsMm": 0,
+      "poseMaxMm": 0,
+      "jitterRmsMm": 0.35
+    },
+    {
+      "threshold": 0.05,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 484,
+      "awakeAt10s": 484,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 15,
+      "settleCostMs": 1251.81,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 3.7,
+      "poseMaxMm": 9.92,
+      "jitterRmsMm": 0
     },
     {
       "threshold": 0.1,
@@ -111,21 +252,209 @@
       "requested": 48,
       "accepted": 48,
       "bodies": 528,
-      "awakeAt5s": 528,
-      "awakeAt10s": 528,
+      "awakeAt5s": 484,
+      "awakeAt10s": 0,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
-      "timeToAsleepS": 16,
-      "stepMs": 0.001083500000049753,
-      "meanStepMs": 0.0014635333333747743,
+      "timeToAsleepS": 7,
+      "settleCostMs": 592.46,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
       "runsMs": [
-        0.001,
-        0.002,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 7.59,
+      "poseMaxMm": 23.25,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.15,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 484,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "settleCostMs": 522.89,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 7.87,
+      "poseMaxMm": 24.27,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.2,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 484,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "settleCostMs": 487.8,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 8.17,
+      "poseMaxMm": 24.94,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.3,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "settleCostMs": 36.34,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1048.82,
+      "poseMaxMm": 1340.4,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.5,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 385,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 6,
+      "settleCostMs": 354.74,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 838.72,
+      "poseMaxMm": 1422.03,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 1,
+      "rig": "full",
+      "requested": 48,
+      "accepted": 48,
+      "bodies": 528,
+      "awakeAt5s": 231,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 8,
+      "settleCostMs": 283.64,
+      "stepMs": 0,
+      "meanStepMs": 0.02,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 927.11,
+      "poseMaxMm": 1559.15,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.03,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 75,
+      "awakeAt10s": 75,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 17,
+      "settleCostMs": 173.97,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 0,
+      "poseMaxMm": 0,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.05,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 75,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 7,
+      "settleCostMs": 69.82,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 3.79,
+      "poseMaxMm": 8.47,
+      "jitterRmsMm": 0
     },
     {
       "threshold": 0.1,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 55,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 9,
+      "settleCostMs": 69.58,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 687.81,
+      "poseMaxMm": 1538.31,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.15,
       "rig": "light",
       "requested": 16,
       "accepted": 16,
@@ -134,14 +463,156 @@
       "awakeAt10s": 0,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
-      "timeToAsleepS": 7,
-      "stepMs": 0.0010450000000048476,
-      "meanStepMs": 0.0038334166666653385,
+      "timeToAsleepS": 9,
+      "settleCostMs": 64.51,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.002,
-        0.001,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 499.63,
+      "poseMaxMm": 1064.01,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.2,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 45,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 7,
+      "settleCostMs": 38.6,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 809.38,
+      "poseMaxMm": 1296.87,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.3,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "settleCostMs": 5.21,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1044.92,
+      "poseMaxMm": 1214.8,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.5,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "settleCostMs": 5.16,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1040.76,
+      "poseMaxMm": 1209.99,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 1,
+      "rig": "light",
+      "requested": 16,
+      "accepted": 16,
+      "bodies": 80,
+      "awakeAt5s": 0,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 1,
+      "settleCostMs": 4.06,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1057.88,
+      "poseMaxMm": 1224.82,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.03,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 585,
+      "awakeAt10s": 555,
+      "awakeAt20s": 550,
+      "awakeAfterMeasure": 550,
+      "timeToAsleepS": null,
+      "settleCostMs": 1865.22,
+      "stepMs": 2.93,
+      "meanStepMs": 3.13,
+      "runsMs": [
+        2.89,
+        2.93,
+        4.15
+      ],
+      "poseRmsMm": 0,
+      "poseMaxMm": 0,
+      "jitterRmsMm": 0.11
+    },
+    {
+      "threshold": 0.05,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 585,
+      "awakeAt10s": 555,
+      "awakeAt20s": 555,
+      "awakeAfterMeasure": 555,
+      "timeToAsleepS": null,
+      "settleCostMs": 1901.85,
+      "stepMs": 2.86,
+      "meanStepMs": 2.89,
+      "runsMs": [
+        2.86,
+        2.83,
+        2.87
+      ],
+      "poseRmsMm": 1.32,
+      "poseMaxMm": 12.55,
+      "jitterRmsMm": 0.11
     },
     {
       "threshold": 0.1,
@@ -149,75 +620,68 @@
       "requested": 120,
       "accepted": 120,
       "bodies": 600,
-      "awakeAt5s": 545,
-      "awakeAt10s": 0,
+      "awakeAt5s": 555,
+      "awakeAt10s": 525,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
-      "timeToAsleepS": 10,
-      "stepMs": 0.0010880000000383916,
-      "meanStepMs": 0.00179603333333489,
+      "timeToAsleepS": 11,
+      "settleCostMs": 984.61,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 479.6,
+      "poseMaxMm": 1446.86,
+      "jitterRmsMm": 0
     },
     {
-      "threshold": 0.3,
-      "rig": "full",
-      "requested": 16,
-      "accepted": 16,
-      "bodies": 176,
-      "awakeAt5s": 0,
-      "awakeAt10s": 0,
-      "awakeAt20s": 0,
-      "awakeAfterMeasure": 0,
-      "timeToAsleepS": 1,
-      "stepMs": 0.0010219999999989682,
-      "meanStepMs": 0.0030179500000001506,
-      "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
-    },
-    {
-      "threshold": 0.3,
-      "rig": "full",
-      "requested": 48,
-      "accepted": 48,
-      "bodies": 528,
-      "awakeAt5s": 0,
-      "awakeAt10s": 0,
-      "awakeAt20s": 0,
-      "awakeAfterMeasure": 0,
-      "timeToAsleepS": 1,
-      "stepMs": 0.001090500000003658,
-      "meanStepMs": 0.0018740333333340687,
-      "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
-    },
-    {
-      "threshold": 0.3,
+      "threshold": 0.15,
       "rig": "light",
-      "requested": 16,
-      "accepted": 16,
-      "bodies": 80,
-      "awakeAt5s": 0,
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 480,
       "awakeAt10s": 0,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
-      "timeToAsleepS": 1,
-      "stepMs": 0.0010329999999996176,
-      "meanStepMs": 0.003289349999999776,
+      "timeToAsleepS": 9,
+      "settleCostMs": 560.16,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.002,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 571.02,
+      "poseMaxMm": 1615.74,
+      "jitterRmsMm": 0
+    },
+    {
+      "threshold": 0.2,
+      "rig": "light",
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
+      "awakeAt5s": 430,
+      "awakeAt10s": 0,
+      "awakeAt20s": 0,
+      "awakeAfterMeasure": 0,
+      "timeToAsleepS": 9,
+      "settleCostMs": 570.97,
+      "stepMs": 0,
+      "meanStepMs": 0,
+      "runsMs": [
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 723.26,
+      "poseMaxMm": 1628.5,
+      "jitterRmsMm": 0
     },
     {
       "threshold": 0.3,
@@ -230,70 +694,40 @@
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
       "timeToAsleepS": 1,
-      "stepMs": 0.0010719999999935226,
-      "meanStepMs": 0.001319816666664053,
+      "settleCostMs": 44.67,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.001,
-        0.002
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 995.08,
+      "poseMaxMm": 1252.12,
+      "jitterRmsMm": 0
     },
     {
-      "threshold": 1,
-      "rig": "full",
-      "requested": 16,
-      "accepted": 16,
-      "bodies": 176,
-      "awakeAt5s": 0,
-      "awakeAt10s": 0,
-      "awakeAt20s": 0,
-      "awakeAfterMeasure": 0,
-      "timeToAsleepS": 4,
-      "stepMs": 0.001170500000004182,
-      "meanStepMs": 0.003359700000000506,
-      "runsMs": [
-        0.002,
-        0.001,
-        0.001
-      ]
-    },
-    {
-      "threshold": 1,
-      "rig": "full",
-      "requested": 48,
-      "accepted": 48,
-      "bodies": 528,
-      "awakeAt5s": 175,
-      "awakeAt10s": 0,
-      "awakeAt20s": 0,
-      "awakeAfterMeasure": 0,
-      "timeToAsleepS": 8,
-      "stepMs": 0.0011144999999999072,
-      "meanStepMs": 0.0019133500000047359,
-      "runsMs": [
-        0.001,
-        0.002,
-        0.001
-      ]
-    },
-    {
-      "threshold": 1,
+      "threshold": 0.5,
       "rig": "light",
-      "requested": 16,
-      "accepted": 16,
-      "bodies": 80,
+      "requested": 120,
+      "accepted": 120,
+      "bodies": 600,
       "awakeAt5s": 0,
       "awakeAt10s": 0,
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
       "timeToAsleepS": 1,
-      "stepMs": 0.0010249999999984993,
-      "meanStepMs": 0.0027845499999999152,
+      "settleCostMs": 36.14,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.002,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 991.98,
+      "poseMaxMm": 1247.2,
+      "jitterRmsMm": 0
     },
     {
       "threshold": 1,
@@ -306,13 +740,17 @@
       "awakeAt20s": 0,
       "awakeAfterMeasure": 0,
       "timeToAsleepS": 1,
-      "stepMs": 0.0010779999999996903,
-      "meanStepMs": 0.0014187166666671895,
+      "settleCostMs": 25.8,
+      "stepMs": 0,
+      "meanStepMs": 0,
       "runsMs": [
-        0.001,
-        0.001,
-        0.001
-      ]
+        0,
+        0,
+        0
+      ],
+      "poseRmsMm": 1005.46,
+      "poseMaxMm": 1247.2,
+      "jitterRmsMm": 0
     }
   ],
   "wakes": [
@@ -320,29 +758,159 @@
       "threshold": 0.03,
       "awakeBeforeDrop": 0,
       "woke": true,
-      "maxAwake": 70,
-      "movedMetres": 0.007380893298522323
+      "maxAwake": 75,
+      "movedMetres": 0.004424055540325423
+    },
+    {
+      "threshold": 0.05,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 75,
+      "movedMetres": 0.0046919105205893204
     },
     {
       "threshold": 0.1,
       "awakeBeforeDrop": 0,
       "woke": true,
-      "maxAwake": 55,
-      "movedMetres": 0.003013329643345521
+      "maxAwake": 50,
+      "movedMetres": 0.005527014804365
+    },
+    {
+      "threshold": 0.15,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 65,
+      "movedMetres": 0.029032358198488
+    },
+    {
+      "threshold": 0.2,
+      "awakeBeforeDrop": 0,
+      "woke": true,
+      "maxAwake": 15,
+      "movedMetres": 0.025855226798253566
     },
     {
       "threshold": 0.3,
       "awakeBeforeDrop": 0,
       "woke": true,
+      "maxAwake": 10,
+      "movedMetres": 0.153213808056593
+    },
+    {
+      "threshold": 0.5,
+      "awakeBeforeDrop": 0,
+      "woke": true,
       "maxAwake": 5,
-      "movedMetres": 0.2854128690585936
+      "movedMetres": 0.29259398950223636
     },
     {
       "threshold": 1,
       "awakeBeforeDrop": 0,
       "woke": true,
       "maxAwake": 5,
-      "movedMetres": 0.191134800048827
+      "movedMetres": 0.19458524379783126
     }
-  ]
+  ],
+  "evaluation": [
+    {
+      "threshold": 0.03,
+      "checks": {
+        "asleepWithinWarmUp": false,
+        "poseRmsWithinBar": true,
+        "poseMaxWithinBar": true,
+        "hitRigWakes": true,
+        "impactWithinBar": true
+      },
+      "passes": false,
+      "settleCostMs": 3760.48
+    },
+    {
+      "threshold": 0.05,
+      "checks": {
+        "asleepWithinWarmUp": false,
+        "poseRmsWithinBar": true,
+        "poseMaxWithinBar": true,
+        "hitRigWakes": true,
+        "impactWithinBar": true
+      },
+      "passes": false,
+      "settleCostMs": 3153.66
+    },
+    {
+      "threshold": 0.1,
+      "checks": {
+        "asleepWithinWarmUp": true,
+        "poseRmsWithinBar": false,
+        "poseMaxWithinBar": false,
+        "hitRigWakes": true,
+        "impactWithinBar": true
+      },
+      "passes": false,
+      "settleCostMs": 1577.07
+    },
+    {
+      "threshold": 0.15,
+      "checks": {
+        "asleepWithinWarmUp": true,
+        "poseRmsWithinBar": false,
+        "poseMaxWithinBar": false,
+        "hitRigWakes": true,
+        "impactWithinBar": false
+      },
+      "passes": false,
+      "settleCostMs": 1083.05
+    },
+    {
+      "threshold": 0.2,
+      "checks": {
+        "asleepWithinWarmUp": true,
+        "poseRmsWithinBar": false,
+        "poseMaxWithinBar": false,
+        "hitRigWakes": true,
+        "impactWithinBar": false
+      },
+      "passes": false,
+      "settleCostMs": 1058.77
+    },
+    {
+      "threshold": 0.3,
+      "checks": {
+        "asleepWithinWarmUp": true,
+        "poseRmsWithinBar": false,
+        "poseMaxWithinBar": false,
+        "hitRigWakes": true,
+        "impactWithinBar": false
+      },
+      "passes": false,
+      "settleCostMs": 81.01
+    },
+    {
+      "threshold": 0.5,
+      "checks": {
+        "asleepWithinWarmUp": true,
+        "poseRmsWithinBar": false,
+        "poseMaxWithinBar": false,
+        "hitRigWakes": true,
+        "impactWithinBar": false
+      },
+      "passes": false,
+      "settleCostMs": 390.88
+    },
+    {
+      "threshold": 1,
+      "checks": {
+        "asleepWithinWarmUp": true,
+        "poseRmsWithinBar": false,
+        "poseMaxWithinBar": false,
+        "hitRigWakes": true,
+        "impactWithinBar": false
+      },
+      "passes": false,
+      "settleCostMs": 309.44
+    }
+  ],
+  "decision": {
+    "threshold": 0.03,
+    "reason": "no candidate passes the bar, so the default stays"
+  }
 }
