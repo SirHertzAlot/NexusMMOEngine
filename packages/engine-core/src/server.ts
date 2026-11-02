@@ -127,7 +127,7 @@ import * as crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
 import { HybridDataPlaneServer } from "./data-plane-server.js";
-import { resolveDataPlaneDbUrl } from "./persist-worker.js";
+import { resolveDataPlaneCredentials, resolveDataPlaneDbUrl } from "./persist-worker.js";
 import { DATA_PLANE_ENTITY_CAPACITY } from "./sab-store.js";
 import {
   Gateway,
@@ -1453,8 +1453,12 @@ async function main(): Promise<void> {
       // its budget overruns become records instead of stdio formatting.
       logRingSab: logRing.sab,
       logRingCapacity: logRing.capacity,
-      // Durable by default under <MMO_DATA_DIR>/data-plane; MMO_DATA_PLANE_DB overrides it (mem:// = volatile).
-      dbUrl: resolveDataPlaneDbUrl(process.env.MMO_DATA_PLANE_DB, DATA_DIR),
+      // Default: the SurrealMX server (`npm run db`, ws://127.0.0.1:8000, fsync per commit).
+      // MMO_DATA_PLANE_STORE=rocksdb restores the RocksDB ledger under <MMO_DATA_DIR>/data-plane;
+      // MMO_DATA_PLANE_DB overrides both (mem:// = volatile).
+      dbUrl: resolveDataPlaneDbUrl(process.env.MMO_DATA_PLANE_DB, DATA_DIR, process.env.MMO_DATA_PLANE_STORE),
+      dbUser: resolveDataPlaneCredentials(process.env).user,
+      dbPass: resolveDataPlaneCredentials(process.env).pass,
     });
     await dataPlaneServer.startWorkers();
     console.log(

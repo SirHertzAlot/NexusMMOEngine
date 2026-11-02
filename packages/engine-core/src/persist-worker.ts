@@ -71,13 +71,45 @@ DEFINE INDEX IF NOT EXISTS structural_ownership ON TABLE owns COLUMNS in, out UN
 `;
 
 /**
- * The ledger's engine URL for production boot. `MMO_DATA_PLANE_DB` wins when set (`mem://`
- * opts back into the volatile engine); otherwise the ledger is durable under `<dataDir>/data-plane`.
+ * The SurrealMX server the data plane writes to by default: the server `npm run db`
+ * starts (`--bind 127.0.0.1:8000`, AOL with fsync on every commit). Durable, and the
+ * only store whose commits survive a process or system crash.
  */
-export function resolveDataPlaneDbUrl(envValue: string | undefined, dataDir: string): string {
+export const DATA_PLANE_SURREALMX_URL = "ws://127.0.0.1:8000/rpc";
+
+/**
+ * The ledger's engine URL for production boot.
+ * - `MMO_DATA_PLANE_DB` wins when set: a `ws://` / `wss://` SurrealMX server, `rocksdb:` path,
+ *   or `mem://` (volatile, for benches and tests only).
+ * - `MMO_DATA_PLANE_STORE=rocksdb` restores the previous store: a RocksDB ledger under `<dataDir>/data-plane`.
+ * - Otherwise the ledger is the SurrealMX server at {@link DATA_PLANE_SURREALMX_URL}.
+ */
+export function resolveDataPlaneDbUrl(
+  envValue: string | undefined,
+  dataDir: string,
+  store?: string | undefined,
+): string {
   const explicit = envValue?.trim();
   if (explicit) return explicit;
-  return rocksdbUrl(path.join(dataDir, "data-plane"));
+  if (store?.trim() === "rocksdb") return rocksdbUrl(path.join(dataDir, "data-plane"));
+  return DATA_PLANE_SURREALMX_URL;
+}
+
+/**
+ * Root credentials for a remote data-plane server. `npm run db` starts the server with
+ * `root`/`root`; override with `MMO_DATA_PLANE_USER` / `MMO_DATA_PLANE_PASS`. Embedded
+ * engines take no credentials, so these are only sent when the URL is remote.
+ */
+export function resolveDataPlaneCredentials(env: NodeJS.ProcessEnv): { user: string; pass: string } {
+  return {
+    user: env.MMO_DATA_PLANE_USER?.trim() || "root",
+    pass: env.MMO_DATA_PLANE_PASS?.trim() || "root",
+  };
+}
+
+/** True for a SurrealDB server URL (`ws`, `wss`, `http`, `https`), false for an embedded engine URL. */
+export function isRemoteDbUrl(url: string): boolean {
+  return /^(wss?|https?):\/\//.test(url);
 }
 
 /** Load `persist/schema.surrealql` from disk if present, otherwise return embedded constant. */
@@ -104,6 +136,9 @@ export interface PersistWorkerConfig {
   entityCapacity?: number;
   persistRingCapacity?: number;
   dbUrl?: string;
+  /** Root credentials, used only when `dbUrl` is a remote server. */
+  dbUser?: string;
+  dbPass?: string;
   namespace?: string;
   database?: string;
   pollIntervalMs?: number;
@@ -129,6 +164,8 @@ export class PersistenceWorkerRuntime {
   public readonly namespace: string;
   public readonly database: string;
   public readonly pollIntervalMs: number;
+  private readonly dbUser: string;
+  private readonly dbPass: string;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private draining = false;
@@ -147,16 +184,25 @@ export class PersistenceWorkerRuntime {
     this.db = new Surreal({
       engines: { ...createRemoteEngines(), ...createNodeEngines() },
     });
-    this.dbUrl = config.dbUrl ?? "mem://";
+    this.dbUrl = config.dbUrl ?? DATA_PLANE_SURREALMX_URL;
+    this.dbUser = config.dbUser ?? "root";
+    this.dbPass = config.dbPass ?? "root";
     this.namespace = config.namespace ?? "nexus_engine";
     this.database = config.database ?? "hybrid_plane";
     this.pollIntervalMs = config.pollIntervalMs ?? 10;
   }
 
-  /** Connect to embedded SurrealDB (`mem://` = SurrealMX, volatile; or a durable engine URL) and apply `schema.surrealql`. */
+  /**
+   * Connect to the ledger (a SurrealMX server over `ws://`, or an embedded engine: `rocksdb:`,
+   * `surrealkv:`, or `mem://` = volatile SurrealMX), sign in when the server is remote, and
+   * apply `schema.surrealql`. A connect failure rejects, so boot fails rather than running without a ledger.
+   */
   public async init(): Promise<void> {
     if (this.connected) return;
     await this.db.connect(this.dbUrl);
+    if (isRemoteDbUrl(this.dbUrl)) {
+      await this.db.signin({ username: this.dbUser, password: this.dbPass });
+    }
     await this.db.use({ namespace: this.namespace, database: this.database });
     await this.db.query(loadPersistSchemaSurrealQL());
     this.connected = true;
@@ -384,6 +430,8 @@ if (!isMainThread && workerData && workerData.sharedMemory instanceof SharedArra
     entityCapacity: workerData.entityCapacity,
     persistRingCapacity: workerData.persistRingCapacity,
     dbUrl: workerData.dbUrl,
+    dbUser: workerData.dbUser,
+    dbPass: workerData.dbPass,
     namespace: workerData.namespace,
     database: workerData.database,
     pollIntervalMs: workerData.pollIntervalMs,
