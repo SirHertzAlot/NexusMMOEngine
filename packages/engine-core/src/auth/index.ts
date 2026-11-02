@@ -38,3 +38,4 @@ export { SqliteSessionStore } from "./sqlite-session-store.js";
 
 export { AuthRateLimiter } from "./rate-limit.js";
 export type { RateLimitOptions } from "./rate-limit.js";
+export { WorldCredentialStore, type WorldAccountClient } from "./world-credentials.js";

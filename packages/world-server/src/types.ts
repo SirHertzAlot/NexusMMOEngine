@@ -311,6 +311,13 @@ export interface SocialRecord {
   updatedAt: number; // epoch ms
 }
 
+/** Slice C: a world account. The password is an argon2id hash, never plaintext. */
+export interface AccountRecord {
+  username: string;
+  passwordHash: string;
+  createdAt: number; // epoch ms
+}
+
 export interface PutSocialRecordInput {
   regionId: string;
   kind: SocialKind;
@@ -324,6 +331,18 @@ export interface PutSocialRecordInput {
 export interface GetSocialRecordsInput {
   regionId: string;
   kind: SocialKind;
+}
+
+export interface GetAccountInput {
+  regionId: string;
+  username: string;
+}
+
+export interface CreateAccountInput {
+  regionId: string;
+  username: string;
+  passwordHash: string;
+  opId: string;
 }
 
 export interface AllocateSocialIdsInput {
@@ -795,6 +814,11 @@ export interface WorldStore {
   /** `count` fresh ids for a kind, never issued before (a world-wide counter per kind). */
   allocateSocialIds(kind: "guild" | "party", count: number): Promise<number[]>;
 
+  // -- accounts (slice C) --
+  getAccount(username: string): Promise<AccountRecord | null>;
+  /** Store a new account; the store refuses an existing username (the core checks first). */
+  createAccount(a: AccountRecord): Promise<void>;
+
   // -- atomic operations (slice A1) --
   // Each method IS the operation: validation, the state change, and
   // the item-ledger append happen inside it as one transaction /
@@ -932,6 +956,12 @@ export interface WorldCore {
   getSocialRecords(caller: string, input: GetSocialRecordsInput): Promise<SocialRecord[]>;
   /** World-wide fresh guild or party ids. Idempotent on opId. */
   allocateSocialIds(caller: string, input: AllocateSocialIdsInput): Promise<number[]>;
+
+  // -- accounts (slice C): the world owns usernames and password hashes --
+  /** The account for a username, or null when none exists. */
+  getAccount(caller: string, input: GetAccountInput): Promise<AccountRecord | null>;
+  /** Create an account. 409 when the username exists. Idempotent on opId. */
+  createAccount(caller: string, input: CreateAccountInput): Promise<AccountRecord>;
 
   // -- atomic operations (slice A1) --
   // Each core op is idempotent on opId (a replay returns the stored
