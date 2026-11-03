@@ -137,7 +137,7 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { borderTicket, clampInto, encodePinned, homeSector, interestSectors, PINNED_SECTOR, rectDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
@@ -364,6 +364,8 @@ export interface GatewayOptions {
   needs?: { eatSeconds: number };
   /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
   lessons?: Lessons | null;
+  /** The game day at a tick (0 is a Sunday): a pupil takes one lesson a day. Absent: a real day. */
+  gameDay?: (tick: number) => number;
   /** Session token TTL. Default 24 h. */
   sessionTtlMs?: number;
   /** Durable session tokens (edge/core split E3); absent = memory only. */
@@ -877,6 +879,7 @@ export class Gateway {
       | "extensions"
       | "needs"
       | "lessons"
+      | "gameDay"
       | "items"
       | "sectorBroadcast"
       | "interest"
@@ -1064,6 +1067,7 @@ export class Gateway {
     if (opts.social) this.setSocial(opts.social);
     this.eatSeconds = opts.needs?.eatSeconds ?? 0;
     this.lessons = opts.lessons ?? null;
+    this.gameDay = opts.gameDay;
     this.debugSource = opts.debugSource ?? null;
     this.chunkSource = opts.chunkSource ?? null;
     this.worldSeed = opts.worldSeed ?? null;
@@ -1437,7 +1441,8 @@ export class Gateway {
     // that first shows them (catalog §0x12).
     const spawned = sim.spawnedWireIds();
     const namesEnv = this.namesFor(spawned);
-    const dropsEnv = this.dropsFor(spawned);
+    // With interest on, drops go per session (deliverDropsFor), so no global drops message.
+    const dropsEnv = this.interest ? null : this.dropsFor(spawned);
     // Phase 3: the delta encodes directly from the SAB-backed stores —
     // no intermediate CollectedState row copy. Read-only w.r.t. the
     // tracker: commit() still runs below, as on the row path.
@@ -2117,6 +2122,8 @@ export class Gateway {
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
+    const bySector = frame ? this.bucketBySector(this.namedWireIds()) : null;
+    const dropped = frame && this.items ? this.droppedIndex() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
     // interest management splits it per sector (IM3).
     const deltaEnv = encodeEnvelope(
@@ -2146,11 +2153,14 @@ export class Gateway {
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
-      if (namesEnv) this.deliver(s, namesEnv, tick);
+      // Names: everyone without interest management; with it, per session (deliverNamesFor), before its delta.
+      if (namesEnv && !frame) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (frame) {
         const replace = isSnapshotTick || s.needsResync || !s.interestSet;
         const entries = this.interestEntries(s, frame, replace);
+        if (bySector) this.deliverNamesFor(s, bySector, tick);
+        if (dropped) this.deliverDropsFor(s, dropped, tick);
         const sid = edge && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
         if (sid !== undefined) {
           // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
@@ -2305,6 +2315,23 @@ export class Gateway {
         else out.push(wid);
       }
     }
+    // FarVisible entities (IM5) within farM of the session's avatar, wherever they stand.
+    const far = farVisibleOf(this.world);
+    const avatar = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    if (far.length > 0 && avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
+      const farM = this.interest?.farM ?? 400;
+      const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
+      for (const eid of far) {
+        if (eid === avatar) continue;
+        if (Math.hypot(C.Transform.px[eid]! - x, C.Transform.pz[eid]! - z) <= farM) out.push(this.world.wireId(eid));
+      }
+    }
+    // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
+    const quests = this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined;
+    for (const name of quests?.pinnedResidentsOf?.(s.character?.id ?? null) ?? []) {
+      const e = this.residents?.entityOf(name);
+      if (e !== undefined) out.push(this.world.wireId(e));
+    }
     return out;
   }
 
@@ -2328,6 +2355,82 @@ export class Gateway {
    * sectors' shared bytes, full state for sectors it just entered (or all of
    * them on a replace), and a leave for each it dropped.
    */
+  /** The named entities by their home sector, once per tick (IM5); null without interest management. */
+  /** Wire ids grouped by their home sector (entities without a Transform are left out). */
+  private bucketBySector(wids: readonly bigint[]): Map<string, bigint[]> {
+    const bySector = new Map<string, bigint[]>();
+    for (const w of wids) {
+      const eid = this.world.resolveWireId(w);
+      if (eid < 0 || !hasComponent(this.world.ecs, C.Transform, eid)) continue;
+      const sector = homeSector(this.world, eid);
+      const list = bySector.get(sector);
+      if (list) list.push(w);
+      else bySector.set(sector, [w]);
+    }
+    return bySector;
+  }
+
+  /** The ground items by home sector, and the set of all of them (for pruning what a session has been sent). */
+  private droppedIndex(): { bySector: Map<string, bigint[]>; live: Set<bigint> } {
+    const wids = this.items!.groundWireIds(this.world);
+    return { bySector: this.bucketBySector(wids), live: new Set(wids) };
+  }
+
+  /**
+   * Drops (0x15) with interest management on (IM5): a session is told the drop row of each ground item
+   * in its interest sectors that it has not been told yet, so a drop that lands in view, or walks into
+   * view later, arrives with its name. A drop goes out once per session; the client keeps it until the
+   * item despawns, so an item that stays in view costs nothing after its first row. Rows for items that
+   * are gone are pruned from the session's set.
+   */
+  private deliverDropsFor(s: ClientSession, dropped: { bySector: ReadonlyMap<string, bigint[]>; live: ReadonlySet<bigint> }, tick: number): void {
+    const sent = (s.droppedSent ??= new Set<bigint>());
+    if (sent.size > 0) for (const w of sent) if (!dropped.live.has(w)) sent.delete(w);
+    const want: bigint[] = [];
+    for (const sector of s.interestSet ?? []) {
+      for (const w of dropped.bySector.get(sector) ?? []) {
+        if (sent.has(w)) continue;
+        sent.add(w);
+        want.push(w);
+      }
+    }
+    if (want.length === 0) return;
+    const env = this.dropsFor(want);
+    if (env) this.deliver(s, env, tick);
+  }
+
+  /**
+   * Names (0x12) with interest management on (IM5): a session is told the name of each named entity in
+   * its interest sectors, or pinned, that it has not been told yet. That covers a spawn in view, an
+   * entity that walks into view later, and the session's own avatar. A name goes out once per session,
+   * so an entity that stays in view costs nothing after its first name. Replaces the global names
+   * broadcast, which sent every spawn's name to every session (~35 bytes each).
+   */
+  private deliverNamesFor(s: ClientSession, bySector: ReadonlyMap<string, bigint[]>, tick: number): void {
+    const sent = (s.namedSent ??= new Set<bigint>());
+    const want: bigint[] = [];
+    const consider = (w: bigint): void => {
+      if (sent.has(w)) return;
+      sent.add(w);
+      want.push(w);
+    };
+    if (s.playerEntity !== null) consider(s.playerEntity);
+    for (const sector of s.interestSet ?? []) for (const w of bySector.get(sector) ?? []) consider(w);
+    for (const w of s.pinnedOut ?? []) consider(w);
+    if (want.length === 0) return;
+    const env = this.namesFor(want);
+    if (env) this.deliver(s, env, tick);
+  }
+
+  /** Every entity that has a name on the wire: each player, and each named creature. */
+  private namedWireIds(): bigint[] {
+    const out: bigint[] = [];
+    for (const other of this.sessions.values()) if (other.playerEntity !== null) out.push(other.playerEntity);
+    const creatures = this.creatures;
+    if (creatures) for (const e of creatures.entities?.() ?? []) if (creatures.nameOf?.(e)) out.push(this.world.wireId(e));
+    return out;
+  }
+
   private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
@@ -2339,9 +2442,18 @@ export class Gateway {
       ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
       : new Set([GLOBAL_SECTOR]);
     const entries: DeltaSetEntry[] = [];
+    // IM7: sectors beyond enterM (kept only by hysteresis) send a rate-limited delta, when a rate is set.
+    const every = this.interest!.outerEvery;
+    const at = s.observer
+      ? { x: s.observer.x, z: s.observer.z }
+      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid) ? { x: C.Transform.px[eid], z: C.Transform.pz[eid] } : null;
     for (const sector of next) {
       if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-      else {
+      else if (every && at && sectorDistance(sector, at.x, at.z) > this.interest!.enterM) {
+        if (frame.tick % every !== 0) continue;
+        const d = frame.rateDelta(sector, every);
+        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      } else {
         const d = frame.delta(sector);
         if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
       }
@@ -3770,7 +3882,7 @@ export class Gateway {
     const i = skill === undefined ? -1 : this.mastery.index.of(skill);
     if (i < 0) return;
     const who = s.character?.id ?? -1;
-    const day = Math.floor(Date.now() / 86_400_000); // ponytail: a real day, not the game's; the game clock is not visible here
+    const day = this.gameDay ? this.gameDay(this.tick) : Math.floor(Date.now() / 86_400_000);
     const key = `${who}/${info.npc}`;
     if (this.lessonDay.get(key) === day) return this.sendSystem(s, "They have taught you what they can for today.");
     const sheet = this.mastery.sheetOf(avatar);
@@ -4630,8 +4742,11 @@ export class Gateway {
     // entity is first-shown here (catalog §0x12).
     const names = this.namesFor(null);
     if (names) this.deliver(s, names, this.tick);
-    const drops = this.dropsFor(null);
-    if (drops) this.deliver(s, drops, this.tick);
+    // With interest on, drops follow interest per session (deliverDropsFor), not a region-wide list.
+    if (!this.interest) {
+      const drops = this.dropsFor(null);
+      if (drops) this.deliver(s, drops, this.tick);
+    }
     // What the resource nodes are and hold, and the player's pouch (catalog 0x24).
     const gathering = this.gathering;
     const targets = [...(this.chests?.views(this.world) ?? []), ...(this.breaks?.views(this.world) ?? []), ...(this.vendors?.views(this.world, (e) => this.residents?.isResident(e) === true) ?? [])];
@@ -5878,6 +5993,7 @@ export class Gateway {
   /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
   private readonly eatSeconds: number;
   private readonly lessons: Lessons | null;
+  private readonly gameDay: ((tick: number) => number) | undefined;
   /** The game day a pupil last took a lesson from a master, by character and npc. */
   private readonly lessonDay = new Map<string, number>();
 

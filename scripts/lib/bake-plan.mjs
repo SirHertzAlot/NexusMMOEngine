@@ -8,11 +8,12 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { PATH_FLAGS } from "./bake-paths.mjs";
+import { migrateLegacyRegionDb } from "./region-db.mjs";
 
 /** Dependency order: each step reads what the ones before it wrote. */
 export const STEPS = [
   { id: "build", title: "compile the TypeScript the bakes run from", art: false },
-  { id: "world", title: "terrain: survey, erosion, rivers, biomes -> world.db", art: false },
+  { id: "world", title: "terrain: survey, erosion, rivers, biomes -> region.db", art: false },
   { id: "loot", title: "loot pool -> loot/pool.jsonl", art: false },
   { id: "dungeons", title: "dungeon pool -> dungeons/*.dungeon.json", art: false },
   { id: "settlement", title: "town site selection + settlement manifest + scene", art: false },
@@ -113,7 +114,10 @@ export function planSteps(options, paths, fsv = realFs) {
   // "max" is only known after a survey (the settlement step asks the world), so its outputs can't be checked ahead.
   const ids = options.sites === "max" ? null : settlementIds(options.settlementId, options.sites);
   const done = {
-    world: () => fsv.exists(join(paths.dataDir, "world.db")),
+    world: () => {
+      migrateLegacyRegionDb(paths.dataDir);
+      return fsv.exists(join(paths.dataDir, "region.db"));
+    },
     loot: () => fsv.exists(join(paths.dataDir, "loot", "pool.jsonl")),
     dungeons: () => fsv.hasDungeons(join(paths.dataDir, "dungeons")),
     settlement: () => ids !== null && ids.every((id) => fsv.exists(join(paths.settlementOut, `${id}.settlement.json`)) && fsv.exists(join(paths.scenesDir, `settlement-${id}.scene.json`))),

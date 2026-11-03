@@ -15,7 +15,7 @@ function makeHeights(fill: number): Float32Array {
 /** Create a temp db path and return it (caller must clean up). */
 function tmpDb(): { dbPath: string; cleanup: () => void } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "terrain-cache-"));
-  const dbPath = path.join(dir, "world.db");
+  const dbPath = path.join(dir, "region.db");
   return {
     dbPath,
     cleanup: () => {

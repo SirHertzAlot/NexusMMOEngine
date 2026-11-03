@@ -64,7 +64,7 @@
  *                                    from <dataDir>/characters.db (read-only)
  *   GET  /api/editor/characters/:id → one character's record: name, look,
  *                                    deaths, saved state and ledger items
- *                                    (characters.db + world.db, read-only)
+ *                                    (characters.db + region.db, read-only)
  *   GET  /api/editor/build/profiles → build profiles (EA19, build-host.ts)
  *   PUT  /api/editor/build/profiles → {profile}: validated save of content/build/profiles/<name>.json
  *   DELETE /api/editor/build/profiles/:name → delete a profile file
@@ -155,6 +155,7 @@ import { createPlaySnapshot } from "./play-snapshot.js";
 import { createClientServer, handlePlaySetupsRoute, startEdge } from "./play-host.js";
 import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
 import { runProfile } from "@mmo-engine/build";
+import { migrateLegacyRegionDb } from "@mmo-engine/engine-core";
 
 /** True for connections from this machine (IPv4, IPv6, IPv4-mapped IPv6). */
 export function isLoopbackAddress(addr: string | undefined): boolean {
@@ -211,7 +212,7 @@ export interface EditorHostOptions {
   /** How long to wait for the server's "listening" line. Default 120s. */
   readyTimeoutMs?: number;
   /**
-   * The world the editor plays and edits: world.db, users.csv, navmesh/.
+   * The world the editor plays and edits: region.db, users.csv, navmesh/.
    * Default <repo>/packages/engine-core/data — the same world
    * `npm run server` runs, so terrain edited here is the terrain players get.
    */
@@ -529,11 +530,12 @@ export function editorHost(options: EditorHostOptions): Plugin {
   const readyTimeoutMs = options.readyTimeoutMs ?? 120_000;
   const assetsRoot = join(repoRoot, "assets");
   const dataDir = resolve(options.dataDir ?? join(repoRoot, "packages", "engine-core", "data"));
+  migrateLegacyRegionDb(dataDir);
   const rulesDir = join(repoRoot, "content", "rules");
   const playtestRunner = createScratchRunner(repoRoot);
   let owned: OwnedServer | null = null;
-  /** world.db snapshot for the Play menu's fresh/keep options. */
-  const playSnapshot = createPlaySnapshot(join(dataDir, "world.db"));
+  /** region.db snapshot for the Play menu's fresh/keep options. */
+  const playSnapshot = createPlaySnapshot(join(dataDir, "region.db"));
   /** The player's client dev server ("New window" play), started on demand. */
   const clientServer = createClientServer(repoRoot);
   let dbCore: DatabaseCore | null = null;
@@ -669,7 +671,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
       });
     }
     // One explicit data dir for the whole play-mode session: the server
-    // resolves users.csv (and world.db) from MMO_DATA_DIR, and the seed
+    // resolves users.csv (and region.db) from MMO_DATA_DIR, and the seed
     // below writes to the same file. Seeding happens BEFORE the server
     // starts because the gateway's CsvCredentialStore loads the CSV once
     // at startup — users added afterwards would not be visible.
@@ -1046,7 +1048,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
                 spawn = { x: sp.x, z: sp.z };
               }
             }
-            // Back up world.db before the server starts (see play-snapshot).
+            // Back up region.db before the server starts (see play-snapshot).
             // Not while a server runs: that start fails with 409, and its
             // world is mid-play.
             const snapshotting = owned === null;
@@ -1247,7 +1249,7 @@ export function editorHost(options: EditorHostOptions): Plugin {
               }
               const db = await openReadOnlyDb(charsDbPath);
               try {
-                const worldDbPath = join(dataDir, "world.db");
+                const worldDbPath = join(dataDir, "region.db");
                 const worldDb = existsSync(worldDbPath) ? await openReadOnlyDb(worldDbPath) : null;
                 try {
                   const defs = loadPoolDefNames(dataDir);

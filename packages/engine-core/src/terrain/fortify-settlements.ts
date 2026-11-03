@@ -5,7 +5,7 @@
  * pond-side sites, adapt each window into the fortify sim, run the
  * threat-driven fortify loop, and emit decorated structure placements
  * in world coordinates (a `SettlementBake` per site). bake-world
- * persists the results into world.db meta (`fortified_settlements`),
+ * persists the results into region.db meta (`fortified_settlements`),
  * next to spawn_point and world_biomes — a bake product the server and
  * editor can read, and the town spawner's future input.
  *

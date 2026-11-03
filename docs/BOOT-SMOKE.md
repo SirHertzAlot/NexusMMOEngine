@@ -262,3 +262,23 @@ which still hangs in this sandbox and was excluded from both runs.
 
 
 
+
+## Step 5 — Join baseline shape (2026-11-02)
+
+Both smokes failed on main with `timeout waiting for 1x message 0x3 (got 0)`
+after a clean welcome. Cause: with interest management on (the server
+default since 73ced85c), the join baseline is a `DeltaSet` (0x25) with
+`replace: true` and one `Full` entry per sector, not a `Snapshot` (0x03).
+The smokes still waited for `Snapshot`. The server was correct; the scripts
+were stale.
+
+Measured on main, default interest: the first post-welcome message set was
+16 `Full` sector entries (replace), 43 transform rows and 9 chunk rows, the
+same content the old `Snapshot` carried. With `MMO_INTEREST=0` the `Snapshot`
+arrives as before.
+
+Fix: `scripts/boot-smoke-baseline.mjs` accepts either shape (whichever
+arrives first; a non-replace `DeltaSet` as first is a failure). Both smokes
+use it. Verified: `node scripts/boot-smoke.mjs` PASS with interest on and with
+`MMO_INTEREST=0`, clean shutdown, port free. The fleet smoke was not run here:
+no SurrealDB binary in this sandbox, and the download was blocked.

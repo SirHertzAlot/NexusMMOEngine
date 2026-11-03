@@ -96,7 +96,7 @@ export class PersistenceError extends Error {
 }
 
 /** Append-only by design (item ledger, snapshots, events): never edited. */
-const APPEND_ONLY = new Set(["world.item_events", "world.snapshots", "world.events"]);
+const APPEND_ONLY = new Set(["region.item_events", "region.snapshots", "region.events"]);
 export const QUERY_MAX_ROWS = 5000;
 export const QUERY_DEFAULT_ROWS = 500;
 export const QUERY_DEFAULT_TIMEOUT_MS = 2000;

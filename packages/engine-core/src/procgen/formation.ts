@@ -28,7 +28,7 @@
  *
  * Baked. A tile takes tens of milliseconds to solve, too long for the
  * server's tick, so the world bake solves every tile of the world into
- * world.db (persist/formation-tiles.ts) and the server only reads them. A
+ * region.db (persist/formation-tiles.ts) and the server only reads them. A
  * tile the store lacks is solved on demand and written back.
  */
 
@@ -100,7 +100,7 @@ export interface FormationEnv {
   seaLevel?: number;
 }
 
-/** Where solved tiles persist between runs (world.db: persist/formation-tiles.ts). */
+/** Where solved tiles persist between runs (region.db: persist/formation-tiles.ts). */
 export interface FormationTileBacking {
   get(layer: string, ti: number, tj: number): FormationPoint[] | undefined;
   put(layer: string, ti: number, tj: number, points: FormationPoint[]): void;

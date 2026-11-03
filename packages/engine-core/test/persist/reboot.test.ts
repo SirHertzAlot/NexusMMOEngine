@@ -99,7 +99,7 @@ test(
   },
   async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-reboot-"));
-    const dbPath = path.join(dir, "world.db");
+    const dbPath = path.join(dir, "region.db");
     let child: ChildProcess | undefined;
     let childStderr = (): string => "";
     try {

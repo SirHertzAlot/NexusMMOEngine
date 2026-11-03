@@ -9,7 +9,7 @@
  *   MemoryCharacterStore + WalletSystem + ItemService +
  *   WorldCharacterSync + WorldAtomicOps — the character/atomic plane.
  * - state mode: WorldClient + SimWorld + SnapshotStore + ItemLedger
- *   (both on one file-backed world.db, exactly as server.ts opens
+ *   (both on one file-backed region.db, exactly as server.ts opens
  *   them) + ShardStateShipper — the shard state plane (P2/P3).
  *
  * Protocol: argv[2] is a JSON config file. Markers are JSON lines on
@@ -376,7 +376,7 @@ async function runEconomy(): Promise<void> {
 
 async function runState(): Promise<void> {
   const client = makeClient();
-  const dbPath = `${cfg.dataDir}/world.db`;
+  const dbPath = `${cfg.dataDir}/region.db`;
   const store = new SnapshotStore({ dbPath, saveEveryTicks: 300 });
   const ledger = new ItemLedger(dbPath, { autoCheckpoint: false });
   const shipper = new ShardStateShipper({

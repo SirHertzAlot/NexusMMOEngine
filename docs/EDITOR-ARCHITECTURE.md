@@ -746,7 +746,7 @@ mode under `MMO_DATA_DIR`:
 
 | File | Tables | Owner |
 |---|---|---|
-| `world.db` | `meta`, `snapshots`, `events`, `chunk_entities`, `formation_tiles_v2`, `item_events` (the item ledger), `terrain_tiles`, `world_maps` | `SnapshotStore`, `ChunkEntityStore`, `FormationTileStore`, `ItemLedger`, `TerrainTileStore` |
+| `region.db` | `meta`, `snapshots`, `events`, `chunk_entities`, `formation_tiles_v2`, `item_events` (the item ledger), `terrain_tiles`, `world_maps` | `SnapshotStore`, `ChunkEntityStore`, `FormationTileStore`, `ItemLedger`, `TerrainTileStore` |
 | `characters.db` | `characters`, `deaths`, `character_state`, `character_skills` | `SqliteCharacterStore` |
 | `guilds.db`, `social.db` | guilds, members, guild log; friends, blocks | the guild and social stores |
 | `navmesh.db` (in the navmesh directory) | `navmesh_tiles` | the navmesh store |

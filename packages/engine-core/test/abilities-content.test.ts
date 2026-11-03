@@ -1,5 +1,5 @@
 /**
- * The placeholder ability set (content/combat/abilities.json) run through
+ * The M5 starter ability set (content/combat/abilities.json) run through
  * AbilitySystem at the 30 Hz tick: each value must behave as written.
  */
 
@@ -18,7 +18,7 @@ const file = fileURLToPath(new URL("../../../../content/combat/abilities.json", 
 type Def = { id: string; gcdMs: number; cooldownMs: number; castMs: number };
 const defs: Def[] = (JSON.parse(readFileSync(file, "utf8")) as { abilities: Def[] }).abilities;
 
-describe("content/combat/abilities.json (placeholder starter set)", () => {
+describe("content/combat/abilities.json (M5 starter set)", () => {
   it("names unique ids and whole-tick timings", () => {
     const ids = defs.map((d) => d.id);
     assert.equal(new Set(ids).size, ids.length);
@@ -57,5 +57,33 @@ describe("content/combat/abilities.json (placeholder starter set)", () => {
 
     // Guard's cooldown runs from when it fired.
     assert.equal(s.trigger(1, "guard", landed + gcd + ticks(1000)), "rejected");
+  });
+});
+
+describe("the starter effects match the existing balance", () => {
+  const rule = (f: string): unknown => JSON.parse(readFileSync(fileURLToPath(new URL(`../../../../content/rules/${f}`, import.meta.url)), "utf8"));
+  const effectOf = (id: string): { kind: string; amount: number; reachM?: number } | undefined =>
+    (defs as Array<Def & { effect?: { kind: string; amount: number; reachM?: number } }>).find((d) => d.id === id)?.effect;
+
+  it("strike does one blow's base damage (content/rules/combat.json)", () => {
+    const combat = rule("combat.json") as { damage: { base: number } };
+    assert.deepEqual(effectOf("strike"), { kind: "damage", amount: combat.damage.base, reachM: 2.5 });
+  });
+
+  it("heal restores what Mend restores (content/rules/spells.json)", () => {
+    const spells = rule("spells.json") as { spells: Array<{ id: string; effect: { kind: string; amount: number } }> };
+    const mend = spells.spells.find((x) => x.id === "mend")!;
+    assert.deepEqual(effectOf("heal"), { kind: "heal", amount: mend.effect.amount });
+  });
+
+  it("guard lasts the Guard move and takes the share of a blow a failed block lets through", () => {
+    const moves = JSON.parse(readFileSync(fileURLToPath(new URL("../../../../content/combat/moves.json", import.meta.url)), "utf8")) as { moves: Array<{ name: string; duration: number }> };
+    const guardMove = moves.moves.find((m) => m.name === "guard")!;
+    const combat = rule("combat.json") as { defence: { failedLetsThrough: number } };
+    const statusFile = JSON.parse(readFileSync(fileURLToPath(new URL("../../../../content/combat/abilities.json", import.meta.url)), "utf8")) as { statuses: Array<{ id: string; durationMs: number; mods: Array<{ stat: string; mode: string; value: number }> }> };
+    const guarded = statusFile.statuses.find((x) => x.id === "guarded")!;
+    assert.equal(guarded.durationMs, guardMove.duration * 1000);
+    const armour = guarded.mods.find((m) => m.stat === "armour" && m.mode === "mul")!;
+    assert.equal(1 + armour.value, combat.defence.failedLetsThrough);
   });
 });

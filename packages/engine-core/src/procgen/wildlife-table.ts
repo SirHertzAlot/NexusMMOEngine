@@ -459,6 +459,14 @@ export function speciesModels(t: WildlifeTable, models: readonly CatalogModel[])
   return out;
 }
 
+/**
+ * One placeholder title per species (WL1, moving creatures): the first `models` alternative, so a generated stand-in
+ * model named that way binds to the species through `speciesModels`. Species with the same first name share a title.
+ */
+export function placeholderTitles(t: WildlifeTable): Array<{ title: string; publicID: string }> {
+  return Object.entries(t.species).map(([id, sp]) => ({ title: sp.models.split("|")[0]!, publicID: id }));
+}
+
 // ------------------------------------------------------------------- CLI
 
 const isMain = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -467,6 +475,11 @@ if (isMain) {
   const flag = (n: string): string | undefined => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
   const root = fileURLToPath(new URL("../../../../../", import.meta.url));
   const t = loadWildlifeTable(flag("--table"));
+  if (flag("--placeholder-titles")) {
+    writeFileSync(flag("--placeholder-titles")!, JSON.stringify(placeholderTitles(t), null, 1));
+    console.log(`[wildlife] ${Object.keys(t.species).length} placeholder titles -> ${flag("--placeholder-titles")}`);
+    process.exit(0);
+  }
   const catalog = JSON.parse(readFileSync(flag("--catalog") ?? `${root}assets/catalog.json`, "utf8")) as { models: CatalogModel[] };
   const out = flag("--out") ?? `${root}packages/engine-core/content/wildlife/models.local.json`;
   const map = speciesModels(t, catalog.models);

@@ -20,7 +20,7 @@ import {
   avianFlightCurve, serpentineWave, aquaticWave, arachnidGait, floraSway,
 } from "./gait.js";
 import {
-  BONE_BODY, BONE_FL, BONE_HEAD, BONE_LOWER, BONE_NAMES, BONE_TAIL, segmentQuadruped,
+  BONE_BODY, BONE_FL, BONE_HEAD, BONE_LOWER, BONE_NAMES, BONE_TAIL, namedRigType, segmentQuadruped,
   segmentModel, type SegmentHints, type Segmentation,
 } from "./segment.js";
 
@@ -58,7 +58,9 @@ export class AnimalTemplate {
       flat[i * 3 + 1] = position.getY(i);
       flat[i * 3 + 2] = position.getZ(i);
     }
-    const seg = hints?.rigType
+    // A model named as a non-quadruped (a bird, a snake, a fish) takes its own rig; the quadruped fit is tried first only for the rest.
+    const named = modelName ? namedRigType(modelName) : undefined;
+    const seg = hints?.rigType || (named && named !== "quadruped")
       ? segmentModel(flat, hints, modelName)
       : (segmentQuadruped(flat, hints) ?? segmentModel(flat, hints, modelName));
     if (!seg) return null;

@@ -7,7 +7,7 @@
  *   biome_region:<i>      a biome region's type and centre
  *   chunk:[cx, cz]        region, biome, height range, river flag
  *
- * Heights themselves stay in each region's world.db (hot data next to the
+ * Heights themselves stay in each region's region.db (hot data next to the
  * simulation); this catalog answers world-level questions — which region
  * owns a chunk, where the deserts are — without touching tiles.
  *

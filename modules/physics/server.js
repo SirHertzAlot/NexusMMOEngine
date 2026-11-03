@@ -18,13 +18,18 @@ import {
 import { NavObstacleSystem } from "../../packages/engine-core/dist/src/navigation/obstacle-system.js";
 import { ChunkNavmesh } from "../../packages/engine-core/dist/src/navigation/chunk-navmesh.js";
 import { IntegrateSystem } from "../../packages/engine-core/dist/src/index.js";
-import { PropCollisionSystem } from "../../packages/engine-core/dist/src/index.js";
+import { PropCollisionSystem, CharacterBridgeSystem } from "../../packages/engine-core/dist/src/index.js";
 import { ColliderSystem } from "../../packages/engine-core/dist/src/index.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.physics ?? {};
 
-  const physics = new PhysicsSystem(createJoltBackend());
+  // One Jolt world for the bodies and the characters: the walkers' sweeps must see the same props.
+  const jolt = createJoltBackend();
+  // On by default; MMO_CHARACTER_BRIDGE=0 turns it off (the JS prop push-out then resolves walkers).
+  const characters = new CharacterBridgeSystem(jolt, process.env.MMO_CHARACTER_BRIDGE !== "0");
+  // Bridged walkers get no body, so the physics system skips them.
+  const physics = new PhysicsSystem(jolt, undefined, undefined, characters);
 
   const navBackend = createNavigationBackend({
     originX: 0,
@@ -43,7 +48,8 @@ export function createSystems(ctx) {
 
   const navigation = new NavigationSystem({ backend: navBackend });
   const integrate = new IntegrateSystem();
-  const propCollision = new PropCollisionSystem();
+  // Walkers the character bridge drives are skipped here (the sweep resolves them).
+  const propCollision = new PropCollisionSystem(characters);
   const collider = new ColliderSystem();
 
   // Chunk navmesh for terrain streaming (needs navBackend, registry, procgen).
@@ -65,6 +71,7 @@ export function createSystems(ctx) {
     navigation,
     obstacles,
     integrate,
+    "character-bridge": characters,
     "prop-collision": propCollision,
     collider,
   };

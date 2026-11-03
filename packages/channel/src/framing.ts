@@ -31,33 +31,70 @@ export class FrameTooLargeError extends Error {
  */
 export function encodeFrame(obj: unknown): Buffer {
   const blobs: Uint8Array[] = [];
-  // A plain function, so `this` is the holder: the value is read before toJSON runs.
-  const json = JSON.stringify(obj, function (this: Record<string, unknown>, key: string, value: unknown) {
-    const raw = this[key];
-    if (raw instanceof Uint8Array) {
-      blobs.push(raw);
-      return { $bin: blobs.length - 1 };
-    }
-    return value;
-  });
+  const tree = extractBlobs(obj, blobs);
+  const json = JSON.stringify(tree);
   if (blobs.length === 0) {
-    const body = Buffer.from(json, "utf8");
-    if (body.length > MAX_FRAME_BYTES) throw new FrameTooLargeError(body.length);
-    return withHeader([body]);
+    const len = Buffer.byteLength(json, "utf8");
+    if (len > MAX_FRAME_BYTES) throw new FrameTooLargeError(len);
+    const out = Buffer.allocUnsafe(4 + len);
+    out.writeUInt32BE(len, 0);
+    out.write(json, 4, "utf8");
+    return out;
   }
-  const env = Buffer.from(`{"o":${json},"b":${JSON.stringify(blobs.map((b) => b.length))}}`, "utf8");
-  const parts: Uint8Array[] = [Buffer.from([BINARY_MARK, 0, 0, 0, 0]), env, ...blobs];
-  const size = parts.reduce((n, p) => n + p.length, 0) - 4;
+  const env = `{"o":${json},"b":${JSON.stringify(blobs.map((b) => b.length))}}`;
+  const envLen = Buffer.byteLength(env, "utf8");
+  let blobBytes = 0;
+  for (const b of blobs) blobBytes += b.length;
+  // Body: mark, 4-byte envelope length, envelope, blobs. One allocation, one copy per part.
+  const size = 5 + envLen + blobBytes;
   if (size > MAX_FRAME_BYTES) throw new FrameTooLargeError(size);
-  (parts[0] as Buffer).writeUInt32BE(env.length, 1);
-  return withHeader(parts);
+  const out = Buffer.allocUnsafe(4 + size);
+  out.writeUInt32BE(size, 0);
+  out[4] = BINARY_MARK;
+  out.writeUInt32BE(envLen, 5);
+  out.write(env, 9, "utf8");
+  let at = 9 + envLen;
+  for (const b of blobs) {
+    out.set(b, at);
+    at += b.length;
+  }
+  return out;
 }
 
-function withHeader(body: Uint8Array[]): Buffer {
-  const size = body.reduce((n, p) => n + p.length, 0);
-  const header = Buffer.allocUnsafe(4);
-  header.writeUInt32BE(size, 0);
-  return Buffer.concat([header, ...body], 4 + size);
+/**
+ * Returns `v` with every Uint8Array swapped for `{"$bin": i}` and its bytes
+ * pushed onto `blobs`. Values with their own toJSON (Date, ...) pass through
+ * untouched, so JSON.stringify serialises them as before. Doing this in one
+ * walk instead of a JSON.stringify replacer skips the Buffer.toJSON detour
+ * for every blob (a number array per 4 KiB blob).
+ */
+function extractBlobs(v: unknown, blobs: Uint8Array[]): unknown {
+  if (v instanceof Uint8Array) {
+    blobs.push(v);
+    return { $bin: blobs.length - 1 };
+  }
+  if (Array.isArray(v)) {
+    let changed = false;
+    const out = v.map((x) => {
+      const y = extractBlobs(x, blobs);
+      if (y !== x) changed = true;
+      return y;
+    });
+    return changed ? out : v;
+  }
+  if (typeof v === "object" && v !== null && typeof (v as { toJSON?: unknown }).toJSON !== "function") {
+    const src = v as Record<string, unknown>;
+    let out: Record<string, unknown> | null = null;
+    for (const k of Object.keys(src)) {
+      const y = extractBlobs(src[k], blobs);
+      if (y !== src[k]) {
+        out ??= { ...src };
+        out[k] = y;
+      }
+    }
+    return out ?? v;
+  }
+  return v;
 }
 
 /** Reads a binary frame's body (the bytes after the 4-byte length) back into its packet. */

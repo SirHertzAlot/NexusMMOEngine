@@ -1,5 +1,5 @@
 /**
- * ItemLedger — every change to an item (roadmap P2a), appended to world.db
+ * ItemLedger — every change to an item (roadmap P2a), appended to region.db
  * beside the snapshots, so items and bags survive restarts.
  *
  * The ledger is an event log, never updated in place: each row says what an
@@ -133,7 +133,7 @@ export class ItemLedger {
   private zs = new Float32Array(INITIAL_EVENTS);
 
   /**
-   * Open world.db by path, or borrow an open connection. `autoCheckpoint:
+   * Open region.db by path, or borrow an open connection. `autoCheckpoint:
    * false` leaves WAL checkpoints to another connection (the server's
    * SnapshotStore runs them after every save).
    */

@@ -223,3 +223,20 @@ Machine: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz x12, 15.7 GiB, Windows_NT 10.0
 | global | spread | 5000 | 274.6 KiB | 273.9 KiB | 4.3 | 14.1 | 471.8 KiB | 365.3 KiB | 0 |
 | global | towns | 1000 | 55.4 KiB | 55.2 KiB | 1.08 | 3.13 | 97.7 KiB | 73.7 KiB | 0 |
 | global | towns | 5000 | 274.6 KiB | 273.9 KiB | 4.35 | 16.93 | 471.8 KiB | 365.3 KiB | 0 |
+
+## B7: Interest bandwidth (2026-11-01)
+
+Machine: Intel(R) Xeon(R) Processor @ 2.10GHz x4, 15.7 GiB, Linux 6.18.44-fc-v185, Node v22.23.4. Commit `27f2749`.
+
+50 sessions over the edge channel, placed like the entities; every entity moves every tick. 300 ticks after 30 warm-up (includes the periodic snapshot tick). Mode `global` is today's path (every client gets the whole region's delta). Spawn burst `yes`: 100 ground items dropped at once every 30 ticks (drops ride the per-session drops path with interest on).
+
+| Mode | Spawn burst | Layout | Entities | runs | bytes/client/tick mean | p99 | core tick ms mean, median of runs (min to max) | p99 | channel bytes/tick mean | p99 | edge assembly ms mean |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| interest | no | spread | 1000 | 3 | 1.8 KiB | 3.4 KiB | 7.15 (6.9 to 7.55) | 13 | 491.6 KiB | 494.3 KiB | 0.566 |
+| interest | no | spread | 5000 | 3 | 5.6 KiB | 7.0 KiB | 21.61 (21.18 to 22.21) | 33.81 | 1576.7 KiB | 1580.5 KiB | 1.078 |
+| interest | no | towns | 1000 | 3 | 6.5 KiB | 10.6 KiB | 7.54 (7.19 to 8.06) | 13.95 | 516.3 KiB | 520.4 KiB | 0.55 |
+| interest | no | towns | 5000 | 3 | 27.4 KiB | 43.2 KiB | 27.83 (26.45 to 29.11) | 41.89 | 2253.8 KiB | 2251.4 KiB | 1.016 |
+| interest | yes | spread | 1000 | 3 | 1.9 KiB | 3.4 KiB | 11.55 (11.5 to 12.6) | 26.14 | 497.5 KiB | 605.7 KiB | 0.634 |
+| interest | yes | spread | 5000 | 3 | 5.6 KiB | 7.3 KiB | 28.82 (28.6 to 29.31) | 58.64 | 1583.3 KiB | 1669.8 KiB | 1.19 |
+| interest | yes | towns | 1000 | 3 | 6.6 KiB | 12.2 KiB | 13.78 (13.76 to 14.63) | 36.69 | 527.7 KiB | 792.8 KiB | 0.778 |
+| interest | yes | towns | 5000 | 3 | 27.5 KiB | 43.4 KiB | 33.65 (33.39 to 36.28) | 67.05 | 2260.6 KiB | 2514.3 KiB | 1.077 |

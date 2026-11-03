@@ -64,7 +64,7 @@ test("chunk-load scatter: fresh boot spawns environment, reboot restores without
 
   // --- save + reboot ----------------------------------------------------
   const store = new SnapshotStore({
-    dbPath: path.join(dir, "world.db"),
+    dbPath: path.join(dir, "region.db"),
     saveEveryTicks: 1,
   });
   store.saveWorld(1, sim);
@@ -72,7 +72,7 @@ test("chunk-load scatter: fresh boot spawns environment, reboot restores without
 
   SimWorld.resetEntityCursorForTesting();
   const rebooted = new SimWorld();
-  const store2 = new SnapshotStore({ dbPath: path.join(dir, "world.db") });
+  const store2 = new SnapshotStore({ dbPath: path.join(dir, "region.db") });
   const restoredTick = store2.restoreInto(rebooted);
   store2.close();
   assert.equal(restoredTick, 1);

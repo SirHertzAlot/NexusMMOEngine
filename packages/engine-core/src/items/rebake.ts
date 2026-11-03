@@ -11,7 +11,7 @@
  * pool entry is gone is tombstoned.
  *
  * Run with the server stopped:
- *   node dist/src/items/rebake.js --db data/world.db --pool data/loot/pool.jsonl --size 10000 --seed 2
+ *   node dist/src/items/rebake.js --db data/region.db --pool data/loot/pool.jsonl --size 10000 --seed 2
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -92,7 +92,7 @@ function main(): void {
   const args = new Map<string, string>();
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 2) {
-    if (!argv[i].startsWith("--") || argv[i + 1] === undefined) throw new Error("usage: rebake --db <world.db> --pool <pool.jsonl> [--size N] [--seed N]");
+    if (!argv[i].startsWith("--") || argv[i + 1] === undefined) throw new Error("usage: rebake --db <region.db> --pool <pool.jsonl> [--size N] [--seed N]");
     args.set(argv[i].slice(2), argv[i + 1]);
   }
   const db = args.get("db");

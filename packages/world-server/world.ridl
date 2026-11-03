@@ -43,6 +43,12 @@ service World
   # Slice D4: the region's committed dungeon runs, idempotent on instance
   - ReportDungeonResults(input: ReportDungeonResultsInput) => (ingested: []string)
 
+  # Slice C: accounts move to the world. A region reads an account to
+  # sign a player in and creates one on register; both need the region's
+  # token. A duplicate username is 409. Passwords are argon2id hashes.
+  - GetAccount(input: GetAccountInput) => (account: AccountRecord)
+  - CreateAccount(input: CreateAccountInput) => (account: AccountRecord)
+
   # Slice S2: cross-region presence (state: replace + query)
   - SetPresence(input: SetPresenceInput) => ()
   - QueryPresence(input: QueryPresenceInput) => (online: map<string,string>)
@@ -370,6 +376,22 @@ struct ReleaseCharacterLockInput
 struct GetCharacterLockInput
   - regionId: string
   - characterId: uint64
+
+# Slice C: an account. passwordHash is argon2id, never plaintext.
+struct GetAccountInput
+  - regionId: string
+  - username: string
+
+struct CreateAccountInput
+  - regionId: string
+  - username: string
+  - passwordHash: string
+  - opId: string
+
+struct AccountRecord
+  - username: string
+  - passwordHash: string
+  - createdAt: uint64
 
 # --- Atomic operations (slice A1) -------------------------------------
 # A character record's opaque state carries gold + inventory for these

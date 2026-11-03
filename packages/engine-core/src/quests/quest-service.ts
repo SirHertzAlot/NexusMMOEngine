@@ -174,6 +174,24 @@ export class QuestService implements SimSystem, GatewayExtension {
     this.pushDialog(o);
   }
 
+  /**
+   * The resident names of the quest NPCs a character's active quests need now (IM5, pinned for the
+   * tracker arrow): a talk step's npc, or the giver of a quest ready to turn in. Empty when offline.
+   */
+  pinnedResidentsOf(characterId: number | null): string[] {
+    const o = characterId === null ? undefined : this.online.get(characterId);
+    if (!o) return [];
+    const out = new Set<string>();
+    for (const r of o.log.all()) {
+      if (r.state !== "active") continue;
+      const step = r.def.steps[r.step];
+      const npc = !step ? r.def.giver : step.objective.type === "talk" ? step.objective.npc : null;
+      const resident = npc === null ? undefined : this.opts.content.npcs[npc]?.resident;
+      if (resident) out.add(resident);
+    }
+    return [...out];
+  }
+
   /** The giver a townsperson is (undefined: they are not one). */
   npcOfResident(resident: string): string | undefined {
     return Object.entries(this.opts.content.npcs).find(([, n]) => n.resident === resident)?.[0];

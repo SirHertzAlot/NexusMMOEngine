@@ -245,7 +245,7 @@ describe("dungeon instance", () => {
       props: [
         { kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 },
         { kind: "banner", x: 23.5, y: 5, dx: -1, dy: 0, rot: 0, scale: 1 },
-        { kind: "crack", x: 4, y: 4, dx: 1, dy: 0, rot: 0, scale: 1 },
+        { kind: "sigil", x: 4, y: 4, dx: 1, dy: 0, rot: 0, scale: 1 },
       ],
       dressing: { rank: 1, props: [{ kind: "barrel", x: 5, y: 3, rot: 0.5, room: 0, radius: 0.25 }] },
       torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }],
@@ -253,7 +253,7 @@ describe("dungeon instance", () => {
       colliders: [{ x: 3, y: 5, r: 0.25 }],
     };
     const layout = readLayout(baked);
-    assert.deepEqual(layout.props.map((p) => [p.kind, p.x, p.z]), [["pillar", 6, 10], ["banner", 47, 10], ["crack", 8, 8], ["barrel", 10, 6], ["torch", 47, 12]], "cells to metres, in file order: props, dressing, torches");
+    assert.deepEqual(layout.props.map((p) => [p.kind, p.x, p.z]), [["pillar", 6, 10], ["banner", 47, 10], ["sigil", 8, 8], ["barrel", 10, 6], ["torch", 47, 12]], "cells to metres, in file order: props, dressing, torches");
     assert.equal(layout.props[3].radius, 0.5, "the bake's footprint, in metres");
     assert.ok(Math.abs(layout.props[1].yaw - -Math.PI / 2) < 1e-9, "a mounted kind faces out of its wall");
     const inst = new DungeonInstance({
@@ -283,7 +283,7 @@ describe("dungeon instance", () => {
     const barrel = of("barrel");
     assert.ok(Math.abs(C.BodyConfig.halfX[barrel] - 0.5) < 1e-6, "its own footprint sizes the box");
     assert.ok(Math.abs(C.BodyConfig.halfY[barrel] - 1) < 1e-6, "the table's height");
-    assert.deepEqual([...inst.unspawnedProps], [["crack", 1]], "a kind with no entry is counted, not spawned");
+    assert.deepEqual([...inst.unspawnedProps], [["sigil", 1]], "a kind with no entry is counted, not spawned");
   });
 
   it("serves each prop kind's procedural mesh from the run's Pcg library, once per kind, beside the shell", async () => {
@@ -298,7 +298,7 @@ describe("dungeon instance", () => {
       props: [
         { kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 },
         { kind: "pillar", x: 5, y: 5, rot: 0, scale: 1, room: 0 },
-        { kind: "crack", x: 4, y: 4, dx: 1, dy: 0, rot: 0, scale: 1 },
+        { kind: "sigil", x: 4, y: 4, dx: 1, dy: 0, rot: 0, scale: 1 },
       ],
       dressing: { rank: 1, props: [{ kind: "barrel", x: 5, y: 3, rot: 0.5, room: 0, radius: 0.25 }, { kind: "sarcophagus", x: 6, y: 3, rot: 0, room: 0, radius: 0.6 }] },
       torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }],

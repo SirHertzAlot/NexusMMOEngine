@@ -19,12 +19,13 @@ describe("wildlife layers", () => {
     assert.deepEqual(ids("critters"), ["p/Frog"]);
     assert.deepEqual(ids("shoreBirds"), ["p/Pelican"], "a flying pose does not stand");
     assert.deepEqual(ids("farmAnimals"), ["p/Sheep"], "a skinned model needs an agent, not a static prop");
-    assert.ok(!layers.some((l) => l.assets.some((a) => a.asset === "p/Shark" || a.asset === "p/Beet")), "free swimmers and produce are placed by nothing here");
+    assert.deepEqual(ids("freeSwimmers"), ["p/Shark"], "a free swimmer is placed in the open water");
+    assert.ok(!layers.some((l) => l.assets.some((a) => a.asset === "p/Beet")), "produce is placed by nothing here");
   });
 
   it("sea layers are water habitat with depths below the surface, and the plan accepts them", () => {
     const water = layers.filter((l) => l.habitat === "water");
-    assert.deepEqual(water.map((l) => l.id), ["seaFlora", "seaBed"]);
+    assert.deepEqual(water.map((l) => l.id), ["seaFlora", "seaBed", "freeSwimmers"]);
     for (const l of water) assert.ok(l.aboveWater && l.aboveWater[0] < 0 && (l.aboveWater[1] ?? 0) <= 0);
     const base: EcologyPlan = { version: 1, name: "t", fields: { forest: { scale: 100, seed: 1 }, meadow: { scale: 50, seed: 2 } }, biomes: { default: { open: 1 } }, layers: [] };
     const plan = withWildlife(base, models);
@@ -39,11 +40,11 @@ describe("wildlife layers", () => {
 
   it("spawn-table archetypes for the water kinds validate, with depths positive below the surface", () => {
     const a = wildlifeArchetypes(models);
-    assert.deepEqual(Object.keys(a).sort(), ["p/Coral", "p/Crab", "p/Kelp"]);
+    assert.deepEqual(Object.keys(a).sort(), ["p/Coral", "p/Crab", "p/Kelp", "p/Shark"]);
     for (const x of Object.values(a)) {
       SpawnArchetypeSchema.parse(x);
       assert.equal(x.habitat, "water");
-      assert.deepEqual(x.depthM, [1, 9]);
+      assert.deepEqual(x.depthM, x.asset === "p/Shark" ? [1, 30] : [1, 9], "sea floor to 9 m, free swimmers to 30 m");
     }
   });
 

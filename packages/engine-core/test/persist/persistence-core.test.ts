@@ -22,7 +22,7 @@ beforeEach(() => {
     INSERT INTO characters (id, name, health, note) VALUES (1, 'alice', 50, NULL), (2, 'bob', 70, 'x');
     CREATE TABLE nokey (a TEXT);`);
   d.close();
-  const w = new Database(path.join(dir, "world.db"));
+  const w = new Database(path.join(dir, "region.db"));
   w.exec("CREATE TABLE item_events (id INTEGER PRIMARY KEY, kind INTEGER); INSERT INTO item_events VALUES (1, 0);");
   w.close();
   running = false;
@@ -39,7 +39,7 @@ const rejects = (p: Promise<unknown>, code: string): Promise<void> =>
 describe("catalog", () => {
   it("lists databases, tables, columns and row counts", () => {
     const cat = core.catalog();
-    assert.deepEqual(cat.map((d) => d.name).sort(), ["characters", "world"]);
+    assert.deepEqual(cat.map((d) => d.name).sort(), ["characters", "region"]);
     const t = cat.find((d) => d.name === "characters")!.tables.find((x) => x.name === "characters")!;
     assert.equal(t.rowCount, 2);
     assert.equal(t.editable, true);
@@ -49,7 +49,7 @@ describe("catalog", () => {
   });
   it("marks append-only and keyless tables read-only", () => {
     const cat = core.catalog();
-    assert.equal(cat.find((d) => d.name === "world")!.tables[0].editable, false);
+    assert.equal(cat.find((d) => d.name === "region")!.tables[0].editable, false);
     assert.equal(cat.find((d) => d.name === "characters")!.tables.find((x) => x.name === "nokey")!.editable, false);
   });
 });
@@ -131,7 +131,7 @@ describe("mutations", () => {
       { ...edit, set: { name: null } },
       { ...edit, key: { name: "alice" } },
       { ...edit, table: "nokey", key: {}, set: { a: "x" } },
-      { ...edit, db: "world", table: "item_events", key: { id: 1 }, set: { kind: 2 } },
+      { ...edit, db: "region", table: "item_events", key: { id: 1 }, set: { kind: 2 } },
       { ...edit, db: "../etc" },
       { ...edit, key: { id: 404 } },
     ]) {

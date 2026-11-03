@@ -137,7 +137,7 @@ describe("tick pushes", () => {
 
 describe("SQLite session store", () => {
   it("sessions survive a restart; revoked and expired ones do not", () => {
-    const db = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mmo-sessions-")), "world.db");
+    const db = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mmo-sessions-")), "region.db");
     let t = 1000;
     const clock = () => t;
     const store1 = new SqliteSessionStore(db);

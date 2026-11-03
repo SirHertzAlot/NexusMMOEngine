@@ -61,11 +61,12 @@ import {
 import { blendTile, patchMap, regionRange, surveyLayers, worldRegions, type ChunkRange as Range } from "./terrain/region-regen.js";
 import { surveyWorld } from "./terrain/survey.js";
 import { WorldHeights } from "./terrain/world-heights.js";
+import { migrateLegacyRegionDb } from "./persist/region-db.js";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { loadWorldSpec, worldBounds, type WorldSpec } from "./terrain/world-spec.js";
 
 const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
-const DB_PATH = path.join(DATA_DIR, "world.db");
+const DB_PATH = path.join(DATA_DIR, "region.db");
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 const WORLD_RADIUS = Number(process.env.MMO_WORLD_RADIUS ?? 1);
@@ -555,6 +556,7 @@ function cmdRegenerate(): unknown {
 }
 
 function main(): void {
+  migrateLegacyRegionDb(DATA_DIR);
   const cmd = process.argv[2];
   const run = { export: cmdExport, generate: cmdGenerate, import: cmdImport, map: cmdMap, regenerate: cmdRegenerate }[cmd ?? ""];
   if (!run) {

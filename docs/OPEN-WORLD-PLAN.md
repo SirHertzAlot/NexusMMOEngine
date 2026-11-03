@@ -22,7 +22,7 @@ Legend: `[x]` done · `[ ]` planned · **⚑** decision needed before building.
 ## Decisions (2026-09-28)
 
 - **Scale: a 4 × 4 km world for now** — 250 × 250 chunks (62,500), ~61 MB
-  of heights; world.db is ~92 MB on disk (SQLite page overhead). The bake
+  of heights; region.db is ~92 MB on disk (SQLite page overhead). The bake
   never holds the full-resolution heightmap: it builds each tile from the
   coarse survey, in batches.
 - **One landmass, a peninsula (2026-09-28):** the sea opens onto the
@@ -139,10 +139,10 @@ reproducible (same spec → same bytes), not identical across platforms.
 - [x] **Fine heightmap:** bicubic upsampling of the survey to the 16/15 m
       sample grid plus native detail noise × biome roughness — a pure
       function of the global sample, so seams are exact by construction.
-- [x] **Storage:** tiles → `TerrainTileStore` (world.db, 2,500 per
+- [x] **Storage:** tiles → `TerrainTileStore` (region.db, 2,500 per
       transaction; ordinary rowid table — `WITHOUT ROWID` spilled every
       1 KiB tile into overflow pages, 284 MB → 92 MB; old tables migrate on
-      open); survey maps → world.db `world_maps`; chunk catalog (region,
+      open); survey maps → region.db `world_maps`; chunk catalog (region,
       biome, height range, river) → SurrealDB at `<data>/surreal`.
 - [x] **Bounded tools:** the terrain tool exports one area
       (`{cx, cz, radius}`, radius ≤ 32 chunks) and validates a save against
@@ -170,7 +170,7 @@ reproducible (same spec → same bytes), not identical across platforms.
       (terrain reaches clients through it) plus its contents; physics
       bodies follow automatically, navmesh tiles through `ChunkNavmesh`.
 - [x] **Scatter placed once, then persisted, never duplicated:** an
-      unloading chunk's entities are written to its row in world.db
+      unloading chunk's entities are written to its row in region.db
       (`chunk_entities`, one transaction per pass, before any despawn —
       an emptied chunk gets an empty row) and come back from it; only a
       chunk that has never unloaded is scattered. After a restart, chunks

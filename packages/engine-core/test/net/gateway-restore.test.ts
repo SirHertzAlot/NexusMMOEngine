@@ -48,7 +48,7 @@ afterEach(async () => {
 /** Save a 10-entity world at tick 300, return the DB path. */
 function saveWorldAt300(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-gw-restore-"));
-  const dbPath = path.join(dir, "world.db");
+  const dbPath = path.join(dir, "region.db");
   const store = new SnapshotStore({ dbPath });
   const sim = new SimWorld();
   for (let i = 0; i < 10; i++) {

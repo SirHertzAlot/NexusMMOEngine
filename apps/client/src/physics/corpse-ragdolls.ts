@@ -16,13 +16,30 @@ export interface CorpseOptions {
   readonly lifetimeSeconds: number;
   /** Half the side of the ground square under each corpse, metres. */
   readonly groundHalf: number;
+  /**
+   * Capture-only: when set, the world advances in fixed steps of this many seconds, so a
+   * slow frame rate does not slow the fall. Unset (the default) steps by each frame's dt.
+   */
+  readonly fixedStep?: number;
 }
+
+/** True when the page was opened with `?corpseShot`: a capture-only mode for the corpse shot. */
+export function corpseShotRequested(): boolean {
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? "").has("corpseShot");
+  } catch {
+    return false;
+  }
+}
+
 
 export const DEFAULT_CORPSE_OPTIONS: CorpseOptions = {
   maxCorpses: 20,
   lifetimeSeconds: 4,
   groundHalf: 2,
 };
+/** Options for a capture: fixed 60 Hz steps and a longer lifetime, so the fall is seen at any frame rate. */
+export const CORPSE_SHOT_OPTIONS: CorpseOptions = { ...DEFAULT_CORPSE_OPTIONS, lifetimeSeconds: 60, fixedStep: 1 / 60 };
 
 /** The rig starts this far above the ground under its root, so it falls onto it. */
 const DROP_HEIGHT = 0.6;
@@ -39,6 +56,8 @@ interface Corpse {
 export class CorpseRagdolls {
   /** Oldest first. */
   private readonly corpses: Corpse[] = [];
+  /** Simulated time not yet stepped, in fixed-step mode. */
+  private debt = 0;
 
   constructor(
     private readonly world: PhysicsWorld,
@@ -100,7 +119,15 @@ export class CorpseRagdolls {
    */
   update(dt: number): void {
     if (this.corpses.length === 0) return;
-    this.world.step(dt);
+    if (this.options.fixedStep === undefined) {
+      this.world.step(dt);
+    } else {
+      this.debt += dt;
+      while (this.debt >= this.options.fixedStep) {
+        this.world.step(this.options.fixedStep);
+        this.debt -= this.options.fixedStep;
+      }
+    }
     for (const c of [...this.corpses]) {
       c.age += dt;
       if (c.age >= this.options.lifetimeSeconds) this.remove(c.key);

@@ -1,7 +1,7 @@
 /**
  * The world info clients get in their welcome (see @mmo-engine/protocol
  * world-info): a baked world's chunk range and a coarse whole-world map,
- * built from the survey maps the bake stored in world.db.
+ * built from the survey maps the bake stored in region.db.
  *
  * The survey is 8 m; clients get it at ~16 m (a 4 km world: 254 x 254
  * cells, ~340 KB of base64), which is plenty for terrain seen from far

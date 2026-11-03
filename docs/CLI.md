@@ -61,12 +61,12 @@ output is missing; run them yourself to rebake with other settings.
 
 | Command | What it does |
 |---|---|
-| `npm run bake:world` | Bake the world (4 × 4 km terrain survey, chunk tiles, the spawn area's entities and scatter) into `world.db`. Refuses if one exists |
+| `npm run bake:world` | Bake the world (4 × 4 km terrain survey, chunk tiles, the spawn area's entities and scatter) into `region.db`. Refuses if one exists |
 | `npm run bake:world:force` | Replace the existing world (stop the server first) |
 | `npm run bake:world -- --shape=island\|peninsula\|continents\|pangaea` | Pick the landmass shape (same as `MMO_BAKE_SHAPE`; add `:force` to replace a world). **continents** and **pangaea** grow the world to at least 8 × 8 km so each continent has room (`--size-chunks=N`, or `MMO_BAKE_SIZE_CHUNKS`, sets the side explicitly). The spec used is saved as `world.spec.json` in the data folder; point `MMO_WORLD_SPEC` at it for tools that read the spec |
 | `npm run preview:world -- [spec.json] [out.png]` | Draw a world spec's biomes, rainfall, temperature and UV index to a PNG, without baking |
 | `npm run loot:bake -- [--size 10000] [--seed 1] [--ranks f] [--catalog f] [--held f] [--out dir]` | Bake the loot pool (`loot/pool.jsonl` plus reports) |
-| `npm run loot:rebake -w @mmo-engine/engine-core -- --db <world.db> --pool <pool.jsonl> [--size N] [--seed N]` | Rebake the loot pool, keeping every item players hold (stop the server first) |
+| `npm run loot:rebake -w @mmo-engine/engine-core -- --db <region.db> --pool <pool.jsonl> [--size N] [--seed N]` | Rebake the loot pool, keeping every item players hold (stop the server first) |
 | `npm run craft:report -- [--loot <dir>]` | Check crafting balance against the loot pool. Exits 1 on problems |
 | `npm run dungeon:bake -- --n 10` | Add dungeons to the pool. Options: `--seed`, `--theme`, `--rooms 20-48`, `--loops`, `--decor`, `--rank 1-5`, `--fresh`, `--png`, `--empty`, `--bare`, `--no-shell`, `--out` |
 | `npm run codegen` | Regenerate the FlatBuffers bindings from `packages/schema/mmo_engine.fbs` |

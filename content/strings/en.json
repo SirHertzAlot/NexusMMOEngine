@@ -156,6 +156,7 @@
   "ability.queued": "next",
   "status.title": "Effects",
   "status.stacks": "×{count}",
+  "status.guarded": "Guarded",
   "spell.casting": "Casting {name}{timed, select, yes { ({seconds} s)} other {}}",
   "spell.healed": "{name} healed {who, select, self {you} other {them}} for {amount}",
   "spell.cast": "{name} cast",

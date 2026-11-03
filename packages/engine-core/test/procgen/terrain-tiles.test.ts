@@ -1,5 +1,5 @@
 /**
- * Stored world heightmap: tiles round-trip through world.db, the server's
+ * Stored world heightmap: tiles round-trip through region.db, the server's
  * chunk source prefers them over the generator, and the terrain tool (the
  * only writer) keeps seams closed, props planted, and never writes under
  * a running server.
@@ -37,7 +37,7 @@ function ramp(offset: number): Float32Array {
 
 describe("TerrainTileStore", () => {
   test("round-trips tiles exactly and upserts", () => {
-    const store = new TerrainTileStore(path.join(tmpDir(), "world.db"));
+    const store = new TerrainTileStore(path.join(tmpDir(), "region.db"));
     assert.equal(store.count(), 0);
     assert.equal(store.get(0, 0), null);
     store.putMany([{ cx: 0, cz: 0, heights: ramp(0) }, { cx: -1, cz: 2, heights: ramp(5) }]);
@@ -251,7 +251,7 @@ describe("terrain-tool (the editor's terrain writer)", () => {
   test("props of unloaded chunks (their rows) are exported and re-seated", { timeout: 180_000 }, () => {
     const dir = tmpDir();
     const env = bakeSmallWorld(dir);
-    const dbPath = path.join(dir, "world.db");
+    const dbPath = path.join(dir, "region.db");
     // A chunk far from the spawn area (which the bake left loaded).
     const meta = new SnapshotStore({ dbPath });
     const spawn = JSON.parse(meta.getMeta("spawn_point")!) as { x: number; z: number };

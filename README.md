@@ -142,7 +142,7 @@ whose outputs exist are skipped, so it is safe to run again.
 | # | Step | Reads | Writes |
 |---|---|---|---|
 | 1 | `build` | sources | `dist/` of engine-core, settlement, dungeon |
-| 2 | `world` | world spec | `<data>/world.db` (terrain tiles, surveys, spawn area) |
+| 2 | `world` | world spec | `<data>/region.db` (terrain tiles, surveys, spawn area) |
 | 3 | `loot` | rank ladder | `<data>/loot/pool.jsonl` |
 | 4 | `dungeons` | themes, species | `<data>/dungeons/*.dungeon.json` |
 | 5 | `settlement` | world spec (survey, site selection), scale, catalog | `<settlements>/<id>.settlement.json`, `<scenes>/settlement-<id>.scene.json` |
@@ -181,7 +181,7 @@ never reads `users.csv`.
 | Variable | Flag | Default | Is |
 |---|---|---|---|
 | `MMO_REPO` | `--repo` | this checkout | the repo root |
-| `MMO_DATA_DIR` | `--data-dir` | `packages/engine-core/data` | world.db, loot, dungeons (the server's data folder) |
+| `MMO_DATA_DIR` | `--data-dir` | `packages/engine-core/data` | region.db, loot, dungeons (the server's data folder) |
 | `MMO_CONTENT_DIR` | `--content-dir` | `content` | where bakes write scenes, settlements, scale, wildlife files |
 | `MMO_ASSETS_DIR` | `--assets-dir` | `assets` | the licensed art folder, read only |
 | `MMO_CATALOG` | `--catalog` | `<assets>/catalog.json` | the art catalog |

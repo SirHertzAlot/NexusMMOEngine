@@ -1,9 +1,9 @@
 /**
- * The world.db snapshot around one owned play server (Play menu
+ * The region.db snapshot around one owned play server (Play menu
  * fresh/keep). The host calls begin() before the server starts, fail()
  * when the start does not come up, and end() after the server stopped.
  *
- * - Not keeping play changes (or fresh): back up world.db, and restore
+ * - Not keeping play changes (or fresh): back up region.db, and restore
  *   it on stop or on a failed start.
  * - Keeping play changes: no backup; the world keeps what the tick wrote.
  * - A backup left by a session that never ended (the editor host died

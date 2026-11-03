@@ -30,6 +30,8 @@ import {
   AllocateSocialIdsSchema,
   GetSocialRecordsSchema,
   PutSocialRecordSchema,
+  GetAccountSchema,
+  CreateAccountSchema,
   AppendLedgerEventsSchema,
   AuctionSettleSchema,
   BeginMigrationSchema,
@@ -366,6 +368,26 @@ export function createWebrpcRouter(core: WorldCoreImpl, opts: WebrpcRouterOption
       if (input.regionId !== regionId)
         throw new WorldError(403, "regionId does not match token");
       return { character: await core.getCharacterState(regionId, input) };
+    }),
+  );
+
+  // Slice C: accounts. Any authenticated region may read or create one; the
+  // password hash is argon2id, computed by the region, never plaintext.
+  r.post("/rpc/World/GetAccount", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = GetAccountSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { account: await core.getAccount(regionId, input) };
+    }),
+  );
+
+  r.post("/rpc/World/CreateAccount", (req, res) =>
+    authed(req, res, async (regionId) => {
+      const input = CreateAccountSchema.parse(req.body?.input);
+      if (input.regionId !== regionId)
+        throw new WorldError(403, "regionId does not match token");
+      return { account: await core.createAccount(regionId, input) };
     }),
   );
 

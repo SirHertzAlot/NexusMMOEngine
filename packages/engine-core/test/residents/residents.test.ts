@@ -234,6 +234,31 @@ describe("ResidentSystem: tiers", () => {
     run(sys, sim, 60);
     assert.equal(sys.walking, 0);
   });
+
+  it("spends the region budget on the town nearest a player first", () => {
+    const sim = new SimWorld();
+    // The near town (full, 100 m from the player) and a far one (coarse, 300 m) share a budget of 12.
+    const far2: ResidentTown = { ...town(12), id: "u", npcs: npcs(12).map((n) => ({ ...n, id: `u${n.id}`, household: "hh2" })), centre: { x: -160, z: 0 }, radius: 50 };
+    const sys = new ResidentSystem({
+      towns: [far(12), far2],
+      place: (_t, npc, tod) => settlement.scheduleAt(npc, tod, view),
+      timeOfDay: () => 0.5,
+      catalog: null,
+      steer: true,
+      fullM: 150,
+      coarseM: 400,
+      maxEntities: 12,
+    });
+    player(sim, 190);
+    run(sys, sim, 30);
+    const [near, other] = sys.summary().towns;
+    assert.deepEqual([near!.id, other!.id], ["t", "u"], "the summary lists towns in their configured order");
+    assert.equal(near!.tier, "full");
+    assert.equal(other!.tier, "coarse");
+    assert.ok(near!.live > 0, "the near town has people in the world");
+    assert.ok(sys.count <= 12, "the budget holds");
+    assert.ok(near!.live >= other!.live, "the far town gets only what the near one leaves");
+  });
 });
 
 describe("ResidentSystem: attackable", () => {

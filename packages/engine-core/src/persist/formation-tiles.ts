@@ -1,6 +1,6 @@
 /**
  * FormationTileStore — solved formation tiles (see procgen/formation.ts),
- * in world.db beside the terrain tiles.
+ * in region.db beside the terrain tiles.
  *
  * A formation tile is a deterministic build artifact of (world seed,
  * terrain, ecology plan, layer, tile): the bake solves every tile of the

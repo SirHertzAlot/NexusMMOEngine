@@ -67,7 +67,7 @@ export async function makeWorldPopulator(opts: {
   waterAt?: (x: number, z: number) => number | null;
   /** The terrain the chunks are generated from (formation layers read neighbouring chunks). */
   terrain?: ChunkDataSource;
-  /** world.db's formation tiles, and the terrain version they're solved on. */
+  /** region.db's formation tiles, and the terrain version they're solved on. */
   formationTiles?: { store: FormationTileStore; terrainVersion: string };
   /** Per-biome scatter multipliers (default: loaded from MMO_BIOMES or content/biomes.json). */
   biomes?: BiomeRegistry;

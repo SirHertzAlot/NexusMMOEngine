@@ -34,6 +34,17 @@ const HOLDING: Record<NonNullable<Place["works"]>, Look> = {
 /** How far the holding's centre is from the house, metres. */
 const HOLDING_OFFSET_M = 36;
 
+/**
+ * A farm's yard dressing (DEFAULT_DRESSING_PATTERNS): a tool stand and a produce pile on the house's back side, a well
+ * on the field side. Each is [x, z] in metres from the house, in the house's own frame (before its yaw), just outside
+ * the house's 10 by 8 m footprint, so the house stays walkable around them.
+ */
+const YARD: Array<{ kind: string; at: [number, number]; size: [number, number, number] }> = [
+  { kind: "farm_tools", at: [-8, 3], size: [2, 1, 1.2] },
+  { kind: "farm_produce", at: [-8, -3], size: [1.5, 1.5, 0.8] },
+  { kind: "farm_yard", at: [8, 3], size: [2, 2, 1.5] },
+];
+
 /** A stable yaw (a multiple of 90) from an id, so the same place always faces the same way. */
 function facing(id: string): number {
   let h = 2166136261;
@@ -59,6 +70,15 @@ export function placesScene(plan: PlacesPlan, art?: Record<string, string[]>): S
       const hold = HOLDING[p.works];
       const rad = (yaw * Math.PI) / 180;
       children.push(node(`${p.id}-${p.works}`, hold.kind, p.x + Math.round(Math.sin(rad) * HOLDING_OFFSET_M), p.z + Math.round(Math.cos(rad) * HOLDING_OFFSET_M), hold, yaw, asset(hold)));
+      if (p.works === "farm") {
+        for (const d of YARD) {
+          const look: Look = { kind: d.kind, size: d.size, open: false };
+          const [lx, lz] = d.at;
+          const x = p.x + Math.round(lx * Math.cos(rad) + lz * Math.sin(rad));
+          const z = p.z + Math.round(-lx * Math.sin(rad) + lz * Math.cos(rad));
+          children.push(node(`${p.id}-${d.kind}`, d.kind, x, z, look, yaw, asset(look)));
+        }
+      }
     }
   }
   const scene: SceneDoc = { version: 1, name: "places", kind: "world", nodes: [{ id: "places", name: "Places between the towns", transform: { position: [0, 0, 0] }, children }] };
