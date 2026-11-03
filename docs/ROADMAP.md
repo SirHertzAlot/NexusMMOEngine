@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**275 items built, 0 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**275 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -374,6 +374,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | BA1 | `npm run bake:all`: one command bakes everything in dependency order (build, world, loot, dungeons, settlement sites best first with `--sites`/`--auto-size`, scale-fit, wildlife plan and models, then prints the `MMO_*` block to start the server on it); idempotent, `--force`, `--only`/`--skip`, `--dry-run`; one resolved paths config (`MMO_REPO`, `MMO_DATA_DIR`, `MMO_CONTENT_DIR`, `MMO_ASSETS_DIR`, `MMO_CATALOG`, `MMO_WORLD_SPEC`, `MMO_SETTLEMENT_OUT`, `MMO_SCENES_DIR`, `MMO_SCALE_OUT`) handed to every step; the settlement CLIs and the server read the same names | ✅ | PR on `feat/bake-all` (base `integration/terrain`); README "Baking everything" |
 | WL2 | Creature brains make the wildlife table real: `content/wildlife` species become creature kinds (`wildlifeCreatures`, natural weapon bases `bite claw tusk horn crush tailslam` in `items.json`, `natural.json`); one data-driven brain (temperament flee / defend / territorial / hunt / raid, `telegraphS` warnings on the 0x1e telegraph, flank and ambush tactics, pack alerts, activity by the day clock, aquatic confinement and swimming at depth, instinct raids on settlements by player / livestock / structure weights, sated then home); animal model by asset hash scaled by `size`; settlement centres from the boot scene fed to the planner; `MMO_WILDLIFE=1` spawns real creatures (`MMO_WILDLIFE_LOG=1` logs the packs). Wandering (#524), raid species (#545) and the editor table view (#536) are on main too. Still missing: destructible structures for raids, per-species animation | ✅ | On main via `integration/terrain` (`procgen/wildlife-creatures.ts`, `creatures.ts`). The branch name `feat/creature-brains` is not an ancestor of main. [`WILDLIFE.md`](WILDLIFE.md) |
 | WL2 | Procedural movement for the static imported animals, client side (`apps/client/src/render/animal/`): a mesh is cut into head, tail, four legs and body by shape (`segment.ts`), given a seven-bone skin, and posed from the server's velocity by a gait table (walk, trot, gallop blended by Froude speed, `gait.ts`); attack windup/strike from the Action row and `combatMove` (windup until `hitAt` is the telegraph), death fall from health; beyond 45 m it holds the rest pose. Decision: own rig and gait inspired by threejs-procedural-animals (MIT), no code vendored (its locomotion is welded to its own generated rig). A moving entity with an art-model `AssetRef` rigs itself; non-quadrupeds stay static. Far LOD from the instanced batch is in (#546). Not built: birds, snakes, sea giants, an editor rig view, real creatures using it (creature rules and `lookOf` for animals are WL1 follow-ups) | ✅ | On main: `apps/client/src/render/animal/` (rig, gait, segment, far LOD). The branch name `feat/procedural-animals` is not an ancestor of main. [`ART-PIPELINE.md`](ART-PIPELINE.md) "Animals" |
+| WL2 | Editor rig view, rig summary: `summarizeRig` turns a model's procedural rig into the rig type, size in the normalised frame, leg and knee heights, and vertices per bone (a vertex belongs to its strongest bone; unweighted vertices counted apart) | 🚧 | #554 (`summarizeRig`, 2 tests). The editor panel that draws it is still to do; the asset inspector's rig view (#603) is the host |
 
 ## 5. Engine, physics and native libraries
 
@@ -484,6 +485,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-03**: WL2 rig summary (#554, 🚧): `summarizeRig` gives the editor's rig view its numbers (rig type, size, vertices per bone). The editor panel that draws it is still to do, so the WL2 row is 🚧 again.
 - **2026-11-02**: PL7 region.db (✅): the region's `world.db` is `region.db`, a hot cache of the world (embedded SQLite; SurrealDB is the source of truth with `WORLD_URL`). One-time rename on first open; references, docs and tests updated. Terrain and chunk data remain in region.db (not moved to the world server).
 - **2026-11-01**: WL1 stand-in models for every wildlife species (✅, placeholder): generated animal models bound by species through the GLB importer; skinned rigs and animation are not in yet (#593). Closed on the art-blocked rule.
 - **2026-11-01**: B7 spawn-burst repeat runs (#595): burst cost confirmed in all four cells (3 runs each). Row closed ✅.
