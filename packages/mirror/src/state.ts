@@ -89,6 +89,24 @@ export class MirrorState {
     this.applyDelta(s);
   }
 
+  /**
+   * Turn a Delta's position-only rows (v29) into full transform rows by taking rotation and scale from each
+   * entity's current transform (identity if it has none yet). Returns the Delta unchanged when it has none.
+   */
+  expandPositions(d: CollectedState): CollectedState {
+    const pos = d.positions;
+    if (!pos || pos.length === 0) return d;
+    const merged: TransformRow[] = pos.map((r) => {
+      const t = this.entities.get(r.wireId)?.transform;
+      return {
+        wireId: r.wireId, px: r.px, py: r.py, pz: r.pz,
+        qx: t?.qx ?? 0, qy: t?.qy ?? 0, qz: t?.qz ?? 0, qw: t?.qw ?? 1,
+        sx: t?.sx ?? 1, sy: t?.sy ?? 1, sz: t?.sz ?? 1,
+      };
+    });
+    return { ...d, transforms: d.transforms.length === 0 ? merged : [...d.transforms, ...merged], positions: [] };
+  }
+
   /** Fold a per-tick Delta onto the current state, in place. */
   applyDelta(d: CollectedState): void {
     for (const wid of d.despawned) {
@@ -154,7 +172,7 @@ export class MirrorState {
     const entered: bigint[] = [];
     for (const e of entries) {
       if (!e.delta) continue;
-      const d = e.delta;
+      const d = this.expandPositions(e.delta);
       const fresh = (wid: bigint): void => {
         if (this.home.get(wid) !== e.sector) {
           if (!this.entities.has(wid) && !gone.has(wid) && !spawned.has(wid) && !before?.has(wid)) entered.push(wid);

@@ -24,6 +24,7 @@ import {
   AppearanceBlock,
   AssetRef,
   AssetRefBlock,
+  PositionBlock,
   BodyConfig,
   BodyConfigBlock,
   CharacterRef,
@@ -113,6 +114,15 @@ export interface BodyConfigRow {
   restitution: number;
 }
 
+/**
+ * A position-only transform update (PositionBlock, v29): the entity's rotation and scale did not change since
+ * its baseline, so the receiver keeps them.
+ */
+export interface PositionRow {
+  wireId: bigint;
+  px: number; py: number; pz: number;
+}
+
 /** Asset reference row (mirrors the FlatBuffers AssetRef table). */
 export interface AssetRefRow {
   wireId: bigint;
@@ -172,6 +182,8 @@ export interface CollectedState {
   tick: number;
   baseTick: number;
   transforms: TransformRow[];
+  /** Position-only updates (Delta only); a receiver merges them into the entity's transform. */
+  positions?: PositionRow[];
   velocities: VelocityRow[];
   intents: IntentRow[];
   chunks: ChunkRow[];
@@ -206,6 +218,17 @@ function readTransformBlock(blk: TransformBlock | null): TransformRow[] {
       qx: rot?.x() ?? 0, qy: rot?.y() ?? 0, qz: rot?.z() ?? 0, qw: rot?.w() ?? 1,
       sx: scl?.x() ?? 1, sy: scl?.y() ?? 1, sz: scl?.z() ?? 1,
     });
+  }
+  return out;
+}
+
+function readPositionBlock(blk: PositionBlock | null): PositionRow[] {
+  const out: PositionRow[] = [];
+  if (!blk) return out;
+  const n = blk.positionsLength();
+  for (let i = 0; i < n; i++) {
+    const p = blk.positions(i);
+    out.push({ wireId: blk.entities(i) ?? 0n, px: p?.x() ?? 0, py: p?.y() ?? 0, pz: p?.z() ?? 0 });
   }
   return out;
 }
@@ -453,6 +476,7 @@ export function decodeDelta(bytes: Uint8Array): CollectedState {
     tick: Number(d.tick()),
     baseTick: Number(d.baseTick()),
     transforms: readTransformBlock(d.transforms()),
+    positions: readPositionBlock(d.positions()),
     velocities: readVelocityBlock(d.velocities()),
     intents: readIntentBlock(d.intents()),
     chunks: readChunkBlock(d.chunks()),
@@ -917,6 +941,11 @@ export interface TransformSoA extends SoAColumns {
   sx: ArrayLike<number>; sy: ArrayLike<number>; sz: ArrayLike<number>;
 }
 
+/** SoA position-only block: position stores indexed by entity slot. */
+export interface PositionSoA extends SoAColumns {
+  px: ArrayLike<number>; py: ArrayLike<number>; pz: ArrayLike<number>;
+}
+
 /** SoA Velocity block: field stores indexed by entity slot. */
 export interface VelocitySoA extends SoAColumns {
   lx: ArrayLike<number>; ly: ArrayLike<number>; lz: ArrayLike<number>;
@@ -1002,6 +1031,8 @@ export interface CollectedStateSoA {
   tick: number;
   baseTick: number;
   transforms: TransformSoA;
+  /** Position-only rows (Delta only): the same position stores as `transforms`, with their own entity list. */
+  positions?: PositionSoA;
   velocities: VelocitySoA;
   intents: IntentSoA;
   chunks: ChunkSoA;
@@ -1067,6 +1098,21 @@ function buildTransformBlockSoA(b: flatbuffers.Builder, src: TransformSoA): numb
   TransformBlock.addEntities(b, entities);
   TransformBlock.addItems(b, vec);
   return TransformBlock.endTransformBlock(b);
+}
+
+function buildPositionBlockSoA(b: flatbuffers.Builder, src: PositionSoA): number {
+  const n = src.eids.length;
+  PositionBlock.startPositionsVector(b, n);
+  for (let i = n - 1; i >= 0; i--) {
+    const e = src.eids[i];
+    Vec3.createVec3(b, src.px[e], src.py[e], src.pz[e]);
+  }
+  const vec = b.endVector();
+  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => PositionBlock.startEntitiesVector(bb, k));
+  PositionBlock.startPositionBlock(b);
+  PositionBlock.addEntities(b, entities);
+  PositionBlock.addPositions(b, vec);
+  return PositionBlock.endPositionBlock(b);
 }
 
 function buildVelocityBlockSoA(b: flatbuffers.Builder, src: VelocitySoA): number {
@@ -1348,6 +1394,7 @@ export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Build
   const st = sparse && s.staminas.eids.length === 0 ? 0 : buildStaminaBlockSoA(b, s.staminas);
   const cr = sparse && s.characterRefs.eids.length === 0 ? 0 : buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = sparse && s.animations.eids.length === 0 ? 0 : buildAnimationBlockSoA(b, s.animations);
+  const po = s.positions && s.positions.eids.length > 0 ? buildPositionBlockSoA(b, s.positions) : 0;
   const spawned = buildU64Vector(b, s.spawned, (bb, k) => Delta.startSpawnedVector(bb, k));
   const despawned = buildU64Vector(b, s.despawned, (bb, k) => Delta.startDespawnedVector(bb, k));
   Delta.startDelta(b);
@@ -1368,6 +1415,7 @@ export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Build
   if (st) Delta.addStaminas(b, st);
   if (cr) Delta.addCharacterRefs(b, cr);
   if (an) Delta.addAnimations(b, an);
+  if (po) Delta.addPositions(b, po);
   const root = Delta.endDelta(b);
   b.finish(root);
   // A reused builder's bytes are overwritten by the next encode: copy them out.
