@@ -247,10 +247,14 @@ async function run30HzStressTest(): Promise<StressTestResult> {
     mode: "fused-intents",
     useBatchDrain: true,
   });
+  // BENCH_DB_URL picks the ledger: mem:// (embedded SurrealMX, default) or a SurrealMX server
+  // such as ws://127.0.0.1:8000/rpc (credentials from BENCH_DB_USER / BENCH_DB_PASS).
   const persist = new PersistenceWorkerRuntime({
     sharedMemory: sab,
     entityCapacity,
-    dbUrl: "mem://",
+    dbUrl: process.env.BENCH_DB_URL?.trim() || "mem://",
+    dbUser: process.env.BENCH_DB_USER,
+    dbPass: process.env.BENCH_DB_PASS,
   });
   await persist.init();
 
