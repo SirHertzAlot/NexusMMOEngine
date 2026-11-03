@@ -401,6 +401,7 @@ export {
 export type { CoreChannel, CoreChannelHost, CoreMetrics, IntentPayload, MythicHooks } from "./channel-server.js";
 export type { GatewayTick } from "./net/gateway.js";
 export { backupWorld, discardBackup, hasBackup, restoreWorld, snapshotPath } from "./world-snapshot.js";
+export { REGION_DB_FILE, LEGACY_REGION_DB_FILE, migrateLegacyRegionDb } from "./persist/region-db.js";
 export * from "./server-settings.js";
 
 // Zero-Copy Hybrid Engine Data Plane (ENGINE_IMPLEMENTATION_SPEC.md)

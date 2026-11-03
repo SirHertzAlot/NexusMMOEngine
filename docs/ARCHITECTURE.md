@@ -324,7 +324,7 @@ scripts). All of it is gitignored.
 
 | Path | Holds |
 |---|---|
-| `world.db` | SQLite: world snapshots, terrain tiles, the climate/biome survey maps, unloaded chunk contents, world metadata |
+| `region.db` | SQLite, embedded in the region process: a hot cache. With `WORLD_URL` the world server (SurrealDB) is the source of truth and the region recalls from it at boot. Holds world snapshots, terrain tiles, the climate/biome survey maps, unloaded chunk contents, world metadata. Earlier builds called it `world.db`; it is renamed on first open. |
 | `navmesh/` | the navmesh tile cache: content-addressed blobs (`sha256` names) and `navmesh.db` |
 | `characters.db` | SQLite: each account's characters (name and look) |
 | `users.csv` | accounts: username and argon2id hash, written mode `0600` |
@@ -349,7 +349,7 @@ inside a per-tick time budget; chunks beyond the unload radius unload. The
 3×3 spawn area is pinned and always loaded.
 
 - **Scatter is placed once and then persisted.** When a chunk unloads, its
-  entities are written to their row in `world.db` before any despawn (an
+  entities are written to their row in `region.db` before any despawn (an
   emptied chunk gets an empty row), and come back from it. Only a chunk that
   has never unloaded is scattered. After a restart, chunks in the snapshot are
   adopted and their stale rows ignored — this is what stops duplication.

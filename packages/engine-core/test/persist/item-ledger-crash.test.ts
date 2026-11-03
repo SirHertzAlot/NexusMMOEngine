@@ -15,7 +15,7 @@ import { ItemStore, ItemWhere } from "../../src/items/index.js";
 
 function tmpDb(): { file: string; done: () => void } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-crash-"));
-  return { file: path.join(dir, "world.db"), done: () => fs.rmSync(dir, { recursive: true, force: true }) };
+  return { file: path.join(dir, "region.db"), done: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
 
 /** A new process: reopen the file, restore a store from the ledger. */

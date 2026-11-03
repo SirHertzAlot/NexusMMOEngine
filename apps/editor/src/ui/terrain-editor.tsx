@@ -1,7 +1,7 @@
 /**
  * Terrain panel — sculpt the world heightmap the game server runs on.
  *
- * Loads one area of the editor's world (the same world.db as
+ * Loads one area of the editor's world (the same region.db as
  * `npm run server`) - a baked world is far too big to load whole - edits
  * it as ONE HeightGrid (so seams can't open), and saves only the chunks
  * that changed. The area's outer border is pinned when the world continues

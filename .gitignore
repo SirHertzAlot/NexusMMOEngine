@@ -23,7 +23,7 @@ build/
 .DS_Store
 .env
 
-# SQLite world databases (default ./data/world.db) — never commit
+# SQLite world databases (default ./data/region.db) — never commit
 data/
 # ...but vendored source trees may have a data/ directory of their own
 !packages/addons/picg/third_party/pcg-core/src/data/
@@ -94,7 +94,7 @@ packages/engine-core/parties.db
 packages/engine-core/places.db
 packages/engine-core/quests.db
 packages/engine-core/social.db
-packages/engine-core/world.db
+packages/engine-core/region.db
 packages/engine-core/users.csv
 packages/engine-core/dungeons/
 packages/engine-core/logs/

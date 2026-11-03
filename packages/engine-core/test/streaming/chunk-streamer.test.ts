@@ -32,7 +32,7 @@ const SIZE = 16;
 const flat: ChunkDataSource = { chunkSamples: 256, generateChunk: (_s, _cx, _cz, _l, out) => out.fill(0) };
 const props = defineQuery([Transform, Not(PlayerIntent)]);
 
-const tmpDb = (): string => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mmo-stream-")), "world.db");
+const tmpDb = (): string => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mmo-stream-")), "region.db");
 
 /** Two props per chunk (a tree and a rock), at fixed spots inside it. */
 function twoProps(): ChunkPopulator & { calls: number } {

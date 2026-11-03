@@ -54,7 +54,7 @@ The architecture the split operates inside — and does not change:
 - A **region server** (an `engine-core` `server.ts` instance) is the
   authoritative simulator for exactly one chunk range
   (`REGION_CHUNK_RANGE`). It owns its entities, its tick, its client gateway
-  (WebSocket, 30 Hz deltas) and its own SQLite `world.db`. Clients connect
+  (WebSocket, 30 Hz deltas) and its own SQLite `region.db`. Clients connect
   directly to a region; no client traffic passes through the world server.
 - The **world server** (`packages/world-server`) is coordination only: region
   registry and leases, a stale-region reaper, cross-region presence, and

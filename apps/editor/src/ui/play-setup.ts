@@ -13,7 +13,7 @@
  *   client 0 drives the view, the rest are headless load);
  * - bots (sent as MMO_BOTS for the owned server);
  * - latency (a laggy socket on every client);
- * - fresh/keep (world snapshot/restore: fresh backs up world.db on start;
+ * - fresh/keep (world snapshot/restore: fresh backs up region.db on start;
  *   on stop the backup is restored unless keep is set);
  * - from = "World" (default spawn) or "Camera position" (the scene
  *   viewport camera's ground target → MMO_SPAWN_OVERRIDE);

@@ -58,7 +58,7 @@ export interface TerrainBakeReport {
 }
 
 export interface TerrainBakeOptions {
-  /** world.db to write tiles and maps into. */
+  /** region.db to write tiles and maps into. */
   dbPath: string;
   /** SurrealDB storage directory; null skips the catalog. */
   catalogDir: string | null;

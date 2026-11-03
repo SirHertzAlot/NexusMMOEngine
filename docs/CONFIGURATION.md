@@ -103,7 +103,7 @@ runs standalone, which is the normal development setup.
 |---|---|---|
 | `MMO_WORLD_SPEC` | `worlds/default.world.json` | The world spec to bake. `none` bakes the legacy 3 × 3-chunk world. |
 | `MMO_BAKE_RADIUS` | `1` | Spawn-area radius (chunks) that is populated at bake time. The rest fills in as players explore. |
-| `MMO_BAKE_FORCE` | unset | `1` overwrites an existing `world.db` (same as `bake:world:force`). |
+| `MMO_BAKE_FORCE` | unset | `1` overwrites an existing `region.db` (same as `bake:world:force`). |
 | `MMO_WORLD_CATALOG` | enabled | `0` skips writing the SurrealDB chunk catalog (`<data>/surreal`). |
 
 Preview without baking: `npm run preview:world -- [spec.json] [out.png]`.
@@ -172,7 +172,7 @@ git-ignored.
 
 | File | Written by | What it holds |
 |---|---|---|
-| `world.db` | bake, server | SQLite (WAL). World snapshots (every 300 ticks and on shutdown), the terrain tiles, the survey maps (biome, water, climate), the contents of unloaded chunks, and world metadata (seed, spawn point, sea level). |
+| `region.db` | bake, server | SQLite (WAL). World snapshots (every 300 ticks and on shutdown), the terrain tiles, the survey maps (biome, water, climate), the contents of unloaded chunks, and world metadata (seed, spawn point, sea level). |
 | `navmesh/` | server | The navmesh tile cache: content-addressed blobs (`sha256` names) and their registry, `navmesh.db`. |
 | `characters.db` | server | SQLite: each account's characters (name and look). |
 | `users.csv` | server, `seed:user` | Accounts: username and argon2id hash. Mode `0600`. |

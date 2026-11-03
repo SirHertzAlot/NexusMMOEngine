@@ -1,12 +1,12 @@
 /**
  * World snapshot/restore for the Play menu's fresh/keep options.
  *
- * The owned server persists to world.db. Before the server starts, the
+ * The owned server persists to region.db. Before the server starts, the
  * db is backed up; on stop, the backup is restored unless "keep play
  * changes" is set, in which case the backup is discarded and the world
  * keeps what the tick wrote.
  *
- * world.db runs in WAL mode, so its state is the db file plus its -wal
+ * region.db runs in WAL mode, so its state is the db file plus its -wal
  * (and -shm) sidecars: a backup copies all three, and a restore removes
  * the play session's sidecars before putting the backup back. A world
  * that did not exist yet is recorded as absent, and restoring it removes

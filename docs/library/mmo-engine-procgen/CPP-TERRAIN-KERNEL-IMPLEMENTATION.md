@@ -158,7 +158,7 @@ native-only (node-gyp); the wasm32 reference the plan promises does not exist.
   CI job, not a claim: same `(seed, params)` → byte-identical output on
   Linux/macOS/Windows/wasm32.
 - **Done looks like:** the contract is enforced by CI, and the bake can run on
-  any platform and produce the same `world.db` bytes.
+  any platform and produce the same `region.db` bytes.
 
 ### Explicit non-goals (stay JS under this plan, permanently)
 
@@ -214,7 +214,7 @@ cells, seed 1234), then:
 **Stage 2 — Fine tiles** (`terrain/world-heights.ts`, 70 lines;
 `WorldHeights implements ChunkDataSource`): per chunk, bicubic-upsampled survey
 elevation + detail noise (**C++ addon again**) scaled by blended biome
-roughness. 62,500 tiles for the default world, written in batches to `world.db`.
+roughness. 62,500 tiles for the default world, written in batches to `region.db`.
 
 **Stage 3 — Storage & catalog** (`terrain/world-bake.ts`): 15 survey maps
 (elevation, biome, region, moisture, rain, temperature, water, water_level, ice,
@@ -234,7 +234,7 @@ region and edge-blends it into stored neighbours.
 bytes), not bit-identical across platforms."* The addon is bit-identical
 (verified 11/11); the survey is not (Math.sin/cos in sun, biomes, landmass;
 float32/float64 mixing). This is safe today because tiles are baked once,
-stored, and never regenerated — the server reads `world.db`, not the generator.
+stored, and never regenerated — the server reads `region.db`, not the generator.
 
 ### Overlap: what the JS baker already does that the C++ plan would redo
 
@@ -279,7 +279,7 @@ was never per-chunk and must not be forced into that shape.
 
 1. **Biome/climate/sun/UV classification** — pure functions over the survey
    grid, run once per bake, dwarfed by erosion cost, and their outputs are
-   stored in `world.db`, so cross-platform variance never reaches gameplay.
+   stored in `region.db`, so cross-platform variance never reaches gameplay.
 2. **Survey orchestration** (spawn selection, region labeling, catalog,
    `world-bake.ts`) — I/O-bound; porting it would be architecture theater.
 3. **Selo composition as currently sketched** — there is no defined delta vs.
@@ -290,7 +290,7 @@ was never per-chunk and must not be forced into that shape.
 - **Today:** addon bit-identical (11/11 green). Survey reproducible *per
   machine* (Math.sin/cos in `sun.ts`, `biomes.ts`, `landmass.ts`; f32/f64
   mixing) — explicitly accepted in the survey header because tiles are stored.
-  Gameplay is unaffected: the server reads `world.db`. The real exposure is
+  Gameplay is unaffected: the server reads `region.db`. The real exposure is
   narrow: multi-machine bakes disagreeing, and editor region-regen (which
   re-runs the JS survey on the editor's machine) vs stored tiles — the
   edge-blending in `region-regen.ts` exists partly to absorb this.
@@ -329,7 +329,7 @@ was never per-chunk and must not be forced into that shape.
   Mitigate with the scalar fallback path exercised in CI, not just documented.
 - **Cross-cutting:** the plan's "on-demand 0x21 tile serving" open question is
   stale — 0x21 is trade/vendor/auction in the current protocol
-  (`net/gateway.ts`); tiles come from `world.db`. Drop it. The "golden tests
+  (`net/gateway.ts`); tiles come from `region.db`. Drop it. The "golden tests
   vs the current JS generator" line in the plan's Phase 1 is likewise moot —
   no JS noise generator exists; the addon was the original implementation.
 

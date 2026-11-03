@@ -1,7 +1,7 @@
 /**
  * TDD: World snapshot/restore for the Play menu's fresh/keep options.
  *
- * - "Fresh state": before the owned server starts, the current world.db
+ * - "Fresh state": before the owned server starts, the current region.db
  *   is backed up and a clean world starts. On stop, the backup is
  *   restored unless "keep play changes" is set.
  * - "Keep play changes": the world keeps what the tick wrote (the
@@ -22,7 +22,7 @@ describe("world snapshot", () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "wsnap-"));
-    dbPath = join(dir, "world.db");
+    dbPath = join(dir, "region.db");
   });
 
   afterEach(() => {
@@ -118,11 +118,11 @@ describe("world snapshot", () => {
   });
 
   it("snapshotPath is the db path with .bak", () => {
-    assert.equal(snapshotPath("/a/world.db"), "/a/world.db.bak");
+    assert.equal(snapshotPath("/a/region.db"), "/a/region.db.bak");
   });
 
   it("backing up a world whose data dir does not exist yet records it as absent", () => {
-    const fresh = join(dir, "no", "such", "dir", "world.db");
+    const fresh = join(dir, "no", "such", "dir", "region.db");
     backupWorld(fresh);
     assert.equal(hasBackup(fresh), true);
     writeFileSync(fresh, "play");

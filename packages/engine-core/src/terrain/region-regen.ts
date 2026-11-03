@@ -89,7 +89,7 @@ export function blendTile(
   return fresh;
 }
 
-/** Survey layers the bake stores in world.db (`world_maps`), by name. */
+/** Survey layers the bake stores in region.db (`world_maps`), by name. */
 export function surveyLayers(survey: Survey): Record<string, Float32Array | Uint8Array | Uint16Array> {
   return {
     elevation: survey.height,

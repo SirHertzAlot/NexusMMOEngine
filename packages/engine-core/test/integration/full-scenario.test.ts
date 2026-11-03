@@ -233,7 +233,7 @@ function place(sim: SimWorld, eid: number, x: number, y: number, z: number): voi
  */
 async function runScenario(label: string): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-scenario-"));
-  const dbPath = path.join(dir, "world.db");
+  const dbPath = path.join(dir, "region.db");
   const navmeshDir = path.join(dir, "navmesh");
   const credentialStore = await makeCredentialStore();
   const procgen = makeProcgenChunkSource();
