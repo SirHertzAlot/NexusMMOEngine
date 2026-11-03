@@ -135,3 +135,45 @@ test("selectNames: a session current as of last call only looks at new ids; a st
   // a new session joins a sector that has been stable: full list
   assert.deepEqual(run([[1n, 2n, 3n, 5n], [10n, 4n]], [0, 1], 4), [1n, 2n, 3n, 5n, 10n, 4n]);
 });
+
+// Hash collisions: with the hash cut to 3 bits, collisions are common. The fast skip can then hide a name
+// from a session; the periodic rescan has to bring it back within rescanEvery calls.
+function churn(opts, calls, seed) {
+  const f = new Fanout(opts);
+  let x = seed >>> 0 || 1;
+  const rand = (n) => { x = (x * 1664525 + 1013904223) >>> 0; return (x >>> 8) % n; };
+  const inSector = new Set();
+  const told = new Set();
+  const since = new Map(); // id -> first call it was in view and unsent
+  let worst = 0;
+  const cnt = new Int32Array(1);
+  const desc = Int32Array.from([0, 0, 1, 0, 0]);
+  for (let c = 0; c < calls; c++) {
+    for (let k = 0; k < 3; k++) { const id = BigInt(1 + rand(60)); if (inSector.has(id)) inSector.delete(id); else inSector.add(id); }
+    const ids = BigUint64Array.from([...inSector]);
+    const n = f.selectNames(Int32Array.from([0]), Int32Array.from([ids.length]), ids, desc, 5, new BigUint64Array(0), cnt);
+    const w = new BigUint64Array(n); f.takeWanted(w);
+    for (const id of w) { assert.ok(!told.has(id), "never named twice"); told.add(id); since.delete(id); }
+    for (const id of inSector) if (!told.has(id) && !since.has(id)) since.set(id, c);
+    for (const id of since.keys()) if (inSector.has(id)) worst = Math.max(worst, c - since.get(id));
+  }
+  return { worst, missing: [...inSector].filter((id) => !told.has(id)).length };
+}
+
+test("without the rescan a collision hides a name far longer than the rescan allows", () => {
+  const off = churn({ hashBits: 3, rescanEvery: 0 }, 400, 7);
+  // Hidden until the id leaves the sector or the session falls out of step; no bound otherwise.
+  assert.ok(off.worst > 32, `worst ${off.worst} calls`);
+});
+
+test("the rescan bounds how long a collision hides a name", () => {
+  for (const every of [8, 32]) {
+    const on = churn({ hashBits: 3, rescanEvery: every }, 400, 7);
+    assert.ok(on.worst <= every + 1, `rescanEvery ${every}: worst ${on.worst}`);
+  }
+});
+
+test("full-width hash: no collisions, defaults leave the result unchanged", () => {
+  const r = churn({}, 400, 7);
+  assert.equal(r.worst, 0, "every name is selected the call it enters view");
+});
