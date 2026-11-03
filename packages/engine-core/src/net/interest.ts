@@ -207,6 +207,9 @@ export class SectorIndex {
   /** This tick's sector deltas. Read-only w.r.t. the tracker (the caller commits after). */
   frame(sim: SimWorld, tick: number, tracker: DeltaTracker, chunkSource: ChunkDataSource | null): SectorFrame {
     const f = new SectorFrame(sim, tick, chunkSource);
+    // Only the newest frame reads `prior` (rateDelta). Clear the old newest's, or each frame keeps
+    // its predecessor's list alive and every frame since boot stays reachable.
+    if (this.recent[0]) this.recent[0].prior = [];
     f.prior = this.recent;
     this.recent = [f, ...this.recent].slice(0, RATE_HISTORY);
     if (!this.seeded) {
