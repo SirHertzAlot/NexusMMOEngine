@@ -30,6 +30,7 @@
 
 import { fork } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { createTransport, loadUws, type WireSocket } from "./transport.js";
@@ -46,6 +47,8 @@ interface Result {
   cpuPercent: number;
   tickP50Ms: number;
   tickP99Ms: number;
+  /** Event-loop delay p99 over the window (ms): how long the loop is blocked, which is what the tick waits behind. */
+  loopP99Ms: number;
   rssMb: number;
   sentPerSec: number;
   deliveredPerSec: number;
@@ -101,10 +104,13 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
   measuring = true;
   intents = 0;
   swarm.send("reset");
+  const loop = monitorEventLoopDelay({ resolution: 1 });
+  loop.enable();
   const cpu0 = process.cpuUsage();
   const t0 = performance.now();
   await sleep(seconds * 1000);
   const cpu = process.cpuUsage(cpu0);
+  loop.disable();
   const wall = (performance.now() - t0) / 1000;
   measuring = false;
   const intentsSeen = intents;
@@ -125,6 +131,7 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
     cpuPercent: Math.round(((cpu.user + cpu.system) / 1e6 / wall) * 1000) / 10,
     tickP50Ms: Math.round(quantile(tickMs, 0.5) * 1000) / 1000,
     tickP99Ms: Math.round(quantile(tickMs, 0.99) * 1000) / 1000,
+    loopP99Ms: Math.round((loop.percentile(99) / 1e6) * 1000) / 1000,
     rssMb: Math.round(rssMb),
     sentPerSec: Math.round(sent / wall),
     deliveredPerSec: Math.round(received / wall),
@@ -184,7 +191,7 @@ async function main(): Promise<void> {
       results.push(r);
       console.log(
         `${kind.padEnd(3)} ${mode.padEnd(7)} ${String(clients).padStart(5)} clients: CPU ${String(r.cpuPercent).padStart(5)}% | ` +
-          `broadcast p50 ${r.tickP50Ms} ms, p99 ${r.tickP99Ms} ms | RSS ${r.rssMb} MB | ` +
+          `broadcast p50 ${r.tickP50Ms} ms, p99 ${r.tickP99Ms} ms | loop p99 ${r.loopP99Ms} ms | RSS ${r.rssMb} MB | ` +
           `${r.sentPerSec}/s sent, ${r.deliveredPerSec}/s delivered, ${r.intentsPerSec}/s intents in`,
       );
     }
