@@ -90,3 +90,48 @@ test("two Fanout objects keep separate name tables and sent sets", () => {
   assert.equal(a.selectNames(...args), 1);
   assert.equal(b.selectNames(...args), 1, "b still has to name 42");
 });
+
+test("selectNames skips a sector it already scanned at the same content, and names a new id once", () => {
+  const f = new Fanout();
+  const cnt = new Int32Array(1);
+  const run = (lists, sectors, slot = 1) => {
+    const flat = [], start = [], len = [];
+    for (const l of lists) { start.push(flat.length); len.push(l.length); flat.push(...l); }
+    const desc = Int32Array.from([slot, 0, sectors.length, 0, ...sectors]);
+    const n = f.selectNames(Int32Array.from(start), Int32Array.from(len), BigUint64Array.from(flat), desc, desc.length, new BigUint64Array(0), cnt);
+    const w = new BigUint64Array(n); f.takeWanted(w); return [...w];
+  };
+  assert.deepEqual(run([[1n, 2n], [3n]], [0, 1]), [1n, 2n, 3n]);
+  assert.deepEqual(run([[1n, 2n], [3n]], [0, 1]), [], "unchanged: nothing, and no rescan needed");
+  assert.deepEqual(run([[2n, 1n], [3n]], [0, 1]), [], "same ids in another order: nothing");
+  assert.deepEqual(run([[1n, 2n, 9n], [3n]], [0, 1]), [9n], "a new id is named once");
+  assert.deepEqual(run([[1n, 2n], [3n]], [0, 1]), [], "an id that left is not re-sent");
+  assert.deepEqual(run([[1n, 2n, 9n], [3n]], [0, 1]), [], "and coming back is not re-sent either (the session was told)");
+  assert.deepEqual(run([[1n, 2n, 9n], [3n]], [0, 1], 2), [1n, 2n, 9n, 3n], "another session has its own state");
+  f.release(1);
+  assert.deepEqual(run([[1n]], [0]), [1n], "after release the session starts over");
+});
+
+test("selectNames: a session current as of last call only looks at new ids; a stale one rescans in full", () => {
+  const f = new Fanout();
+  const cnt = new Int32Array(1);
+  const run = (lists, sectors, slot) => {
+    const flat = [], start = [], len = [];
+    for (const l of lists) { start.push(flat.length); len.push(l.length); flat.push(...l); }
+    const desc = Int32Array.from([slot, 0, sectors.length, 0, ...sectors]);
+    const n = f.selectNames(Int32Array.from(start), Int32Array.from(len), BigUint64Array.from(flat), desc, desc.length, new BigUint64Array(0), cnt);
+    const w = new BigUint64Array(n); f.takeWanted(w); return [...w];
+  };
+  assert.deepEqual(run([[1n, 2n]], [0], 1), [1n, 2n]);
+  assert.deepEqual(run([[1n, 2n]], [0], 2), [1n, 2n]);
+  // tick 2: id 3 joins; only session 1 is looked at (current as of last call)
+  assert.deepEqual(run([[1n, 2n, 3n]], [0], 1), [3n]);
+  // tick 3: session 2 was absent last tick, so it is stale: it must still get 3n (and not 1n, 2n again)
+  assert.deepEqual(run([[1n, 2n, 3n, 4n]], [0], 2), [3n, 4n]);
+  // an id moves in from another sector: it is "added" to this sector for a current session
+  assert.deepEqual(run([[1n, 2n, 3n, 4n], [10n]], [0, 1], 3), [1n, 2n, 3n, 4n, 10n]);
+  assert.deepEqual(run([[1n, 2n, 3n], [10n, 4n]], [0, 1], 3), [], "4n moved sectors, already told");
+  assert.deepEqual(run([[1n, 2n, 3n, 5n], [10n, 4n]], [0, 1], 3), [5n]);
+  // a new session joins a sector that has been stable: full list
+  assert.deepEqual(run([[1n, 2n, 3n, 5n], [10n, 4n]], [0, 1], 4), [1n, 2n, 3n, 5n, 10n, 4n]);
+});

@@ -16,11 +16,21 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
 
 constexpr uint8_t kDeltaSetType = 0x25;
+
+inline uint64_t Mix64(uint64_t k) {
+  k ^= k >> 33;
+  k *= 0xff51afd7ed558ccdULL;
+  k ^= k >> 33;
+  k *= 0xc4ceb9fe1a85ec53ULL;
+  k ^= k >> 33;
+  return k;
+}
 
 
 // Open-addressing set of u64 wire ids. Key 0 is stored out of line (flag) so 0 can be a value.
@@ -84,14 +94,24 @@ class Fanout : public Napi::ObjectWrap<Fanout> {
     return DefineClass(env, "Fanout",
                        {InstanceMethod("setName", &Fanout::SetName), InstanceMethod("assemble", &Fanout::Assemble),
                         InstanceMethod("selectNames", &Fanout::SelectNames), InstanceMethod("takeWanted", &Fanout::TakeWanted),
-                        InstanceMethod("release", &Fanout::Release)});
+                        InstanceMethod("release", &Fanout::Release), InstanceMethod("stats", &Fanout::Stats)});
   }
   explicit Fanout(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Fanout>(info) {}
 
  private:
   std::vector<std::string> names_;  // sector name index -> utf8 bytes
   std::vector<uint64_t> want_;      // ids selectNames chose this tick, session by session
-  std::vector<IdSet> sent_;         // session slot -> ids already named
+  struct Session {
+    IdSet sent;                         // wire ids already named
+    std::vector<uint64_t> sectorSeen;   // sector index -> hash of the id list last fully scanned (0 = never)
+  };
+  std::vector<Session> sent_;           // session slot -> state
+  std::vector<uint64_t> sectorHash_;    // this tick: sector index -> order-independent hash of its id list
+  std::vector<uint64_t> prevHash_;      // last call's sectorHash_
+  std::unordered_map<uint64_t, int32_t> prevSector_;  // last call: id -> sector index
+  std::vector<uint64_t> added_;         // this call: ids new to their sector, grouped by sector
+  std::vector<int32_t> addedStart_, addedLen_;
+  uint64_t statRefs_ = 0, statSkipped_ = 0, statScannedIds_ = 0, statCalls_ = 0;
 
 Napi::Value SetName(const Napi::CallbackInfo& info) {
   uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
@@ -185,12 +205,50 @@ Napi::Value SelectNames(const Napi::CallbackInfo& info) {
   const uint64_t* idv = ids.Data();
   const uint64_t* pv = pids.Data();
   want_.clear();
+  statCalls_++;
+  // One pass over this tick's ids: an order-independent hash per sector (sum and xor of mixed ids, plus the
+  // count). A session that last scanned a sector at the same hash has every id of it in its sent set already.
+  size_t nSectors = secStart.ElementLength();
+  if (sectorHash_.size() < nSectors) sectorHash_.resize(nSectors);
+  for (size_t sec = 0; sec < nSectors; sec++) {
+    uint64_t sum = 0, x = 0;
+    const uint64_t* p = idv + ss[sec];
+    for (int32_t k = 0; k < sl[sec]; k++) {
+      uint64_t m = Mix64(p[k]);
+      sum += m;
+      x ^= (m << 17) | (m >> 47);
+    }
+    uint64_t h = Mix64(sum ^ Mix64(x) ^ (static_cast<uint64_t>(sl[sec]) << 40));
+    sectorHash_[sec] = h == 0 ? 1 : h;
+  }
+  // Ids that were not in the same sector last call. A session that was current for a sector last call
+  // (its seen hash equals last call's) only has to look at these.
+  if (prevHash_.size() < nSectors) prevHash_.resize(nSectors, 0);
+  addedStart_.assign(nSectors, 0);
+  addedLen_.assign(nSectors, 0);
+  added_.clear();
+  for (size_t sec = 0; sec < nSectors; sec++) {
+    addedStart_[sec] = static_cast<int32_t>(added_.size());
+    const uint64_t* p = idv + ss[sec];
+    for (int32_t k = 0; k < sl[sec]; k++) {
+      auto it = prevSector_.find(p[k]);
+      if (it == prevSector_.end() || it->second != static_cast<int32_t>(sec)) added_.push_back(p[k]);
+    }
+    addedLen_[sec] = static_cast<int32_t>(added_.size()) - addedStart_[sec];
+  }
+  prevSector_.clear();
+  for (size_t sec = 0; sec < nSectors; sec++) {
+    const uint64_t* p = idv + ss[sec];
+    for (int32_t k = 0; k < sl[sec]; k++) prevSector_[p[k]] = static_cast<int32_t>(sec);
+  }
   int32_t sessions = 0;
   int32_t i = 0;
   while (i < descLen) {
     int32_t slot = d[i], hasPlayer = d[i + 1], nSec = d[i + 2], nPin = d[i + 3];
     if (static_cast<size_t>(slot) >= sent_.size()) sent_.resize(slot + 1);
-    IdSet& sent = sent_[slot];
+    Session& sess = sent_[slot];
+    IdSet& sent = sess.sent;
+    if (sess.sectorSeen.size() < nSectors) sess.sectorSeen.resize(nSectors, 0);
     size_t before = want_.size();
     if (hasPlayer) {
       uint64_t id = *pv++;
@@ -198,8 +256,21 @@ Napi::Value SelectNames(const Napi::CallbackInfo& info) {
     }
     for (int32_t s = 0; s < nSec; s++) {
       int32_t sec = d[i + 4 + s];
-      const uint64_t* p = idv + ss[sec];
-      for (int32_t k = 0; k < sl[sec]; k++)
+      statRefs_++;
+      uint64_t seen = sess.sectorSeen[sec];
+      if (seen == sectorHash_[sec]) { statSkipped_++; continue; }
+      sess.sectorSeen[sec] = sectorHash_[sec];
+      const uint64_t* p;
+      int32_t n;
+      if (seen != 0 && seen == prevHash_[sec]) {  // current as of last call: only the new ids
+        p = added_.data() + addedStart_[sec];
+        n = addedLen_[sec];
+      } else {
+        p = idv + ss[sec];
+        n = sl[sec];
+      }
+      statScannedIds_ += n;
+      for (int32_t k = 0; k < n; k++)
         if (sent.insert(p[k])) want_.push_back(p[k]);
     }
     for (int32_t k = 0; k < nPin; k++) {
@@ -210,6 +281,7 @@ Napi::Value SelectNames(const Napi::CallbackInfo& info) {
     sessions++;
     i += 4 + nSec;
   }
+  prevHash_.assign(sectorHash_.begin(), sectorHash_.begin() + nSectors);
   return Napi::Number::New(env, static_cast<double>(want_.size()));
 }
 
@@ -220,9 +292,21 @@ Napi::Value TakeWanted(const Napi::CallbackInfo& info) {
   return info.Env().Undefined();
 }
 
+Napi::Value Stats(const Napi::CallbackInfo& info) {
+  Napi::Object o = Napi::Object::New(info.Env());
+  o.Set("calls", static_cast<double>(statCalls_));
+  o.Set("sectorRefs", static_cast<double>(statRefs_));
+  o.Set("sectorRefsSkipped", static_cast<double>(statSkipped_));
+  o.Set("idsScanned", static_cast<double>(statScannedIds_));
+  return o;
+}
+
 Napi::Value Release(const Napi::CallbackInfo& info) {
   uint32_t slot = info[0].As<Napi::Number>().Uint32Value();
-  if (slot < sent_.size()) sent_[slot].clear();
+  if (slot < sent_.size()) {
+    sent_[slot].sent.clear();
+    std::fill(sent_[slot].sectorSeen.begin(), sent_[slot].sectorSeen.end(), 0);
+  }
   return info.Env().Undefined();
 }
 };

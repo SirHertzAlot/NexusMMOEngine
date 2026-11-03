@@ -37,3 +37,7 @@ Both paths are tested separately (`test/net/gateway-native-fanout.test.ts`).
 - `engine-core/test/net/native-fanout.test.ts`: a real `SectorFrame` over several ticks.
 - `engine-core/test/net/gateway-native-fanout.test.ts`: a real Gateway on uWS with the native path shadowed in place; every envelope and name list is compared with the JavaScript rule on the same entries.
 - `npm run valgrind:memcheck -- fanout`: clean.
+
+## selectNames: skipping what a session already knows
+
+Per tick the addon hashes each sector's id list (order independent). A session remembers, per sector, the hash it last fully scanned. Same hash: nothing to do. Hash equals last call's hash (the session was current): only the ids that were not in that sector last call are checked. Anything else (a new session, one that missed a tick, a changed sector it never saw) scans the whole list. `sent` stays the single source of truth for "told", so the outputs equal the old full scan (tested against the JS rule); the hash only decides how much to look at. A collision would delay a name by one change of that sector (2^-64 per change). In the 1,000-player benchmark ids scanned per call fell from about 200,000 to about 4,000 and selectNames from 5.9 to 0.77 ms per tick. `Fanout.stats()` reports the counters.

@@ -14,6 +14,7 @@ interface FanoutInstance {
   selectNames(secStart: Int32Array, secLen: Int32Array, ids: BigUint64Array, desc: Int32Array, descLen: number, pids: BigUint64Array, wantCount: Int32Array): number;
   takeWanted(out: BigUint64Array): void;
   release(slot: number): void;
+  stats(): { calls: number; sectorRefs: number; sectorRefsSkipped: number; idsScanned: number };
 }
 
 const utf8 = new TextEncoder();
@@ -81,6 +82,10 @@ export class NativeFanout {
   private ids = new BigUint64Array(1 << 10);
   private hasNames = false;
   private results: FanoutResult[] = [];
+  /** Milliseconds spent in each native call since boot, for metrics and benchmarks. */
+  readonly ms = { selectNames: 0, assemble: 0 };
+  /** Sizes of the work handed to the addon since boot. */
+  readonly count = { ticks: 0, sessions: 0, namedIds: 0, sectorRefs: 0, wanted: 0, envelopeBytes: 0 };
 
   constructor(private readonly addon: FanoutInstance) {}
 
@@ -114,6 +119,12 @@ export class NativeFanout {
     }
   }
 
+  private secStartTotal(): number {
+    let n = 0;
+    for (let i = 0; i < this.nameIdx.size; i++) n += this.secLen[i];
+    return n;
+  }
+
   private indexOf(sector: string): number {
     let i = this.nameIdx.get(sector);
     if (i === undefined) {
@@ -131,6 +142,11 @@ export class NativeFanout {
       this.slotOf.set(s.clientId, slot);
     }
     return slot;
+  }
+
+  /** Counters from the addon: sector references seen, skipped by the version check, and ids scanned. */
+  nativeStats(): ReturnType<FanoutInstance["stats"]> {
+    return this.addon.stats();
   }
 
   /** Free the native state of sessions that are gone (call now and then). */
@@ -173,6 +189,7 @@ export class NativeFanout {
     const player = s.playerEntity;
     const sectors = s.interestSet;
     const nSec = sectors ? sectors.size : 0;
+    this.count.sectorRefs += nSec;
     const nPin = pinned ? pinned.size : 0;
     need = this.nameDescLen + 4 + nSec;
     if (need > this.nameDesc.length) {
@@ -215,7 +232,11 @@ export class NativeFanout {
     let wants: bigint[][] | null = null;
     if (this.hasNames) {
       if (this.wantCount.length < n) this.wantCount = new Int32Array(n * 2);
+      const t0 = performance.now();
       const total = this.addon.selectNames(this.secStart, this.secLen, this.ids, this.nameDesc, this.nameDescLen, this.pids, this.wantCount);
+      this.ms.selectNames += performance.now() - t0;
+      this.count.namedIds += this.ids.length > 0 ? this.secStartTotal() : 0;
+      this.count.wanted += total;
       if (total > 0) {
         const w = new BigUint64Array(total);
         this.addon.takeWanted(w);
@@ -231,11 +252,16 @@ export class NativeFanout {
       }
     }
     if (this.out.length < n * 2) this.out = new Int32Array(n * 2 * 2);
+    const t1 = performance.now();
     let r = this.addon.assemble(this.tickNo, this.arena, this.out, this.desc, this.descLen, this.payloads);
     if (r < 0) {
       this.arena = new Uint8Array(Math.ceil(-r * 1.5));
       r = this.addon.assemble(this.tickNo, this.arena, this.out, this.desc, this.descLen, this.payloads);
     }
+    this.ms.assemble += performance.now() - t1;
+    this.count.ticks++;
+    this.count.sessions += n;
+    this.count.envelopeBytes += this.out[(n - 1) * 2] + this.out[(n - 1) * 2 + 1];
     for (let i = 0; i < n; i++) {
       const off = this.out[i * 2];
       const w = wants ? wants[i] : EMPTY;
