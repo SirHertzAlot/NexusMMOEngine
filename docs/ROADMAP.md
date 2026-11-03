@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**275 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**276 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -446,6 +446,7 @@ Doc: [`WORLD-SERVER-SPEC.md`](WORLD-SERVER-SPEC.md) §12
 | PL5 | SurrealMX adoption (2026-10-28): SurrealDB engines aligned to 3.x (`@surrealdb/node` ^3.1.0, SDK ^2.2.0); every `mem://` path runs SurrealMX; the world tier's recommended durable shape is the SurrealMX server (`npm run db`, AOL + snapshots, AOL recovery drilled); the embedded default moves RocksDB → SurrealKV and new world catalogs are written on SurrealKV. Measured constraint: embedded `mem://` ignores MX persistence parameters, so MX is never the embedded default | ✅ local (`arlo/surreal-mx`, not yet pushed): [`SURREALMX-ADOPTION-REPORT.md`](SURREALMX-ADOPTION-REPORT.md) |
 | PL6 | Batched character-state writes (2026-10-28): single-statement upserts replace check-then-write; store batch reads/writes; `WorldCore.putCharacterStates` with per-record outcomes; the save path coalesces bursts into one bulk world call (10 ms window, logout immediate, per-record fallback when the world predates the bulk op). Measured ~5.5× the old write path at 500 records (embedded MX, sandbox) | ✅ local (`arlo/surreal-mx`, not yet pushed): [`../packages/world-server/PERFORMANCE-BATCH.md`](../packages/world-server/PERFORMANCE-BATCH.md) |
 | PL7 | Region database renamed `world.db` to `region.db`: the region process's embedded SQLite file is a hot cache, with the world server as the source of truth when `WORLD_URL` is set. An existing `world.db` (with its WAL, SHM and play backup) is renamed on first open, and an existing `region.db` is never overwritten. Terrain, chunk entities, formation tiles, sessions and the item ledger stay in `region.db`; moving them to the world server needs a decision. | ✅ (`persist/region-db.ts`, `scripts/lib/region-db.mjs`) |
+| PL8 | Data-plane ledger defaults to the SurrealMX server (`npm run db`, `ws://127.0.0.1:8000/rpc`, AOL with fsync per commit): the zero-copy persist worker no longer writes embedded RocksDB by default. Escape hatches: `MMO_DATA_PLANE_STORE=rocksdb` restores RocksDB, `mem://` stays the volatile bench opt-out. Boot rejects when the server is unreachable. Benchmark: p99 tick under 0.5 ms against a 33.3 ms budget. | ✅ (#645; `docs/DECISIONS.md`, `docs/HYBRID-DATA-PLANE.md`) |
 
 ## 7. Alpha
 
@@ -485,6 +486,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-03**: PL8 data-plane ledger on SurrealMX (#645, ✅): the persist worker defaults to the durable SurrealMX server, not embedded RocksDB. Benchmark p99 tick under 0.5 ms against a 33.3 ms budget. `MMO_DATA_PLANE_STORE=rocksdb` is the escape hatch.
 - **2026-11-03**: WL2 rig summary (#554, 🚧): `summarizeRig` gives the editor's rig view its numbers (rig type, size, vertices per bone). The editor panel that draws it is still to do, so the WL2 row is 🚧 again.
 - **2026-11-02**: PL7 region.db (✅): the region's `world.db` is `region.db`, a hot cache of the world (embedded SQLite; SurrealDB is the source of truth with `WORLD_URL`). One-time rename on first open; references, docs and tests updated. Terrain and chunk data remain in region.db (not moved to the world server).
 - **2026-11-01**: WL1 stand-in models for every wildlife species (✅, placeholder): generated animal models bound by species through the GLB importer; skinned rigs and animation are not in yet (#593). Closed on the art-blocked rule.
