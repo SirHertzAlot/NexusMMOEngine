@@ -4,7 +4,8 @@ import { createRequire } from "node:module";
 import { encodeDeltaSet, encodeEnvelope, MessageType, DeltaSetKind } from "@mmo-engine/protocol";
 
 const require = createRequire(import.meta.url);
-const fanout = require("../index.js");
+const { Fanout } = require("../index.js");
+let fanout = new Fanout();
 
 const rnd = (n, seed) => {
   const b = new Uint8Array(n);
@@ -69,4 +70,23 @@ test("id 0 and growth", () => {
   assert.equal(cnt[0], n);
   fanout.selectNames(Int32Array.from([0]), Int32Array.from([n]), ids, desc, desc.length, new BigUint64Array(0), cnt);
   assert.equal(cnt[0], 0);
+});
+
+test("two Fanout objects keep separate name tables and sent sets", () => {
+  const a = new Fanout(), b = new Fanout();
+  a.setName(0, new TextEncoder().encode("a-sector"));
+  b.setName(0, new TextEncoder().encode("b"));
+  const payloads = [rnd(4, 9)];
+  const desc = Int32Array.from([1, 0, 1, 0, 0]);
+  const arenaA = new Uint8Array(64), arenaB = new Uint8Array(64), out = new Int32Array(2);
+  a.assemble(7, arenaA, out, desc, desc.length, payloads);
+  const lenA = out[1];
+  b.assemble(7, arenaB, out, desc, desc.length, payloads);
+  assert.equal(lenA - out[1], "a-sector".length - 1);
+  // the same slot in two objects: naming one does not mark the other
+  const nd = Int32Array.from([3, 0, 1, 0, 0]);
+  const cnt = new Int32Array(1);
+  const args = [Int32Array.from([0]), Int32Array.from([1]), BigUint64Array.from([42n]), nd, nd.length, new BigUint64Array(0), cnt];
+  assert.equal(a.selectNames(...args), 1);
+  assert.equal(b.selectNames(...args), 1, "b still has to name 42");
 });

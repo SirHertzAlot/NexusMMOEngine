@@ -1,4 +1,5 @@
-// Native fan-out. Two calls per tick replace the per-session JavaScript:
+// Native fan-out. One Fanout object per Gateway (its name table and per-session sets are its own).
+// Two calls per tick replace the per-session JavaScript:
 //
 //   assemble(...)     writes every session's DeltaSet envelope (type 0x25) into one
 //                     caller-owned arena, byte-identical to encodeEnvelope(DeltaSet,
@@ -21,7 +22,6 @@ namespace {
 
 constexpr uint8_t kDeltaSetType = 0x25;
 
-std::vector<std::string> g_names;  // sector name index -> utf8 bytes
 
 // Open-addressing set of u64 wire ids. Key 0 is stored out of line (flag) so 0 can be a value.
 class IdSet {
@@ -72,21 +72,34 @@ class IdSet {
   bool has_zero_ = false;
 };
 
-std::vector<uint64_t> g_want;  // ids selectNames chose this tick, session by session
-std::vector<IdSet> g_sent;  // session slot -> ids already named
-
-Napi::Value SetName(const Napi::CallbackInfo& info) {
-  uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
-  auto buf = info[1].As<Napi::TypedArrayOf<uint8_t>>();
-  if (g_names.size() <= idx) g_names.resize(idx + 1);
-  g_names[idx].assign(reinterpret_cast<const char*>(buf.Data()), buf.ByteLength());
-  return info.Env().Undefined();
-}
 
 struct Payload {
   const uint8_t* p;
   uint32_t n;
 };
+
+class Fanout : public Napi::ObjectWrap<Fanout> {
+ public:
+  static Napi::Function Init(Napi::Env env) {
+    return DefineClass(env, "Fanout",
+                       {InstanceMethod("setName", &Fanout::SetName), InstanceMethod("assemble", &Fanout::Assemble),
+                        InstanceMethod("selectNames", &Fanout::SelectNames), InstanceMethod("takeWanted", &Fanout::TakeWanted),
+                        InstanceMethod("release", &Fanout::Release)});
+  }
+  explicit Fanout(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Fanout>(info) {}
+
+ private:
+  std::vector<std::string> names_;  // sector name index -> utf8 bytes
+  std::vector<uint64_t> want_;      // ids selectNames chose this tick, session by session
+  std::vector<IdSet> sent_;         // session slot -> ids already named
+
+Napi::Value SetName(const Napi::CallbackInfo& info) {
+  uint32_t idx = info[0].As<Napi::Number>().Uint32Value();
+  auto buf = info[1].As<Napi::TypedArrayOf<uint8_t>>();
+  if (names_.size() <= idx) names_.resize(idx + 1);
+  names_[idx].assign(reinterpret_cast<const char*>(buf.Data()), buf.ByteLength());
+  return info.Env().Undefined();
+}
 
 // assemble(tick, arena, out, desc, descLen, payloads) -> sessions written, or -bytesNeeded
 // desc, per session: count, replace, then count x (kind, nameIdx, payloadIdx).
@@ -118,7 +131,7 @@ Napi::Value Assemble(const Napi::CallbackInfo& info) {
     int32_t count = d[i], replace = d[i + 1];
     const int32_t* e = d + i + 2;
     size_t size = 1 + 7;
-    for (int32_t k = 0; k < count; k++) size += 6 + g_names[e[k * 3 + 1]].size() + payloads[e[k * 3 + 2]].n;
+    for (int32_t k = 0; k < count; k++) size += 6 + names_[e[k * 3 + 1]].size() + payloads[e[k * 3 + 2]].n;
     if (pos + size <= cap) {
       uint8_t* o = base + pos;
       *o++ = kDeltaSetType;
@@ -129,7 +142,7 @@ Napi::Value Assemble(const Napi::CallbackInfo& info) {
       std::memcpy(o, &c16, 2);
       o += 2;
       for (int32_t k = 0; k < count; k++) {
-        const std::string& nm = g_names[e[k * 3 + 1]];
+        const std::string& nm = names_[e[k * 3 + 1]];
         const Payload& pl = payloads[e[k * 3 + 2]];
         *o++ = static_cast<uint8_t>(e[k * 3]);
         *o++ = static_cast<uint8_t>(nm.size());
@@ -171,56 +184,53 @@ Napi::Value SelectNames(const Napi::CallbackInfo& info) {
   const int32_t* sl = secLen.Data();
   const uint64_t* idv = ids.Data();
   const uint64_t* pv = pids.Data();
-  g_want.clear();
+  want_.clear();
   int32_t sessions = 0;
   int32_t i = 0;
   while (i < descLen) {
     int32_t slot = d[i], hasPlayer = d[i + 1], nSec = d[i + 2], nPin = d[i + 3];
-    if (static_cast<size_t>(slot) >= g_sent.size()) g_sent.resize(slot + 1);
-    IdSet& sent = g_sent[slot];
-    size_t before = g_want.size();
+    if (static_cast<size_t>(slot) >= sent_.size()) sent_.resize(slot + 1);
+    IdSet& sent = sent_[slot];
+    size_t before = want_.size();
     if (hasPlayer) {
       uint64_t id = *pv++;
-      if (sent.insert(id)) g_want.push_back(id);
+      if (sent.insert(id)) want_.push_back(id);
     }
     for (int32_t s = 0; s < nSec; s++) {
       int32_t sec = d[i + 4 + s];
       const uint64_t* p = idv + ss[sec];
       for (int32_t k = 0; k < sl[sec]; k++)
-        if (sent.insert(p[k])) g_want.push_back(p[k]);
+        if (sent.insert(p[k])) want_.push_back(p[k]);
     }
     for (int32_t k = 0; k < nPin; k++) {
       uint64_t id = *pv++;
-      if (sent.insert(id)) g_want.push_back(id);
+      if (sent.insert(id)) want_.push_back(id);
     }
-    wantCount[sessions] = static_cast<int32_t>(g_want.size() - before);
+    wantCount[sessions] = static_cast<int32_t>(want_.size() - before);
     sessions++;
     i += 4 + nSec;
   }
-  return Napi::Number::New(env, static_cast<double>(g_want.size()));
+  return Napi::Number::New(env, static_cast<double>(want_.size()));
 }
 
 Napi::Value TakeWanted(const Napi::CallbackInfo& info) {
   auto out = info[0].As<Napi::TypedArrayOf<uint64_t>>();
-  size_t n = std::min(out.ElementLength(), g_want.size());
-  if (n) std::memcpy(out.Data(), g_want.data(), n * 8);
+  size_t n = std::min(out.ElementLength(), want_.size());
+  if (n) std::memcpy(out.Data(), want_.data(), n * 8);
   return info.Env().Undefined();
 }
 
 Napi::Value Release(const Napi::CallbackInfo& info) {
   uint32_t slot = info[0].As<Napi::Number>().Uint32Value();
-  if (slot < g_sent.size()) g_sent[slot].clear();
+  if (slot < sent_.size()) sent_[slot].clear();
   return info.Env().Undefined();
 }
+};
 
 Napi::Value Version(const Napi::CallbackInfo& info) { return Napi::String::New(info.Env(), "0.1.0"); }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-  exports.Set("setName", Napi::Function::New(env, SetName));
-  exports.Set("assemble", Napi::Function::New(env, Assemble));
-  exports.Set("selectNames", Napi::Function::New(env, SelectNames));
-  exports.Set("takeWanted", Napi::Function::New(env, TakeWanted));
-  exports.Set("release", Napi::Function::New(env, Release));
+  exports.Set("Fanout", Fanout::Init(env));
   exports.Set("version", Napi::Function::New(env, Version));
   return exports;
 }

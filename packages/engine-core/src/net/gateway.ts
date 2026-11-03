@@ -137,7 +137,7 @@ import type { SpawnTable } from "@mmo-engine/scatter";
 import { createTransport, type HttpHandler, type Transport, type TransportKind, type WireSocket } from "./transport.js";
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
-import { loadNativeFanout, type FanoutResult, type NativeFanout } from "./native-fanout.js";
+import { loadNativeFanout, type FanoutResult, type FanoutStatus, type NativeFanout } from "./native-fanout.js";
 import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
@@ -1050,6 +1050,9 @@ export class Gateway {
     }
     this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
     this.logger = opts.logger ?? new LogProducerClient(LogProducer.GATEWAY, new LogRingBuffer(1024));
+    const nf = loadNativeFanout();
+    this.fanout = nf.fanout;
+    this.fanoutStatus = nf.status;
     this.dataPlaneQueue = opts.dataPlaneQueue;
     this.clock = opts.clock ?? Date.now;
     this.guilds = new GuildBook(() => this.clock(), opts.guildStore);
@@ -2121,7 +2124,11 @@ export class Gateway {
   }
 
   /** Native fan-out (on by default; MMO_NATIVE_FANOUT=0 disables), or null for the JavaScript path. */
-  private readonly fanout: NativeFanout | null = loadNativeFanout();
+  private fanout: NativeFanout | null;
+  /** Which fan-out path is active and why (startup log, tests, metrics). The native path drops to JS for good if a native call throws. */
+  fanoutStatus: FanoutStatus;
+  /** Ticks fanned out on each path, since boot. */
+  readonly fanoutTicks = { native: 0, js: 0 };
 
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
@@ -2161,19 +2168,34 @@ export class Gateway {
     // uWS copies on send; the ws fallback keeps the buffer until it is flushed, so it stays on the JavaScript path.
     if (this.fanout && frame && !edge && this.transport?.kind === "uws") {
       const nf = this.fanout;
-      nf.begin(tick, bySector);
-      const order: Array<{ s: ClientSession; replace: boolean }> = [];
-      for (const s of this.sessions.values()) {
-        if (!s.welcomed || !s.socket) continue;
-        const replace = isSnapshotTick || s.needsResync || !s.interestSet;
-        nf.add(s, replace, this.interestEntries(s, frame, replace));
-        order.push({ s, replace });
+      const order: Array<{ s: ClientSession; replace: boolean; entries: DeltaSetEntry[] }> = [];
+      try {
+        nf.begin(tick, bySector);
+        for (const s of this.sessions.values()) {
+          if (!s.welcomed || !s.socket) continue;
+          const replace = isSnapshotTick || s.needsResync || !s.interestSet;
+          const entries = this.interestEntries(s, frame, replace);
+          order.push({ s, replace, entries });
+          nf.add(s, replace, entries);
+        }
+        const results = nf.run();
+        nat = new Map();
+        for (let i = 0; i < order.length; i++) nat.set(order[i].s, { ...results[i], replace: order[i].replace });
+        if (tick % 64 === 0) nf.sweep(this.sessions);
+        this.fanoutTicks.native++;
+      } catch (err) {
+        // The addon failed (bad ABI, a bug): finish this tick in JavaScript from the entries already computed
+        // (interestEntries advanced each session's interest set, so it must not run twice), then stay on JS.
+        this.fanout = null;
+        this.fanoutStatus = { path: "js", reason: `native call failed: ${(err as Error).message}` };
+        nat = new Map();
+        for (const o of order) {
+          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace: o.replace, entries: o.entries }));
+          nat.set(o.s, { env, want: null, jsNames: true, replace: o.replace });
+        }
+        this.fanoutTicks.js++;
       }
-      const results = nf.run();
-      nat = new Map();
-      for (let i = 0; i < order.length; i++) nat.set(order[i].s, { ...results[i], replace: order[i].replace });
-      if (tick % 64 === 0) nf.sweep(this.sessions);
-    }
+    } else if (frame) this.fanoutTicks.js++;
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
@@ -2185,7 +2207,9 @@ export class Gateway {
         const replace = pre ? pre.replace : isSnapshotTick || s.needsResync || !s.interestSet;
         const entries = pre ? null : this.interestEntries(s, frame, replace);
         if (pre) {
-          if (pre.want) {
+          if (pre.jsNames) {
+            if (bySector) this.deliverNamesFor(s, bySector, tick);
+          } else if (pre.want) {
             const names = this.namesFor(pre.want);
             if (names) this.deliver(s, names, tick);
           }

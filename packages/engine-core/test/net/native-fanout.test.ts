@@ -38,7 +38,7 @@ it("matches the JavaScript envelope bytes and names, across ticks", { skip }, ()
   }
   const index = new SectorIndex();
   const tracker = new DeltaTracker();
-  const nf = new NativeFanout(addon);
+  const nf = new NativeFanout(new addon.Fanout());
   const told = new Map<string, Set<bigint>>(); // the JavaScript rule: a name goes out once per session
 
   for (let tick = 1; tick <= 6; tick++) {
@@ -94,7 +94,7 @@ it("matches the JavaScript envelope bytes and names, across ticks", { skip }, ()
 });
 
 it("a released session is told its names again", { skip }, () => {
-  const nf = new NativeFanout(addon);
+  const nf = new NativeFanout(new addon.Fanout());
   const s = fakeSession(0, new Set(["0,0"]), 5n, []);
   const bySector = new Map([["0,0", [11n]]]);
   const entries: DeltaSetEntry[] = [{ kind: DeltaSetKind.Leave, sector: "0,0", bytes: new Uint8Array(0) }];

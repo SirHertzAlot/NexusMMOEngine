@@ -8,7 +8,7 @@ import type { ClientSession } from "../session.js";
  * place of the per-session JavaScript (encodeDeltaSet, encodeEnvelope, the BigInt "named" Set).
  * On by default (benchmarked about 2x faster ticks at 200, 500 and 1,000 clients); MMO_NATIVE_FANOUT=0 or a missing addon keeps the JavaScript path.
  */
-interface FanoutAddon {
+interface FanoutInstance {
   setName(idx: number, utf8: Uint8Array): void;
   assemble(tick: number, arena: Uint8Array, out: Int32Array, desc: Int32Array, descLen: number, payloads: Uint8Array[]): number;
   selectNames(secStart: Int32Array, secLen: Int32Array, ids: BigUint64Array, desc: Int32Array, descLen: number, pids: BigUint64Array, wantCount: Int32Array): number;
@@ -18,13 +18,33 @@ interface FanoutAddon {
 
 const utf8 = new TextEncoder();
 
-export function loadNativeFanout(): NativeFanout | null {
-  if (process.env.MMO_NATIVE_FANOUT === "0") return null;
+function defaultLoad(): FanoutAddon {
+  return createRequire(import.meta.url)("@mmo-engine/addon-fanout") as FanoutAddon;
+}
+
+/** The loaded module: one Fanout object per gateway, so gateways in one process do not share state. */
+export interface FanoutAddon {
+  Fanout: new () => FanoutInstance;
+  version(): string;
+}
+
+/** Which path the gateway fans out on, and why: logged at startup and readable at runtime. */
+export interface FanoutStatus {
+  path: "native" | "js";
+  reason: string;
+}
+
+/**
+ * Load the native fan-out. Never throws: a disabled flag or an addon that is missing or built for another
+ * ABI leaves the JavaScript path (same bytes, slower) and says why in `status`.
+ */
+export function loadNativeFanout(load: () => FanoutAddon = defaultLoad): { fanout: NativeFanout | null; status: FanoutStatus } {
+  if (process.env.MMO_NATIVE_FANOUT === "0") return { fanout: null, status: { path: "js", reason: "MMO_NATIVE_FANOUT=0" } };
   try {
-    const require = createRequire(import.meta.url);
-    return new NativeFanout(require("@mmo-engine/addon-fanout") as FanoutAddon);
-  } catch {
-    return null;
+    const addon = load();
+    return { fanout: new NativeFanout(new addon.Fanout()), status: { path: "native", reason: `addon-fanout ${addon.version()}` } };
+  } catch (err) {
+    return { fanout: null, status: { path: "js", reason: `addon unavailable: ${(err as Error).message.split("\n")[0]}` } };
   }
 }
 
@@ -34,6 +54,8 @@ export interface FanoutResult {
   env: Uint8Array;
   /** Wire ids whose names this session has not been told yet, or null. */
   want: bigint[] | null;
+  /** Set when the native call failed: the names were not selected, so the JavaScript rule applies. */
+  jsNames?: boolean;
 }
 
 export class NativeFanout {
@@ -60,7 +82,7 @@ export class NativeFanout {
   private hasNames = false;
   private results: FanoutResult[] = [];
 
-  constructor(private readonly addon: FanoutAddon) {}
+  constructor(private readonly addon: FanoutInstance) {}
 
   /** Start a tick. `bySector` is the named entities by home sector, or null when names are off. */
   begin(tick: number, bySector: ReadonlyMap<string, bigint[]> | null): void {
