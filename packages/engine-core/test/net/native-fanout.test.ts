@@ -108,3 +108,29 @@ it("a released session is told its names again", { skip }, () => {
   nf.sweep(new Map()); // the session is no longer live
   assert.deepEqual(tickOnce(3), [5n, 11n]);
 });
+
+it("a reused entity slot has a new wire id, so its name is sent again", { skip }, () => {
+  const sim = new SimWorld();
+  const a = sim.spawn();
+  const wireA = sim.wireId(a);
+  sim.despawn(a);
+  sim.beginTick(1);
+  sim.endTick();
+  const b = sim.spawn();
+  assert.equal(b, a, "the slot is reused");
+  const wireB = sim.wireId(b);
+  assert.notEqual(wireB, wireA, "the generation moved on");
+
+  const nf = new NativeFanout(new addon.Fanout());
+  const s = fakeSession(0, new Set(["0,0"]), null, []);
+  const entries: DeltaSetEntry[] = [{ kind: DeltaSetKind.Leave, sector: "0,0", bytes: new Uint8Array(0) }];
+  const tickOnce = (tick: number, ids: bigint[]): bigint[] | null => {
+    nf.begin(tick, new Map([["0,0", ids]]));
+    nf.add(s, false, entries);
+    return nf.run()[0].want;
+  };
+  assert.deepEqual(tickOnce(1, [wireA]), [wireA]);
+  assert.equal(tickOnce(2, [wireA]), null, "same entity: not named twice");
+  assert.deepEqual(tickOnce(3, [wireB]), [wireB], "new occupant of the slot: named");
+  assert.equal(tickOnce(4, [wireB]), null);
+});
