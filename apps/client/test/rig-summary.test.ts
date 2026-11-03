@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { summarizeRig, dominantBones } from "../src/render/animal/rig-summary.js";
-import { BONE_BODY, BONE_HEAD, BONE_NAMES, type Segmentation } from "../src/render/animal/segment.js";
+import { BONE_BODY, BONE_HEAD, BONE_NAMES, type Segmentation } from "@mmo-engine/animal-rig";
 
 function seg(skin: Array<[number[], number[]]>): Segmentation {
   const skinIndex = new Uint16Array(skin.length * 4);

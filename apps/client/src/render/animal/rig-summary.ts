@@ -5,7 +5,7 @@
  * Pure: it reads a Segmentation, nothing else.
  */
 
-import { BONE_NAMES, type Segmentation } from "./segment.js";
+import { BONE_NAMES, type Segmentation } from "@mmo-engine/animal-rig";
 
 export interface RigSummary {
   type: string;
