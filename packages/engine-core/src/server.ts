@@ -1757,7 +1757,7 @@ async function main(): Promise<void> {
     }
   });
   if (edgeRelay) console.log(`[server] listening on the edge: players connect to the edge's game port, relayed over the core channel :${port}; no player port here`);
-  else console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
+  else console.log(`[server] listening on ws://0.0.0.0:${port} via ${gw.transportName === "uws" ? "uWebSockets.js" : "ws"}, fan-out ${gw.fanoutStatus.path} (${gw.fanoutStatus.reason})${pcg ? ` (+ webrpc http://0.0.0.0:${port}/rpc/Pcg)` : ""}`);
   console.log(`[server] ${pcg ? pcg.summary : "no PCG asset library (MMO_PCG_ASSETS)"}`);
   console.log(
     `[server] ${freshBoot ? "fresh boot" : `restored at tick ${restoredTick}`} | ` +

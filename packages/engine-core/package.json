@@ -24,6 +24,7 @@
   "types": "dist/src/index.d.ts",
   "version": "0.1.0",
   "dependencies": {
+    "@mmo-engine/addon-fanout": "0.1.0",
     "@mmo-engine/addon-navigation": "0.1.0",
     "@mmo-engine/addon-physics": "0.1.0",
     "@mmo-engine/addon-picg": "0.1.0",
