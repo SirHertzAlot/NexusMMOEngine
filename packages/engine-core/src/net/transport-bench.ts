@@ -56,7 +56,7 @@ interface Result {
 }
 
 /** "send": one send per socket per tick. "publish": the server's path, one publish to the sector topic (gateway.ts). */
-type Mode = "send" | "publish";
+type Mode = "send" | "publish" | "tiered";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const quantile = (xs: number[], q: number): number => {
@@ -65,15 +65,20 @@ const quantile = (xs: number[], q: number): number => {
 };
 
 const TOPIC = "sector";
+/** Tiered: half the clients (near) get every tick, the other half (far) every second tick. */
+const TOPIC_NEAR = "near";
+const TOPIC_FAR = "far";
 
 async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode: Mode): Promise<Result> {
   const transport = createTransport(kind);
   const sockets = new Set<WireSocket>();
+  let joined = 0;
   let intents = 0;
   const port = await transport.listen(0, {
     connection: (s) => {
       sockets.add(s);
       if (mode === "publish") s.subscribe(TOPIC);
+      if (mode === "tiered") s.subscribe(joined++ % 2 === 0 ? TOPIC_NEAR : TOPIC_FAR);
       s.listen({ message: () => void intents++, close: () => sockets.delete(s) });
     },
     http: null,
@@ -88,9 +93,14 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
   let sent = 0;
   let measuring = false;
   const tickMs: number[] = [];
+  let ticks = 0;
   const tick = (): void => {
     const t0 = performance.now();
-    if (mode === "publish") transport.publish(TOPIC, delta);
+    if (mode === "tiered") {
+      transport.publish(TOPIC_NEAR, delta);
+      if (ticks % 2 === 0) transport.publish(TOPIC_FAR, delta);
+      ticks++;
+    } else if (mode === "publish") transport.publish(TOPIC, delta);
     else for (const s of sockets) s.send(delta);
     if (measuring) {
       tickMs.push(performance.now() - t0);
@@ -180,7 +190,7 @@ async function main(): Promise<void> {
   };
   const seconds = Number(flag("--seconds", "8"));
   const out = flag("--out", "");
-  const modes: Mode[] = args.includes("--send-only") ? ["send"] : args.includes("--publish-only") ? ["publish"] : ["send", "publish"];
+  const modes: Mode[] = args.includes("--send-only") ? ["send"] : args.includes("--publish-only") ? ["publish"] : args.includes("--tiered") ? ["tiered"] : ["send", "publish"];
   const counts = args.filter((a) => !a.startsWith("--")).map(Number);
   const finalCounts = counts.length ? counts : [100, 250, 500, 1000];
   const kinds: Array<"uws" | "ws"> = loadUws() ? ["uws", "ws"] : ["ws"];
