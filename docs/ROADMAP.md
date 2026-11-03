@@ -22,7 +22,7 @@ PR).
 
 ## At a glance (2026-11-01)
 
-**277 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
+**278 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
@@ -409,6 +409,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | — | **Zero-Copy Hybrid Engine Data Plane**: page-aligned `SharedArrayBuffer` arena (`sab-store.ts`), 64B cache-line padded lockless SPSC command and transaction rings (`lockless-ring.ts`), 30Hz Simulation Worker (`sim-worker.ts`) with C++ N-API strided & SSE2 branchless Planar SoA SIMD kernels (`packages/addons/integrate` / `engine_kernel.node`), binary 4-byte frame `/ws/sim` ingestion gateway (`data-plane-server.ts`), and async Embedded SurrealDB Persistence Worker (`persist-worker.ts`, `schema.surrealql`) | ✅ | [`HYBRID-DATA-PLANE.md`](HYBRID-DATA-PLANE.md); PR #430 (`feat/zero-copy-hybrid-data-plane`); 22 unit + e2e + native addon tests green; persistence durable by default (#557, #562) |
 | SIMD1 | **SIMD build flags**: native addons compile with `-O3 -ffast-math -fno-finite-math-only -march=haswell` (MSVC `/fp:fast /arch:AVX2`); finiteness and NaN checks in the addons use bit tests, since fast-math folds `std::isfinite`; geometry's -0 and 0 are the same position in its tests | ✅ | PR #503 (`claude/project-thread-j0k4z0`). Memcheck clean on all six addons; physics, procgen, scatter, geometry and navigation suites green locally |
 | PF1 | Perf pass: `SectorIndex.frame` leak fixed: each frame kept every older frame reachable through `prior`, so retained heap grew about 26 MB/s at 200 players and major GC stalled ticks for 200 to 400 ms. The previous newest frame's `prior` is now cleared. | ✅ (#650; `net/interest.ts`, `test/net/interest-retention.test.ts`) | 200 players: retained heap 340 MB to 1.4 GB in 40 s before, 79 MB flat after; tick max 356 and 383 ms before, 145 and 72 ms after. Follow-up: rerun the 1,000-client GC numbers on main. |
+| PF2 | Perf pass: native fan-out (`packages/addons/fanout`): the Gateway's per-tick broadcast assembles every session's DeltaSet and picks unnamed wire ids in C++, on by default (`MMO_NATIVE_FANOUT=0` keeps the JS path; a missing addon or a throwing native call falls back to JS). Sustained 60 s, 3,000 NPCs: mean tick 30.6 to 16.2 ms at 200 players, 156.7 to 66.4 ms at 1,000; ticks completed at 500 players 42% to 86%. 1,000 players is still at 43% of ticks. | ✅ (#652; `docs/NATIVE-FANOUT.md`, `perf/native-fanout-results-2026-11-03.md`) | Follow-ups: per-sector name versions to skip `selectNames` work, native `interestEntries` (15.5% of the 1,000-player profile), 1,000 players at 43% of ticks. |
 
 ## 5b. Edge / core split
 
@@ -487,6 +488,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-03**: PF2 native fan-out (#652, ✅): DeltaSet assembly and name selection run in C++, on by default. Mean tick at 1,000 players falls from 156.7 to 66.4 ms; 1,000 players is still at 43% of ticks.
 - **2026-11-03**: PF1 SectorIndex.frame leak (#650, ✅): old frames stayed reachable through `prior`, so heap grew about 26 MB/s at 200 players. Retained heap is flat after the fix and tick max falls from 356 and 383 ms to 145 and 72 ms at 200 players.
 - **2026-11-03**: PL8 data-plane ledger on SurrealMX (#645, ✅): the persist worker defaults to the durable SurrealMX server, not embedded RocksDB. Benchmark p99 tick under 0.5 ms against a 33.3 ms budget. `MMO_DATA_PLANE_STORE=rocksdb` is the escape hatch.
 - **2026-11-03**: WL2 rig summary (#554, 🚧): `summarizeRig` gives the editor's rig view its numbers (rig type, size, vertices per bone). The editor panel that draws it is still to do, so the WL2 row is 🚧 again.
