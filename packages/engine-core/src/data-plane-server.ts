@@ -77,6 +77,9 @@ export interface HybridDataPlaneOptions {
   decodeMovementIntents?: boolean;
   useBatchDrain?: boolean;
   dbUrl?: string;
+  /** Root credentials for a remote ledger (`dbUrl` = ws://); ignored for embedded engines. */
+  dbUser?: string;
+  dbPass?: string;
   transport?: "auto" | "uws" | "ws";
   /**
    * SAB + capacity of the process's log ring (docs/SAB-LOGGING-LAYER-SPEC.md
@@ -304,6 +307,8 @@ export class HybridDataPlaneServer {
           entityCapacity: this.entityCapacity,
           persistRingCapacity: this.opts.persistRingCapacity ?? DEFAULT_PERSIST_RING_CAPACITY,
           dbUrl: this.opts.dbUrl ?? "mem://",
+          dbUser: this.opts.dbUser,
+          dbPass: this.opts.dbPass,
           autoStart: true,
         },
       });
