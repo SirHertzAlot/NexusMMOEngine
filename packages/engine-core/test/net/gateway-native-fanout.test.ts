@@ -22,6 +22,7 @@ afterEach(async () => {
   await gw?.close();
   gw = null;
   delete process.env.MMO_NATIVE_FANOUT;
+  delete process.env.MMO_FANOUT_SHARE;
 });
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
@@ -31,7 +32,11 @@ interface Run {
   status: Gateway["fanoutStatus"];
   ticks: { native: number; js: number };
   /** Native envelopes and name lists compared against the JavaScript rule on the same inputs, in the same tick. */
-  checked: { envelopes: number; nameLists: number; mismatches: string[] };
+  checked: { envelopes: number; nameLists: number; mismatches: string[]; expected: Map<string, Set<string>> };
+  /** namesFor with the per-broadcast player index equals the scan, in rows and order. */
+  namesLookup: { same: boolean; rows: number };
+  /** Shared fan-out: sessions served per assembled envelope, and publish calls made. */
+  shared: { sessions: number; groups: number; publishes: number };
 }
 
 /**
@@ -40,7 +45,7 @@ interface Run {
  * list with the JavaScript "named once per session" rule. Same state, same tick: no run-to-run noise.
  */
 function shadow(nf: NativeFanout): Run["checked"] {
-  const checked: Run["checked"] = { envelopes: 0, nameLists: 0, mismatches: [] };
+  const checked: Run["checked"] = { envelopes: 0, nameLists: 0, mismatches: [], expected: new Map() };
   const o = nf as unknown as {
     begin: NativeFanout["begin"];
     add: NativeFanout["add"];
@@ -66,6 +71,7 @@ function shadow(nf: NativeFanout): Run["checked"] {
     queued.forEach((q, i) => {
       const want = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick: tickNo, replace: q.replace, entries: q.entries as DeltaSetEntry[] }));
       checked.envelopes++;
+      (checked.expected.get(q.s.username) ?? checked.expected.set(q.s.username, new Set()).get(q.s.username)!).add(hex(want.subarray(1))); // clients keep the payload without the envelope type byte
       if (Buffer.compare(Buffer.from(results[i].env), Buffer.from(want)) !== 0) checked.mismatches.push(`tick ${tickNo} ${q.s.username}: envelope bytes differ`);
       if (table) {
         const seen = told.get(q.s.clientId) ?? new Set<bigint>();
@@ -90,14 +96,26 @@ function shadow(nf: NativeFanout): Run["checked"] {
   return checked;
 }
 
-async function scenario(mode: "default" | "off" | "break"): Promise<Run> {
+async function scenario(mode: "default" | "off" | "break" | "assembly" | "publish"): Promise<Run> {
   if (mode === "off") process.env.MMO_NATIVE_FANOUT = "0";
   else delete process.env.MMO_NATIVE_FANOUT;
+  if (mode === "assembly" || mode === "publish") process.env.MMO_FANOUT_SHARE = mode;
+  else delete process.env.MMO_FANOUT_SHARE;
   let now = 1_000_000;
   const g = (gw = new Gateway({ clock: () => now, credentialStore: await makeCredentialStore(), transport: "uws", interest: { enterM: 96, leaveM: 128 } }));
   const nfInstance = (g as unknown as { fanout: NativeFanout | null }).fanout;
-  let checked: Run["checked"] = { envelopes: 0, nameLists: 0, mismatches: [] };
-  if (mode === "default" && nfInstance) checked = shadow(nfInstance);
+  let checked: Run["checked"] = { envelopes: 0, nameLists: 0, mismatches: [], expected: new Map() };
+  if (mode !== "off" && mode !== "break" && nfInstance) checked = shadow(nfInstance);
+  const shared = { sessions: 0, groups: 0, publishes: 0 };
+  if (nfInstance && (mode === "assembly" || mode === "publish")) {
+    const orun = nfInstance.run.bind(nfInstance);
+    nfInstance.run = () => {
+      const r = orun();
+      shared.sessions += r.length;
+      shared.groups += new Set(r.map((x) => x.group)).size;
+      return r;
+    };
+  }
   if (mode === "break") {
     // The addon throws on its first call: the tick must still go out, in JavaScript.
     nfInstance!.run = () => {
@@ -105,6 +123,14 @@ async function scenario(mode: "default" | "off" | "break"): Promise<Run> {
     };
   }
   const url = `ws://127.0.0.1:${await g.listen()}`;
+  if (mode === "publish" || mode === "assembly") {
+    const t = (g as unknown as { transport: { publish: (t: string, b: Uint8Array) => void } }).transport;
+    const op = t.publish.bind(t);
+    t.publish = (topic, bytes) => {
+      shared.publishes++;
+      return op(topic, bytes);
+    };
+  }
   g.frame(now);
   const frames = async (n: number, clients: HeadlessClient[]): Promise<void> => {
     const waits = clients.map((c) => c.waitFor(MessageType.DeltaSet, n));
@@ -158,7 +184,17 @@ async function scenario(mode: "default" | "off" | "break"): Promise<Run> {
       streams.set(`${name}:${type}`, cl.payloads(type).map(hex));
     }
   }
-  const out = { streams, status: g.fanoutStatus, ticks: { ...g.fanoutTicks }, checked };
+  // namesFor looks ids up in a per-broadcast index; it must return what the full scan returns, in the same order.
+  const gg = g as unknown as { sessions: Map<string, ClientSession>; namesFor(only: bigint[] | null): Uint8Array | null; playerIndex: Map<bigint, [number, ClientSession]> | null };
+  const live = [...gg.sessions.values()];
+  const ids = live.filter((x) => x.playerEntity !== null).map((x) => x.playerEntity!);
+  const subset = [ids[ids.length - 1], ids[0], ids[0], 999999999n, ...ids.slice(1, 3)].filter((x) => x !== undefined);
+  const scan = gg.namesFor(subset);
+  gg.playerIndex = new Map(live.flatMap((x, i) => (x.playerEntity === null ? [] : [[x.playerEntity, [i, x]] as [bigint, [number, ClientSession]]])));
+  const looked = gg.namesFor(subset);
+  gg.playerIndex = null;
+  const namesLookup = { same: scan !== null && looked !== null && hex(scan) === hex(looked), rows: ids.length };
+  const out = { streams, status: g.fanoutStatus, ticks: { ...g.fanoutTicks }, checked, shared, namesLookup };
   await Promise.all([a.c, c.c, e.c].map((x) => x.close()));
   await g.close();
   gw = null;
@@ -206,3 +242,25 @@ it("an unavailable or incompatible addon falls back to JavaScript with the reaso
   assert.equal(ok.status.path, "native");
   assert.match(ok.status.reason, /9\.9\.9/);
 });
+
+for (const mode of ["default", "assembly", "publish"] as const) {
+  it(`shared fan-out (${mode}): every envelope equals the JavaScript encoding and every client receives only bytes built for it`, async () => {
+    const r = await scenario(mode);
+    if (r.status.path !== "native") return; // addon not built here
+    assert.ok(r.ticks.native > 20);
+    assert.ok(r.checked.envelopes > 50);
+    assert.deepEqual(r.checked.mismatches, []);
+    assert.ok(r.namesLookup.same && r.namesLookup.rows >= 3, "namesFor by index equals the scan");
+    if (mode !== "default") assert.ok(r.shared.groups < r.shared.sessions, `${r.shared.groups} groups for ${r.shared.sessions} session-ticks: some envelopes were shared`);
+    const users: Record<string, string> = { a: "alice", b: "user-a", c: "user-b", d: "user-c", e: "zombie" };
+    for (const [k, v] of r.streams) {
+      if (!k.endsWith(`:${MessageType.DeltaSet}`)) continue;
+      const want = r.checked.expected.get(users[k[0]])!;
+      assert.ok(v.length >= 3, `stream ${k} has ${v.length} DeltaSets`);
+      const missing = v.map((h, i) => (want.has(h) ? -1 : i)).filter((i) => i >= 0);
+      assert.deepEqual(missing, [], `stream ${k}: DeltaSets at ${missing} were not built for that session (of ${v.length})`);
+    }
+    if (mode === "publish") assert.ok(r.shared.publishes > 0, "publish was used");
+    else assert.equal(r.shared.publishes, 0);
+  });
+}

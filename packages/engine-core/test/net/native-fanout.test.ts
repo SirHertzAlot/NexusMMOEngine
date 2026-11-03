@@ -25,7 +25,7 @@ const skip = addon ? false : "fanout addon not built";
 const fakeSession = (i: number, interestSet: Set<string>, player: bigint | null, pinned: bigint[]): ClientSession =>
   ({ clientId: `c${i}`, interestSet, playerEntity: player, pinnedOut: new Set(pinned) }) as unknown as ClientSession;
 
-it("matches the JavaScript envelope bytes and names, across ticks", { skip }, () => {
+for (const share of ["off", "assembly"] as const) it(`matches the JavaScript envelope bytes and names, across ticks (share ${share})`, { skip }, () => {
   const sim = new SimWorld();
   for (let i = 0; i < 300; i++) {
     const eid = sim.spawn();
@@ -38,7 +38,7 @@ it("matches the JavaScript envelope bytes and names, across ticks", { skip }, ()
   }
   const index = new SectorIndex();
   const tracker = new DeltaTracker();
-  const nf = new NativeFanout(new addon.Fanout());
+  const nf = new NativeFanout(new addon.Fanout(), share);
   const told = new Map<string, Set<bigint>>(); // the JavaScript rule: a name goes out once per session
 
   for (let tick = 1; tick <= 6; tick++) {
@@ -107,4 +107,53 @@ it("a released session is told its names again", { skip }, () => {
   assert.equal(tickOnce(2), null);
   nf.sweep(new Map()); // the session is no longer live
   assert.deepEqual(tickOnce(3), [5n, 11n]);
+});
+
+it("a reused entity slot has a new wire id, so its name is sent again", { skip }, () => {
+  const sim = new SimWorld();
+  const a = sim.spawn();
+  const wireA = sim.wireId(a);
+  sim.despawn(a);
+  sim.beginTick(1);
+  sim.endTick();
+  const b = sim.spawn();
+  assert.equal(b, a, "the slot is reused");
+  const wireB = sim.wireId(b);
+  assert.notEqual(wireB, wireA, "the generation moved on");
+
+  const nf = new NativeFanout(new addon.Fanout());
+  const s = fakeSession(0, new Set(["0,0"]), null, []);
+  const entries: DeltaSetEntry[] = [{ kind: DeltaSetKind.Leave, sector: "0,0", bytes: new Uint8Array(0) }];
+  const tickOnce = (tick: number, ids: bigint[]): bigint[] | null => {
+    nf.begin(tick, new Map([["0,0", ids]]));
+    nf.add(s, false, entries);
+    return nf.run()[0].want;
+  };
+  assert.deepEqual(tickOnce(1, [wireA]), [wireA]);
+  assert.equal(tickOnce(2, [wireA]), null, "same entity: not named twice");
+  assert.deepEqual(tickOnce(3, [wireB]), [wireB], "new occupant of the slot: named");
+  assert.equal(tickOnce(4, [wireB]), null);
+});
+
+it("sessions with identical entry lists share one assembled envelope; a different list or replace flag does not", { skip }, () => {
+  const nf = new NativeFanout(new addon.Fanout(), "assembly");
+  const payload = new Uint8Array([1, 2, 3, 4]);
+  const other = new Uint8Array([9, 9]);
+  const mk = (kind: number, sector: string, bytes: Uint8Array): DeltaSetEntry => ({ kind, sector, bytes }) as DeltaSetEntry;
+  const same = [mk(DeltaSetKind.Delta, "0,0", payload), mk(DeltaSetKind.Leave, "9,9", new Uint8Array(0))];
+  const diffPayload = [mk(DeltaSetKind.Delta, "0,0", other), mk(DeltaSetKind.Leave, "9,9", new Uint8Array(0))];
+  const diffSector = [mk(DeltaSetKind.Delta, "1,0", payload), mk(DeltaSetKind.Leave, "9,9", new Uint8Array(0))];
+  nf.begin(7, null);
+  const plan: Array<[boolean, DeltaSetEntry[]]> = [[false, same], [false, same], [false, diffPayload], [false, diffSector], [true, same], [false, same]];
+  plan.forEach(([replace, entries], i) => nf.add(fakeSession(i, new Set(), null, []), replace, entries));
+  const res = nf.run();
+  assert.equal(nf.count.groups, 4, "4 distinct (replace, entries) among 6 sessions");
+  assert.equal(res[0].group, res[1].group);
+  assert.equal(res[0].group, res[5].group);
+  assert.notEqual(res[0].group, res[4].group, "replace flag separates groups");
+  plan.forEach(([replace, entries], i) => {
+    const want = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick: 7, replace, entries }));
+    assert.deepEqual(Buffer.from(res[i].env), Buffer.from(want), `session ${i}`);
+  });
+  assert.ok(nf.count.assembledBytes < nf.count.envelopeBytes, "fewer bytes assembled than delivered");
 });
