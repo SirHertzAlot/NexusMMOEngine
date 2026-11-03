@@ -2120,7 +2120,7 @@ export class Gateway {
     return r.ok;
   }
 
-  /** Native fan-out (MMO_NATIVE_FANOUT=1), or null for the JavaScript path. */
+  /** Native fan-out (on by default; MMO_NATIVE_FANOUT=0 disables), or null for the JavaScript path. */
   private readonly fanout: NativeFanout | null = loadNativeFanout();
 
   /** Fan one tick's state out to every connected session (broadcast). */
