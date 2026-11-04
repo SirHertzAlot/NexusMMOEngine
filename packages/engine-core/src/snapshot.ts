@@ -357,6 +357,11 @@ const TRACKED: TrackedComponent[] = [
 
 export interface DiffResult {
   transforms: number[];
+  /**
+   * The subset of `transforms` whose only change since the last commit is the position (rotation and scale
+   * equal their baselines, and the entity is not newly spawned). Empty when MMO_POSITION_ROWS=0.
+   */
+  positionOnly: Set<number>;
   velocities: number[];
   intents: number[];
   chunks: number[];
@@ -384,6 +389,8 @@ export interface DiffResult {
  * at 10k entities — the whole tick budget.)
  */
 export class DeltaTracker {
+  /** MMO_POSITION_ROWS=0 turns position-only classification off (every changed transform is a full row). */
+  private readonly positionRows = process.env.MMO_POSITION_ROWS !== "0";
   private readonly prev: Float64Array[][] = TRACKED.map((t) =>
     t.fields.map(() => new Float64Array(0)),
   );
@@ -408,7 +415,7 @@ export class DeltaTracker {
   diff(sim: SimWorld, spawnedSlots: Set<number>): DiffResult {
     const bound = sim.maxSlotSeen + 1;
     const out: DiffResult = {
-      transforms: [], velocities: [], intents: [], chunks: [], healths: [],
+      transforms: [], positionOnly: new Set<number>(), velocities: [], intents: [], chunks: [], healths: [],
       staminas: [],
       bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [],
     };
@@ -424,6 +431,24 @@ export class DeltaTracker {
         const eid = eids[i];
         if (spawnedSlots.size !== 0 && spawnedSlots.has(eid)) {
           changed.push(eid);
+          continue;
+        }
+        if (t.key === "transforms" && this.positionRows) {
+          // px, py, pz are the first three fields; anything else changing makes it a full row.
+          let pos = false, other = false;
+          for (let fi = 0; fi < nf; fi++) {
+            if (stores[fi][eid] !== prevs[fi][eid]) {
+              if (fi < 3) pos = true;
+              else {
+                other = true;
+                break;
+              }
+            }
+          }
+          if (pos || other) {
+            changed.push(eid);
+            if (!other) out.positionOnly.add(eid);
+          }
           continue;
         }
         for (let fi = 0; fi < nf; fi++) {
@@ -562,6 +587,8 @@ export function spawnedSlotsOf(sim: SimWorld): Set<number> {
 
 export interface SoAEidLists {
   transforms: ArrayLike<number>;
+  /** Position-only rows (Delta only): entities in the position stores whose rotation and scale the receiver keeps. */
+  positions?: ArrayLike<number>;
   velocities: ArrayLike<number>;
   intents: ArrayLike<number>;
   chunks: ArrayLike<number>;
@@ -631,6 +658,9 @@ function soaState(
       qx: T.qx, qy: T.qy, qz: T.qz, qw: T.qw,
       sx: T.sx, sy: T.sy, sz: T.sz,
     },
+    ...(eids.positions && eids.positions.length > 0
+      ? { positions: { eids: eids.positions, wireIdOf, px: T.px, py: T.py, pz: T.pz } }
+      : {}),
     velocities: {
       eids: eids.velocities, wireIdOf,
       lx: V.lx, ly: V.ly, lz: V.lz, ax: V.ax, ay: V.ay, az: V.az,

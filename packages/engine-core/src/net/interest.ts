@@ -43,15 +43,18 @@ export function farVisibleOf(sim: SimWorld): readonly number[] {
 }
 
 type Key = keyof SoAEidLists;
-const KEYS: Array<[Key, object]> = [
+const KEYS: Array<[Exclude<Key, "positions">, object]> = [
   ["transforms", C.Transform], ["velocities", C.Velocity], ["intents", C.PlayerIntent], ["chunks", C.Chunk],
   ["healths", C.Health], ["staminas", C.Stamina], ["characterRefs", C.CharacterRef], ["bodies", C.BodyConfig],
   ["assets", C.AssetRef], ["locomotions", C.Locomotion], ["appearances", C.Appearance], ["actions", C.Action],
   ["animations", C.Animation],
 ];
 
+/** The row kinds a rate-limited window merges: every tracked component plus position-only transforms. */
+const RATE_KEYS: Key[] = [...KEYS.map(([k]) => k), "positions"];
+
 const emptyLists = (): Record<Key, number[]> => ({
-  transforms: [], velocities: [], intents: [], chunks: [], healths: [], staminas: [], characterRefs: [],
+  transforms: [], positions: [], velocities: [], intents: [], chunks: [], healths: [], staminas: [], characterRefs: [],
   bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [],
 });
 
@@ -140,7 +143,7 @@ export class SectorFrame {
       const p = f.pending.get(sector);
       if (!p) continue;
       any = true;
-      for (const [k] of KEYS) {
+      for (const k of RATE_KEYS) {
         let set = seen.get(k);
         if (!set) seen.set(k, (set = new Set()));
         for (const eid of p.lists[k]) if (!set.has(eid)) { set.add(eid); lists[k].push(eid); }
@@ -151,6 +154,11 @@ export class SectorFrame {
     if (!any) {
       this.rateCache.set(sector, null);
       return undefined;
+    }
+    // A position row for an entity that also has a full transform row in the window is redundant: the full row is read at current values.
+    if (lists.positions.length > 0) {
+      const full = seen.get("transforms");
+      if (full && full.size > 0) lists.positions = lists.positions.filter((e) => !full.has(e));
     }
     const b = encodeEidsFromSim(this.sim, this.tick, this.tick - window, lists, { spawned: [...spawned], despawned: [...despawned] }, this.chunkSource);
     this.rateCache.set(sector, b);
@@ -253,10 +261,11 @@ export class SectorIndex {
     const moved = new Set<number>();
     for (const m of movedIn.values()) for (const eid of m) moved.add(eid);
     for (const [k] of KEYS) {
-      const changed = diff[k as keyof DiffResult];
+      const changed = diff[k as "transforms"];
+      const posOnly = k === "transforms" && diff.positionOnly.size > 0 ? diff.positionOnly : null;
       for (let i = 0; i < changed.length; i++) {
         const eid = changed[i];
-        if (!moved.has(eid)) listsOf(sectorOf(eid))[k].push(eid);
+        if (!moved.has(eid)) listsOf(sectorOf(eid))[posOnly?.has(eid) ? "positions" : k].push(eid);
       }
     }
     for (const [s, eids] of movedIn) {

@@ -1077,7 +1077,7 @@ export class MirrorClient {
   }
 
   private onDelta(payload: Uint8Array): void {
-    const d = decodeDelta(payload);
+    const d = this.state.expandPositions(decodeDelta(payload));
     this.state.applyDelta(d);
     this.interpolator.push(d.tick, d.transforms);
     for (const wid of d.despawned) {

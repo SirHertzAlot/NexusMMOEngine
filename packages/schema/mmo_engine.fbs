@@ -83,6 +83,8 @@ table ChunkBlock     { entities: [uint64]; items: [Chunk]; }
 table HealthBlock    { entities: [uint64]; items: [Health]; }
 table StaminaBlock   { entities: [uint64]; items: [Stamina]; }
 table AssetRefBlock  { entities: [uint64]; items: [AssetRef]; }
+// Position-only rows for an entity whose rotation and scale did not change since its baseline (Delta only).
+table PositionBlock  { entities: [uint64]; positions: [Vec3]; }
 
 // ---- top-level messages ----
 
@@ -125,6 +127,8 @@ table Delta {
   staminas: StaminaBlock;
   characterRefs: CharacterRefBlock;
   animations: AnimationBlock;
+  // Appended (v29): position-only transform updates; the rest of the Transform is the receiver's baseline.
+  positions: PositionBlock;
 }
 
 // ---- client -> server intent events (slice 1.3, additive) ----
