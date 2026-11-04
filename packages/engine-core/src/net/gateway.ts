@@ -1425,17 +1425,27 @@ export class Gateway {
       timings.recordSystem(s.name, performance.now() - t0);
     }
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage> = [
-      ...this.sendHits(sim, tick),
-      ...this.sendLife(sim, tick),
-      ...this.sendAbilities(sim, tick),
-      ...this.sendTelegraphs(sim, tick),
-      ...this.sendStatuses(sim, tick),
-      ...this.sendDuels(sim, tick),
-      ...this.sendTrades(sim, tick),
-      ...this.sendWallets(sim, tick),
-      ...this.sendAuctions(sim, tick),
-    ];
+    const hits = this.sendHits(sim, tick);
+    const life = this.sendLife(sim, tick);
+    const abilities = this.sendAbilities(sim, tick);
+    const telegraphs = this.sendTelegraphs(sim, tick);
+    const statuses = this.sendStatuses(sim, tick);
+    const duels = this.sendDuels(sim, tick);
+    const trades = this.sendTrades(sim, tick);
+    const wallets = this.sendWallets(sim, tick);
+    const auctions = this.sendAuctions(sim, tick);
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage> =
+      hits.length === 0 &&
+      life.length === 0 &&
+      abilities.length === 0 &&
+      telegraphs.length === 0 &&
+      statuses.length === 0 &&
+      duels.length === 0 &&
+      trades.length === 0 &&
+      wallets.length === 0 &&
+      auctions.length === 0
+        ? []
+        : [...hits, ...life, ...abilities, ...telegraphs, ...statuses, ...duels, ...trades, ...wallets, ...auctions];
     this.sendResources(sim);
     this.sendChests(sim);
     this.checkCasts();
@@ -2152,11 +2162,14 @@ export class Gateway {
     const bySector = frame ? this.namedBySector() : null;
     const dropped = frame && this.items ? this.droppedIndex() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
-    // interest management splits it per sector (IM3).
-    const deltaEnv = encodeEnvelope(
-      MessageType.DeltaSet,
-      encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
-    );
+    // interest management splits it per sector (IM3). Built lazily so
+    // interest-managed ticks (frame !== null) do not allocate a global DeltaSet.
+    let deltaEnv: Uint8Array | undefined;
+    const deltaEnvFor = (): Uint8Array =>
+      (deltaEnv ??= encodeEnvelope(
+        MessageType.DeltaSet,
+        encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
+      ));
     let snapshotEnv: Uint8Array | undefined;
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(
@@ -2181,23 +2194,30 @@ export class Gateway {
 
     // Native fan-out: compute every eligible session's entries first, then assemble all envelopes
     // (and pick all names) in two native calls. Per session the delivery order below is unchanged.
-    let nat: Map<ClientSession, FanoutResult & { replace: boolean }> | null = null;
+    let natSessions: ClientSession[] | null = null;
+    let natReplaces: boolean[] | null = null;
+    let natResults: FanoutResult[] | null = null;
+    let natIdx = 0;
     // uWS copies on send; the ws fallback keeps the buffer until it is flushed, so it stays on the JavaScript path.
     if (this.fanout && frame && !edge && this.transport?.kind === "uws") {
       const nf = this.fanout;
-      const order: Array<{ s: ClientSession; replace: boolean; entries: DeltaSetEntry[] }> = [];
+      const sessionsList: ClientSession[] = [];
+      const replacesList: boolean[] = [];
+      const entriesList: Array<readonly DeltaSetEntry[]> = [];
       try {
         nf.begin(tick, bySector);
         for (const s of this.sessions.values()) {
           if (!s.welcomed || !s.socket) continue;
           const replace = isSnapshotTick || s.needsResync || !s.interestSet;
           const entries = this.interestEntries(s, frame, replace);
-          order.push({ s, replace, entries });
+          sessionsList.push(s);
+          replacesList.push(replace);
+          entriesList.push(entries);
           nf.add(s, replace, entries);
         }
-        const results = nf.run();
-        nat = new Map();
-        for (let i = 0; i < order.length; i++) nat.set(order[i].s, { ...results[i], replace: order[i].replace });
+        natResults = nf.run();
+        natSessions = sessionsList;
+        natReplaces = replacesList;
         if (tick % 64 === 0) nf.sweep(this.sessions);
         this.fanoutTicks.native++;
       } catch (err) {
@@ -2205,11 +2225,14 @@ export class Gateway {
         // (interestEntries advanced each session's interest set, so it must not run twice), then stay on JS.
         this.fanout = null;
         this.fanoutStatus = { path: "js", reason: `native call failed: ${(err as Error).message}` };
-        nat = new Map();
-        for (const o of order) {
-          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace: o.replace, entries: o.entries }));
-          nat.set(o.s, { env, want: null, jsNames: true, replace: o.replace });
+        const fallbackResults: FanoutResult[] = new Array(sessionsList.length);
+        for (let i = 0; i < sessionsList.length; i++) {
+          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace: replacesList[i], entries: entriesList[i] as DeltaSetEntry[] }));
+          fallbackResults[i] = { env, want: null, jsNames: true };
         }
+        natResults = fallbackResults;
+        natSessions = sessionsList;
+        natReplaces = replacesList;
         this.fanoutTicks.js++;
       }
     } else if (frame) this.fanoutTicks.js++;
@@ -2220,8 +2243,14 @@ export class Gateway {
       if (namesEnv && !frame) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (frame) {
-        const pre = nat?.get(s);
-        const replace = pre ? pre.replace : isSnapshotTick || s.needsResync || !s.interestSet;
+        let pre: FanoutResult | undefined;
+        let preReplace = false;
+        if (natSessions !== null && natIdx < natSessions.length && natSessions[natIdx] === s) {
+          pre = natResults![natIdx];
+          preReplace = natReplaces![natIdx];
+          natIdx++;
+        }
+        const replace = pre ? preReplace : isSnapshotTick || s.needsResync || !s.interestSet;
         const entries = pre ? null : this.interestEntries(s, frame, replace);
         if (pre) {
           if (pre.jsNames) {
@@ -2288,10 +2317,10 @@ export class Gateway {
           else publishSectors.set(s.sectorTopic, [s]);
         } else {
           // No sector (no player entity yet): per-socket, as before.
-          this.deliver(s, deltaEnv, tick);
+          this.deliver(s, deltaEnvFor(), tick);
         }
       } else {
-        this.deliver(s, deltaEnv, tick);
+        this.deliver(s, deltaEnvFor(), tick);
       }
       this.sendStats(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
@@ -2315,7 +2344,7 @@ export class Gateway {
     // (names/drops above) already flushed each member's queue through
     // deliver(), so the published delta cannot overtake them.
     for (const [topic, members] of publishSectors) {
-      this.transport!.publish(topic, deltaEnv);
+      this.transport!.publish(topic, deltaEnvFor());
       for (const s of members) s.lastAckedTick = BigInt(tick);
     }
   }

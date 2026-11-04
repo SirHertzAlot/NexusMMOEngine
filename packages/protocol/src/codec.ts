@@ -1049,44 +1049,78 @@ export interface CollectedStateSoA {
   despawned: ArrayLike<bigint>;
 }
 
+const u64Scratch = new ArrayBuffer(8);
+const u64View = new DataView(u64Scratch);
+let offsetScratch = new Int32Array(4096);
+
+function ensureOffsetScratch(n: number): Int32Array {
+  if (n > offsetScratch.length) {
+    let cap = offsetScratch.length;
+    while (cap < n) cap *= 2;
+    offsetScratch = new Int32Array(cap);
+  }
+  return offsetScratch;
+}
+
+function writeOffsetVector(b: flatbuffers.Builder, buf: Int32Array, n: number): number {
+  b.startVector(4, n, 4);
+  for (let i = n - 1; i >= 0; i--) b.addOffset(buf[i]);
+  return b.endVector();
+}
+
+function resetBuilder(b: flatbuffers.Builder): void {
+  const raw = b as unknown as { vtable: number[] | null; vtables: number[] };
+  const vtable = raw.vtable;
+  const vtables = raw.vtables;
+  b.clear();
+  if (vtable !== null) raw.vtable = vtable;
+  vtables.length = 0;
+  raw.vtables = vtables;
+}
+
 /**
  * Write a u64 id vector from an ArrayLike without materializing a
- * bigint[] first. `start` is the generated `start*Vector` for the
- * field; elements are written in reverse, mirroring the generated
- * `create*Vector` helpers.
+ * bigint[] first. Elements are written in reverse, mirroring the generated
+ * `create*Vector` helpers, using a scratch DataView to avoid per-element BigInt allocations.
  */
 function buildU64Vector(
   b: flatbuffers.Builder,
   ids: ArrayLike<bigint>,
-  start: (b: flatbuffers.Builder, n: number) => void,
 ): number {
   const n = ids.length;
-  start(b, n);
-  for (let i = n - 1; i >= 0; i--) b.writeInt64(ids[i]);
+  b.startVector(8, n, 8);
+  for (let i = n - 1; i >= 0; i--) {
+    u64View.setBigUint64(0, ids[i], true);
+    b.writeInt32(u64View.getInt32(4, true));
+    b.writeInt32(u64View.getInt32(0, true));
+  }
   return b.endVector();
 }
 
 /**
  * Write the entities vector for one SoA block: wire ids resolved on
  * the fly, in reverse, mirroring the generated `createEntitiesVector`.
- * No intermediate bigint[] gather.
+ * No intermediate bigint[] gather or per-element BigInt allocation.
  */
 function buildEntitiesVectorSoA(
   b: flatbuffers.Builder,
   src: SoAColumns,
-  start: (b: flatbuffers.Builder, n: number) => void,
 ): number {
   const eids = src.eids;
   const n = eids.length;
   const wireIdOf = src.wireIdOf;
-  start(b, n);
-  for (let i = n - 1; i >= 0; i--) b.writeInt64(wireIdOf(eids[i]));
+  b.startVector(8, n, 8);
+  for (let i = n - 1; i >= 0; i--) {
+    u64View.setBigUint64(0, wireIdOf(eids[i]), true);
+    b.writeInt32(u64View.getInt32(4, true));
+    b.writeInt32(u64View.getInt32(0, true));
+  }
   return b.endVector();
 }
 
 function buildTransformBlockSoA(b: flatbuffers.Builder, src: TransformSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     Transform.startTransform(b);
@@ -1095,8 +1129,8 @@ function buildTransformBlockSoA(b: flatbuffers.Builder, src: TransformSoA): numb
     Transform.addScale(b, Vec3.createVec3(b, src.sx[e], src.sy[e], src.sz[e]));
     items[i] = Transform.endTransform(b);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => TransformBlock.startEntitiesVector(bb, k));
-  const vec = TransformBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   TransformBlock.startTransformBlock(b);
   TransformBlock.addEntities(b, entities);
   TransformBlock.addItems(b, vec);
@@ -1117,7 +1151,7 @@ function buildPositionBlockSoA(b: flatbuffers.Builder, src: PositionSoA): number
     b.writeFloat32(px[e]);
   }
   const vec = b.endVector();
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => PositionBlock.startEntitiesVector(bb, k));
+  const entities = buildEntitiesVectorSoA(b, src);
   PositionBlock.startPositionBlock(b);
   PositionBlock.addEntities(b, entities);
   PositionBlock.addPositions(b, vec);
@@ -1126,7 +1160,7 @@ function buildPositionBlockSoA(b: flatbuffers.Builder, src: PositionSoA): number
 
 function buildVelocityBlockSoA(b: flatbuffers.Builder, src: VelocitySoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     Velocity.startVelocity(b);
@@ -1134,8 +1168,8 @@ function buildVelocityBlockSoA(b: flatbuffers.Builder, src: VelocitySoA): number
     Velocity.addAngular(b, Vec3.createVec3(b, src.ax[e], src.ay[e], src.az[e]));
     items[i] = Velocity.endVelocity(b);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => VelocityBlock.startEntitiesVector(bb, k));
-  const vec = VelocityBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   VelocityBlock.startVelocityBlock(b);
   VelocityBlock.addEntities(b, entities);
   VelocityBlock.addItems(b, vec);
@@ -1144,7 +1178,7 @@ function buildVelocityBlockSoA(b: flatbuffers.Builder, src: VelocitySoA): number
 
 function buildIntentBlockSoA(b: flatbuffers.Builder, src: IntentSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = PlayerIntent.createPlayerIntent(
@@ -1153,8 +1187,8 @@ function buildIntentBlockSoA(b: flatbuffers.Builder, src: IntentSoA): number {
       src.lookYaw[e], src.lookPitch[e], src.jump[e] !== 0, src.buttons[e],
     );
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => IntentBlock.startEntitiesVector(bb, k));
-  const vec = IntentBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   IntentBlock.startIntentBlock(b);
   IntentBlock.addEntities(b, entities);
   IntentBlock.addItems(b, vec);
@@ -1163,7 +1197,7 @@ function buildIntentBlockSoA(b: flatbuffers.Builder, src: IntentSoA): number {
 
 function buildChunkBlockSoA(b: flatbuffers.Builder, src: ChunkSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     // The schema carries chunk_id/seed as full uint64 (bigint); the
@@ -1178,8 +1212,8 @@ function buildChunkBlockSoA(b: flatbuffers.Builder, src: ChunkSoA): number {
       heights != null ? Chunk.createHeightsVector(b, heights) : 0;
     items[i] = Chunk.createChunk(b, chunkId, seed, src.lod[e], heightsOff);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => ChunkBlock.startEntitiesVector(bb, k));
-  const vec = ChunkBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   ChunkBlock.startChunkBlock(b);
   ChunkBlock.addEntities(b, entities);
   ChunkBlock.addItems(b, vec);
@@ -1188,13 +1222,13 @@ function buildChunkBlockSoA(b: flatbuffers.Builder, src: ChunkSoA): number {
 
 function buildHealthBlockSoA(b: flatbuffers.Builder, src: HealthSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = Health.createHealth(b, src.current[e], src.max[e]);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => HealthBlock.startEntitiesVector(bb, k));
-  const vec = HealthBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   HealthBlock.startHealthBlock(b);
   HealthBlock.addEntities(b, entities);
   HealthBlock.addItems(b, vec);
@@ -1203,13 +1237,13 @@ function buildHealthBlockSoA(b: flatbuffers.Builder, src: HealthSoA): number {
 
 function buildStaminaBlockSoA(b: flatbuffers.Builder, src: StaminaSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = Stamina.createStamina(b, src.current[e], src.max[e]);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => StaminaBlock.startEntitiesVector(bb, k));
-  const vec = StaminaBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   StaminaBlock.startStaminaBlock(b);
   StaminaBlock.addEntities(b, entities);
   StaminaBlock.addItems(b, vec);
@@ -1218,7 +1252,7 @@ function buildStaminaBlockSoA(b: flatbuffers.Builder, src: StaminaSoA): number {
 
 function buildCharacterRefBlockSoA(b: flatbuffers.Builder, src: CharacterRefSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     // Mirror the row path's double round-trip (see ChunkSoA): the row
@@ -1226,8 +1260,8 @@ function buildCharacterRefBlockSoA(b: flatbuffers.Builder, src: CharacterRefSoA)
     const characterId = src.idHi[e] * 4294967296 + src.idLo[e];
     items[i] = CharacterRef.createCharacterRef(b, Math.floor(characterId / 4294967296), characterId % 4294967296);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => CharacterRefBlock.startEntitiesVector(bb, k));
-  const vec = CharacterRefBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   CharacterRefBlock.startCharacterRefBlock(b);
   CharacterRefBlock.addEntities(b, entities);
   CharacterRefBlock.addItems(b, vec);
@@ -1236,7 +1270,7 @@ function buildCharacterRefBlockSoA(b: flatbuffers.Builder, src: CharacterRefSoA)
 
 function buildBodyBlockSoA(b: flatbuffers.Builder, src: BodySoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     BodyConfig.startBodyConfig(b);
@@ -1250,8 +1284,8 @@ function buildBodyBlockSoA(b: flatbuffers.Builder, src: BodySoA): number {
     BodyConfig.addRestitution(b, src.restitution[e]);
     items[i] = BodyConfig.endBodyConfig(b);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => BodyConfigBlock.startEntitiesVector(bb, k));
-  const vec = BodyConfigBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   BodyConfigBlock.startBodyConfigBlock(b);
   BodyConfigBlock.addEntities(b, entities);
   BodyConfigBlock.addItems(b, vec);
@@ -1260,13 +1294,13 @@ function buildBodyBlockSoA(b: flatbuffers.Builder, src: BodySoA): number {
 
 function buildAssetRefBlockSoA(b: flatbuffers.Builder, src: AssetSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = AssetRef.createAssetRef(b, src.assetHash[e], src.variant[e]);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => AssetRefBlock.startEntitiesVector(bb, k));
-  const vec = AssetRefBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   AssetRefBlock.startAssetRefBlock(b);
   AssetRefBlock.addEntities(b, entities);
   AssetRefBlock.addItems(b, vec);
@@ -1275,13 +1309,13 @@ function buildAssetRefBlockSoA(b: flatbuffers.Builder, src: AssetSoA): number {
 
 function buildLocomotionBlockSoA(b: flatbuffers.Builder, src: LocomotionSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = Locomotion.createLocomotion(b, src.mode[e], src.abilities[e], src.breath[e]);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => LocomotionBlock.startEntitiesVector(bb, k));
-  const vec = LocomotionBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   LocomotionBlock.startLocomotionBlock(b);
   LocomotionBlock.addEntities(b, entities);
   LocomotionBlock.addItems(b, vec);
@@ -1290,12 +1324,12 @@ function buildLocomotionBlockSoA(b: flatbuffers.Builder, src: LocomotionSoA): nu
 
 function buildAppearanceBlockSoA(b: flatbuffers.Builder, src: AppearanceSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     items[i] = Appearance.createAppearance(b, b.createString(src.lookOf(src.eids[i])));
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => AppearanceBlock.startEntitiesVector(bb, k));
-  const vec = AppearanceBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   AppearanceBlock.startAppearanceBlock(b);
   AppearanceBlock.addEntities(b, entities);
   AppearanceBlock.addItems(b, vec);
@@ -1304,13 +1338,13 @@ function buildAppearanceBlockSoA(b: flatbuffers.Builder, src: AppearanceSoA): nu
 
 function buildActionBlockSoA(b: flatbuffers.Builder, src: ActionSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = Action.createAction(b, src.move[e], src.started[e], src.seq[e], src.yaw[e]);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => ActionBlock.startEntitiesVector(bb, k));
-  const vec = ActionBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   ActionBlock.startActionBlock(b);
   ActionBlock.addEntities(b, entities);
   ActionBlock.addItems(b, vec);
@@ -1319,13 +1353,13 @@ function buildActionBlockSoA(b: flatbuffers.Builder, src: ActionSoA): number {
 
 function buildAnimationBlockSoA(b: flatbuffers.Builder, src: AnimationSoA): number {
   const n = src.eids.length;
-  const items: number[] = new Array(n);
+  const items = ensureOffsetScratch(n);
   for (let i = n - 1; i >= 0; i--) {
     const e = src.eids[i];
     items[i] = Animation.createAnimation(b, src.clipId[e], src.startTick[e], src.rate[e], src.layerMask[e]);
   }
-  const entities = buildEntitiesVectorSoA(b, src, (bb, k) => AnimationBlock.startEntitiesVector(bb, k));
-  const vec = AnimationBlock.createItemsVector(b, items);
+  const entities = buildEntitiesVectorSoA(b, src);
+  const vec = writeOffsetVector(b, items, n);
   AnimationBlock.startAnimationBlock(b);
   AnimationBlock.addEntities(b, entities);
   AnimationBlock.addItems(b, vec);
@@ -1345,7 +1379,7 @@ export function encodeSnapshotSoA(
   builder?: flatbuffers.Builder,
 ): Uint8Array {
   const b = builder ?? new flatbuffers.Builder(4096);
-  if (builder) builder.clear();
+  if (builder) resetBuilder(builder);
   const t = buildTransformBlockSoA(b, s.transforms);
   const v = buildVelocityBlockSoA(b, s.velocities);
   const pi = buildIntentBlockSoA(b, s.intents);
@@ -1359,8 +1393,8 @@ export function encodeSnapshotSoA(
   const st = buildStaminaBlockSoA(b, s.staminas);
   const cr = buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = buildAnimationBlockSoA(b, s.animations);
-  const spawned = buildU64Vector(b, s.spawned, (bb, k) => Snapshot.startSpawnedVector(bb, k));
-  const despawned = buildU64Vector(b, s.despawned, (bb, k) => Snapshot.startDespawnedVector(bb, k));
+  const spawned = buildU64Vector(b, s.spawned);
+  const despawned = buildU64Vector(b, s.despawned);
   Snapshot.startSnapshot(b);
   Snapshot.addTick(b, BigInt(s.tick));
   Snapshot.addTransforms(b, t);
@@ -1389,7 +1423,7 @@ export function encodeSnapshotSoA(
  */
 export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Builder, sparse = false): Uint8Array {
   const b = builder ?? new flatbuffers.Builder(1024);
-  if (builder) builder.clear();
+  if (builder) resetBuilder(builder);
   const t = sparse && s.transforms.eids.length === 0 ? 0 : buildTransformBlockSoA(b, s.transforms);
   const v = sparse && s.velocities.eids.length === 0 ? 0 : buildVelocityBlockSoA(b, s.velocities);
   const pi = sparse && s.intents.eids.length === 0 ? 0 : buildIntentBlockSoA(b, s.intents);
@@ -1404,8 +1438,8 @@ export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Build
   const cr = sparse && s.characterRefs.eids.length === 0 ? 0 : buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = sparse && s.animations.eids.length === 0 ? 0 : buildAnimationBlockSoA(b, s.animations);
   const po = s.positions && s.positions.eids.length > 0 ? buildPositionBlockSoA(b, s.positions) : 0;
-  const spawned = buildU64Vector(b, s.spawned, (bb, k) => Delta.startSpawnedVector(bb, k));
-  const despawned = buildU64Vector(b, s.despawned, (bb, k) => Delta.startDespawnedVector(bb, k));
+  const spawned = buildU64Vector(b, s.spawned);
+  const despawned = buildU64Vector(b, s.despawned);
   Delta.startDelta(b);
   Delta.addTick(b, BigInt(s.tick));
   Delta.addBaseTick(b, BigInt(s.baseTick));

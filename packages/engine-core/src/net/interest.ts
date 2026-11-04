@@ -53,10 +53,39 @@ const KEYS: Array<[Exclude<Key, "positions">, object]> = [
 /** The row kinds a rate-limited window merges: every tracked component plus position-only transforms. */
 const RATE_KEYS: Key[] = [...KEYS.map(([k]) => k), "positions"];
 
+const EMPTY_EIDS: readonly number[] = Object.freeze([]);
+const EMPTY_BIGINT_LIST: readonly bigint[] = Object.freeze([]);
+
 const emptyLists = (): Record<Key, number[]> => ({
   transforms: [], positions: [], velocities: [], intents: [], chunks: [], healths: [], staminas: [], characterRefs: [],
   bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [],
 });
+
+const emptyLazyLists = (): Record<Key, number[]> => ({
+  transforms: EMPTY_EIDS as number[],
+  positions: EMPTY_EIDS as number[],
+  velocities: EMPTY_EIDS as number[],
+  intents: EMPTY_EIDS as number[],
+  chunks: EMPTY_EIDS as number[],
+  healths: EMPTY_EIDS as number[],
+  staminas: EMPTY_EIDS as number[],
+  characterRefs: EMPTY_EIDS as number[],
+  bodies: EMPTY_EIDS as number[],
+  assets: EMPTY_EIDS as number[],
+  locomotions: EMPTY_EIDS as number[],
+  appearances: EMPTY_EIDS as number[],
+  actions: EMPTY_EIDS as number[],
+  animations: EMPTY_EIDS as number[],
+});
+
+const pushEid = (l: Record<Key, number[]>, k: Key, eid: number): void => {
+  const arr = l[k];
+  if (arr === EMPTY_EIDS) {
+    l[k] = [eid];
+  } else {
+    arr.push(eid);
+  }
+};
 
 const SECTOR_GRID_OFFSET = 512;
 const SECTOR_GRID_STRIDE = 1024;
@@ -382,17 +411,20 @@ export class SectorFrame {
 function bucketAll(sim: SimWorld): Map<string, Record<Key, number[]>> {
   const out = new Map<string, Record<Key, number[]>>();
   const bound = sim.maxSlotSeen + 1;
-  const memo = new Array<string | undefined>(bound);
+  const memo = new Array<Record<Key, number[]> | undefined>(bound);
   const full = fullEidLists(sim);
   for (const [k] of KEYS) {
     const eids = full[k];
     for (let i = 0; i < eids.length; i++) {
       const eid = eids[i];
-      let s = memo[eid];
-      if (s === undefined) memo[eid] = s = homeSector(sim, eid);
-      let l = out.get(s);
-      if (!l) out.set(s, (l = emptyLists()));
-      l[k].push(eid);
+      let l = memo[eid];
+      if (l === undefined) {
+        const s = homeSector(sim, eid);
+        l = out.get(s);
+        if (!l) out.set(s, (l = emptyLazyLists()));
+        memo[eid] = l;
+      }
+      pushEid(l, k, eid);
     }
   }
   return out;
@@ -408,6 +440,7 @@ export class SectorIndex {
   private homeSlotSec: Array<string | undefined> = new Array(1024);
   private memoTag = new Uint32Array(1024);
   private memoVal: Array<string | undefined> = new Array(1024);
+  private memoBucket: Array<Record<Key, number[]> | undefined> = new Array(1024);
   private movedTag = new Uint32Array(1024);
   private frameSeq = 0;
   private recent: SectorFrame[] = [];
@@ -422,6 +455,7 @@ export class SectorIndex {
       this.homeSlotSec.length = n;
       this.memoTag = new Uint32Array(n);
       this.memoVal.length = n;
+      this.memoBucket.length = n;
       this.movedTag = new Uint32Array(n);
     }
   }
@@ -468,19 +502,37 @@ export class SectorIndex {
     this.frameSeq = seq;
     const memoTag = this.memoTag;
     const memoVal = this.memoVal;
+    const memoBucket = this.memoBucket;
     const movedTag = this.movedTag;
+    const lists = new Map<string, Record<Key, number[]>>();
+    const listsOf = (s: string): Record<Key, number[]> => {
+      let l = lists.get(s);
+      if (!l) lists.set(s, (l = emptyLazyLists()));
+      return l;
+    };
     const sectorOf = (eid: number): string => {
       if (memoTag[eid] === seq) return memoVal[eid]!;
       const s = homeSector(sim, eid);
       memoTag[eid] = seq;
       memoVal[eid] = s;
+      memoBucket[eid] = undefined;
       return s;
     };
-    const lists = new Map<string, Record<Key, number[]>>();
-    const listsOf = (s: string): Record<Key, number[]> => {
-      let l = lists.get(s);
-      if (!l) lists.set(s, (l = emptyLists()));
-      return l;
+    const bucketOf = (eid: number): Record<Key, number[]> => {
+      if (memoTag[eid] === seq) {
+        let b = memoBucket[eid];
+        if (b === undefined) {
+          b = listsOf(memoVal[eid]!);
+          memoBucket[eid] = b;
+        }
+        return b;
+      }
+      const s = homeSector(sim, eid);
+      memoTag[eid] = seq;
+      memoVal[eid] = s;
+      const b = listsOf(s);
+      memoBucket[eid] = b;
+      return b;
     };
     const outOf = new Map<string, bigint[]>();
     const movedIn = new Map<string, number[]>();
@@ -505,7 +557,8 @@ export class SectorIndex {
       movedTag[eid] = seq;
       anyMoved = true;
     }
-    const despawned = [...sim.despawnedWireIds()];
+    const rawDespawned = sim.despawnedWireIds();
+    const despawned = rawDespawned.length === 0 ? (EMPTY_BIGINT_LIST as bigint[]) : [...rawDespawned];
     for (let i = 0; i < despawned.length; i++) {
       const wid = despawned[i];
       const slot = Number(wid & 0xffffffffn);
@@ -524,15 +577,15 @@ export class SectorIndex {
         for (let i = 0; i < changed.length; i++) {
           const eid = changed[i];
           if (anyMoved && movedTag[eid] === seq) continue;
-          const l = listsOf(sectorOf(eid));
-          if (tracker.isPositionOnly(eid)) l.positions.push(eid);
-          else l.transforms.push(eid);
+          const l = bucketOf(eid);
+          if (tracker.isPositionOnly(eid)) pushEid(l, "positions", eid);
+          else pushEid(l, "transforms", eid);
         }
       } else {
         for (let i = 0; i < changed.length; i++) {
           const eid = changed[i];
           if (anyMoved && movedTag[eid] === seq) continue;
-          listsOf(sectorOf(eid))[k].push(eid);
+          pushEid(bucketOf(eid), k, eid);
         }
       }
     }
@@ -543,18 +596,36 @@ export class SectorIndex {
           const eid = eids[i];
           for (let ki = 0; ki < KEYS.length; ki++) {
             const [k, comp] = KEYS[ki];
-            if (hasComponent(sim.ecs, comp, eid)) l[k].push(eid);
+            if (hasComponent(sim.ecs, comp, eid)) pushEid(l, k, eid);
           }
         }
       }
     }
-    const spawnedWids = [...sim.spawnedWireIds()];
-    for (const s of new Set<string>([...lists.keys(), ...outOf.keys(), GLOBAL_SECTOR])) {
+    const rawSpawned = sim.spawnedWireIds();
+    const spawnedWids = rawSpawned.length === 0 ? (EMPTY_BIGINT_LIST as bigint[]) : [...rawSpawned];
+    const emptyLazy = emptyLazyLists();
+    for (const [s, l] of lists) {
       const g = s === GLOBAL_SECTOR;
       f.pending.set(s, {
-        lists: lists.get(s) ?? emptyLists(),
-        spawned: g ? spawnedWids : [],
-        despawned: g ? despawned : (outOf.get(s) ?? []),
+        lists: l,
+        spawned: g ? spawnedWids : (EMPTY_BIGINT_LIST as bigint[]),
+        despawned: g ? despawned : (outOf.get(s) ?? (EMPTY_BIGINT_LIST as bigint[])),
+      });
+    }
+    for (const [s, out] of outOf) {
+      if (lists.has(s)) continue;
+      const g = s === GLOBAL_SECTOR;
+      f.pending.set(s, {
+        lists: emptyLazy,
+        spawned: g ? spawnedWids : (EMPTY_BIGINT_LIST as bigint[]),
+        despawned: g ? despawned : out,
+      });
+    }
+    if (!f.pending.has(GLOBAL_SECTOR)) {
+      f.pending.set(GLOBAL_SECTOR, {
+        lists: emptyLazy,
+        spawned: spawnedWids,
+        despawned,
       });
     }
     return f;

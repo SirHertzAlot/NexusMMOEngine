@@ -621,11 +621,17 @@ export type {
 // hot path (per-tick deltas, welcome snapshots) uses these SoA
 // entry points.
 
+const EMPTY_SPAWNED_SLOTS = new Set<number>();
+
 /** Slots spawned this tick, for the tracker's spawned fast path. */
 export function spawnedSlotsOf(sim: SimWorld): Set<number> {
-  return new Set(
-    [...sim.spawnedWireIds()].map((w) => parseWireEntityId(w).slot),
-  );
+  const wids = sim.spawnedWireIds();
+  if (wids.length === 0) return EMPTY_SPAWNED_SLOTS;
+  const out = new Set<number>();
+  for (let i = 0; i < wids.length; i++) {
+    out.add(Number(wids[i] & 0xffffffffn));
+  }
+  return out;
 }
 
 export interface SoAEidLists {
@@ -850,6 +856,100 @@ export function encodeFastDeltaFromSim(
   );
 }
 
+const EMPTY_POSITIONS_EIDS: readonly number[] = Object.freeze([]);
+const EMPTY_WIRE_IDS: readonly bigint[] = Object.freeze([]);
+
+interface ReusableSoAContext {
+  state: CollectedStateSoA & { positions: NonNullable<CollectedStateSoA["positions"]> };
+  lastChunkSource: ChunkDataSource | null;
+}
+
+const reusableSoAByWorld = new WeakMap<SimWorld, ReusableSoAContext>();
+
+function getReusableSoA(sim: SimWorld): ReusableSoAContext {
+  let ctx = reusableSoAByWorld.get(sim);
+  if (!ctx) {
+    const wireIdOf = (eid: number): bigint => sim.wireId(eid);
+    const lookOf = (eid: number): string => sim.lookJson(C.Appearance.look[eid]);
+    const T = C.Transform;
+    const V = C.Velocity;
+    const I = C.PlayerIntent;
+    const K = C.Chunk;
+    const H = C.Health;
+    const S = C.Stamina;
+    const R = C.CharacterRef;
+    const B = C.BodyConfig;
+    const A = C.AssetRef;
+    const L = C.Locomotion;
+    const AC = C.Action;
+    const AN = C.Animation;
+    ctx = {
+      lastChunkSource: null,
+      state: {
+        tick: 0,
+        baseTick: 0,
+        transforms: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          px: T.px, py: T.py, pz: T.pz,
+          qx: T.qx, qy: T.qy, qz: T.qz, qw: T.qw,
+          sx: T.sx, sy: T.sy, sz: T.sz,
+        },
+        positions: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          px: T.px, py: T.py, pz: T.pz,
+        },
+        velocities: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          lx: V.lx, ly: V.ly, lz: V.lz, ax: V.ax, ay: V.ay, az: V.az,
+        },
+        intents: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          mx: I.mx, my: I.my, mz: I.my,
+          lookYaw: I.lookYaw, lookPitch: I.lookPitch,
+          jump: I.jump, buttons: I.buttons,
+        },
+        chunks: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          chunkIdHi: K.chunkIdHi, chunkIdLo: K.chunkIdLo,
+          seedHi: K.seedHi, seedLo: K.seedLo, lod: K.lod,
+        },
+        healths: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, current: H.current, max: H.max },
+        staminas: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, current: S.current, max: S.max },
+        characterRefs: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, idHi: R.idHi, idLo: R.idLo },
+        bodies: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          shapeKind: B.shapeKind,
+          halfX: B.halfX, halfY: B.halfY, halfZ: B.halfZ,
+          radius: B.radius, mass: B.mass, motionType: B.motionType,
+          layer: B.layer, friction: B.friction, restitution: B.restitution,
+        },
+        assets: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, assetHash: A.assetHash, variant: A.variant },
+        locomotions: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          mode: L.mode, abilities: L.abilities, breath: L.breath,
+        },
+        appearances: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          lookOf,
+        },
+        actions: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          move: AC.move, started: AC.started, seq: AC.seq, yaw: AC.yaw,
+        },
+        animations: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          clipId: AN.clipId, startTick: AN.startTick, rate: AN.rate, layerMask: AN.layerMask,
+        },
+        spawned: EMPTY_WIRE_IDS,
+        despawned: EMPTY_WIRE_IDS,
+      },
+    };
+    ctx.state.intents.mz = I.mz;
+    reusableSoAByWorld.set(sim, ctx);
+  }
+  return ctx;
+}
+
 /**
  * Interest management (IM3): a Delta payload for the caller's own eid
  * lists and spawn/despawn ids (one sector's share of the tick, or a
@@ -863,7 +963,32 @@ export function encodeEidsFromSim(
   ids: { spawned: Iterable<bigint>; despawned: Iterable<bigint> },
   chunkSource?: ChunkDataSource | null,
 ): Uint8Array {
-  return encodeDeltaSoA(soaState(sim, tick, baseTick, eids, chunkSource ?? null, ids), sharedBuilder, true);
+  const ctx = getReusableSoA(sim);
+  const cs = chunkSource ?? null;
+  if (ctx.lastChunkSource !== cs) {
+    ctx.lastChunkSource = cs;
+    ctx.state.chunks.heightsOf = heightsOfFor(sim, cs);
+  }
+  const s = ctx.state;
+  s.tick = tick;
+  s.baseTick = baseTick;
+  s.transforms.eids = eids.transforms;
+  s.positions.eids = eids.positions ?? EMPTY_POSITIONS_EIDS;
+  s.velocities.eids = eids.velocities;
+  s.intents.eids = eids.intents;
+  s.chunks.eids = eids.chunks;
+  s.healths.eids = eids.healths;
+  s.staminas.eids = eids.staminas;
+  s.characterRefs.eids = eids.characterRefs;
+  s.bodies.eids = eids.bodies;
+  s.assets.eids = eids.assets;
+  s.locomotions.eids = eids.locomotions;
+  s.appearances.eids = eids.appearances;
+  s.actions.eids = eids.actions;
+  s.animations.eids = eids.animations;
+  s.spawned = Array.isArray(ids.spawned) ? ids.spawned : [...ids.spawned];
+  s.despawned = Array.isArray(ids.despawned) ? ids.despawned : [...ids.despawned];
+  return encodeDeltaSoA(s, sharedBuilder, true);
 }
 
 const sharedBuilder = new flatbuffers.Builder(4096);

@@ -210,6 +210,9 @@ export class SimWorld {
 
   private generations = new Map<number, number>();
   private freed = new Set<number>();
+  /** Dense slot-indexed wire IDs and states (0 = unspawned, 1 = live, 2 = freed) for O(1) zero-allocation lookup. */
+  private slotWireId = new BigUint64Array(1024);
+  private slotState = new Uint8Array(1024);
   private spawned: bigint[] = [];
   private despawned: bigint[] = [];
   private intentQueue = new Map<number, QueuedIntent>();
@@ -232,6 +235,19 @@ export class SimWorld {
     this.ecs = createWorld();
     this.stats = new StatBook(opts.stats);
     this.movement = opts.movement ?? DEFAULT_MOVEMENT;
+  }
+
+  private ensureSlotCapacity(slot: number): void {
+    if (slot >= this.slotWireId.length) {
+      let cap = this.slotWireId.length;
+      while (cap <= slot) cap *= 2;
+      const nextWid = new BigUint64Array(cap);
+      nextWid.set(this.slotWireId);
+      this.slotWireId = nextWid;
+      const nextState = new Uint8Array(cap);
+      nextState.set(this.slotState);
+      this.slotState = nextState;
+    }
   }
 
   /**
@@ -260,6 +276,9 @@ export class SimWorld {
 
   /** Wire id for a live slot. */
   wireId(eid: number): bigint {
+    if (eid >= 0 && eid < this.slotState.length && this.slotState[eid] !== 0) {
+      return this.slotWireId[eid];
+    }
     return makeWireEntityId(this.generations.get(eid) ?? 0, eid);
   }
 
@@ -270,11 +289,14 @@ export class SimWorld {
    * wire id without touching component state.
    */
   resolveWireId(wireId: bigint): number {
-    const { slot, generation } = parseWireEntityId(wireId);
-    if (this.freed.has(slot)) return -1;
-    const gen = this.generations.get(slot);
-    if (gen === undefined || gen !== generation) return -1;
-    return slot;
+    if (wireId < 0n || wireId > 0xffffffffffffffffn) {
+      parseWireEntityId(wireId); // preserve RangeError contract for out-of-range u64
+    }
+    const slot = Number(wireId & 0xffffffffn);
+    if (slot >= 0 && slot < this.slotState.length && this.slotState[slot] === 1 && this.slotWireId[slot] === wireId) {
+      return slot;
+    }
+    return -1;
   }
 
   /**
@@ -286,6 +308,7 @@ export class SimWorld {
   spawn(): number {
     const eid = addEntity(this.ecs);
     if (eid > this.maxSlot) this.maxSlot = eid;
+    this.ensureSlotCapacity(eid);
     let gen = this.generations.get(eid) ?? 0;
     if (this.freed.has(eid)) {
       gen += 1; // slot reuse: bump the generation (ABA guard)
@@ -293,6 +316,8 @@ export class SimWorld {
     }
     this.generations.set(eid, gen);
     const wid = makeWireEntityId(gen, eid);
+    this.slotWireId[eid] = wid;
+    this.slotState[eid] = 1;
     this.spawned.push(wid);
     this.events.emit("spawned", wid);
     this.liveCount++;
@@ -312,6 +337,9 @@ export class SimWorld {
     // The slot is reused: its next entity must not inherit these stats.
     this.stats.detach(eid);
     this.freed.add(eid);
+    if (eid >= 0 && eid < this.slotState.length) {
+      this.slotState[eid] = 2;
+    }
     this.liveCount--;
   }
 
@@ -397,6 +425,7 @@ export class SimWorld {
       }
     }
     this.maxSlot = maxSlot;
+    if (maxSlot >= 0) this.ensureSlotCapacity(maxSlot);
 
     // Phase 2: free the gap slots; adopt the saved generations for live
     // slots and the saved table for freed ones.
@@ -405,9 +434,14 @@ export class SimWorld {
       if (gen === undefined) {
         removeEntity(this.ecs, s);
         this.freed.add(s);
-        this.generations.set(s, generations.get(s) ?? 0);
+        const savedGen = generations.get(s) ?? 0;
+        this.generations.set(s, savedGen);
+        this.slotWireId[s] = makeWireEntityId(savedGen, s);
+        this.slotState[s] = 2;
       } else {
         this.generations.set(s, gen);
+        this.slotWireId[s] = makeWireEntityId(gen, s);
+        this.slotState[s] = 1;
       }
     }
     this.liveCount = wanted.size;
