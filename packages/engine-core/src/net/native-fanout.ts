@@ -57,7 +57,12 @@ export interface FanoutResult {
   want: bigint[] | null;
   /** Set when the native call failed: the names were not selected, so the JavaScript rule applies. */
   jsNames?: boolean;
+  /** With sharing on: the equivalence group whose envelope this is (sessions of one group got the same bytes). */
+  group?: number;
 }
+
+/** How equivalent envelopes are handled: "off" assembles one per session; "assembly" one per group (still sent per session); "publish" is decided by the Gateway. */
+export type FanoutShare = "off" | "assembly" | "publish";
 
 export class NativeFanout {
   private readonly nameIdx = new Map<string, number>();
@@ -82,12 +87,26 @@ export class NativeFanout {
   private ids = new BigUint64Array(1 << 10);
   private hasNames = false;
   private results: FanoutResult[] = [];
+  /** Sharing mode (MMO_FANOUT_SHARE=off|assembly|publish, default assembly): sessions whose entry lists are identical get one assembled envelope. */
+  readonly share: FanoutShare;
+  private readonly groupIdx = new Map<string, number>();
+  private groupKeys: string[] = [];
+  private sessionGroup: number[] = [];
   /** Milliseconds spent in each native call since boot, for metrics and benchmarks. */
   readonly ms = { selectNames: 0, assemble: 0 };
   /** Sizes of the work handed to the addon since boot. */
-  readonly count = { ticks: 0, sessions: 0, namedIds: 0, sectorRefs: 0, wanted: 0, envelopeBytes: 0 };
+  readonly count = { ticks: 0, sessions: 0, namedIds: 0, sectorRefs: 0, wanted: 0, envelopeBytes: 0, assembledBytes: 0, groups: 0 };
 
-  constructor(private readonly addon: FanoutInstance) {}
+  constructor(private readonly addon: FanoutInstance, share?: FanoutShare) {
+    const env = process.env.MMO_FANOUT_SHARE;
+    // Default "assembly": sessions with identical entry lists share one assembled envelope (benchmarked 2026-11-03).
+    this.share = share ?? (env === "off" || env === "publish" ? env : "assembly");
+  }
+
+  /** The key of an equivalence group (same tick, replace flag and entry list): a stable topic name for publish. */
+  groupKey(g: number): string {
+    return this.groupKeys[g];
+  }
 
   /** Start a tick. `bySector` is the named entities by home sector, or null when names are off. */
   begin(tick: number, bySector: ReadonlyMap<string, bigint[]> | null): void {
@@ -98,6 +117,9 @@ export class NativeFanout {
     this.pidsLen = 0;
     this.payloads.length = 0;
     this.payloadIdx.clear();
+    this.groupIdx.clear();
+    this.groupKeys.length = 0;
+    this.sessionGroup.length = 0;
     this.hasNames = bySector !== null;
     if (bySector) {
       for (const k of bySector.keys()) this.indexOf(k);
@@ -172,6 +194,7 @@ export class NativeFanout {
     let o = this.descLen;
     d[o++] = entries.length;
     d[o++] = replace ? 1 : 0;
+    let key = this.share === "off" ? "" : replace ? "r" : "d";
     for (const e of entries) {
       let p = this.payloadIdx.get(e.bytes);
       if (p === undefined) {
@@ -179,11 +202,26 @@ export class NativeFanout {
         this.payloads.push(e.bytes);
         this.payloadIdx.set(e.bytes, p);
       }
+      const si = this.indexOf(e.sector);
       d[o++] = e.kind;
-      d[o++] = this.indexOf(e.sector);
+      d[o++] = si;
       d[o++] = p;
+      if (this.share !== "off") key += `${e.kind}.${si}.${p},`;
     }
-    this.descLen = o;
+    if (this.share === "off") {
+      this.sessionGroup.push(this.sessionGroup.length);
+      this.descLen = o;
+    } else {
+      // Same tick, replace flag and (kind, sector, payload) list => the assembled bytes are identical.
+      let g = this.groupIdx.get(key);
+      if (g === undefined) {
+        g = this.groupKeys.length;
+        this.groupIdx.set(key, g);
+        this.groupKeys.push(key);
+        this.descLen = o;
+      } // else an existing group: this session's entries are not assembled again
+      this.sessionGroup.push(g);
+    }
     if (!this.hasNames) return;
     const pinned = s.pinnedOut;
     const player = s.playerEntity;
@@ -251,7 +289,8 @@ export class NativeFanout {
         }
       }
     }
-    if (this.out.length < n * 2) this.out = new Int32Array(n * 2 * 2);
+    const groups = this.share === "off" ? n : this.groupKeys.length;
+    if (this.out.length < groups * 2) this.out = new Int32Array(groups * 2 * 2);
     const t1 = performance.now();
     let r = this.addon.assemble(this.tickNo, this.arena, this.out, this.desc, this.descLen, this.payloads);
     if (r < 0) {
@@ -261,11 +300,15 @@ export class NativeFanout {
     this.ms.assemble += performance.now() - t1;
     this.count.ticks++;
     this.count.sessions += n;
-    this.count.envelopeBytes += this.out[(n - 1) * 2] + this.out[(n - 1) * 2 + 1];
+    this.count.groups += groups;
+    this.count.assembledBytes += this.out[(groups - 1) * 2] + this.out[(groups - 1) * 2 + 1];
     for (let i = 0; i < n; i++) {
-      const off = this.out[i * 2];
+      const g = this.sessionGroup[i];
+      const off = this.out[g * 2];
+      const len = this.out[g * 2 + 1];
+      this.count.envelopeBytes += len;
       const w = wants ? wants[i] : EMPTY;
-      this.results.push({ env: this.arena.subarray(off, off + this.out[i * 2 + 1]), want: w.length > 0 ? w : null });
+      this.results.push({ env: this.arena.subarray(off, off + len), want: w.length > 0 ? w : null, group: g });
     }
     return this.results;
   }

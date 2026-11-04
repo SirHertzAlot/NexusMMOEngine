@@ -1411,6 +1411,7 @@ export class Gateway {
 
   private runTick(tick: number): void {
     this.tick = tick;
+    this.playerIndex = null;
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
     const dt = STEP_MS / 1000;
@@ -2129,10 +2130,21 @@ export class Gateway {
   fanoutStatus: FanoutStatus;
   /** Ticks fanned out on each path, since boot. */
   readonly fanoutTicks = { native: 0, js: 0 };
+  /** Wire id -> [position, session] of the sessions with an avatar; built for one broadcast so namesFor can look ids up. */
+  private playerIndex: Map<bigint, [number, ClientSession]> | null = null;
 
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
+    {
+      const idx = new Map<bigint, [number, ClientSession]>();
+      let i = 0;
+      for (const o of this.sessions.values()) {
+        if (o.playerEntity !== null && !idx.has(o.playerEntity)) idx.set(o.playerEntity, [i, o]);
+        i++;
+      }
+      this.playerIndex = idx;
+    }
     const bySector = frame ? this.bucketBySector(this.namedWireIds()) : null;
     const dropped = frame && this.items ? this.droppedIndex() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
@@ -2161,6 +2173,7 @@ export class Gateway {
     const edgeBytes = new Map<string, Uint8Array>();
     const edgePlans: EdgePlan[] = [];
     const publishSectors = new Map<string, ClientSession[]>();
+    const fanGroups = new Map<string, { env: Uint8Array; members: ClientSession[] }>();
 
     // Native fan-out: compute every eligible session's entries first, then assemble all envelopes
     // (and pick all names) in two native calls. Per session the delivery order below is unchanged.
@@ -2217,10 +2230,28 @@ export class Gateway {
         if (dropped) this.deliverDropsFor(s, dropped, tick);
         const sid = edge && entries && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
         if (pre) {
-          // The arena is reused next tick, and a closed socket keeps what it is given: copy only then.
-          const env = s.socket.isOpen ? pre.env : pre.env.slice();
-          if (replace) this.deliverSnapshot(s, env, tick);
-          else this.deliver(s, env, tick);
+          const nf = this.fanout;
+          // Shared publish: a session on a stable group topic gets the group's envelope from one publish, after the loop.
+          if (nf && nf.share === "publish" && !replace && pre.group !== undefined && s.socket.isOpen && s.sendQueue.length === 0) {
+            const topic = "fo:" + nf.groupKey(pre.group);
+            if (s.fanTopic !== topic) {
+              if (s.fanTopic) s.socket.unsubscribe(s.fanTopic);
+              s.socket.subscribe(topic);
+              s.fanTopic = topic;
+            }
+            let g = fanGroups.get(topic);
+            if (!g) fanGroups.set(topic, (g = { env: pre.env, members: [] }));
+            g.members.push(s);
+          } else {
+            if (s.fanTopic) {
+              s.socket.unsubscribe(s.fanTopic);
+              s.fanTopic = null;
+            }
+            // The arena is reused next tick, and a closed socket keeps what it is given: copy only then.
+            const env = s.socket.isOpen ? pre.env : pre.env.slice();
+            if (replace) this.deliverSnapshot(s, env, tick);
+            else this.deliver(s, env, tick);
+          }
         } else if (sid !== undefined && entries) {
           // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
           const plan: Array<[number, string, string]> = [];
@@ -2264,7 +2295,14 @@ export class Gateway {
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
 
+    this.playerIndex = null;
     if (edge && edgePlans.length > 0) edge.sendSectors(tick, edgeBytes, edgePlans);
+
+    // Shared publish: one publish per equivalence group (the transport copies the bytes before the arena is reused).
+    for (const [topic, g] of fanGroups) {
+      this.transport!.publish(topic, g.env);
+      for (const m of g.members) m.lastAckedTick = BigInt(tick);
+    }
 
     // One publish per occupied sector topic. Per-session messages
     // (names/drops above) already flushed each member's queue through
@@ -6395,14 +6433,30 @@ export class Gateway {
    */
   private namesFor(only: readonly bigint[] | null): Uint8Array | null {
     const rows: Array<[string, string, string]> = [];
-    for (const other of this.sessions.values()) {
-      if (other.playerEntity === null) continue;
-      if (only !== null && !only.includes(other.playerEntity)) continue;
+    const row = (other: ClientSession): void => {
       rows.push([
-        other.playerEntity.toString(),
+        other.playerEntity!.toString(),
         other.character?.name ?? other.username,
         this.guilds.tagOf(other.character?.name ?? other.username),
       ]);
+    };
+    if (only !== null && this.playerIndex !== null) {
+      // During a broadcast: look each wanted id up instead of scanning every session per call. Rows keep the
+      // sessions' own order, as the scan produced them.
+      const hit: Array<[number, ClientSession]> = [];
+      const seen = new Set<bigint>();
+      for (const w of only) {
+        const e = this.playerIndex.get(w);
+        if (e && !seen.has(w)) { seen.add(w); hit.push(e); }
+      }
+      if (hit.length > 1) hit.sort((a, b) => a[0] - b[0]);
+      for (const [, other] of hit) row(other);
+    } else {
+      for (const other of this.sessions.values()) {
+        if (other.playerEntity === null) continue;
+        if (only !== null && !only.includes(other.playerEntity)) continue;
+        row(other);
+      }
     }
     const creatures = this.creatures;
     if (creatures?.nameOf) {

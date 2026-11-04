@@ -38,6 +38,20 @@ Both paths are tested separately (`test/net/gateway-native-fanout.test.ts`).
 - `engine-core/test/net/gateway-native-fanout.test.ts`: a real Gateway on uWS with the native path shadowed in place; every envelope and name list is compared with the JavaScript rule on the same entries.
 - `npm run valgrind:memcheck -- fanout`: clean.
 
+## Shared assembly (`MMO_FANOUT_SHARE`)
+
+Sessions whose envelope would be byte-identical share one assembled envelope. The group key is the replace flag plus the ordered list of (entry kind, sector, payload object) for the tick; the tick number is common. Equal bytes in different payload objects make separate groups (a missed share, never a wrong one). Every session still gets its own `socket.send` of the shared bytes.
+
+| `MMO_FANOUT_SHARE` | Behaviour |
+|---|---|
+| unset / `assembly` | one assembled envelope per group (default) |
+| `off` | one per session (the rollback) |
+| `publish` | experimental: non-replace sessions subscribe to a topic named by the group key and each group is sent with one uWS `publish` |
+
+Measured in `perf/shared-fanout-2026-11-03.md` (1,000 players, towns, paired exclusive-phase runs): assemble 10.3 -> 0.86 ms, send 26.3 -> 22.5 ms, tick mean 73.2 -> 62.5 ms, ticks/s 12.0 -> 14.1. `publish` gave no further gain (the cost moved into the publish calls), so it is not the default. Tests: every envelope shadow-checked against the JS encoding in a live Gateway for default, assembly and publish, and every client-received DeltaSet is one built for that client's session.
+
+The arena view is shared by a group's sessions for the tick; it is valid until the next tick's `begin()`, as before. A closed socket still gets a `slice()` copy.
+
 ## selectNames: skipping what a session already knows
 
 Per tick the addon hashes each sector's id list (order independent). A session remembers, per sector, the hash it last fully scanned. Same hash: nothing to do. Hash equals last call's hash (the session was current): only the ids that were not in that sector last call are checked. Anything else (a new session, one that missed a tick, a changed sector it never saw) scans the whole list. `sent` stays the single source of truth for "told", so the outputs equal the old full scan (tested against the JS rule); the hash only decides how much to look at. A collision would delay a name by one change of that sector (2^-64 per change). In the 1,000-player benchmark ids scanned per call fell from about 200,000 to about 4,000 and selectNames from 5.9 to 0.77 ms per tick. `Fanout.stats()` reports the counters.
