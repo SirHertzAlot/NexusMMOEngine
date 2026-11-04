@@ -268,7 +268,12 @@ export class NativeFanout {
     }
   }
 
-  /** Queue one session. Its interestSet must already be the one `entries` was computed with. */
+  /**
+   * Queue one session. Its interestSet must already be the one `entries` was computed with.
+   * Reference fast-path contract: `entriesObjGroup` is consulted only when `entries` is registered in
+   * `steadyEntryArrays` (built by `SectorFrame.steadyDeltaEntries`), whose descriptor elements and
+   * `Uint8Array` payload slices remain unmutated for the entire single-tick broadcast before `reset()`.
+   */
   add(s: ClientSession, replace: boolean, entries: readonly DeltaSetEntry[]): void {
     this.sessions.push(s);
     const shareOn = this.share !== "off";

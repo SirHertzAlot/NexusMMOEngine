@@ -109,8 +109,9 @@ class CanonicalSectorSet extends Set<string> {
 }
 
 /**
- * Create or wrap an immutable Set<string> whose .add(), .delete(), and .clear() methods
- * throw TypeError at runtime without adding instance properties or dictionary-mode transitions.
+ * Create or wrap a Set<string> whose .add(), .delete(), and .clear() methods throw TypeError
+ * at runtime. This is a contract guard against accidental mutation of shared canonical sets
+ * (such as calling .clear() during resync), not a security boundary against arbitrary reflection.
  */
 export function freezeCanonicalSet(s: Iterable<string>): ReadonlySet<string> {
   if (s instanceof CanonicalSectorSet && lockedCanonicalSets.has(s)) return s;
@@ -119,7 +120,12 @@ export function freezeCanonicalSet(s: Iterable<string>): ReadonlySet<string> {
   return c;
 }
 
-/** Registry of immutable steady-state DeltaSetEntry[] arrays produced by SectorFrame.steadyDeltaEntries. */
+/**
+ * Registry of steady-state DeltaSetEntry[] arrays produced by SectorFrame.steadyDeltaEntries.
+ * Contract: for the single-tick lifetime of a SectorFrame / NativeFanout broadcast, the array,
+ * its DeltaSetEntry descriptor objects ({ kind, sector, bytes }), and each descriptor's Uint8Array
+ * payload (a fresh slice stored in SectorFrame.deltas) are never mutated in place after creation.
+ */
 export const steadyEntryArrays = new WeakSet<readonly DeltaSetEntry[]>();
 
 /** Maximum number of distinct canonical sector sets retained in a canon map before FIFO eviction. */
@@ -170,8 +176,10 @@ export function interestSectors(x: number, z: number, r: InterestRadii, prev: Re
  *    For each sector `k` excluded from `c`, subsequent evaluations pass `c` as `prev`, where `k` remains excluded
  *    iff `d(p, k) > enterM` (slack `d(p0, k) - enterM`). By the triangle inequality `|d(p, k) - d(p0, k)| <= ||p - p0||_2`,
  *    no sector can cross its relevant hysteresis threshold while `||p - p0||_2 < safe`.
- * 3. Canonical immutability & bounded retention: returned sets are frozen via `freezeCanonicalSet` and verified
- *    by exact ordered membership before reuse; `canon` evicts FIFO once `MAX_CANONICAL_INTEREST_SETS` is reached.
+ * 3. Canonical ordering, runtime immutability contract & bounded retention: sectors are enumerated in
+ *    deterministic canonical order (`GLOBAL_SECTOR` followed by strictly ascending `(sx, sz)` grid coordinates).
+ *    Returned sets are guarded via `freezeCanonicalSet` and verified for exact element-by-element iteration
+ *    order before reuse; `canon` evicts FIFO once `MAX_CANONICAL_INTEREST_SETS` is reached.
  */
 export function interestSectorsCached(
   x: number,
@@ -223,7 +231,18 @@ export function interestSectorsCached(
   const safe = Math.max(0, minMargin - 1e-3);
   if (canon) {
     let c = canon.get(sig);
-    if (!c || c.size !== keys.length) {
+    if (c && c.size === keys.length) {
+      let i = 0;
+      for (const k of c) {
+        if (k !== keys[i++]) {
+          c = undefined;
+          break;
+        }
+      }
+    } else {
+      c = undefined;
+    }
+    if (!c) {
       if (canon.size >= MAX_CANONICAL_INTEREST_SETS) {
         const oldest = canon.keys().next().value;
         if (oldest !== undefined) canon.delete(oldest);

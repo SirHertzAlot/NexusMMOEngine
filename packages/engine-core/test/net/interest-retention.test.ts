@@ -210,6 +210,28 @@ it("canon map bounds retention to MAX_CANONICAL_INTEREST_SETS and steadyDeltaEnt
   const frame = run(sim, index, tracker, 1, 2);
   const steady = frame.steadyDeltaEntries(aSet(canon));
   assert.equal(steadyEntryArrays.has(steady), true, "steadyDeltaEntries array must be registered in steadyEntryArrays");
+
+  // Verify canonical sets enforce deterministic iteration order (GLOBAL_SECTOR then ascending (sx, sz))
+  // and replace any pre-existing map entry whose iteration order differs from the canonical sequence.
+  const orderedCanon = new Map<string, ReadonlySet<string>>();
+  const r96: InterestRadii = { enterM: 96, leaveM: 128 };
+  const { set: canonical } = interestSectorsCached(10, 10, r96, null, orderedCanon);
+  const canonicalOrder = [...canonical];
+  assert.equal(canonicalOrder[0], "g");
+  for (let i = 2; i < canonicalOrder.length; i++) {
+    const [sxPrev, szPrev] = canonicalOrder[i - 1].split(",").map(Number);
+    const [sxCur, szCur] = canonicalOrder[i].split(",").map(Number);
+    assert.ok(
+      sxPrev < sxCur || (sxPrev === sxCur && szPrev < szCur),
+      `sectors must iterate in strictly ascending (sx, sz) order: ${canonicalOrder[i - 1]} before ${canonicalOrder[i]}`,
+    );
+  }
+  const sigKey = canonicalOrder.join("|");
+  const reversed = new Set<string>([canonicalOrder[0], ...canonicalOrder.slice(1).reverse()]);
+  orderedCanon.set(sigKey, reversed);
+  const { set: repaired } = interestSectorsCached(10, 10, r96, null, orderedCanon);
+  assert.notEqual(repaired, reversed, "mismatched iteration order in canon map must be rejected and replaced");
+  assert.deepEqual([...repaired], canonicalOrder, "repaired canonical set must preserve exact canonical iteration order");
 });
 
 function aSet(canon: Map<string, ReadonlySet<string>>): ReadonlySet<string> {
