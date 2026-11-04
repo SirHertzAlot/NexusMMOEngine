@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import type { DeltaSetEntry } from "@mmo-engine/protocol";
 import type { ClientSession } from "../session.js";
+import { steadyEntryArrays } from "./interest.js";
 
 /**
  * Native per-tick fan-out (packages/addons/fanout). One call assembles every session's DeltaSet
@@ -100,6 +101,7 @@ export class NativeFanout {
   private groupTableUsedLen = 0;
   private groupDescOff = new Int32Array(1024);
   private groupDescLen = new Int32Array(1024);
+  private groupHash = new Int32Array(1024);
   private groupCount = 0;
   private groupKeys: Array<string | undefined> = [];
   private readonly entriesObjGroup = new Map<readonly DeltaSetEntry[], number>();
@@ -145,27 +147,52 @@ export class NativeFanout {
   }
 
   private growGroupArrays(minGroups: number): void {
-    const n = Math.max(minGroups * 2, 1024);
-    const off = new Int32Array(n);
-    off.set(this.groupDescOff);
-    this.groupDescOff = off;
-    const len = new Int32Array(n);
-    len.set(this.groupDescLen);
-    this.groupDescLen = len;
-    if (n * 2 > this.groupTable.length) {
+    if (minGroups >= this.groupDescOff.length) {
+      const n = Math.max(minGroups * 2, 1024);
+      const off = new Int32Array(n);
+      off.set(this.groupDescOff);
+      this.groupDescOff = off;
+      const len = new Int32Array(n);
+      len.set(this.groupDescLen);
+      this.groupDescLen = len;
+      const hashes = new Int32Array(n);
+      hashes.set(this.groupHash);
+      this.groupHash = hashes;
+    }
+    if (minGroups * 2 > this.groupTable.length) {
       let cap = this.groupTable.length;
-      while (cap < n * 2) cap <<= 1;
-      this.groupTable = new Int32Array(cap).fill(-1);
-      this.groupTableMask = cap - 1;
-      this.groupTableUsed = new Int32Array(cap);
-      this.groupTableUsedLen = 0;
+      while (cap < minGroups * 2) cap <<= 1;
+      const table = new Int32Array(cap).fill(-1);
+      const mask = cap - 1;
+      const used = new Int32Array(cap);
+      let usedLen = 0;
+      const hashes = this.groupHash;
+      const count = this.groupCount;
+      for (let g = 0; g < count; g++) {
+        const h = hashes[g];
+        let slot = (h ^ (h >>> 16)) & mask;
+        while (table[slot] !== -1) {
+          slot = (slot + 1) & mask;
+        }
+        table[slot] = g;
+        used[usedLen++] = slot;
+      }
+      this.groupTable = table;
+      this.groupTableMask = mask;
+      this.groupTableUsed = used;
+      this.groupTableUsedLen = usedLen;
     }
   }
 
   /** Start a tick. `bySector` is the named entities by home sector, or null when names are off. */
   begin(tick: number, bySector: ReadonlyMap<string, bigint[]> | null): void {
     this.tickNo = tick;
-    this.tickSeq = ((this.tickSeq + 1) >>> 0) || 1;
+    let seq = (this.tickSeq + 1) >>> 0;
+    if (seq === 0) {
+      seq = 1;
+      this.secLastTag.fill(0);
+    }
+    this.tickSeq = seq;
     this.sessions.length = 0;
     this.descLen = 0;
     this.nameDescLen = 0;
@@ -245,7 +272,8 @@ export class NativeFanout {
   add(s: ClientSession, replace: boolean, entries: readonly DeltaSetEntry[]): void {
     this.sessions.push(s);
     const shareOn = this.share !== "off";
-    const fastG = shareOn && !replace ? this.entriesObjGroup.get(entries) : undefined;
+    const canRefCache = shareOn && !replace && steadyEntryArrays.has(entries);
+    const fastG = canRefCache ? this.entriesObjGroup.get(entries) : undefined;
     if (fastG !== undefined) {
       this.sessionGroup.push(fastG);
     } else {
@@ -287,14 +315,16 @@ export class NativeFanout {
         d[o++] = si;
         d[o++] = p;
         if (shareOn) {
-          h = Math.imul(h ^ ((e.kind & 3) | (si << 2) | (p << 16)), 0x01000193);
+          h = Math.imul(h ^ e.kind, 0x01000193);
+          h = Math.imul(h ^ si, 0x01000193);
+          h = Math.imul(h ^ p, 0x01000193);
         }
       }
       if (!shareOn) {
         this.sessionGroup.push(this.sessionGroup.length);
         this.descLen = o;
       } else {
-        if (this.groupCount + 1 >= this.groupDescOff.length) {
+        if (this.groupCount + 1 >= this.groupDescOff.length || (this.groupCount + 1) * 2 > this.groupTable.length) {
           this.growGroupArrays(this.groupCount + 1);
         }
         const len = o - base;
@@ -302,7 +332,7 @@ export class NativeFanout {
         const mask = this.groupTableMask;
         let tSlot = (h ^ (h >>> 16)) & mask;
         let g = -1;
-        while (true) {
+        for (let step = 0; step <= mask; step++) {
           const cand = table[tSlot];
           if (cand === -1) {
             g = this.groupCount++;
@@ -310,10 +340,11 @@ export class NativeFanout {
             this.groupTableUsed[this.groupTableUsedLen++] = tSlot;
             this.groupDescOff[g] = base;
             this.groupDescLen[g] = len;
+            this.groupHash[g] = h;
             this.descLen = o;
             break;
           }
-          if (this.groupDescLen[cand] === len) {
+          if (this.groupHash[cand] === h && this.groupDescLen[cand] === len) {
             const cOff = this.groupDescOff[cand];
             let match = true;
             for (let k = 1; k < len; k++) {
@@ -329,7 +360,7 @@ export class NativeFanout {
           }
           tSlot = (tSlot + 1) & mask;
         }
-        if (!replace) this.entriesObjGroup.set(entries, g);
+        if (canRefCache) this.entriesObjGroup.set(entries, g);
         this.sessionGroup.push(g);
       }
     }

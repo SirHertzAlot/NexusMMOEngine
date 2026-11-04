@@ -138,7 +138,7 @@ import { createTransport, type HttpHandler, type Transport, type TransportKind, 
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
 import { loadNativeFanout, type FanoutResult, type FanoutStatus, type NativeFanout } from "./native-fanout.js";
-import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, interestSectorsCached, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, freezeCanonicalSet, homeSector, interestSectors, interestSectorsCached, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
 const EMPTY_BIGINT_LIST: readonly bigint[] = [];
@@ -148,6 +148,7 @@ const COMBAT_PIN_TICKS = 300;
 const BORDER_TICKET_S = 60;
 const BORDER_RENEW_S = 20;
 import {
+  invalidateSessionInterest,
   MAX_QUEUED_DELTAS,
   type ClientSession,
 } from "../session.js";
@@ -2134,8 +2135,8 @@ export class Gateway {
   /** Wire id -> [position, session] of the sessions with an avatar; built lazily during broadcast so namesFor can look ids up. */
   private playerIndex: Map<bigint, [number, ClientSession]> | null = null;
   private inBroadcast = false;
-  private readonly canonicalInterestSets = new Map<string, Set<string>>();
-  private readonly globalOnlySet = new Set<string>([GLOBAL_SECTOR]);
+  private readonly canonicalInterestSets = new Map<string, ReadonlySet<string>>();
+  private readonly globalOnlySet: ReadonlySet<string> = freezeCanonicalSet(new Set<string>([GLOBAL_SECTOR]));
   private tickFarVisible: readonly number[] | null = null;
   private tickQuestExt: { pinnedResidentsOf?(characterId: number | null): string[] } | null | undefined = undefined;
 
@@ -2373,7 +2374,7 @@ export class Gateway {
     }
     s.observer = { x: NaN, z: NaN, home: home!.rect };
     s.welcomed = true;
-    s.interestSet = null;
+    invalidateSessionInterest(s);
     const welcome: WelcomeMessage = {
       protocol: PROTOCOL_VERSION,
       player_entity: "0",
@@ -2576,7 +2577,7 @@ export class Gateway {
     const r = this.interest!;
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    let next: Set<string>;
+    let next: ReadonlySet<string>;
     let atX = NaN, atZ = NaN;
     let hasAt = false;
     if (s.observer) {
@@ -2618,7 +2619,7 @@ export class Gateway {
     }
     const every = r.outerEvery;
     let entries: DeltaSetEntry[] | null = null;
-    let sharedEntries: DeltaSetEntry[] | null = null;
+    let sharedEntries: readonly DeltaSetEntry[] | null = null;
     if (!replace && next === prev && !every) {
       sharedEntries = frame.steadyDeltaEntries(next);
     } else {
@@ -2643,7 +2644,7 @@ export class Gateway {
     const hadPins = was !== null && was !== undefined && was.size > 0;
     if (pins.length === 0 && !hadPins) {
       if (replace && s.pinnedOut && s.pinnedOut.size > 0) s.pinnedOut.clear();
-      return sharedEntries ?? entries!;
+      return (sharedEntries as DeltaSetEntry[] | null) ?? entries!;
     }
     const out = new Set<bigint>();
     const fresh: number[] = [], kept: number[] = [];
@@ -3381,7 +3382,7 @@ export class Gateway {
         return;
       }
       s.interestAll = mode === "all";
-      s.interestSet = null; // a full replace of the new view next tick
+      invalidateSessionInterest(s); // a full replace of the new view next tick
       res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
     } else if (cmd.command === "loglevel") {
       const r = runLogLevelCommand(this.logger.ring, cmd.args);
@@ -4952,7 +4953,7 @@ export class Gateway {
     if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
     if (this.interest) {
       // Interest management: the next tick sends a full replace of what this session sees.
-      s.interestSet = null;
+      invalidateSessionInterest(s);
       return;
     }
     this.deliverSnapshot(

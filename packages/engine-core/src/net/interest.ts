@@ -87,20 +87,60 @@ export function homeSector(sim: SimWorld, eid: number): string {
   return keyOf(Math.floor(C.Transform.px[eid] / SECTOR_SIZE), Math.floor(C.Transform.pz[eid] / SECTOR_SIZE));
 }
 
+const throwImmutableSet = (): never => {
+  throw new TypeError("Cannot mutate canonical interest Set; replace the session reference instead.");
+};
+
+const lockedCanonicalSets = new WeakSet<ReadonlySet<string>>();
+
+class CanonicalSectorSet extends Set<string> {
+  override add(value: string): this {
+    if (lockedCanonicalSets.has(this)) throwImmutableSet();
+    return super.add(value);
+  }
+  override delete(_value: string): boolean {
+    if (lockedCanonicalSets.has(this)) return throwImmutableSet();
+    return super.delete(_value);
+  }
+  override clear(): void {
+    if (lockedCanonicalSets.has(this)) throwImmutableSet();
+    super.clear();
+  }
+}
+
+/**
+ * Create or wrap an immutable Set<string> whose .add(), .delete(), and .clear() methods
+ * throw TypeError at runtime without adding instance properties or dictionary-mode transitions.
+ */
+export function freezeCanonicalSet(s: Iterable<string>): ReadonlySet<string> {
+  if (s instanceof CanonicalSectorSet && lockedCanonicalSets.has(s)) return s;
+  const c = new CanonicalSectorSet(s);
+  lockedCanonicalSets.add(c);
+  return c;
+}
+
+/** Registry of immutable steady-state DeltaSetEntry[] arrays produced by SectorFrame.steadyDeltaEntries. */
+export const steadyEntryArrays = new WeakSet<readonly DeltaSetEntry[]>();
+
+/** Maximum number of distinct canonical sector sets retained in a canon map before FIFO eviction. */
+export const MAX_CANONICAL_INTEREST_SETS = 4096;
+
 /**
  * The sectors a viewer at (x, z) sees: every sector whose rectangle is within enterM, plus those in
  * `prev` still within leaveM. Always includes "g".
  */
 export function interestSectors(x: number, z: number, r: InterestRadii, prev: ReadonlySet<string> | null): Set<string> {
   const out = new Set<string>([GLOBAL_SECTOR]);
-  const reach = Math.ceil(r.leaveM / SECTOR_SIZE);
+  const effLeaveM = Math.max(r.enterM, r.leaveM);
+  const reach = Math.ceil(effLeaveM / SECTOR_SIZE);
   const cx = Math.floor(x / SECTOR_SIZE), cz = Math.floor(z / SECTOR_SIZE);
   const enterSq = r.enterM * r.enterM;
   const leaveSq = r.leaveM * r.leaveM;
+  const maxSq = Math.max(enterSq, leaveSq);
   for (let sx = cx - reach; sx <= cx + reach; sx++) {
     const dx = Math.max(sx * SECTOR_SIZE - x, 0, x - (sx + 1) * SECTOR_SIZE);
     const dxSq = dx * dx;
-    if (dxSq > leaveSq) continue;
+    if (dxSq > maxSq) continue;
     for (let sz = cz - reach; sz <= cz + reach; sz++) {
       const dz = Math.max(sz * SECTOR_SIZE - z, 0, z - (sz + 1) * SECTOR_SIZE);
       const dSq = dxSq + dz * dz;
@@ -117,19 +157,33 @@ export function interestSectors(x: number, z: number, r: InterestRadii, prev: Re
 
 /**
  * Compute a viewer's interest sectors at (x, z) along with `safeMoveSq`: the squared Euclidean distance
- * (x, z) may move while remaining mathematically guaranteed to produce the exact same sector set.
- * Optionally canonicalizes the returned Set<string> in `canon` so co-located sessions share the same Set reference.
+ * (x, z) may move from the evaluation point (x0, z0) while remaining mathematically guaranteed to produce
+ * the exact same sector set when re-evaluated against the resulting set.
+ *
+ * Proof boundary:
+ * 1. Candidate domain invariance: `minMargin` is initialized to the Euclidean distance from (x0, z0) to the
+ *    boundary of its home cell `(cx, cz)`. Any displacement `||p - p0||_2 < safe` stays strictly inside `(cx, cz)`,
+ *    so the enumerated candidate window `[cx - reach .. cx + reach] x [cz - reach .. cz + reach]` is identical,
+ *    and every sector outside that window is at distance strictly `> reach * SECTOR_SIZE >= max(enterM, leaveM)`.
+ * 2. Hysteresis invariance: for each sector `k` included in the returned set `c`, subsequent evaluations pass `c`
+ *    as `prev`, where `k` remains included iff `d(p, k) <= max(enterM, leaveM)` (slack `effLeaveM - d(p0, k)`).
+ *    For each sector `k` excluded from `c`, subsequent evaluations pass `c` as `prev`, where `k` remains excluded
+ *    iff `d(p, k) > enterM` (slack `d(p0, k) - enterM`). By the triangle inequality `|d(p, k) - d(p0, k)| <= ||p - p0||_2`,
+ *    no sector can cross its relevant hysteresis threshold while `||p - p0||_2 < safe`.
+ * 3. Canonical immutability & bounded retention: returned sets are frozen via `freezeCanonicalSet` and verified
+ *    by exact ordered membership before reuse; `canon` evicts FIFO once `MAX_CANONICAL_INTEREST_SETS` is reached.
  */
 export function interestSectorsCached(
   x: number,
   z: number,
   r: InterestRadii,
-  prev: Set<string> | null,
-  canon?: Map<string, Set<string>>,
-): { set: Set<string>; safeMoveSq: number } {
-  const reach = Math.ceil(r.leaveM / SECTOR_SIZE);
-  const cx = Math.floor(x / SECTOR_SIZE), cz = Math.floor(z / SECTOR_SIZE);
+  prev: ReadonlySet<string> | null,
+  canon?: Map<string, ReadonlySet<string>>,
+): { set: ReadonlySet<string>; safeMoveSq: number } {
   const enterM = r.enterM, leaveM = r.leaveM;
+  const effLeaveM = Math.max(enterM, leaveM);
+  const reach = Math.ceil(effLeaveM / SECTOR_SIZE);
+  const cx = Math.floor(x / SECTOR_SIZE), cz = Math.floor(z / SECTOR_SIZE);
   const enterSq = enterM * enterM, leaveSq = leaveM * leaveM;
   let minMargin = Math.min(
     x - cx * SECTOR_SIZE,
@@ -158,7 +212,7 @@ export function interestSectorsCached(
       if (inc) {
         keys.push(k);
         if (canon) sig += "|" + k;
-        const m = leaveM - d;
+        const m = effLeaveM - d;
         if (m < minMargin) minMargin = m;
       } else {
         const m = d - enterM;
@@ -169,13 +223,17 @@ export function interestSectorsCached(
   const safe = Math.max(0, minMargin - 1e-3);
   if (canon) {
     let c = canon.get(sig);
-    if (!c) {
-      c = new Set<string>(keys);
+    if (!c || c.size !== keys.length) {
+      if (canon.size >= MAX_CANONICAL_INTEREST_SETS) {
+        const oldest = canon.keys().next().value;
+        if (oldest !== undefined) canon.delete(oldest);
+      }
+      c = freezeCanonicalSet(keys);
       canon.set(sig, c);
     }
     return { set: c, safeMoveSq: safe * safe };
   }
-  return { set: new Set<string>(keys), safeMoveSq: safe * safe };
+  return { set: freezeCanonicalSet(keys), safeMoveSq: safe * safe };
 }
 
 /**
@@ -205,7 +263,7 @@ export class SectorFrame {
   readonly pending = new Map<string, { lists: Record<Key, number[]>; spawned: bigint[]; despawned: bigint[] }>();
   private readonly deltas = new Map<string, Uint8Array>();
   private readonly fulls = new Map<string, Uint8Array>();
-  private readonly steadyEntriesCache = new Map<ReadonlySet<string>, DeltaSetEntry[]>();
+  private readonly steadyEntriesCache = new Map<ReadonlySet<string>, readonly DeltaSetEntry[]>();
   private buckets: Map<string, Record<Key, number[]>> | null = null;
 
   constructor(
@@ -227,17 +285,19 @@ export class SectorFrame {
   }
 
   /**
-   * Shared DeltaSetEntry[] for a steady-state session (unchanged canonical interest set, no outerEvery rate limit,
-   * no replace). Computed once per unique canonical Set<string> per tick.
+   * Shared immutable DeltaSetEntry[] for a steady-state session (unchanged canonical interest set, no outerEvery rate limit,
+   * no replace). Computed once per unique canonical Set<string> per tick and frozen so callers cannot mutate shared entries.
    */
-  steadyDeltaEntries(sectors: ReadonlySet<string>): DeltaSetEntry[] {
+  steadyDeltaEntries(sectors: ReadonlySet<string>): readonly DeltaSetEntry[] {
     let cached = this.steadyEntriesCache.get(sectors);
     if (!cached) {
-      cached = [];
+      const list: DeltaSetEntry[] = [];
       for (const sector of sectors) {
         const d = this.delta(sector);
-        if (d) cached.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+        if (d) list.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
       }
+      steadyEntryArrays.add(list);
+      cached = list;
       this.steadyEntriesCache.set(sectors, cached);
     }
     return cached;
@@ -380,7 +440,13 @@ export class SectorIndex {
     const spawnedSlots = spawnedSlotsOf(sim);
     const hasSpawned = spawnedSlots.size !== 0;
     const diff: DiffResult = tracker.diff(sim, spawnedSlots);
-    const seq = (this.frameSeq = ((this.frameSeq + 1) >>> 0) || 1);
+    let seq = (this.frameSeq + 1) >>> 0;
+    if (seq === 0) {
+      seq = 1;
+      this.memoTag.fill(0);
+      this.movedTag.fill(0);
+    }
+    this.frameSeq = seq;
     const memoTag = this.memoTag;
     const memoVal = this.memoVal;
     const movedTag = this.movedTag;
@@ -406,7 +472,8 @@ export class SectorIndex {
       const eid = changedTransforms[i];
       const wid = sim.wireId(eid);
       const now = sectorOf(eid);
-      const was = homeWid[eid] === wid ? homeSec[eid] : undefined;
+      const prevSec = homeSec[eid];
+      const was = prevSec !== undefined && homeWid[eid] === wid ? prevSec : undefined;
       homeWid[eid] = wid;
       homeSec[eid] = now;
       if (was === undefined || was === now || (hasSpawned && spawnedSlots.has(eid))) continue;

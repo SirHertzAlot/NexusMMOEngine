@@ -430,10 +430,15 @@ export class DeltaTracker {
    */
   diff(sim: SimWorld, spawnedSlots: Set<number>): DiffResult {
     const bound = sim.maxSlotSeen + 1;
-    const seq = (this.posOnlySeq = ((this.posOnlySeq + 1) >>> 0) || 1);
     if (this.posOnlyTag.length < bound) {
       this.posOnlyTag = new Uint32Array(Math.max(bound * 2, 1024));
     }
+    let seq = (this.posOnlySeq + 1) >>> 0;
+    if (seq === 0) {
+      seq = 1;
+      this.posOnlyTag.fill(0);
+    }
+    this.posOnlySeq = seq;
     const posOnlyTag = this.posOnlyTag;
     this.posOnlyCount = 0;
     const posOnlyList: number[] = [];

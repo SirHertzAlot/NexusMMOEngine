@@ -157,3 +157,91 @@ it("sessions with identical entry lists share one assembled envelope; a differen
   });
   assert.ok(nf.count.assembledBytes < nf.count.envelopeBytes, "fewer bytes assembled than delivered");
 });
+
+it("numeric group table scales past 4,096 distinct groups in a single broadcast with mid-tick rehashing and resets cleanly", { skip }, () => {
+  const nf = new NativeFanout(new addon.Fanout(), "assembly");
+  const p0 = new Uint8Array([10, 20, 30]);
+  const p1 = new Uint8Array([40, 50]);
+  const totalGroups = 4500;
+  const expected: DeltaSetEntry[][] = [];
+
+  nf.begin(101, null);
+  for (let i = 0; i < totalGroups; i++) {
+    const entries: DeltaSetEntry[] = [
+      { kind: DeltaSetKind.Delta, sector: `${i},0`, bytes: i % 2 === 0 ? p0 : p1 },
+    ];
+    expected.push(entries);
+    nf.add(fakeSession(i, new Set(), null, []), false, entries);
+  }
+  const res = nf.run();
+  assert.equal(res.length, totalGroups);
+  assert.equal(nf.count.groups, totalGroups, "every distinct group preserved across table doublings");
+  for (const idx of [0, 1, 1023, 1024, 2047, 2048, 4095, 4096, totalGroups - 1]) {
+    const want = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick: 101, replace: false, entries: expected[idx] }));
+    assert.deepEqual(Buffer.from(res[idx].env), Buffer.from(want), `group ${idx} envelope matches after rehash`);
+  }
+
+  // Next broadcast resets table cleanly and shares groups again.
+  nf.begin(102, null);
+  const shared = Object.freeze([{ kind: DeltaSetKind.Delta, sector: "0,0", bytes: p0 }]);
+  nf.add(fakeSession(0, new Set(), null, []), false, shared);
+  nf.add(fakeSession(1, new Set(), null, []), false, shared);
+  const res2 = nf.run();
+  assert.equal(res2[0].group, res2[1].group);
+});
+
+it("distinguishes entry ordering, all DeltaSetKinds, forced hash collisions, and mutable entry array reuse", { skip }, () => {
+  const nf = new NativeFanout(new addon.Fanout(), "assembly");
+  const bA = new Uint8Array([1, 2]);
+  const bB = new Uint8Array([3, 4]);
+
+  const order1: DeltaSetEntry[] = [
+    { kind: DeltaSetKind.Delta, sector: "0,0", bytes: bA },
+    { kind: DeltaSetKind.Delta, sector: "1,0", bytes: bB },
+  ];
+  const order2: DeltaSetEntry[] = [
+    { kind: DeltaSetKind.Delta, sector: "1,0", bytes: bB },
+    { kind: DeltaSetKind.Delta, sector: "0,0", bytes: bA },
+  ];
+  const kindFull: DeltaSetEntry[] = [
+    { kind: DeltaSetKind.Full, sector: "0,0", bytes: bA },
+    { kind: DeltaSetKind.Delta, sector: "1,0", bytes: bB },
+  ];
+  const kindPinned: DeltaSetEntry[] = [
+    { kind: DeltaSetKind.Pinned, sector: "0,0", bytes: bA },
+    { kind: DeltaSetKind.Delta, sector: "1,0", bytes: bB },
+  ];
+
+  // Test tickSeq 32-bit wraparound at the same time
+  (nf as unknown as { tickSeq: number }).tickSeq = 0xfffffffe;
+  nf.begin(10, null);
+  nf.begin(11, null); // wraps 0xffffffff -> 1
+
+  nf.add(fakeSession(0, new Set(), null, []), false, order1);
+  nf.add(fakeSession(1, new Set(), null, []), false, order2);
+  nf.add(fakeSession(2, new Set(), null, []), false, kindFull);
+  nf.add(fakeSession(3, new Set(), null, []), false, kindPinned);
+
+  // Mutable array reused and mutated in-place between two add() calls in the same tick:
+  const mutableShared: DeltaSetEntry[] = [{ kind: DeltaSetKind.Delta, sector: "2,2", bytes: bA }];
+  nf.add(fakeSession(4, new Set(), null, []), false, mutableShared);
+  mutableShared[0] = { kind: DeltaSetKind.Delta, sector: "2,2", bytes: bB };
+  nf.add(fakeSession(5, new Set(), null, []), false, mutableShared);
+
+  const res = nf.run();
+  const groups = new Set(res.map((r) => r.group));
+  assert.equal(groups.size, 6, "all 6 sessions have distinct groups (no false aliasing)");
+
+  const expectedLists: DeltaSetEntry[][] = [
+    order1,
+    order2,
+    kindFull,
+    kindPinned,
+    [{ kind: DeltaSetKind.Delta, sector: "2,2", bytes: bA }],
+    [{ kind: DeltaSetKind.Delta, sector: "2,2", bytes: bB }],
+  ];
+  expectedLists.forEach((entries, i) => {
+    const want = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick: 11, replace: false, entries }));
+    assert.deepEqual(Buffer.from(res[i].env), Buffer.from(want), `session ${i} exact envelope`);
+  });
+});

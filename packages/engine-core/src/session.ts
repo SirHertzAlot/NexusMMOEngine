@@ -122,8 +122,8 @@ export interface ClientSession {
    * when the socket closes.
    */
   sectorTopic: string | null;
-  /** Interest management: the sectors this session sees; null = send it a full replace next tick. */
-  interestSet?: Set<string> | null;
+  /** Interest management: the sectors this session sees (immutable by contract); null = send it a full replace next tick. */
+  interestSet?: ReadonlySet<string> | null;
   /** Interest movement memo: anchor (x, z) and safe squared movement threshold where `interestSet` is invariant. */
   interestRefX?: number;
   interestRefZ?: number;
@@ -150,3 +150,15 @@ export interface ClientSession {
 
 /** Upper bound on queued per-tick deltas before a snapshot resync. */
 export const MAX_QUEUED_DELTAS = 300; // 10 s at 30 Hz
+
+/**
+ * Invalidate a session's cached interest set and safe-movement memo without mutating any shared Set.
+ */
+export function invalidateSessionInterest(s: ClientSession): void {
+  s.interestSet = null;
+  s.interestRefX = NaN;
+  s.interestRefZ = NaN;
+  s.interestSafeMoveSq = 0;
+  s.interestEnterM = undefined;
+  s.interestLeaveM = undefined;
+}
