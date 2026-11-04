@@ -394,6 +394,22 @@ export class DeltaTracker {
   private readonly prev: Float64Array[][] = TRACKED.map((t) =>
     t.fields.map(() => new Float64Array(0)),
   );
+  private readonly fieldStores: ArrayLike<number>[][] = TRACKED.map((t) =>
+    t.fields.map((f) => t.stores[f]),
+  );
+  private posOnlyTag = new Uint32Array(0);
+  private posOnlySeq = 0;
+  private posOnlyCount = 0;
+
+  /** True when the most recent diff() recorded at least one position-only entity. */
+  hasPositionOnly(): boolean {
+    return this.posOnlyCount > 0;
+  }
+
+  /** Fast O(1) slot check for whether `eid` was classified position-only in the most recent diff(). */
+  isPositionOnly(eid: number): boolean {
+    return this.posOnlyTag[eid] === this.posOnlySeq;
+  }
 
   /** This component's baselines, grown (never shrunk) to cover `bound` slots. */
   private baselines(ti: number, bound: number): Float64Array[] {
@@ -414,41 +430,63 @@ export class DeltaTracker {
    */
   diff(sim: SimWorld, spawnedSlots: Set<number>): DiffResult {
     const bound = sim.maxSlotSeen + 1;
+    const seq = (this.posOnlySeq = ((this.posOnlySeq + 1) >>> 0) || 1);
+    if (this.posOnlyTag.length < bound) {
+      this.posOnlyTag = new Uint32Array(Math.max(bound * 2, 1024));
+    }
+    const posOnlyTag = this.posOnlyTag;
+    this.posOnlyCount = 0;
+    const posOnlyList: number[] = [];
+    let lazyPosOnlySet: Set<number> | null = null;
     const out: DiffResult = {
-      transforms: [], positionOnly: new Set<number>(), velocities: [], intents: [], chunks: [], healths: [],
+      transforms: [],
+      get positionOnly(): Set<number> {
+        return (lazyPosOnlySet ??= new Set(posOnlyList));
+      },
+      velocities: [], intents: [], chunks: [], healths: [],
       staminas: [],
       bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [],
     };
+    const hasSpawned = spawnedSlots.size !== 0;
     for (let ti = 0; ti < TRACKED.length; ti++) {
       const t = TRACKED[ti];
       const changed = out[t.key];
       const eids = t.query(sim.ecs);
       if (eids.length === 0) continue;
       const prevs = this.baselines(ti, bound);
-      const stores = t.fields.map((f) => t.stores[f]);
+      const stores = this.fieldStores[ti];
       const nf = stores.length;
-      for (let i = 0; i < eids.length; i++) {
-        const eid = eids[i];
-        if (spawnedSlots.size !== 0 && spawnedSlots.has(eid)) {
-          changed.push(eid);
-          continue;
-        }
-        if (t.key === "transforms" && this.positionRows) {
-          // px, py, pz are the first three fields; anything else changing makes it a full row.
-          let pos = false, other = false;
-          for (let fi = 0; fi < nf; fi++) {
+      if (t.key === "transforms" && this.positionRows) {
+        const s0 = stores[0], s1 = stores[1], s2 = stores[2];
+        const p0 = prevs[0], p1 = prevs[1], p2 = prevs[2];
+        for (let i = 0; i < eids.length; i++) {
+          const eid = eids[i];
+          if (hasSpawned && spawnedSlots.has(eid)) {
+            changed.push(eid);
+            continue;
+          }
+          let other = false;
+          for (let fi = 3; fi < nf; fi++) {
             if (stores[fi][eid] !== prevs[fi][eid]) {
-              if (fi < 3) pos = true;
-              else {
-                other = true;
-                break;
-              }
+              other = true;
+              break;
             }
           }
-          if (pos || other) {
+          if (other) {
             changed.push(eid);
-            if (!other) out.positionOnly.add(eid);
+          } else if (s0[eid] !== p0[eid] || s1[eid] !== p1[eid] || s2[eid] !== p2[eid]) {
+            changed.push(eid);
+            posOnlyTag[eid] = seq;
+            posOnlyList.push(eid);
+            this.posOnlyCount++;
           }
+        }
+        continue;
+      }
+      for (let i = 0; i < eids.length; i++) {
+        const eid = eids[i];
+        if (hasSpawned && spawnedSlots.has(eid)) {
+          changed.push(eid);
           continue;
         }
         for (let fi = 0; fi < nf; fi++) {
@@ -466,10 +504,10 @@ export class DeltaTracker {
   commit(sim: SimWorld): void {
     const bound = sim.maxSlotSeen + 1;
     for (let ti = 0; ti < TRACKED.length; ti++) {
-      const t = TRACKED[ti];
       const prevs = this.baselines(ti, bound);
-      for (let fi = 0; fi < t.fields.length; fi++) {
-        const store = t.stores[t.fields[fi]];
+      const stores = this.fieldStores[ti];
+      for (let fi = 0; fi < stores.length; fi++) {
+        const store = stores[fi];
         const prev = prevs[fi];
         const n = Math.min(bound, store.length);
         if (ArrayBuffer.isView(store)) {

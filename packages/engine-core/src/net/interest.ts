@@ -14,7 +14,7 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { defineQuery, hasComponent } from "bitecs";
-import { GLOBAL_SECTOR } from "@mmo-engine/protocol";
+import { DeltaSetKind, GLOBAL_SECTOR, type DeltaSetEntry } from "@mmo-engine/protocol";
 import * as C from "../components.js";
 import { encodeEidsFromSim, fullEidLists, spawnedSlotsOf, type DeltaTracker, type DiffResult, type SoAEidLists } from "../snapshot.js";
 import type { SimWorld } from "../world.js";
@@ -58,7 +58,28 @@ const emptyLists = (): Record<Key, number[]> => ({
   bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [],
 });
 
-const keyOf = (sx: number, sz: number): string => `${sx},${sz}`;
+const SECTOR_GRID_OFFSET = 512;
+const SECTOR_GRID_STRIDE = 1024;
+const sectorKeyCache = new Array<string | undefined>(SECTOR_GRID_STRIDE * SECTOR_GRID_STRIDE);
+const sectorCoordsCache = new Map<string, readonly [number, number]>();
+
+const keyOf = (sx: number, sz: number): string => {
+  const ix = (sx + SECTOR_GRID_OFFSET) | 0;
+  const iz = (sz + SECTOR_GRID_OFFSET) | 0;
+  if ((ix >>> 0) < SECTOR_GRID_STRIDE && (iz >>> 0) < SECTOR_GRID_STRIDE) {
+    const idx = ix * SECTOR_GRID_STRIDE + iz;
+    let k = sectorKeyCache[idx];
+    if (k === undefined) {
+      k = `${sx},${sz}`;
+      sectorKeyCache[idx] = k;
+      sectorCoordsCache.set(k, [sx, sz]);
+    }
+    return k;
+  }
+  const k = `${sx},${sz}`;
+  if (!sectorCoordsCache.has(k)) sectorCoordsCache.set(k, [sx, sz]);
+  return k;
+};
 
 /** The sector an entity lives in now: its Transform's cell, or "g". */
 export function homeSector(sim: SimWorld, eid: number): string {
@@ -74,16 +95,87 @@ export function interestSectors(x: number, z: number, r: InterestRadii, prev: Re
   const out = new Set<string>([GLOBAL_SECTOR]);
   const reach = Math.ceil(r.leaveM / SECTOR_SIZE);
   const cx = Math.floor(x / SECTOR_SIZE), cz = Math.floor(z / SECTOR_SIZE);
+  const enterSq = r.enterM * r.enterM;
+  const leaveSq = r.leaveM * r.leaveM;
   for (let sx = cx - reach; sx <= cx + reach; sx++) {
     const dx = Math.max(sx * SECTOR_SIZE - x, 0, x - (sx + 1) * SECTOR_SIZE);
+    const dxSq = dx * dx;
+    if (dxSq > leaveSq) continue;
     for (let sz = cz - reach; sz <= cz + reach; sz++) {
       const dz = Math.max(sz * SECTOR_SIZE - z, 0, z - (sz + 1) * SECTOR_SIZE);
-      const d = Math.hypot(dx, dz);
-      const k = keyOf(sx, sz);
-      if (d <= r.enterM || (d <= r.leaveM && prev?.has(k))) out.add(k);
+      const dSq = dxSq + dz * dz;
+      if (dSq <= enterSq) {
+        out.add(keyOf(sx, sz));
+      } else if (dSq <= leaveSq && prev !== null) {
+        const k = keyOf(sx, sz);
+        if (prev.has(k)) out.add(k);
+      }
     }
   }
   return out;
+}
+
+/**
+ * Compute a viewer's interest sectors at (x, z) along with `safeMoveSq`: the squared Euclidean distance
+ * (x, z) may move while remaining mathematically guaranteed to produce the exact same sector set.
+ * Optionally canonicalizes the returned Set<string> in `canon` so co-located sessions share the same Set reference.
+ */
+export function interestSectorsCached(
+  x: number,
+  z: number,
+  r: InterestRadii,
+  prev: Set<string> | null,
+  canon?: Map<string, Set<string>>,
+): { set: Set<string>; safeMoveSq: number } {
+  const reach = Math.ceil(r.leaveM / SECTOR_SIZE);
+  const cx = Math.floor(x / SECTOR_SIZE), cz = Math.floor(z / SECTOR_SIZE);
+  const enterM = r.enterM, leaveM = r.leaveM;
+  const enterSq = enterM * enterM, leaveSq = leaveM * leaveM;
+  let minMargin = Math.min(
+    x - cx * SECTOR_SIZE,
+    (cx + 1) * SECTOR_SIZE - x,
+    z - cz * SECTOR_SIZE,
+    (cz + 1) * SECTOR_SIZE - z,
+  );
+  const keys: string[] = [GLOBAL_SECTOR];
+  let sig = GLOBAL_SECTOR;
+  for (let sx = cx - reach; sx <= cx + reach; sx++) {
+    const dx = Math.max(sx * SECTOR_SIZE - x, 0, x - (sx + 1) * SECTOR_SIZE);
+    const dxSq = dx * dx;
+    for (let sz = cz - reach; sz <= cz + reach; sz++) {
+      const dz = Math.max(sz * SECTOR_SIZE - z, 0, z - (sz + 1) * SECTOR_SIZE);
+      const dSq = dxSq + dz * dz;
+      const d = Math.sqrt(dSq);
+      let inc = false;
+      let k = "";
+      if (dSq <= enterSq) {
+        k = keyOf(sx, sz);
+        inc = true;
+      } else if (dSq <= leaveSq && prev !== null) {
+        k = keyOf(sx, sz);
+        if (prev.has(k)) inc = true;
+      }
+      if (inc) {
+        keys.push(k);
+        if (canon) sig += "|" + k;
+        const m = leaveM - d;
+        if (m < minMargin) minMargin = m;
+      } else {
+        const m = d - enterM;
+        if (m < minMargin) minMargin = m;
+      }
+    }
+  }
+  const safe = Math.max(0, minMargin - 1e-3);
+  if (canon) {
+    let c = canon.get(sig);
+    if (!c) {
+      c = new Set<string>(keys);
+      canon.set(sig, c);
+    }
+    return { set: c, safeMoveSq: safe * safe };
+  }
+  return { set: new Set<string>(keys), safeMoveSq: safe * safe };
 }
 
 /**
@@ -92,7 +184,13 @@ export function interestSectors(x: number, z: number, r: InterestRadii, prev: Re
  */
 export function sectorDistance(key: string, x: number, z: number): number {
   if (key === GLOBAL_SECTOR) return 0;
-  const [sx, sz] = key.split(",").map(Number);
+  let coords = sectorCoordsCache.get(key);
+  if (!coords) {
+    const comma = key.indexOf(",");
+    coords = [Number(key.slice(0, comma)), Number(key.slice(comma + 1))];
+    sectorCoordsCache.set(key, coords);
+  }
+  const sx = coords[0], sz = coords[1];
   const dx = Math.max(sx * SECTOR_SIZE - x, 0, x - (sx + 1) * SECTOR_SIZE);
   const dz = Math.max(sz * SECTOR_SIZE - z, 0, z - (sz + 1) * SECTOR_SIZE);
   return Math.hypot(dx, dz);
@@ -107,6 +205,7 @@ export class SectorFrame {
   readonly pending = new Map<string, { lists: Record<Key, number[]>; spawned: bigint[]; despawned: bigint[] }>();
   private readonly deltas = new Map<string, Uint8Array>();
   private readonly fulls = new Map<string, Uint8Array>();
+  private readonly steadyEntriesCache = new Map<ReadonlySet<string>, DeltaSetEntry[]>();
   private buckets: Map<string, Record<Key, number[]>> | null = null;
 
   constructor(
@@ -125,6 +224,23 @@ export class SectorFrame {
       this.deltas.set(sector, b);
     }
     return b;
+  }
+
+  /**
+   * Shared DeltaSetEntry[] for a steady-state session (unchanged canonical interest set, no outerEvery rate limit,
+   * no replace). Computed once per unique canonical Set<string> per tick.
+   */
+  steadyDeltaEntries(sectors: ReadonlySet<string>): DeltaSetEntry[] {
+    let cached = this.steadyEntriesCache.get(sectors);
+    if (!cached) {
+      cached = [];
+      for (const sector of sectors) {
+        const d = this.delta(sector);
+        if (d) cached.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+      }
+      this.steadyEntriesCache.set(sectors, cached);
+    }
+    return cached;
   }
 
   /**
@@ -186,14 +302,15 @@ export class SectorFrame {
 
 function bucketAll(sim: SimWorld): Map<string, Record<Key, number[]>> {
   const out = new Map<string, Record<Key, number[]>>();
-  const memo = new Map<number, string>();
+  const bound = sim.maxSlotSeen + 1;
+  const memo = new Array<string | undefined>(bound);
   const full = fullEidLists(sim);
   for (const [k] of KEYS) {
     const eids = full[k];
     for (let i = 0; i < eids.length; i++) {
       const eid = eids[i];
-      let s = memo.get(eid);
-      if (s === undefined) memo.set(eid, (s = homeSector(sim, eid)));
+      let s = memo[eid];
+      if (s === undefined) memo[eid] = s = homeSector(sim, eid);
       let l = out.get(s);
       if (!l) out.set(s, (l = emptyLists()));
       l[k].push(eid);
@@ -207,10 +324,37 @@ function bucketAll(sim: SimWorld): Map<string, Record<Key, number[]>> {
 export const RATE_HISTORY = 8;
 
 export class SectorIndex {
-  /** wire id -> home sector, as of the last frame. */
-  private readonly home = new Map<bigint, string>();
+  /** Slot-indexed home sector + wire id as of the last frame (eliminates per-entity Map<bigint, string> hashing). */
+  private homeSlotWid = new BigUint64Array(1024);
+  private homeSlotSec: Array<string | undefined> = new Array(1024);
+  private memoTag = new Uint32Array(1024);
+  private memoVal: Array<string | undefined> = new Array(1024);
+  private movedTag = new Uint32Array(1024);
+  private frameSeq = 0;
   private recent: SectorFrame[] = [];
   private seeded = false;
+
+  private ensureCapacity(bound: number): void {
+    if (this.homeSlotWid.length < bound) {
+      const n = Math.max(bound * 2, 1024);
+      const w = new BigUint64Array(n);
+      w.set(this.homeSlotWid);
+      this.homeSlotWid = w;
+      this.homeSlotSec.length = n;
+      this.memoTag = new Uint32Array(n);
+      this.memoVal.length = n;
+      this.movedTag = new Uint32Array(n);
+    }
+  }
+
+  /** Fast O(1) lookup of an entity's current home sector using the slot table maintained by frame(). */
+  sectorOfEntity(sim: SimWorld, eid: number, wid: bigint): string {
+    if (eid >= 0 && eid < this.homeSlotWid.length && this.homeSlotWid[eid] === wid) {
+      const s = this.homeSlotSec[eid];
+      if (s !== undefined) return s;
+    }
+    return homeSector(sim, eid);
+  }
 
   /** This tick's sector deltas. Read-only w.r.t. the tracker (the caller commits after). */
   frame(sim: SimWorld, tick: number, tracker: DeltaTracker, chunkSource: ChunkDataSource | null): SectorFrame {
@@ -220,16 +364,31 @@ export class SectorIndex {
     if (this.recent[0]) this.recent[0].prior = [];
     f.prior = this.recent;
     this.recent = [f, ...this.recent].slice(0, RATE_HISTORY);
+    const bound = sim.maxSlotSeen + 1;
+    this.ensureCapacity(bound);
+    const homeWid = this.homeSlotWid;
+    const homeSec = this.homeSlotSec;
     if (!this.seeded) {
       this.seeded = true;
       const t = fullEidLists(sim).transforms;
-      for (let i = 0; i < t.length; i++) this.home.set(sim.wireId(t[i]), homeSector(sim, t[i]));
+      for (let i = 0; i < t.length; i++) {
+        const eid = t[i];
+        homeWid[eid] = sim.wireId(eid);
+        homeSec[eid] = homeSector(sim, eid);
+      }
     }
-    const diff: DiffResult = tracker.diff(sim, spawnedSlotsOf(sim));
-    const memo = new Map<number, string>();
+    const spawnedSlots = spawnedSlotsOf(sim);
+    const hasSpawned = spawnedSlots.size !== 0;
+    const diff: DiffResult = tracker.diff(sim, spawnedSlots);
+    const seq = (this.frameSeq = ((this.frameSeq + 1) >>> 0) || 1);
+    const memoTag = this.memoTag;
+    const memoVal = this.memoVal;
+    const movedTag = this.movedTag;
     const sectorOf = (eid: number): string => {
-      let s = memo.get(eid);
-      if (s === undefined) memo.set(eid, (s = homeSector(sim, eid)));
+      if (memoTag[eid] === seq) return memoVal[eid]!;
+      const s = homeSector(sim, eid);
+      memoTag[eid] = seq;
+      memoVal[eid] = s;
       return s;
     };
     const lists = new Map<string, Record<Key, number[]>>();
@@ -240,43 +399,75 @@ export class SectorIndex {
     };
     const outOf = new Map<string, bigint[]>();
     const movedIn = new Map<string, number[]>();
-    const spawned = new Set(sim.spawnedWireIds());
+    let anyMoved = false;
     // Sector moves: only entities whose Transform changed can have moved.
-    for (const eid of diff.transforms) {
+    const changedTransforms = diff.transforms;
+    for (let i = 0; i < changedTransforms.length; i++) {
+      const eid = changedTransforms[i];
       const wid = sim.wireId(eid);
       const now = sectorOf(eid);
-      const was = this.home.get(wid);
-      this.home.set(wid, now);
-      if (was === undefined || was === now || spawned.has(wid)) continue;
+      const was = homeWid[eid] === wid ? homeSec[eid] : undefined;
+      homeWid[eid] = wid;
+      homeSec[eid] = now;
+      if (was === undefined || was === now || (hasSpawned && spawnedSlots.has(eid))) continue;
       let o = outOf.get(was);
       if (!o) outOf.set(was, (o = []));
       o.push(wid);
       let m = movedIn.get(now);
       if (!m) movedIn.set(now, (m = []));
       m.push(eid);
+      movedTag[eid] = seq;
+      anyMoved = true;
     }
     const despawned = [...sim.despawnedWireIds()];
-    for (const wid of despawned) this.home.delete(wid);
-    // Changed rows, by home sector; an entity that moved in gets all its rows instead.
-    const moved = new Set<number>();
-    for (const m of movedIn.values()) for (const eid of m) moved.add(eid);
-    for (const [k] of KEYS) {
-      const changed = diff[k as "transforms"];
-      const posOnly = k === "transforms" && diff.positionOnly.size > 0 ? diff.positionOnly : null;
-      for (let i = 0; i < changed.length; i++) {
-        const eid = changed[i];
-        if (!moved.has(eid)) listsOf(sectorOf(eid))[posOnly?.has(eid) ? "positions" : k].push(eid);
+    for (let i = 0; i < despawned.length; i++) {
+      const wid = despawned[i];
+      const slot = Number(wid & 0xffffffffn);
+      if (slot < homeWid.length && homeWid[slot] === wid) {
+        homeWid[slot] = 0n;
+        homeSec[slot] = undefined;
       }
     }
-    for (const [s, eids] of movedIn) {
-      const l = listsOf(s);
-      for (const eid of eids) for (const [k, comp] of KEYS) if (hasComponent(sim.ecs, comp, eid)) l[k].push(eid);
+    // Changed rows, by home sector; an entity that moved in gets all its rows instead.
+    const hasPosOnly = tracker.hasPositionOnly();
+    for (let ki = 0; ki < KEYS.length; ki++) {
+      const k = KEYS[ki][0];
+      const changed = diff[k as "transforms"];
+      if (changed.length === 0) continue;
+      if (k === "transforms" && hasPosOnly) {
+        for (let i = 0; i < changed.length; i++) {
+          const eid = changed[i];
+          if (anyMoved && movedTag[eid] === seq) continue;
+          const l = listsOf(sectorOf(eid));
+          if (tracker.isPositionOnly(eid)) l.positions.push(eid);
+          else l.transforms.push(eid);
+        }
+      } else {
+        for (let i = 0; i < changed.length; i++) {
+          const eid = changed[i];
+          if (anyMoved && movedTag[eid] === seq) continue;
+          listsOf(sectorOf(eid))[k].push(eid);
+        }
+      }
     }
+    if (anyMoved) {
+      for (const [s, eids] of movedIn) {
+        const l = listsOf(s);
+        for (let i = 0; i < eids.length; i++) {
+          const eid = eids[i];
+          for (let ki = 0; ki < KEYS.length; ki++) {
+            const [k, comp] = KEYS[ki];
+            if (hasComponent(sim.ecs, comp, eid)) l[k].push(eid);
+          }
+        }
+      }
+    }
+    const spawnedWids = [...sim.spawnedWireIds()];
     for (const s of new Set<string>([...lists.keys(), ...outOf.keys(), GLOBAL_SECTOR])) {
       const g = s === GLOBAL_SECTOR;
       f.pending.set(s, {
         lists: lists.get(s) ?? emptyLists(),
-        spawned: g ? [...spawned] : [],
+        spawned: g ? spawnedWids : [],
         despawned: g ? despawned : (outOf.get(s) ?? []),
       });
     }

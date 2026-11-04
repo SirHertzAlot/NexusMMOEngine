@@ -206,3 +206,23 @@ it("crossing into another sector is a full row there, then position-only rows", 
   assert.equal(r.baselineMisses, 0);
   same(r, e);
 });
+
+it("an orphan position-only row (receiver missed baseline) is discarded rather than fabricating identity rotation/scale", () => {
+  const r = rig();
+  const e = add(r, 10, 10, { y: 0.6, w: 0.8 }, 2.5);
+  tick(r, 1, () => {});
+  const unseeded: WorldState = new Map();
+  // Tick 2 emits a position-only delta; applying it to an unseeded receiver must not fabricate an identity transform.
+  r.sim.beginTick(2);
+  Transform.px[e] += 1;
+  r.sim.emitTick(2);
+  const frame = r.index.frame(r.sim, 2, r.tracker, null);
+  r.tracker.commit(r.sim);
+  r.sim.endTick();
+  for (const sector of frame.occupied()) {
+    const bytes = frame.delta(sector);
+    if (!bytes) continue;
+    applyDelta(unseeded, decodeDelta(bytes));
+  }
+  assert.equal(unseeded.has(r.sim.wireId(e)), false, "orphan position-only row was discarded");
+});

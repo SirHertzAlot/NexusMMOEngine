@@ -70,6 +70,7 @@ export class NativeFanout {
   private readonly free: number[] = [];
   private readonly slotOf = new Map<string, number>();
   private tickNo = 0;
+  private tickSeq = 0;
   private sessions: ClientSession[] = [];
   private desc = new Int32Array(1 << 14);
   private descLen = 0;
@@ -79,6 +80,9 @@ export class NativeFanout {
   private pidsLen = 0;
   private payloads: Uint8Array[] = [];
   private readonly payloadIdx = new Map<Uint8Array, number>();
+  private secLastTag = new Uint32Array(512);
+  private secLastBytes: Array<Uint8Array | undefined> = new Array(512);
+  private secLastIdx = new Int32Array(512);
   private out = new Int32Array(2048);
   private wantCount = new Int32Array(1024);
   private arena = new Uint8Array(1 << 20);
@@ -87,10 +91,19 @@ export class NativeFanout {
   private ids = new BigUint64Array(1 << 10);
   private hasNames = false;
   private results: FanoutResult[] = [];
+  private groupEnvs: Uint8Array[] = [];
   /** Sharing mode (MMO_FANOUT_SHARE=off|assembly|publish, default assembly): sessions whose entry lists are identical get one assembled envelope. */
   readonly share: FanoutShare;
-  private readonly groupIdx = new Map<string, number>();
-  private groupKeys: string[] = [];
+  private groupTable = new Int32Array(4096).fill(-1);
+  private groupTableMask = 4095;
+  private groupTableUsed = new Int32Array(4096);
+  private groupTableUsedLen = 0;
+  private groupDescOff = new Int32Array(1024);
+  private groupDescLen = new Int32Array(1024);
+  private groupCount = 0;
+  private groupKeys: Array<string | undefined> = [];
+  private readonly entriesObjGroup = new Map<readonly DeltaSetEntry[], number>();
+  private readonly sectorSetCache = new WeakMap<ReadonlySet<string>, { size: number; ids: Int32Array }>();
   private sessionGroup: number[] = [];
   /** Milliseconds spent in each native call since boot, for metrics and benchmarks. */
   readonly ms = { selectNames: 0, assemble: 0 };
@@ -105,20 +118,67 @@ export class NativeFanout {
 
   /** The key of an equivalence group (same tick, replace flag and entry list): a stable topic name for publish. */
   groupKey(g: number): string {
-    return this.groupKeys[g];
+    let k = this.groupKeys[g];
+    if (k === undefined) {
+      const d = this.desc;
+      let o = this.groupDescOff[g];
+      const n = d[o++];
+      k = d[o++] ? "r" : "d";
+      for (let i = 0; i < n; i++) {
+        k += `${d[o]}.${d[o + 1]}.${d[o + 2]},`;
+        o += 3;
+      }
+      this.groupKeys[g] = k;
+    }
+    return k;
+  }
+
+  private growSecPayloadCache(minSize: number): void {
+    const n = Math.max(minSize * 2, 512);
+    const t = new Uint32Array(n);
+    t.set(this.secLastTag);
+    this.secLastTag = t;
+    this.secLastBytes.length = n;
+    const idx = new Int32Array(n);
+    idx.set(this.secLastIdx);
+    this.secLastIdx = idx;
+  }
+
+  private growGroupArrays(minGroups: number): void {
+    const n = Math.max(minGroups * 2, 1024);
+    const off = new Int32Array(n);
+    off.set(this.groupDescOff);
+    this.groupDescOff = off;
+    const len = new Int32Array(n);
+    len.set(this.groupDescLen);
+    this.groupDescLen = len;
+    if (n * 2 > this.groupTable.length) {
+      let cap = this.groupTable.length;
+      while (cap < n * 2) cap <<= 1;
+      this.groupTable = new Int32Array(cap).fill(-1);
+      this.groupTableMask = cap - 1;
+      this.groupTableUsed = new Int32Array(cap);
+      this.groupTableUsedLen = 0;
+    }
   }
 
   /** Start a tick. `bySector` is the named entities by home sector, or null when names are off. */
   begin(tick: number, bySector: ReadonlyMap<string, bigint[]> | null): void {
     this.tickNo = tick;
+    this.tickSeq = ((this.tickSeq + 1) >>> 0) || 1;
     this.sessions.length = 0;
     this.descLen = 0;
     this.nameDescLen = 0;
     this.pidsLen = 0;
     this.payloads.length = 0;
     this.payloadIdx.clear();
-    this.groupIdx.clear();
+    for (let i = 0; i < this.groupTableUsedLen; i++) {
+      this.groupTable[this.groupTableUsed[i]] = -1;
+    }
+    this.groupTableUsedLen = 0;
+    this.groupCount = 0;
     this.groupKeys.length = 0;
+    this.entriesObjGroup.clear();
     this.sessionGroup.length = 0;
     this.hasNames = bySector !== null;
     if (bySector) {
@@ -184,43 +244,94 @@ export class NativeFanout {
   /** Queue one session. Its interestSet must already be the one `entries` was computed with. */
   add(s: ClientSession, replace: boolean, entries: readonly DeltaSetEntry[]): void {
     this.sessions.push(s);
-    let need = this.descLen + 2 + entries.length * 3;
-    if (need > this.desc.length) {
-      const bigger = new Int32Array(need * 2);
-      bigger.set(this.desc.subarray(0, this.descLen));
-      this.desc = bigger;
-    }
-    const d = this.desc;
-    let o = this.descLen;
-    d[o++] = entries.length;
-    d[o++] = replace ? 1 : 0;
-    let key = this.share === "off" ? "" : replace ? "r" : "d";
-    for (const e of entries) {
-      let p = this.payloadIdx.get(e.bytes);
-      if (p === undefined) {
-        p = this.payloads.length;
-        this.payloads.push(e.bytes);
-        this.payloadIdx.set(e.bytes, p);
-      }
-      const si = this.indexOf(e.sector);
-      d[o++] = e.kind;
-      d[o++] = si;
-      d[o++] = p;
-      if (this.share !== "off") key += `${e.kind}.${si}.${p},`;
-    }
-    if (this.share === "off") {
-      this.sessionGroup.push(this.sessionGroup.length);
-      this.descLen = o;
+    const shareOn = this.share !== "off";
+    const fastG = shareOn && !replace ? this.entriesObjGroup.get(entries) : undefined;
+    if (fastG !== undefined) {
+      this.sessionGroup.push(fastG);
     } else {
-      // Same tick, replace flag and (kind, sector, payload) list => the assembled bytes are identical.
-      let g = this.groupIdx.get(key);
-      if (g === undefined) {
-        g = this.groupKeys.length;
-        this.groupIdx.set(key, g);
-        this.groupKeys.push(key);
+      const nEntries = entries.length;
+      const needDesc = this.descLen + 2 + nEntries * 3;
+      if (needDesc > this.desc.length) {
+        const bigger = new Int32Array(needDesc * 2);
+        bigger.set(this.desc.subarray(0, this.descLen));
+        this.desc = bigger;
+      }
+      const d = this.desc;
+      const base = this.descLen;
+      let o = base;
+      d[o++] = nEntries;
+      d[o++] = replace ? 1 : 0;
+      let h = (replace ? 0x811c9dc5 : 0x01000193) ^ nEntries;
+      const tickSeq = this.tickSeq;
+      for (let i = 0; i < nEntries; i++) {
+        const e = entries[i];
+        const si = this.indexOf(e.sector);
+        const slot = (si << 2) | (e.kind & 3);
+        let p: number;
+        if (slot < this.secLastTag.length && this.secLastTag[slot] === tickSeq && this.secLastBytes[slot] === e.bytes) {
+          p = this.secLastIdx[slot];
+        } else {
+          let found = this.payloadIdx.get(e.bytes);
+          if (found === undefined) {
+            found = this.payloads.length;
+            this.payloads.push(e.bytes);
+            this.payloadIdx.set(e.bytes, found);
+          }
+          p = found;
+          if (slot >= this.secLastTag.length) this.growSecPayloadCache(slot + 1);
+          this.secLastTag[slot] = tickSeq;
+          this.secLastBytes[slot] = e.bytes;
+          this.secLastIdx[slot] = p;
+        }
+        d[o++] = e.kind;
+        d[o++] = si;
+        d[o++] = p;
+        if (shareOn) {
+          h = Math.imul(h ^ ((e.kind & 3) | (si << 2) | (p << 16)), 0x01000193);
+        }
+      }
+      if (!shareOn) {
+        this.sessionGroup.push(this.sessionGroup.length);
         this.descLen = o;
-      } // else an existing group: this session's entries are not assembled again
-      this.sessionGroup.push(g);
+      } else {
+        if (this.groupCount + 1 >= this.groupDescOff.length) {
+          this.growGroupArrays(this.groupCount + 1);
+        }
+        const len = o - base;
+        const table = this.groupTable;
+        const mask = this.groupTableMask;
+        let tSlot = (h ^ (h >>> 16)) & mask;
+        let g = -1;
+        while (true) {
+          const cand = table[tSlot];
+          if (cand === -1) {
+            g = this.groupCount++;
+            table[tSlot] = g;
+            this.groupTableUsed[this.groupTableUsedLen++] = tSlot;
+            this.groupDescOff[g] = base;
+            this.groupDescLen[g] = len;
+            this.descLen = o;
+            break;
+          }
+          if (this.groupDescLen[cand] === len) {
+            const cOff = this.groupDescOff[cand];
+            let match = true;
+            for (let k = 1; k < len; k++) {
+              if (d[cOff + k] !== d[base + k]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              g = cand;
+              break;
+            }
+          }
+          tSlot = (tSlot + 1) & mask;
+        }
+        if (!replace) this.entriesObjGroup.set(entries, g);
+        this.sessionGroup.push(g);
+      }
     }
     if (!this.hasNames) return;
     const pinned = s.pinnedOut;
@@ -229,7 +340,7 @@ export class NativeFanout {
     const nSec = sectors ? sectors.size : 0;
     this.count.sectorRefs += nSec;
     const nPin = pinned ? pinned.size : 0;
-    need = this.nameDescLen + 4 + nSec;
+    const need = this.nameDescLen + 4 + nSec;
     if (need > this.nameDesc.length) {
       const bigger = new Int32Array(need * 2);
       bigger.set(this.nameDesc.subarray(0, this.nameDescLen));
@@ -242,7 +353,18 @@ export class NativeFanout {
     // Sectors that are not in this tick's table have no named entities: index them anyway (length 0).
     nd[q++] = nSec;
     nd[q++] = nPin;
-    if (sectors) for (const k of sectors) nd[q++] = this.indexOf(k);
+    if (sectors && nSec > 0) {
+      let cached = this.sectorSetCache.get(sectors);
+      if (!cached || cached.size !== nSec) {
+        const ids = new Int32Array(nSec);
+        let at = 0;
+        for (const k of sectors) ids[at++] = this.indexOf(k);
+        cached = { size: nSec, ids };
+        this.sectorSetCache.set(sectors, cached);
+      }
+      nd.set(cached.ids, q);
+      q += nSec;
+    }
     this.nameDescLen = q;
     const nIds = (player !== null ? 1 : 0) + nPin;
     if (this.pidsLen + nIds > this.pids.length) {
@@ -251,7 +373,7 @@ export class NativeFanout {
       this.pids = bigger;
     }
     if (player !== null) this.pids[this.pidsLen++] = player;
-    if (pinned) for (const w of pinned) this.pids[this.pidsLen++] = w;
+    if (pinned && nPin > 0) for (const w of pinned) this.pids[this.pidsLen++] = w;
   }
 
   /** Run the native calls for the queued sessions; results are in queue order. */
@@ -289,7 +411,7 @@ export class NativeFanout {
         }
       }
     }
-    const groups = this.share === "off" ? n : this.groupKeys.length;
+    const groups = this.share === "off" ? n : this.groupCount;
     if (this.out.length < groups * 2) this.out = new Int32Array(groups * 2 * 2);
     const t1 = performance.now();
     let r = this.addon.assemble(this.tickNo, this.arena, this.out, this.desc, this.descLen, this.payloads);
@@ -302,13 +424,19 @@ export class NativeFanout {
     this.count.sessions += n;
     this.count.groups += groups;
     this.count.assembledBytes += this.out[(groups - 1) * 2] + this.out[(groups - 1) * 2 + 1];
-    for (let i = 0; i < n; i++) {
-      const g = this.sessionGroup[i];
+    const groupEnvs = this.groupEnvs;
+    groupEnvs.length = groups;
+    for (let g = 0; g < groups; g++) {
       const off = this.out[g * 2];
       const len = this.out[g * 2 + 1];
-      this.count.envelopeBytes += len;
+      groupEnvs[g] = this.arena.subarray(off, off + len);
+    }
+    for (let i = 0; i < n; i++) {
+      const g = this.sessionGroup[i];
+      const env = groupEnvs[g];
+      this.count.envelopeBytes += env.byteLength;
       const w = wants ? wants[i] : EMPTY;
-      this.results.push({ env: this.arena.subarray(off, off + len), want: w.length > 0 ? w : null, group: g });
+      this.results.push({ env, want: w.length > 0 ? w : null, group: g });
     }
     return this.results;
   }

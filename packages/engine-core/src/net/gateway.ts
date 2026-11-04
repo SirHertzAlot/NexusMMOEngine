@@ -138,9 +138,10 @@ import { createTransport, type HttpHandler, type Transport, type TransportKind, 
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
 import { loadNativeFanout, type FanoutResult, type FanoutStatus, type NativeFanout } from "./native-fanout.js";
-import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, interestSectorsCached, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
+const EMPTY_BIGINT_LIST: readonly bigint[] = [];
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
 const COMBAT_PIN_TICKS = 300;
 /** IM8: a border ticket lives 60 s and is renewed with 20 s left. */
@@ -2130,22 +2131,24 @@ export class Gateway {
   fanoutStatus: FanoutStatus;
   /** Ticks fanned out on each path, since boot. */
   readonly fanoutTicks = { native: 0, js: 0 };
-  /** Wire id -> [position, session] of the sessions with an avatar; built for one broadcast so namesFor can look ids up. */
+  /** Wire id -> [position, session] of the sessions with an avatar; built lazily during broadcast so namesFor can look ids up. */
   private playerIndex: Map<bigint, [number, ClientSession]> | null = null;
+  private inBroadcast = false;
+  private readonly canonicalInterestSets = new Map<string, Set<string>>();
+  private readonly globalOnlySet = new Set<string>([GLOBAL_SECTOR]);
+  private tickFarVisible: readonly number[] | null = null;
+  private tickQuestExt: { pinnedResidentsOf?(characterId: number | null): string[] } | null | undefined = undefined;
 
   /** Fan one tick's state out to every connected session (broadcast). */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
-    {
-      const idx = new Map<bigint, [number, ClientSession]>();
-      let i = 0;
-      for (const o of this.sessions.values()) {
-        if (o.playerEntity !== null && !idx.has(o.playerEntity)) idx.set(o.playerEntity, [i, o]);
-        i++;
-      }
-      this.playerIndex = idx;
-    }
-    const bySector = frame ? this.bucketBySector(this.namedWireIds()) : null;
+    this.inBroadcast = true;
+    this.playerIndex = null;
+    this.tickFarVisible = frame ? farVisibleOf(this.world) : null;
+    this.tickQuestExt = frame
+      ? ((this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined) ?? null)
+      : undefined;
+    const bySector = frame ? this.namedBySector() : null;
     const dropped = frame && this.items ? this.droppedIndex() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
     // interest management splits it per sector (IM3).
@@ -2295,7 +2298,10 @@ export class Gateway {
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
 
+    this.inBroadcast = false;
     this.playerIndex = null;
+    this.tickFarVisible = null;
+    this.tickQuestExt = undefined;
     if (edge && edgePlans.length > 0) edge.sendSectors(tick, edgeBytes, edgePlans);
 
     // Shared publish: one publish per equivalence group (the transport copies the bytes before the arena is reused).
@@ -2395,41 +2401,51 @@ export class Gateway {
   }
 
   /** IM5: the wire ids a session always sees: its party in this region and recent foes. */
-  private pinsOf(s: ClientSession): bigint[] {
-    const out: bigint[] = [];
+  private pinsOf(s: ClientSession): readonly bigint[] {
+    let out: bigint[] | null = null;
     const me = s.character?.name ?? s.username;
     const mates = this.parties.partyOf(me);
     if (mates.length > 0) {
       const names = new Set(mates.map((n) => n.toLowerCase()));
       for (const r of this.sessions.values()) {
         if (r === s || r.playerEntity === null) continue;
-        if (names.has((r.character?.name ?? r.username).toLowerCase())) out.push(r.playerEntity);
+        if (names.has((r.character?.name ?? r.username).toLowerCase())) (out ??= []).push(r.playerEntity);
       }
     }
-    if (s.combatPins) {
+    if (s.combatPins && s.combatPins.size > 0) {
       for (const [wid, until] of s.combatPins) {
         if (until < this.tick) s.combatPins.delete(wid);
-        else out.push(wid);
+        else (out ??= []).push(wid);
       }
     }
     // FarVisible entities (IM5) within farM of the session's avatar, wherever they stand.
-    const far = farVisibleOf(this.world);
-    const avatar = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    if (far.length > 0 && avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
-      const farM = this.interest?.farM ?? 400;
-      const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
-      for (const eid of far) {
-        if (eid === avatar) continue;
-        if (Math.hypot(C.Transform.px[eid]! - x, C.Transform.pz[eid]! - z) <= farM) out.push(this.world.wireId(eid));
+    const far = this.tickFarVisible ?? farVisibleOf(this.world);
+    if (far.length > 0 && s.playerEntity !== null) {
+      const avatar = this.world.resolveWireId(s.playerEntity);
+      if (avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
+        const farM = this.interest?.farM ?? 400;
+        const farSq = farM * farM;
+        const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
+        for (let i = 0; i < far.length; i++) {
+          const eid = far[i];
+          if (eid === avatar) continue;
+          const dx = C.Transform.px[eid]! - x;
+          const dz = C.Transform.pz[eid]! - z;
+          if (dx * dx + dz * dz <= farSq) (out ??= []).push(this.world.wireId(eid));
+        }
       }
     }
     // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
-    const quests = this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined;
-    for (const name of quests?.pinnedResidentsOf?.(s.character?.id ?? null) ?? []) {
-      const e = this.residents?.entityOf(name);
-      if (e !== undefined) out.push(this.world.wireId(e));
+    const quests = this.tickQuestExt !== undefined
+      ? this.tickQuestExt
+      : (this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined);
+    if (quests?.pinnedResidentsOf) {
+      for (const name of quests.pinnedResidentsOf(s.character?.id ?? null)) {
+        const e = this.residents?.entityOf(name);
+        if (e !== undefined) (out ??= []).push(this.world.wireId(e));
+      }
     }
-    return out;
+    return out ?? EMPTY_BIGINT_LIST;
   }
 
   /**
@@ -2528,56 +2544,130 @@ export class Gateway {
     return out;
   }
 
-  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
-    const prev = replace ? null : (s.interestSet ?? null);
-    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    const next = s.observer
-      ? (Number.isFinite(s.observer.x) ? interestSectors(s.observer.x, s.observer.z, this.interest!, prev) : new Set([GLOBAL_SECTOR]))
-      : s.interestAll && s.isAdmin
-      ? frame.occupied()
-      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
-      ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
-      : new Set([GLOBAL_SECTOR]);
-    const entries: DeltaSetEntry[] = [];
-    // IM7: sectors beyond enterM (kept only by hysteresis) send a rate-limited delta, when a rate is set.
-    const every = this.interest!.outerEvery;
-    const at = s.observer
-      ? { x: s.observer.x, z: s.observer.z }
-      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid) ? { x: C.Transform.px[eid], z: C.Transform.pz[eid] } : null;
-    for (const sector of next) {
-      if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-      else if (every && at && sectorDistance(sector, at.x, at.z) > this.interest!.enterM) {
-        if (frame.tick % every !== 0) continue;
-        const d = frame.rateDelta(sector, every);
-        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
-      } else {
-        const d = frame.delta(sector);
-        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+  /** Named entities bucketed directly by home sector without intermediate wire-id arrays or redundant sector math. */
+  private namedBySector(): Map<string, bigint[]> {
+    const bySector = new Map<string, bigint[]>();
+    const sim = this.world;
+    const idx = this.sectorIndex;
+    const put = (eid: number, w: bigint): void => {
+      if (eid < 0 || !hasComponent(sim.ecs, C.Transform, eid)) return;
+      const sector = idx.sectorOfEntity(sim, eid, w);
+      const list = bySector.get(sector);
+      if (list) list.push(w);
+      else bySector.set(sector, [w]);
+    };
+    for (const other of this.sessions.values()) {
+      const w = other.playerEntity;
+      if (w !== null) put(sim.resolveWireId(w), w);
+    }
+    const creatures = this.creatures;
+    if (creatures?.nameOf) {
+      const ents = creatures.entities?.();
+      if (ents) {
+        for (const e of ents) {
+          if (creatures.nameOf(e)) put(e, sim.wireId(e));
+        }
       }
     }
-    if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    return bySector;
+  }
+
+  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
+    const r = this.interest!;
+    const prev = replace ? null : (s.interestSet ?? null);
+    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    let next: Set<string>;
+    let atX = NaN, atZ = NaN;
+    let hasAt = false;
+    if (s.observer) {
+      if (Number.isFinite(s.observer.x)) {
+        atX = s.observer.x;
+        atZ = s.observer.z;
+        hasAt = true;
+      }
+    } else if (!(s.interestAll && s.isAdmin) && eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)) {
+      atX = C.Transform.px[eid];
+      atZ = C.Transform.pz[eid];
+      hasAt = true;
+    }
+    if (hasAt) {
+      const dx = atX - (s.interestRefX ?? NaN);
+      const dz = atZ - (s.interestRefZ ?? NaN);
+      if (
+        prev !== null &&
+        s.interestEnterM === r.enterM &&
+        s.interestLeaveM === r.leaveM &&
+        dx * dx + dz * dz < (s.interestSafeMoveSq ?? 0)
+      ) {
+        next = prev;
+      } else {
+        const res = interestSectorsCached(atX, atZ, r, prev, this.canonicalInterestSets);
+        next = res.set;
+        s.interestRefX = atX;
+        s.interestRefZ = atZ;
+        s.interestSafeMoveSq = res.safeMoveSq;
+        s.interestEnterM = r.enterM;
+        s.interestLeaveM = r.leaveM;
+      }
+    } else if (!s.observer && s.interestAll && s.isAdmin) {
+      next = frame.occupied();
+      s.interestSafeMoveSq = 0;
+    } else {
+      next = this.globalOnlySet;
+      s.interestSafeMoveSq = 0;
+    }
+    const every = r.outerEvery;
+    let entries: DeltaSetEntry[] | null = null;
+    let sharedEntries: DeltaSetEntry[] | null = null;
+    if (!replace && next === prev && !every) {
+      sharedEntries = frame.steadyDeltaEntries(next);
+    } else {
+      entries = [];
+      for (const sector of next) {
+        if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
+        else if (every && hasAt && sectorDistance(sector, atX, atZ) > r.enterM) {
+          if (frame.tick % every !== 0) continue;
+          const d = frame.rateDelta(sector, every);
+          if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+        } else {
+          const d = frame.delta(sector);
+          if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+        }
+      }
+      if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    }
     s.interestSet = next;
     // Pinned (IM5): party members and recent foes, wherever they are.
-    const was = replace ? new Set<bigint>() : (s.pinnedOut ?? new Set<bigint>());
+    const pins = this.pinsOf(s);
+    const was = replace ? null : s.pinnedOut;
+    const hadPins = was !== null && was !== undefined && was.size > 0;
+    if (pins.length === 0 && !hadPins) {
+      if (replace && s.pinnedOut && s.pinnedOut.size > 0) s.pinnedOut.clear();
+      return sharedEntries ?? entries!;
+    }
     const out = new Set<bigint>();
     const fresh: number[] = [], kept: number[] = [];
-    for (const wid of this.pinsOf(s)) {
+    for (let i = 0; i < pins.length; i++) {
+      const wid = pins[i];
       const pe = this.world.resolveWireId(wid);
-      if (pe < 0 || next.has(homeSector(this.world, pe))) continue;
+      if (pe < 0 || next.has(this.sectorIndex.sectorOfEntity(this.world, pe, wid))) continue;
       out.add(wid);
-      (was.has(wid) ? kept : fresh).push(pe);
+      (was?.has(wid) ? kept : fresh).push(pe);
     }
     const left: bigint[] = [];
-    for (const wid of was) {
-      if (out.has(wid)) continue;
-      const pe = this.world.resolveWireId(wid);
-      if (pe < 0 || !next.has(homeSector(this.world, pe))) left.push(wid);
+    if (was) {
+      for (const wid of was) {
+        if (out.has(wid)) continue;
+        const pe = this.world.resolveWireId(wid);
+        if (pe < 0 || !next.has(this.sectorIndex.sectorOfEntity(this.world, pe, wid))) left.push(wid);
+      }
     }
     s.pinnedOut = out;
+    const finalEntries = sharedEntries ? [...sharedEntries] : entries!;
     if (fresh.length + kept.length + left.length > 0) {
-      entries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
+      finalEntries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
     }
-    return entries;
+    return finalEntries;
   }
 
   /**
@@ -2995,6 +3085,13 @@ export class Gateway {
         this.onIntent(s, payload);
         break;
       case MessageType.Ping:
+        if (payload.length > 0) {
+          try {
+            if ((decodeControl(payload) as { resync?: boolean } | null)?.resync === true) s.needsResync = true;
+          } catch {
+            /* opaque ping payload */
+          }
+        }
         // Echo the payload back as pong (heartbeat + RTT).
         this.sendEnvelope(s, MessageType.Pong, payload);
         break;
@@ -6440,7 +6537,16 @@ export class Gateway {
         this.guilds.tagOf(other.character?.name ?? other.username),
       ]);
     };
-    if (only !== null && this.playerIndex !== null) {
+    if (only !== null && this.inBroadcast) {
+      if (this.playerIndex === null) {
+        const idx = new Map<bigint, [number, ClientSession]>();
+        let i = 0;
+        for (const o of this.sessions.values()) {
+          if (o.playerEntity !== null && !idx.has(o.playerEntity)) idx.set(o.playerEntity, [i, o]);
+          i++;
+        }
+        this.playerIndex = idx;
+      }
       // During a broadcast: look each wanted id up instead of scanning every session per call. Rows keep the
       // sessions' own order, as the scan produced them.
       const hit: Array<[number, ClientSession]> = [];

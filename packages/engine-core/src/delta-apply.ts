@@ -76,13 +76,14 @@ export function stateFromCollected(s: CollectedState): WorldState {
 export function applyDelta(state: WorldState, delta: CollectedState): WorldState {
   for (const wid of delta.despawned) state.delete(wid);
   for (const r of delta.transforms) upsert(state, r.wireId, "transform", r);
-  // Position-only rows (v29): rotation and scale stay as the state has them.
+  // Position-only rows (v29): rotation and scale stay as the state has them; discard if no baseline exists.
   for (const r of delta.positions ?? []) {
     const t = state.get(r.wireId)?.transform;
+    if (!t) continue;
     upsert(state, r.wireId, "transform", {
       wireId: r.wireId, px: r.px, py: r.py, pz: r.pz,
-      qx: t?.qx ?? 0, qy: t?.qy ?? 0, qz: t?.qz ?? 0, qw: t?.qw ?? 1,
-      sx: t?.sx ?? 1, sy: t?.sy ?? 1, sz: t?.sz ?? 1,
+      qx: t.qx, qy: t.qy, qz: t.qz, qw: t.qw,
+      sx: t.sx, sy: t.sy, sz: t.sz,
     });
   }
   for (const r of delta.velocities) upsert(state, r.wireId, "velocity", r);

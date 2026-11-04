@@ -1060,8 +1060,9 @@ function buildU64Vector(
   ids: ArrayLike<bigint>,
   start: (b: flatbuffers.Builder, n: number) => void,
 ): number {
-  start(b, ids.length);
-  for (let i = ids.length - 1; i >= 0; i--) b.addInt64(ids[i]);
+  const n = ids.length;
+  start(b, n);
+  for (let i = n - 1; i >= 0; i--) b.writeInt64(ids[i]);
   return b.endVector();
 }
 
@@ -1075,9 +1076,11 @@ function buildEntitiesVectorSoA(
   src: SoAColumns,
   start: (b: flatbuffers.Builder, n: number) => void,
 ): number {
-  const n = src.eids.length;
+  const eids = src.eids;
+  const n = eids.length;
+  const wireIdOf = src.wireIdOf;
   start(b, n);
-  for (let i = n - 1; i >= 0; i--) b.addInt64(src.wireIdOf(src.eids[i]));
+  for (let i = n - 1; i >= 0; i--) b.writeInt64(wireIdOf(eids[i]));
   return b.endVector();
 }
 
@@ -1101,11 +1104,17 @@ function buildTransformBlockSoA(b: flatbuffers.Builder, src: TransformSoA): numb
 }
 
 function buildPositionBlockSoA(b: flatbuffers.Builder, src: PositionSoA): number {
-  const n = src.eids.length;
+  const eids = src.eids;
+  const n = eids.length;
+  const px = src.px;
+  const py = src.py;
+  const pz = src.pz;
   PositionBlock.startPositionsVector(b, n);
   for (let i = n - 1; i >= 0; i--) {
-    const e = src.eids[i];
-    Vec3.createVec3(b, src.px[e], src.py[e], src.pz[e]);
+    const e = eids[i];
+    b.writeFloat32(pz[e]);
+    b.writeFloat32(py[e]);
+    b.writeFloat32(px[e]);
   }
   const vec = b.endVector();
   const entities = buildEntitiesVectorSoA(b, src, (bb, k) => PositionBlock.startEntitiesVector(bb, k));

@@ -124,6 +124,12 @@ export interface ClientSession {
   sectorTopic: string | null;
   /** Interest management: the sectors this session sees; null = send it a full replace next tick. */
   interestSet?: Set<string> | null;
+  /** Interest movement memo: anchor (x, z) and safe squared movement threshold where `interestSet` is invariant. */
+  interestRefX?: number;
+  interestRefZ?: number;
+  interestSafeMoveSq?: number;
+  interestEnterM?: number;
+  interestLeaveM?: number;
   /** IM6: an admin's "show everything" (editor play debugger): every occupied sector. */
   interestAll?: boolean;
   /** IM8: a read-only observer from a neighbour region's border, anchored where its player stands. */

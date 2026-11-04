@@ -76,6 +76,10 @@ export class MirrorState {
   readonly entered = new Set<bigint>();
   /** Last authoritative tick applied (snapshot or delta). */
   lastTick = 0;
+  /** Number of position-only rows received for entities without a baseline transform (discarded). */
+  orphanPositionRows = 0;
+  /** Set when an orphan position-only row was discarded and the client should request a full baseline resync. */
+  needsResync = false;
 
   get entityCount(): number {
     return this.entities.size;
@@ -86,24 +90,33 @@ export class MirrorState {
     this.entities.clear();
     this.home.clear();
     this.entered.clear();
+    this.needsResync = false;
     this.applyDelta(s);
   }
 
   /**
    * Turn a Delta's position-only rows (v29) into full transform rows by taking rotation and scale from each
-   * entity's current transform (identity if it has none yet). Returns the Delta unchanged when it has none.
+   * entity's current transform. If an entity has no baseline transform, the row is counted, discarded, and
+   * `needsResync` is set so the client asks for a resync rather than showing a false identity rotation/scale.
    */
   expandPositions(d: CollectedState): CollectedState {
     const pos = d.positions;
     if (!pos || pos.length === 0) return d;
-    const merged: TransformRow[] = pos.map((r) => {
+    const merged: TransformRow[] = [];
+    for (let i = 0; i < pos.length; i++) {
+      const r = pos[i];
       const t = this.entities.get(r.wireId)?.transform;
-      return {
+      if (!t) {
+        this.orphanPositionRows++;
+        this.needsResync = true;
+        continue;
+      }
+      merged.push({
         wireId: r.wireId, px: r.px, py: r.py, pz: r.pz,
-        qx: t?.qx ?? 0, qy: t?.qy ?? 0, qz: t?.qz ?? 0, qw: t?.qw ?? 1,
-        sx: t?.sx ?? 1, sy: t?.sy ?? 1, sz: t?.sz ?? 1,
-      };
-    });
+        qx: t.qx, qy: t.qy, qz: t.qz, qw: t.qw,
+        sx: t.sx, sy: t.sy, sz: t.sz,
+      });
+    }
     return { ...d, transforms: d.transforms.length === 0 ? merged : [...d.transforms, ...merged], positions: [] };
   }
 
@@ -150,6 +163,7 @@ export class MirrorState {
     if (replace) {
       this.entities.clear();
       this.home.clear();
+      this.needsResync = false;
     }
     const gone = new Map<bigint, boolean>(); // wid -> true when a real despawn
     for (const e of entries) {
