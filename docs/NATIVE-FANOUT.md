@@ -52,6 +52,10 @@ Measured in `perf/shared-fanout-2026-11-03.md` (1,000 players, towns, paired exc
 
 The arena view is shared by a group's sessions for the tick; it is valid until the next tick's `begin()`, as before. A closed socket still gets a `slice()` copy.
 
+## Send batching (`MMO_UWS_CORK=1`, opt-in)
+
+Outside a uWS callback every `ws.send` is its own write syscall, and a session gets several messages a tick (names, delta, stats). With `MMO_UWS_CORK=1` the uWS transport copies each send into one reusable arena during `broadcast()` and, at the end of the broadcast, writes each socket's run inside a single `ws.cork`. Order per socket is unchanged, `publish()` flushes held sends first, and nothing is held past the tick. Off by default: **[unmeasured]** — typechecked only; it must be benchmarked on the pinned Linux/Node 22 real-uWS harness (syscalls per tick, tick p50/p99, bytes per send) before it is considered for default. Same change set: `BigInt(tick)` is now made once per tick rather than once per session delivery.
+
 ## selectNames: skipping what a session already knows
 
 Per tick the addon hashes each sector's id list (order independent). A session remembers, per sector, the hash it last fully scanned. Same hash: nothing to do. Hash equals last call's hash (the session was current): only the ids that were not in that sector last call are checked. Anything else (a new session, one that missed a tick, a changed sector it never saw) scans the whole list. `sent` stays the single source of truth for "told", so the outputs equal the old full scan (tested against the JS rule); the hash only decides how much to look at. The hash is a skip hint only, never the record of what was sent. In the 1,000-player benchmark ids scanned per call fell from about 200,000 to about 4,000 and selectNames from 5.9 to 0.77 ms per tick. `Fanout.stats()` reports the counters.

@@ -119,6 +119,12 @@ export interface Transport {
    * listen() / after close().
    */
   publish(topic: string, bytes: Uint8Array): void;
+  /**
+   * Optional per-tick send batching (uWS only, opt-in): between beginBatch() and endBatch() a socket's
+   * sends may be held and written together; publish() writes held sends first so order is kept.
+   */
+  beginBatch?(): void;
+  endBatch?(): void;
 }
 
 export type TransportKind = "auto" | "uws" | "ws";
@@ -428,6 +434,8 @@ interface UwsWebSocket {
   subscribe(topic: string): boolean;
   /** Leave a publish topic. */
   unsubscribe(topic: string): boolean;
+  /** Run `cb` with this socket's writes corked into one syscall. */
+  cork?(cb: () => void): void;
 }
 
 interface UwsSocketData {
@@ -443,11 +451,73 @@ const STATUS_TEXT: Record<number, string> = {
 
 const decoder = new TextDecoder();
 
+/**
+ * Per-tick send batching for uWS (MMO_UWS_CORK=1). Outside a uWS callback every ws.send is its own
+ * write syscall; a session gets several messages a tick (names, delta, stats). While active, sends are
+ * copied into one reusable arena (producers may reuse their buffers, so references are not held),
+ * and flush() writes each socket's contiguous run inside one ws.cork. Sends are only ever delayed to
+ * the end of the same broadcast, in order; nothing outlives the tick.
+ */
+class UwsBatch {
+  active = false;
+  arena = new Uint8Array(1 << 21);
+  used = 0;
+  socks: UwsSocket[] = [];
+  off = new Int32Array(4096);
+  len = new Int32Array(4096);
+  runStart = 0;
+  runEnd = 0;
+
+  push(s: UwsSocket, bytes: Uint8Array): void {
+    const n = bytes.length;
+    if (this.used + n > this.arena.length) {
+      const next = new Uint8Array(Math.max(this.arena.length * 2, this.used + n));
+      next.set(this.arena.subarray(0, this.used));
+      this.arena = next;
+    }
+    const i = this.socks.length;
+    if (i >= this.off.length) {
+      const off = new Int32Array(i * 2);
+      off.set(this.off);
+      this.off = off;
+      const len = new Int32Array(i * 2);
+      len.set(this.len);
+      this.len = len;
+    }
+    this.arena.set(bytes, this.used);
+    this.off[i] = this.used;
+    this.len[i] = n;
+    this.used += n;
+    this.socks.push(s);
+  }
+
+  /** Write everything held, one corked run per socket; stays active. */
+  flush(): void {
+    const socks = this.socks;
+    const n = socks.length;
+    let i = 0;
+    while (i < n) {
+      const s = socks[i];
+      let j = i + 1;
+      while (j < n && socks[j] === s) j++;
+      this.runStart = i;
+      this.runEnd = j;
+      s.writeRun(this);
+      i = j;
+    }
+    socks.length = 0;
+    this.used = 0;
+  }
+}
+
 class UwsSocket implements WireSocket {
   private on: SocketListener = NO_LISTENER;
   private closed = false;
+  private batchRef: UwsBatch | null = null;
+  /** Created once: the cork callback reads its run from the batch, so flushing allocates no closure. */
+  private readonly corkCb = (): void => this.sendRun(this.batchRef!);
 
-  constructor(private readonly ws: UwsWebSocket, readonly remoteIp: string) {}
+  constructor(private readonly ws: UwsWebSocket, readonly remoteIp: string, private readonly batch: UwsBatch | null = null) {}
 
   get isOpen(): boolean {
     return !this.closed;
@@ -455,7 +525,27 @@ class UwsSocket implements WireSocket {
 
   send(bytes: Uint8Array): void {
     // A closed uWS socket must never be touched (native use-after-free guard).
-    if (!this.closed) this.ws.send(bytes, true, false);
+    if (this.closed) return;
+    const b = this.batch;
+    if (b !== null && b.active) b.push(this, bytes);
+    else this.ws.send(bytes, true, false);
+  }
+
+  /** Write a batch run for this socket (corked when uWS offers it). */
+  writeRun(b: UwsBatch): void {
+    if (this.closed) return;
+    if (this.ws.cork) {
+      this.batchRef = b;
+      this.ws.cork(this.corkCb);
+      this.batchRef = null;
+    } else this.sendRun(b);
+  }
+
+  private sendRun(b: UwsBatch): void {
+    for (let k = b.runStart; k < b.runEnd; k++) {
+      const o = b.off[k];
+      this.ws.send(b.arena.subarray(o, o + b.len[k]), true, false);
+    }
   }
 
   close(code: number, reason: string): void {
@@ -599,11 +689,29 @@ export class UwsTransport implements Transport {
   private token: unknown = null;
   private app: UwsApp | null = null;
   private readonly sockets = new Set<UwsSocket>();
+  /** Opt-in (MMO_UWS_CORK=1): batch each socket's per-tick sends into one corked write. Off by default until measured on real uWS. */
+  private readonly batch: UwsBatch | null = process.env.MMO_UWS_CORK === "1" ? new UwsBatch() : null;
 
   constructor(private readonly uws: UwsModule) {}
 
+  beginBatch(): void {
+    if (this.batch) this.batch.active = true;
+  }
+
+  endBatch(): void {
+    const b = this.batch;
+    if (!b) return;
+    try {
+      b.flush();
+    } finally {
+      b.active = false;
+    }
+  }
+
   /** Native fan-out to `topic`'s subscribers (Phase 5, Part A). No-op before listen(). */
   publish(topic: string, bytes: Uint8Array): void {
+    // Held per-session sends go first, so a published delta cannot overtake them.
+    if (this.batch?.active) this.batch.flush();
     this.app?.publish(topic, bytes, true, false);
   }
 
@@ -631,7 +739,7 @@ export class UwsTransport implements Transport {
       },
       open: (ws: UwsWebSocket) => {
         const data = ws.getUserData();
-        const socket = new UwsSocket(ws, data.ip);
+        const socket = new UwsSocket(ws, data.ip, this.batch);
         data.socket = socket;
         this.sockets.add(socket);
         handlers.connection(socket);

@@ -2150,8 +2150,21 @@ export class Gateway {
   private tickFarVisible: readonly number[] | null = null;
   private tickQuestExt: { pinnedResidentsOf?(characterId: number | null): string[] } | null | undefined = undefined;
 
-  /** Fan one tick's state out to every connected session (broadcast). */
+  /**
+   * Fan one tick's state out to every connected session (broadcast). With MMO_UWS_CORK=1 the uWS
+   * transport batches each socket's sends for the tick into one corked write (see UwsBatch).
+   */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
+    const t = this.transport;
+    t?.beginBatch?.();
+    try {
+      this.broadcastInner(tick, deltaBytes, namesEnv, dropsEnv, frame);
+    } finally {
+      t?.endBatch?.();
+    }
+  }
+
+  private broadcastInner(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
     this.inBroadcast = true;
     this.playerIndex = null;
@@ -2296,9 +2309,9 @@ export class Gateway {
           edgePlans.push({ sid, replace, entries: plan });
           if (replace) {
             s.needsResync = false;
-            s.lastSnapshotTick = BigInt(tick);
+            s.lastSnapshotTick = this.bigTick(tick);
           }
-          s.lastAckedTick = BigInt(tick);
+          s.lastAckedTick = this.bigTick(tick);
         } else {
           const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace, entries: entries! }));
           if (replace) this.deliverSnapshot(s, env, tick);
@@ -2337,7 +2350,7 @@ export class Gateway {
     // Shared publish: one publish per equivalence group (the transport copies the bytes before the arena is reused).
     for (const [topic, g] of fanGroups) {
       this.transport!.publish(topic, g.env);
-      for (const m of g.members) m.lastAckedTick = BigInt(tick);
+      for (const m of g.members) m.lastAckedTick = this.bigTick(tick);
     }
 
     // One publish per occupied sector topic. Per-session messages
@@ -2345,7 +2358,7 @@ export class Gateway {
     // deliver(), so the published delta cannot overtake them.
     for (const [topic, members] of publishSectors) {
       this.transport!.publish(topic, deltaEnvFor());
-      for (const s of members) s.lastAckedTick = BigInt(tick);
+      for (const s of members) s.lastAckedTick = this.bigTick(tick);
     }
   }
 
@@ -2893,6 +2906,17 @@ export class Gateway {
     }));
   }
 
+  private bigTickNo = -1;
+  private bigTickVal = 0n;
+  /** BigInt(tick), made once per tick instead of once per session per delivery. */
+  private bigTick(tick: number): bigint {
+    if (tick !== this.bigTickNo) {
+      this.bigTickNo = tick;
+      this.bigTickVal = BigInt(tick);
+    }
+    return this.bigTickVal;
+  }
+
   /** Queue-or-send one enveloped message, preserving order, bounded. */
   private deliver(s: ClientSession, env: Uint8Array, tick: number): void {
     if (s.socket && s.socket.isOpen) {
@@ -2908,7 +2932,7 @@ export class Gateway {
       }
     }
     // Delivery is implicitly acked by subsequent deltas (catalog).
-    s.lastAckedTick = BigInt(tick);
+    s.lastAckedTick = this.bigTick(tick);
   }
 
   private deliverSnapshot(
@@ -2919,7 +2943,7 @@ export class Gateway {
     s.sendQueue.length = 0;
     s.needsResync = false;
     this.deliver(s, env, tick);
-    s.lastSnapshotTick = BigInt(tick);
+    s.lastSnapshotTick = this.bigTick(tick);
   }
 
   /** Despawn player entities whose grace period has elapsed. */
