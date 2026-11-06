@@ -22,7 +22,9 @@
  *   gateway does for sector deltas (gateway.ts, sector broadcast). uWS
  *   fans out natively; ws loops over its members.
  *
- * Use `--publish-only` or `--send-only` to run one mode.
+ * Use `--publish-only` or `--send-only` to run one mode. `--multi` sends three messages per
+ * socket per tick (64 B, 1.2 KB, 64 B: the gateway's per-session shape); run it with and
+ * without `--cork` (MMO_UWS_CORK batching) to see what batching does to CPU and tick time.
  *
  * It measures the transport alone (no sim, no encoding): the part the
  * socket library decides.
@@ -56,7 +58,7 @@ interface Result {
 }
 
 /** "send": one send per socket per tick. "publish": the server's path, one publish to the sector topic (gateway.ts). */
-type Mode = "send" | "publish" | "tiered";
+type Mode = "send" | "publish" | "tiered" | "multi";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const quantile = (xs: number[], q: number): number => {
@@ -90,6 +92,7 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
   while (sockets.size < clients) await sleep(10);
 
   const delta = new Uint8Array(DELTA_BYTES).map((_, i) => i & 0xff);
+  const small = new Uint8Array(64).fill(7);
   let sent = 0;
   let measuring = false;
   const tickMs: number[] = [];
@@ -101,10 +104,19 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
       if (ticks % 2 === 0) transport.publish(TOPIC_FAR, delta);
       ticks++;
     } else if (mode === "publish") transport.publish(TOPIC, delta);
-    else for (const s of sockets) s.send(delta);
+    else if (mode === "multi") {
+      // The gateway's per-session shape: a delta plus two small messages (names, stats) per tick.
+      transport.beginBatch?.();
+      for (const s of sockets) {
+        s.send(small);
+        s.send(delta);
+        s.send(small);
+      }
+      transport.endBatch?.();
+    } else for (const s of sockets) s.send(delta);
     if (measuring) {
       tickMs.push(performance.now() - t0);
-      sent += sockets.size;
+      sent += sockets.size * (mode === "multi" ? 3 : 1);
     }
   };
   const timer = setInterval(tick, TICK_MS);
@@ -190,7 +202,9 @@ async function main(): Promise<void> {
   };
   const seconds = Number(flag("--seconds", "8"));
   const out = flag("--out", "");
-  const modes: Mode[] = args.includes("--send-only") ? ["send"] : args.includes("--publish-only") ? ["publish"] : args.includes("--tiered") ? ["tiered"] : ["send", "publish"];
+  const modes: Mode[] = args.includes("--multi") ? ["multi"] : args.includes("--send-only") ? ["send"] : args.includes("--publish-only") ? ["publish"] : args.includes("--tiered") ? ["tiered"] : ["send", "publish"];
+  // --cork: turn on uWS send batching (MMO_UWS_CORK) for this run; compare `--multi` with and without it.
+  if (args.includes("--cork")) process.env.MMO_UWS_CORK = "1";
   const counts = args.filter((a) => !a.startsWith("--")).map(Number);
   const finalCounts = counts.length ? counts : [100, 250, 500, 1000];
   const kinds: Array<"uws" | "ws"> = loadUws() ? ["uws", "ws"] : ["ws"];
