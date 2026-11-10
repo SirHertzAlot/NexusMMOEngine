@@ -161,6 +161,85 @@ test("a world without the bulk op (501) falls back to per-record puts, stickily"
   assert.ok(logs.some((l) => l.includes("PutCharacterStates")), "the fallback is logged once");
 });
 
+test("pre-save drift check rides the meta read; the full record crosses only on drift", async () => {
+  class MetaWorld implements CharacterWorldClient {
+    records = new Map<number, CharacterStateRecord>();
+    fullReads = 0;
+    metaReads = 0;
+    async getCharacterState(id: number): Promise<CharacterStateRecord | null> {
+      this.fullReads += 1;
+      return this.records.get(id) ?? null;
+    }
+    async getCharacterStateMeta(id: number) {
+      this.metaReads += 1;
+      const r = this.records.get(id);
+      return r === undefined
+        ? null
+        : { characterId: r.characterId, version: r.version, epoch: r.epoch, regionId: r.regionId, updatedAt: r.updatedAt };
+    }
+    async acquireCharacterLock(characterId: number): Promise<CharacterSessionLock> {
+      return { characterId, regionId: "r1", epoch: 1, expiresAt: Date.now() + 60_000 };
+    }
+    async releaseCharacterLock(): Promise<void> {}
+    async putCharacterState(id: number, epoch: number, state: unknown): Promise<CharacterStateRecord> {
+      const rec: CharacterStateRecord = {
+        characterId: id,
+        state,
+        version: (this.records.get(id)?.version ?? 0) + 1,
+        epoch,
+        regionId: "r1",
+        updatedAt: Date.now(),
+      };
+      this.records.set(id, rec);
+      return rec;
+    }
+  }
+  const world = new MetaWorld();
+  world.records.set(1, {
+    characterId: 1,
+    state: { state: { ...STATE }, skills: null, gold: 500, inventory: [] },
+    version: 5,
+    epoch: 1,
+    regionId: "r1",
+    updatedAt: Date.now(),
+  });
+  const reconciles: Array<{ characterId: number; gold: number }> = [];
+  const store = new MemoryCharacterStore();
+  store.saveState(1, STATE);
+  const sync = new WorldCharacterSync({
+    client: world,
+    store,
+    economy: {
+      goldOf: () => 100,
+      inventoryOf: () => [],
+      reconcile: (characterId, gold) => {
+        reconciles.push({ characterId, gold });
+      },
+    },
+    log: () => {},
+  });
+  await sync.login(1);
+  world.fullReads = 0;
+  world.metaReads = 0;
+
+  // No drift (meta version == known): no full record read at all.
+  assert.equal(await sync.save(1), true);
+  assert.equal(world.metaReads, 1);
+  assert.equal(world.fullReads, 0, "unchanged version: the state blob never crosses");
+
+  // Another region settles (world now at a higher version, gold 900):
+  // drift detected via meta, full record fetched once, reconciled.
+  const settled = world.records.get(1)!;
+  world.records.set(1, {
+    ...settled,
+    state: { state: { ...STATE }, skills: null, gold: 900, inventory: [] },
+    version: settled.version + 2,
+  });
+  assert.equal(await sync.save(1), true);
+  assert.equal(world.fullReads, 1, "drift: exactly one full read");
+  assert.deepEqual(reconciles.at(-1), { characterId: 1, gold: 900 });
+});
+
 test("a bulk-call transport failure fails the saves without fencing anyone", async () => {
   const world = new FakeWorld();
   world.putCharacterStates = async () => {

@@ -146,3 +146,37 @@ place.
 - A SurrealDB 3.x server soak (the durability soak to date ran against
   2.7.0/RocksDB); the MX AOL/snapshot recovery proof above is a
   single-record drill, not a soak.
+
+## Addendum — deep-dive follow-ups landed (2026-10-29)
+
+The DB deep dive that followed this adoption (full text in the
+project library: DB-DEEP-DIVE-2026-10-28) produced six items; all
+six are implemented on this branch:
+
+1. **Dedup index (was the headline bug):** `op_dedup.opId` had no
+   index; the read in front of every atomic op scanned a table that
+   grows forever — 1.79 ms @2k rows → 10.44 ms @20k [measured,
+   embedded 3.x]. The unique index installs best-effort at connect;
+   the same read is 0.49 ms @20k and size-independent.
+2. **Dedup fold landed** (the Oct 27 measured stack, cherry-picked):
+   batched ledger appends + O(1) heads, single-statement upserts
+   everywhere, dedup inside the fn commit transaction — one atomic
+   op = 2 store round trips. Race proof re-run on this line:
+   12/12 against the live 3.3.5 server.
+3. **Sequence block allocation (fn v3):** 7 of 8 concurrent
+   disjoint trades were rejecting on the shared seq counter;
+   blocks of 256 are claimed outside the op transaction instead.
+   Convoy contract test red→green; seqs unique, not gapless.
+4. **Credits-drain gate:** the bulk save skips the per-record
+   drain for characters holding no credits (~37 → ~6 store calls
+   per 32-save sweep).
+5. **`GetCharacterStateMeta`:** the pre-save drift check reads a
+   4-field envelope; the state blob crosses the wire only on drift.
+6. **Dedup retention + SCHEMAFULL:** createdAt-stamped dedup rows,
+   hourly 7-day prune with legacy backfill; character_state /
+   character_lock / op_dedup are SCHEMAFULL on fresh databases.
+
+Verification on the final tree [measured, sandbox]: world-server
+130/0/1 embedded, **131/131 against the live SurrealDB 3.3.5
+server**, engine-core full suite 1607/1/2 (the 1 fail is the
+pre-existing net-transport IPv6 assertion, untouched path).
