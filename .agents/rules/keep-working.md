@@ -6,4 +6,8 @@ The user's standing instruction (2026-11-06): **always continue working; do not 
 - Ask only when truly blocked: an irreversible or destructive action, a push/PR/merge (AGENTS.md §5 still requires explicit authorization), or a decision that cannot be made from the code and docs.
 - Work that needs hardware this machine lacks (e.g. real uWS on Linux/Node 22) does not stop the session: finish everything that can be verified locally, mark the rest `[unmeasured]`, and move to the next item.
 - Report honestly: say what was run and what was only typechecked. Never describe planned work as done.
-- Shell notes for this Windows host: PowerShell strips `$_` from `run_command` strings; use `findstr`, `Select-Object -ExpandProperty`, or script files. Search the repo, not the web, for project identifiers.
+- Shell & resource safety notes for this Windows host:
+  - PowerShell strips `$_` from `run_command` strings; use small `node -e` scripts (skipping `node_modules`, `dist`, `.git`), `git grep`, or `findstr` instead of `Get-ChildItem -Recurse` (which crawls `node_modules` and can hang in the background).
+  - Always check `manage_task` (`list`) and kill any stale background commands immediately so zombie processes never accumulate.
+  - Prefer targeted `npx tsc -p packages/<pkg>/tsconfig.json` over full recursive `dep-build.mjs` chains, and pass `--test-concurrency=1` when running tests that allocate `SharedArrayBuffer` arenas or spawn worker threads.
+  - Search the repo, not the web, for project identifiers.
