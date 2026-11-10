@@ -545,14 +545,19 @@ export function encodeIntentMessage(
   return b.asUint8Array();
 }
 
+const intentMsgCursor = new IntentMessage();
+const playerIntentCursor = new PlayerIntent();
+const vec3Cursor = new Vec3();
+
 /** Parse and validate one client→server intent event. Throws on garbage. */
 export function decodeIntentMessage(bytes: Uint8Array): DecodedIntentMessage {
   const msg = IntentMessage.getRootAsIntentMessage(
     new flatbuffers.ByteBuffer(bytes),
+    intentMsgCursor,
   );
-  const pi = msg.intent();
+  const pi = msg.intent(playerIntentCursor);
   if (!pi) throw new Error("intent: missing PlayerIntent table");
-  const mv = pi.move();
+  const mv = pi.move(vec3Cursor);
   return {
     clientTick: msg.clientTick(),
     entity: msg.entity(),
