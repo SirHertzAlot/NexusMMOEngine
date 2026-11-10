@@ -24,12 +24,13 @@
 #include <cstddef>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "physics_c_api.h"
 // -ffast-math assumes no NaN or Inf, so std::isfinite/isnan fold to true; test the bits instead.
-static inline bool fp_finite(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
-static inline bool fp_nan(double x) { unsigned long long b; __builtin_memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
+static inline bool fp_finite(double x) { unsigned long long b; std::memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }
+static inline bool fp_nan(double x) { unsigned long long b; std::memcpy(&b, &x, sizeof b); return (b & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL && (b & 0x000fffffffffffffULL) != 0; }
 
 namespace mmo_physics {
 
