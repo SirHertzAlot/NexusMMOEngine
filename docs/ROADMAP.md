@@ -20,10 +20,17 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
+<<<<<<< HEAD
 ## At a glance (2026-11-01)
 
 **279 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
+=======
+## At a glance (2026-10-06)
+
+**85 items built, 10 in progress, 34 planned** (26 of the planned are the
+modular editor's slices). The game is playable end to end: `npm start`
+>>>>>>> feat/t2-editor-telemetry-graphs
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
 contests, injuries, bleeding, dismemberment, Medicine, disciplines, mana
@@ -36,6 +43,7 @@ E6, with the E5 follow-ups open) and the world server's migration and stress har
 
 What is left, by area:
 
+<<<<<<< HEAD
 - **Modular editor** (1c): only the docking shell (EA1) is open. Its layout, navigation, toolbar and deep links are implemented on `feat/editor-backend-connector`.
 - **Editor and admin**: the admin channel and the inspect and spawn commands (A1 to A3) are partly built, with search and cursor targeting still open. The appearance editor panel (A6) and bots in web workers (A7, planned) remain, along with repeated editor workflows (M9) and tooling phase 0 (TL0).
 - **Gameplay**: combat abilities (M5), currency, trading and vendors (EC1), dungeon chests, traps and the boss crystal (D4f), residents (RS3, RS5), the loading screen (LS1, planned), recorded and positional sounds (U4b, planned), enemy models (EM1, planned), dungeon decals (D4g, planned), dungeon resource nodes (RN1, planned), and weather (WX1).
@@ -45,6 +53,22 @@ What is left, by area:
 - **Scale and edge**: binary mirror frames (E5a) and pushing the encode off the tick (E5b) are planned. Dropping the base64 mirror stream (E5c) is in progress, and interest management (IM) and the region↔world event stream (S2) are open.
 - **Checks**: Helgrind's gate counts only our own code (#496 and #497 are merged). ThreadSanitizer runs as `npm run valgrind:tsan` (not in CI).
 - **CI**: GitHub Actions is out of credits, so every change is checked locally with `npm test` and valgrind.
+=======
+- **Modular editor** (1c): the docking shell, scenes and game flow,
+  modules, the database editor and production tools, EA1 to EA26.
+- **Editor and admin**: the developer panels leave the client (E5), the
+  play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
+  mode, time and weather), and the appearance editor (A6).
+- **Gameplay**: armour and the rest of equipment (U10), recorded and
+  positional sounds (U4b), dungeon results ingested by the world server
+  (D4), ragdolls and character collision.
+- **Scale**: the client cutover to the edge (E3b), binary mirror frames
+  (E5a, E5b), the region↔world event stream (S2), accounts on the world
+  server (C1).
+- **Checks**: Helgrind on the threaded addons.
+- **CI**: GitHub Actions is out of credits, so every change is checked
+  locally with `npm test` and valgrind.
+>>>>>>> feat/t2-editor-telemetry-graphs
 
 ## Where things live
 
@@ -472,7 +496,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | P2c | Crash and replay tests over the ledger | ✅ | A crash loses only unflushed events, a failed flush writes nothing, restarts keep ids climbing, full history replays to the latest state |
 | L3 | Pool rebake keeps held items | ✅ | `npm run loot:rebake`; merged in #81 |
 | T1 | Ingress hardening: frame cap, rate limits, validation tests | ✅ | 64 KiB frame cap, token-bucket intent and pickup limits, abuse disconnect; tunables in content/rules/ingress.json and the editor |
-| T2 | Play telemetry in Live Ops (typed `stats` snapshots, 10 s bucket-aligned polling, tick and activity graphs) | ✅ | α1 |
+| T2 | Play telemetry in Live Ops and Play Mode debugger (typed `stats` snapshots, 10 s bucket-aligned polling, tick p50/p99/max and 10-minute sparklines) | ✅ | α1 |
 | WX2 | Incremental, content-addressed world bake | ✅ | The bake materializes the whole world (4 km = 103 MB, 16 km ~1.5 GB, 32 km ~6 GB, linear in area) and 80% of it is `terrain_tiles` — one float32 heightmap per 16 m chunk. [`INCREMENTAL-BAKE.md`](INCREMENTAL-BAKE.md): the tiles are a derived content-addressed cache, not part of the bake — `makeTileChunkSource` already falls back to procgen when a tile is absent, so the server runs with no tiles at all. The survey is content-addressed by a hash of the spec (skipped when unchanged); tiles are keyed by `(seed, cx, cz, lod, terrainVersion, surveyHash)` in a `terrain_tile_keys` table reusing the existing `heightsFingerprint()`; and `bake:world` gains `--region rx,rz` and `--survey-only` with the per-chunk tile loop parallelized across worker threads. `regionsPerSide` already partitions the world square. The survey stays global and iterative (erosion), so a spec change re-runs it — the win is that tiles are no longer rewritten for free, only the affected regions. |
 | WX1 | Weather as a field: conditions emerge, not scripts | ✅ | Coarse moisture/temperature/wind field over the world map, advanced in a client web worker (existing `WorkerPool`), deterministic from (seed, step) so every client agrees with no messages and no replication. Grid is its own 250–500 m lattice (4k–16k cells at a 16–32 km world), not the terrain grid — simulate coarse, render fine. The baked `terrain/climate.ts` solve stays the static climatology, with a relaxation term so the field cannot drift. Client-side by design: the server has no business knowing how a surface is lit, and the existing weather already derives everything from (biome, tick). Stages: field sim core + worker handler → map/climate plumbing → sky overcast + cloud volumes + rain shader → couplings (wet look, ripples, wind, audio). Looks stay in `content/materials/materials.json`; who is shaded stays a shading component. Climate is sourced: `FieldService` takes a `ClimateParams` block and `world-canvas.tsx` reads it from the welcome's `WorldInfo` (additive — falls back to `DEFAULT_CLIMATE` until the server sends it). Remaining couplings: wet look, ripples, weather audio. |
 | WG1 | Land share: `land.coast.waterEdge` 0.4 in the default world gives about 74% land on the 4 km world (was 52% at 0.6) | ✅ | Measured with the survey alone (`bake-world --survey-only`); 0.3 is below the spec's limit; the world is rebaked with `npm run bake:world:force` (stop the server first) |
@@ -673,6 +697,7 @@ Newest first. One line per merged PR or decision.
 - **2026-10-06**: D4 world ingest (in progress): `WorldCore.reportDungeonResults` records one `dungeon_run` row per run (Memory + Surreal stores), idempotent on `instance`, 403 on region mismatch, 404 on unknown region. Next: the webrpc route/Zod/RIDL and the region flush marking `instances.db` rows reported.
 - **2026-10-06**: D4 results end to end: the webrpc `ReportDungeonResults` route (strict Zod bounds, bearer auth, RIDL updated) ingests idempotently, and the region's save timer flushes `instances.db` unreported rows through it with no overlapping in-flight POSTs, marking only confirmed ids. A slow or dead world never stalls the tick and never stacks requests.
 - **2026-10-06**: T2 Live Ops telemetry: the editor reads the protected `stats` admin snapshot through `BackendClient`, refreshes once per server bucket without overlapping requests, and renders tick p50/p99/max plus kills, pickups and damage series. Connection and refresh failures remain visible; player, region and audit data stay staged.
+- **2026-10-06**: T2 complete: Play Mode’s telemetry panel polls the existing `stats` admin command every 10 seconds, validates its snapshot, and shows six counter sparklines with current values and tick p50/p99/max.
 - **2026-10-05**: Ponytail trim (chore): the editor drops its unused `zod`; `@types/ws` moves from the root to engine-core, the only package that imports `ws`. A `@types/node` alignment was dropped: it resolves to 25.9.9 and breaks engine-core (TS18046).
 - **2026-10-04**: Roadmap caught up with the 37 PRs merged on 2026-10-04 (#89 to #127); new sections for the modular editor (1c) and the edge/core split slices; `docs/CLI.md` lists every command.
 - **2026-10-04**: `npm start`: one command from a fresh clone to a running game. It installs dependencies when missing or the lockfile changed, runs codegen, bakes the world, the loot pool and 10 dungeons when they're missing, then starts the server and the player's client (`--dev` for the developer client, `--server` for the server alone). `npm run dev` is `npm start -- --dev`; `scripts/dev.mjs` became `scripts/start.mjs`.
