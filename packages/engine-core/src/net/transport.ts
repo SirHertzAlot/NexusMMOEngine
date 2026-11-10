@@ -59,6 +59,12 @@ export interface WireSocket {
 export interface SocketListener {
   message(data: Uint8Array): void;
   close(): void;
+  /**
+   * When true, `message(data)` only reads `data` synchronously during the callback (or copies what
+   * it keeps), so uWebSockets.js can pass a zero-copy `Uint8Array` view over the native receive
+   * buffer without allocating a copy per frame.
+   */
+  borrowMessage?: boolean;
 }
 
 /** An HTTP request on the game port, the same whichever transport serves it. */
@@ -572,7 +578,14 @@ class UwsSocket implements WireSocket {
 
   /** From the app's message handler: the bytes are only valid during the call. */
   deliver(message: ArrayBuffer): void {
-    this.on.message(new Uint8Array(message.slice(0)));
+    const view = new Uint8Array(message);
+    if (this.on.borrowMessage) {
+      this.on.message(view);
+      return;
+    }
+    const copy = new Uint8Array(view.length);
+    copy.set(view);
+    this.on.message(copy);
   }
 
   /** From the app's close handler. */

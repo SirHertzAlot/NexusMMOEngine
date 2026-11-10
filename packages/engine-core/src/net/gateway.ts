@@ -3044,6 +3044,7 @@ export class Gateway {
   /** Send `socket`'s events to session `s` (replacing any earlier routing). */
   private route(s: ClientSession, socket: WireSocket): void {
     socket.listen({
+      borrowMessage: true,
       message: (data) => this.onMessage(s, data),
       close: () => {
         // Ignore closes from a superseded socket after takeover.

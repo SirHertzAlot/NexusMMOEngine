@@ -18,14 +18,20 @@ interface FakeWs {
   unsubscribe(): boolean;
 }
 
-async function rig(cork: boolean): Promise<{ t: UwsTransport; log: string[]; open(ip: string): WireSocket }> {
+async function rig(cork: boolean): Promise<{
+  t: UwsTransport;
+  log: string[];
+  open(ip: string): WireSocket;
+  deliver(s: WireSocket, ab: ArrayBuffer): void;
+}> {
   const prev = process.env.MMO_UWS_CORK;
   if (cork) process.env.MMO_UWS_CORK = "1";
   else delete process.env.MMO_UWS_CORK;
   const log: string[] = [];
-  let behavior: { open(ws: FakeWs): void } | null = null;
+  let behavior: { open(ws: FakeWs): void; message?(ws: FakeWs, m: ArrayBuffer): void } | null = null;
+  const wsMap = new Map<WireSocket, FakeWs>();
   const app = {
-    ws(_p: string, b: { open(ws: FakeWs): void }) {
+    ws(_p: string, b: { open(ws: FakeWs): void; message?(ws: FakeWs, m: ArrayBuffer): void }) {
       behavior = b;
       return app;
     },
@@ -65,7 +71,11 @@ async function rig(cork: boolean): Promise<{ t: UwsTransport; log: string[]; ope
       };
       behavior!.open(ws);
       void sockets;
+      wsMap.set(data.socket!, ws);
       return data.socket!;
+    },
+    deliver(s, ab) {
+      behavior!.message!(wsMap.get(s)!, ab);
     },
   };
 }
@@ -117,5 +127,23 @@ describe("UwsTransport send batching (MMO_UWS_CORK)", () => {
     for (let i = 0; i < 5000; i++) a.send(Uint8Array.of(i & 0xff)); // > 4096 entries
     t.endBatch!();
     assert.equal(log.length, 2 + 5 + 5000);
+  });
+
+  it("deliver copies by default without ArrayBuffer.slice, and passes a zero-copy view when borrowMessage is true", async () => {
+    const { open, deliver } = await rig(false);
+    const s = open("a");
+    const scratch = new Uint8Array([10, 20, 30]);
+    let seen: Uint8Array | null = null;
+    s.listen({ message: (d) => (seen = d), close() {} });
+    deliver(s, scratch.buffer);
+    scratch[0] = 99;
+    assert.notEqual(seen!.buffer, scratch.buffer);
+    assert.deepEqual([...seen!], [10, 20, 30]);
+
+    let borrowed: Uint8Array | null = null;
+    s.listen({ borrowMessage: true, message: (d) => (borrowed = d), close() {} });
+    deliver(s, scratch.buffer);
+    assert.equal(borrowed!.buffer, scratch.buffer);
+    assert.deepEqual([...borrowed!], [99, 20, 30]);
   });
 });

@@ -81,7 +81,7 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
       sockets.add(s);
       if (mode === "publish") s.subscribe(TOPIC);
       if (mode === "tiered") s.subscribe(joined++ % 2 === 0 ? TOPIC_NEAR : TOPIC_FAR);
-      s.listen({ message: () => void intents++, close: () => sockets.delete(s) });
+      s.listen({ borrowMessage: true, message: () => void intents++, close: () => sockets.delete(s) });
     },
     http: null,
   });
@@ -113,7 +113,11 @@ async function runOne(kind: "uws" | "ws", clients: number, seconds: number, mode
         s.send(small);
       }
       transport.endBatch?.();
-    } else for (const s of sockets) s.send(delta);
+    } else {
+      transport.beginBatch?.();
+      for (const s of sockets) s.send(delta);
+      transport.endBatch?.();
+    }
     if (measuring) {
       tickMs.push(performance.now() - t0);
       sent += sockets.size * (mode === "multi" ? 3 : 1);
