@@ -307,7 +307,8 @@ export function sectorDistance(key: string, x: number, z: number): number {
 export class SectorFrame {
   /** The frames of the previous ticks, newest first (IM7 reads their changed rows). */
   prior: readonly SectorFrame[] = [];
-  private readonly rateCache = new Map<string, Uint8Array | null>();
+  /** rateDelta results by window length, then sector (the outer-sector window and the send-rate-cap window differ). */
+  private readonly rateCaches = new Map<number, Map<string, Uint8Array | null>>();
   /** Sector -> what it has to say this tick; encoded on first ask, so sectors nobody sees cost nothing. */
   readonly pending = new Map<string, { lists: Record<Key, number[]>; spawned: bigint[]; despawned: bigint[] }>();
   private readonly deltas = new Map<string, Uint8Array>();
@@ -358,7 +359,9 @@ export class SectorFrame {
    * Returns undefined when nothing changed in the window; cached per frame.
    */
   rateDelta(sector: string, window: number): Uint8Array | undefined {
-    const cached = this.rateCache.get(sector);
+    let rateCache = this.rateCaches.get(window);
+    if (!rateCache) this.rateCaches.set(window, (rateCache = new Map()));
+    const cached = rateCache.get(sector);
     if (cached !== undefined) return cached ?? undefined;
     const lists = emptyLists();
     const seen = new Map<Key, Set<number>>();
@@ -377,7 +380,7 @@ export class SectorFrame {
       for (const w of p.despawned) despawned.add(w);
     }
     if (!any) {
-      this.rateCache.set(sector, null);
+      rateCache.set(sector, null);
       return undefined;
     }
     // A position row for an entity that also has a full transform row in the window is redundant: the full row is read at current values.
@@ -386,7 +389,7 @@ export class SectorFrame {
       if (full && full.size > 0) lists.positions = lists.positions.filter((e) => !full.has(e));
     }
     const b = encodeEidsFromSim(this.sim, this.tick, this.tick - window, lists, { spawned: [...spawned], despawned: [...despawned] }, this.chunkSource);
-    this.rateCache.set(sector, b);
+    rateCache.set(sector, b);
     return b;
   }
 
