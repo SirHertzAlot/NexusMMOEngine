@@ -29,7 +29,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { installNodeShims, loadFbx } from "./convert-packs.js";
-import { Retargeter } from "./retarget.js";
+import { Retargeter, validateRetargetedClip } from "./retarget.js";
 import type { AnimationClipInfo, AnimationManifest } from "../character/animations.js";
 
 const RIG_DIR = "models/glb/modular-fantasy-hero/Rigged";
@@ -536,6 +536,7 @@ export async function convertAnimations(
         const out = retargeter.retarget(clip);
         out.clip.name = name;
         out.clip.optimize();
+        validateRetargetedClip(out.clip, 200); // Phase A2: red clips throw here and block the library
         clips.push(out.clip);
         infos.push({
           name,

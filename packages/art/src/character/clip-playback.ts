@@ -102,6 +102,20 @@ export function playhead(elapsed: number, timeScale: number, duration: number, l
 /** Smoothstep: the crossfade eases in and out instead of kinking at both ends. */
 const ease = (t: number): number => t * t * (3 - 2 * t);
 
+/**
+ * Animation LOD update rate (Hz) for a resident tier, aligned with the
+ * ResidentSystem's full/coarse/none thinking tiers (SG3b, RS3): full keeps the
+ * full locomotion update rate, coarse steps the animation stage down, none
+ * stops animating the character.
+ */
+export function animationUpdateRate(tier: "full" | "coarse" | "none", opts?: { fullHz?: number; coarseHz?: number }): number {
+  switch (tier) {
+    case "full": return opts?.fullHz ?? 30;
+    case "coarse": return opts?.coarseHz ?? 10;
+    case "none": return 0;
+  }
+}
+
 export interface FadeWeights {
   /** The clip being left. */
   from: number;

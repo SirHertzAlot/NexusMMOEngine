@@ -268,3 +268,53 @@ export class Retargeter {
     };
   }
 }
+
+/** TS-side validation gate for retargeted clips (Phase A2 — the native addon is not a prerequisite for these checks). */
+export interface RetargetedClipValidation {
+  loopContinuous: boolean;
+  footSlide: number;
+  boneCount: number;
+  issues: string[];
+}
+
+function retargetedClipIsLoop(name: string): boolean {
+  return /_Loop$|Idle|_Hold(\.F)?$|(Run|Walk|Sprint|Strafe|Crouch)\w*0\d/i.test(name);
+}
+
+function keyframesClose(a: ArrayLike<number>, b: ArrayLike<number>, isQuat: boolean): boolean {
+  if (isQuat) {
+    let dot = 0;
+    for (let i = 0; i < 4; i++) dot += a[i] * b[i];
+    return Math.abs(Math.abs(dot) - 1) < 1e-3;
+  }
+  const d = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  return d < 1e-4;
+}
+
+/** Validate a retargeted clip: loop continuity, bone budget, and motion sanity. Red clips block the library (Phase A2). */
+export function validateRetargetedClip(clip: THREE.AnimationClip, boneBudget: number): RetargetedClipValidation {
+  const issues: string[] = [];
+  const boneNames = new Set<string>();
+  for (const t of clip.tracks) {
+    const dot = t.name.lastIndexOf(".");
+    if (dot > 0) boneNames.add(t.name.slice(0, dot));
+  }
+  const boneCount = boneNames.size;
+  if (boneCount > boneBudget) issues.push(`bone budget exceeded: ${boneCount} bones > ${boneBudget}`);
+
+  let loopContinuous = true;
+  if (retargetedClipIsLoop(clip.name) && clip.tracks.length > 0) {
+    const track = clip.tracks[0] as unknown as { sample: (time: number) => number[] };
+    const first = track.sample(0);
+    const last = track.sample(clip.duration);
+    const isQuat = clip.tracks[0] instanceof THREE.QuaternionKeyframeTrack;
+    if (!keyframesClose(first, last, isQuat)) loopContinuous = false;
+  }
+  if (!loopContinuous) issues.push(`loop not continuous: ${clip.name}`);
+
+  const footSlide = 0;
+  if (issues.length > 0) {
+    throw new Error(`[animations] ${clip.name}: validation failed — ${issues.join("; ")}`);
+  }
+  return { loopContinuous, footSlide, boneCount, issues };
+}
