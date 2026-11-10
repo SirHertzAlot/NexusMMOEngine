@@ -40,6 +40,7 @@ export function emptyState(tick: number, baseTick = 0): CollectedState {
     appearances: [],
     actions: [],
     characterRefs: [], animations: [],
+    vfxEmitters: [],
     spawned: [],
     despawned: [],
   };

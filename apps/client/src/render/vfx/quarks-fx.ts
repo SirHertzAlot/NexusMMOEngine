@@ -24,6 +24,7 @@
  */
 
 import * as THREE from "three";
+import { vfxToQuarks, type VfxEffect } from "@mmo-engine/art/browser";
 import {
   ApplyCollision,
   ApplyForce,
@@ -113,6 +114,14 @@ export interface VfxHandle {
   dispose(): void;
 }
 
+/** A whole VfxEffect running on one target (one ParticleSystem per authored emitter). */
+export interface EffectHandle {
+  readonly systems: ParticleSystem[];
+  /** Rescale every system's emission by `k` relative to its authored rate. */
+  setIntensity(k: number): void;
+  dispose(): void;
+}
+
 const hexToLinear = (hex: string): THREE.Color => new THREE.Color(hex);
 const v4 = (c: THREE.Color, a: number): QVector4 => new QVector4(c.r, c.g, c.b, a);
 const v3 = (c: THREE.Color): QVector3 => new QVector3(c.r, c.g, c.b);
@@ -143,6 +152,8 @@ export class QuarksFx {
   private readonly materials = new Map<string, THREE.MeshBasicMaterial>();
   /** Every live system and its designed emission rate (the budget scales it). */
   private readonly live = new Map<ParticleSystem, number>();
+  /** Authored emission rate per converted system (attachEffect): intensity multiplies it. */
+  private readonly baseRates = new WeakMap<ParticleSystem, number>();
   /** Mean particle life per system (seconds), for the tier's live-particle cap. */
   private readonly lives = new WeakMap<ParticleSystem, number>();
   private budget = 1;
@@ -266,6 +277,40 @@ export class QuarksFx {
       behaviors: [new WidthOverLength(new PiecewiseBezier([[new Bezier(1, 0.66, 0.33, 0), 0]]))],
     });
     return this.start(system, target, 0);
+  }
+
+  /**
+   * A content VfxEffect on `target` (converted by @mmo-engine/art's
+   * vfxToQuarks — the same converter the editor's VFX tooling previews
+   * with), its emission scaled by `intensity` on top of the quality
+   * budget. Converted systems carry a ConstantValue emission rate, so
+   * intensity scaling is exact: authored rate × intensity × budget.
+   */
+  attachEffect(effect: VfxEffect, target: THREE.Object3D, intensity: number): EffectHandle {
+    const systems = vfxToQuarks(effect);
+    const live: ParticleSystem[] = [];
+    for (const system of systems) {
+      const gen = system.emissionOverTime as unknown as { value?: unknown };
+      const base = typeof gen?.value === "number" ? gen.value : 0;
+      this.baseRates.set(system, base);
+      this.start(system, target, base * intensity);
+      system.emissionOverTime = new ConstantValue(this.emission(system, base * intensity));
+      live.push(system);
+    }
+    return {
+      systems: live,
+      setIntensity: (k: number): void => {
+        for (const system of live) {
+          if (!this.live.has(system)) continue;
+          const rate = (this.baseRates.get(system) ?? 0) * k;
+          this.live.set(system, rate);
+          system.emissionOverTime = new ConstantValue(this.emission(system, rate));
+        }
+      },
+      dispose: (): void => {
+        for (const system of live) this.stop(system);
+      },
+    };
   }
 
   /** Once a frame. */

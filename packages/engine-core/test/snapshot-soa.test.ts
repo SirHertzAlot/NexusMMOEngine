@@ -258,7 +258,7 @@ test("Direct FlatBuffers vector writes match row builder for 0, 1, and 1,500 ent
         positions: posEids,
         velocities: [], intents: [], chunks: [], healths: [], staminas: [],
         characterRefs: [], bodies: [], assets: [], locomotions: [],
-        appearances: [], actions: [], animations: [],
+        appearances: [], actions: [], animations: [], vfxEmitters: [],
       },
       { spawned: spawnedWid !== null ? [spawnedWid] : [], despawned: [0x123456789abcdef0n] },
     );

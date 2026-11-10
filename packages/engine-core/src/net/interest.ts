@@ -47,7 +47,7 @@ const KEYS: Array<[Exclude<Key, "positions">, object]> = [
   ["transforms", C.Transform], ["velocities", C.Velocity], ["intents", C.PlayerIntent], ["chunks", C.Chunk],
   ["healths", C.Health], ["staminas", C.Stamina], ["characterRefs", C.CharacterRef], ["bodies", C.BodyConfig],
   ["assets", C.AssetRef], ["locomotions", C.Locomotion], ["appearances", C.Appearance], ["actions", C.Action],
-  ["animations", C.Animation],
+  ["animations", C.Animation], ["vfxEmitters", C.VfxEmitter],
 ];
 
 /** The row kinds a rate-limited window merges: every tracked component plus position-only transforms. */
@@ -58,7 +58,7 @@ const EMPTY_BIGINT_LIST: readonly bigint[] = Object.freeze([]);
 
 const emptyLists = (): Record<Key, number[]> => ({
   transforms: [], positions: [], velocities: [], intents: [], chunks: [], healths: [], staminas: [], characterRefs: [],
-  bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [],
+  bodies: [], assets: [], locomotions: [], appearances: [], actions: [], animations: [], vfxEmitters: [],
 });
 
 const emptyLazyLists = (): Record<Key, number[]> => ({
@@ -76,6 +76,7 @@ const emptyLazyLists = (): Record<Key, number[]> => ({
   appearances: EMPTY_EIDS as number[],
   actions: EMPTY_EIDS as number[],
   animations: EMPTY_EIDS as number[],
+  vfxEmitters: EMPTY_EIDS as number[],
 });
 
 const pushEid = (l: Record<Key, number[]>, k: Key, eid: number): void => {

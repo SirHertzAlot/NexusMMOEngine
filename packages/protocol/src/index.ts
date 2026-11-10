@@ -99,6 +99,8 @@ export type {
   TransformSoA,
   VelocityRow,
   VelocitySoA,
+  VfxEmitterRow,
+  VfxEmitterSoA,
 } from "./codec.js";
 export {
   applyBrush,

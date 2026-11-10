@@ -29,3 +29,9 @@ declare module "virtual:vfx-budgets" {
   const doc: unknown;
   export default doc;
 }
+
+/** The shrine VfxEffect documents (content/vfx/shrine-*.json), inlined by vite-game-flow.ts as a record keyed by effect id (raw JSON; render/emitter-fx.ts validates each with parseVfxEffect). */
+declare module "virtual:vfx-effects" {
+  const docs: unknown;
+  export default docs;
+}
