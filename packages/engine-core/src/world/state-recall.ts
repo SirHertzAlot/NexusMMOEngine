@@ -160,6 +160,7 @@ function generationsFor(bytes: Uint8Array): {
     state.actions,
     state.characterRefs,
     state.animations,
+    state.vfxEmitters,
   ]) {
     for (const row of block) take(row.wireId);
   }

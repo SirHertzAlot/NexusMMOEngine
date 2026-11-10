@@ -21,6 +21,7 @@ const LINKS: Record<ProblemSource, string> = {
   hud: "#/release/hud",
   strings: "#/story/strings",
   scale: "#/artaudio/scale",
+  rigs: "#/artaudio/rig",
   audio: "#/artaudio/audio",
   vfx: "#/artaudio/vfx",
   animation: "#/artaudio/animation",

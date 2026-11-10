@@ -48,8 +48,8 @@ const require = createRequire(import.meta.url);
 export const TICK_RATE_HZ = 30;
 export const FRAME_BUDGET_MS = 1000 / TICK_RATE_HZ; // 33.333... ms
 export const DT = 1.0 / TICK_RATE_HZ;
-export const DEFAULT_INPUT_RING_CAPACITY = 1024;
-export const DEFAULT_PERSIST_RING_CAPACITY = 512;
+export const DEFAULT_INPUT_RING_CAPACITY = 2048;
+export const DEFAULT_PERSIST_RING_CAPACITY = 1024;
 export const DEFAULT_BASE_SPEED = 5.0;
 export const DEFAULT_KERNEL_TELEMETRY_EVERY = 256;
 

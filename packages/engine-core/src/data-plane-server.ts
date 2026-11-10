@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Real-Time Network Ingestion Gateway (`data-plane-server.ts`)
  * (ENGINE_IMPLEMENTATION_SPEC.md Â§6).
  *
@@ -40,27 +40,44 @@ import {
 export const DEFAULT_DATA_PLANE_PORT = 4000;
 export const WS_SIM_ROUTE = "/ws/sim";
 
-/** Encode a single 4-byte binary frame `[Uint16 entityIndex (LE), Uint16 actionCode (LE)]`. */
-export function encodeBinaryCommandFrame(entityIndex: number, actionCode: number): Uint8Array {
-  const buf = new ArrayBuffer(4);
-  const view = new DataView(buf);
-  view.setUint16(0, entityIndex & 0xffff, true);
-  view.setUint16(2, actionCode & 0xffff, true);
-  return new Uint8Array(buf);
+/**
+ * Encode a single 4-byte binary frame `[Uint16 entityIndex (LE), Uint16 actionCode (LE)]`.
+ * When `out` is provided, writes in-place at `byteOffset` with zero heap allocations.
+ */
+export function encodeBinaryCommandFrame(
+  entityIndex: number,
+  actionCode: number,
+  out: Uint8Array = new Uint8Array(4),
+  byteOffset = 0,
+): Uint8Array {
+  out[byteOffset] = entityIndex & 0xff;
+  out[byteOffset + 1] = (entityIndex >>> 8) & 0xff;
+  out[byteOffset + 2] = actionCode & 0xff;
+  out[byteOffset + 3] = (actionCode >>> 8) & 0xff;
+  return out;
 }
 
-/** Encode a batch of `{ entityIndex, actionCode }` pairs into a contiguous binary payload (4 bytes each). */
+/**
+ * Encode a batch of `{ entityIndex, actionCode }` pairs into a contiguous binary payload (4 bytes each).
+ * When `out` is provided (with `out.length >= commands.length * 4`), writes in-place with zero heap allocations.
+ */
 export function encodeBinaryCommandBatch(
   commands: ReadonlyArray<{ entityIndex: number; actionCode: number }>,
+  out?: Uint8Array,
 ): Uint8Array {
-  const buf = new ArrayBuffer(commands.length * 4);
-  const view = new DataView(buf);
-  for (let i = 0; i < commands.length; i++) {
+  const n = commands.length;
+  const target = out && out.length >= n * 4 ? out.subarray(0, n * 4) : new Uint8Array(n * 4);
+  for (let i = 0; i < n; i++) {
     const c = commands[i];
-    view.setUint16(i * 4, c.entityIndex & 0xffff, true);
-    view.setUint16(i * 4 + 2, c.actionCode & 0xffff, true);
+    const base = i * 4;
+    const eid = c.entityIndex;
+    const act = c.actionCode;
+    target[base] = eid & 0xff;
+    target[base + 1] = (eid >>> 8) & 0xff;
+    target[base + 2] = act & 0xff;
+    target[base + 3] = (act >>> 8) & 0xff;
   }
-  return new Uint8Array(buf);
+  return target;
 }
 
 export interface HybridDataPlaneOptions {
@@ -193,11 +210,19 @@ export class HybridDataPlaneServer {
     if (byteLength < 4 || (byteLength & 3) !== 0) {
       return 0;
     }
-    const view = new DataView(message, byteOffset, byteLength);
+    return this.ingestBinaryBytes(new Uint8Array(message, byteOffset, byteLength));
+  }
+
+  /** Zero-allocation ingestion directly from a `Uint8Array` / `Buffer` view. */
+  public ingestBinaryBytes(bytes: Uint8Array): number {
+    const byteLength = bytes.byteLength;
+    if (byteLength < 4 || (byteLength & 3) !== 0) {
+      return 0;
+    }
     let enqueued = 0;
     for (let pos = 0; pos + 4 <= byteLength; pos += 4) {
-      const entityIndex = view.getUint16(pos, true);
-      const actionCode = view.getUint16(pos + 2, true);
+      const entityIndex = bytes[pos] | (bytes[pos + 1] << 8);
+      const actionCode = bytes[pos + 2] | (bytes[pos + 3] << 8);
       const packedCommandToken = packCommandToken(entityIndex, actionCode);
       if (this.gatewayInputQueue.enqueue(packedCommandToken)) {
         this.ingestedFrames++;
@@ -388,14 +413,10 @@ export class HybridDataPlaneServer {
     wss.on("connection", (ws: WebSocket) => {
       ws.on("message", (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
         if (!isBinary) return;
-        if (data instanceof ArrayBuffer) {
+        if (data instanceof Uint8Array) {
+          this.ingestBinaryBytes(data);
+        } else if (data instanceof ArrayBuffer) {
           this.ingestBinaryMessage(data, 0, data.byteLength);
-        } else if (Buffer.isBuffer(data)) {
-          this.ingestBinaryMessage(
-            data.buffer as ArrayBuffer,
-            data.byteOffset,
-            data.byteLength,
-          );
         }
       });
     });

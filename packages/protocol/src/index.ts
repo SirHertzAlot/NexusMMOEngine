@@ -94,9 +94,13 @@ export type {
   StaminaRow,
   StaminaSoA,
   TransformRow,
+  PositionRow,
+  PositionSoA,
   TransformSoA,
   VelocityRow,
   VelocitySoA,
+  VfxEmitterRow,
+  VfxEmitterSoA,
 } from "./codec.js";
 export {
   applyBrush,

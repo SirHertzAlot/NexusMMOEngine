@@ -23,6 +23,7 @@ import type {
   StaminaRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "@mmo-engine/protocol";
 
 export interface EntityMirror {
@@ -35,6 +36,7 @@ export interface EntityMirror {
   stamina?: StaminaRow;
   characterRef?: CharacterRefRow;
   animation?: AnimationRow;
+  vfxEmitter?: VfxEmitterRow;
   body?: BodyConfigRow;
   asset?: AssetRefRow;
   locomotion?: LocomotionRow;
@@ -76,6 +78,10 @@ export class MirrorState {
   readonly entered = new Set<bigint>();
   /** Last authoritative tick applied (snapshot or delta). */
   lastTick = 0;
+  /** Number of position-only rows received for entities without a baseline transform (discarded). */
+  orphanPositionRows = 0;
+  /** Set when an orphan position-only row was discarded and the client should request a full baseline resync. */
+  needsResync = false;
 
   get entityCount(): number {
     return this.entities.size;
@@ -86,7 +92,34 @@ export class MirrorState {
     this.entities.clear();
     this.home.clear();
     this.entered.clear();
+    this.needsResync = false;
     this.applyDelta(s);
+  }
+
+  /**
+   * Turn a Delta's position-only rows (v29) into full transform rows by taking rotation and scale from each
+   * entity's current transform. If an entity has no baseline transform, the row is counted, discarded, and
+   * `needsResync` is set so the client asks for a resync rather than showing a false identity rotation/scale.
+   */
+  expandPositions(d: CollectedState): CollectedState {
+    const pos = d.positions;
+    if (!pos || pos.length === 0) return d;
+    const merged: TransformRow[] = [];
+    for (let i = 0; i < pos.length; i++) {
+      const r = pos[i];
+      const t = this.entities.get(r.wireId)?.transform;
+      if (!t) {
+        this.orphanPositionRows++;
+        this.needsResync = true;
+        continue;
+      }
+      merged.push({
+        wireId: r.wireId, px: r.px, py: r.py, pz: r.pz,
+        qx: t.qx, qy: t.qy, qz: t.qz, qw: t.qw,
+        sx: t.sx, sy: t.sy, sz: t.sz,
+      });
+    }
+    return { ...d, transforms: d.transforms.length === 0 ? merged : [...d.transforms, ...merged], positions: [] };
   }
 
   /** Fold a per-tick Delta onto the current state, in place. */
@@ -105,6 +138,7 @@ export class MirrorState {
     for (const r of d.staminas) upsert(this.entities, r.wireId, "stamina", r);
     for (const r of d.characterRefs) upsert(this.entities, r.wireId, "characterRef", r);
     for (const r of d.animations) upsert(this.entities, r.wireId, "animation", r);
+    for (const r of d.vfxEmitters) upsert(this.entities, r.wireId, "vfxEmitter", r);
     for (const r of d.bodies) upsert(this.entities, r.wireId, "body", r);
     for (const r of d.assets) upsert(this.entities, r.wireId, "asset", r);
     for (const r of d.locomotions) upsert(this.entities, r.wireId, "locomotion", r);
@@ -132,6 +166,7 @@ export class MirrorState {
     if (replace) {
       this.entities.clear();
       this.home.clear();
+      this.needsResync = false;
     }
     const gone = new Map<bigint, boolean>(); // wid -> true when a real despawn
     for (const e of entries) {
@@ -154,7 +189,7 @@ export class MirrorState {
     const entered: bigint[] = [];
     for (const e of entries) {
       if (!e.delta) continue;
-      const d = e.delta;
+      const d = this.expandPositions(e.delta);
       const fresh = (wid: bigint): void => {
         if (this.home.get(wid) !== e.sector) {
           if (!this.entities.has(wid) && !gone.has(wid) && !spawned.has(wid) && !before?.has(wid)) entered.push(wid);

@@ -38,6 +38,32 @@ Both paths are tested separately (`test/net/gateway-native-fanout.test.ts`).
 - `engine-core/test/net/gateway-native-fanout.test.ts`: a real Gateway on uWS with the native path shadowed in place; every envelope and name list is compared with the JavaScript rule on the same entries.
 - `npm run valgrind:memcheck -- fanout`: clean.
 
+## Shared assembly (`MMO_FANOUT_SHARE`)
+
+Sessions whose envelope would be byte-identical share one assembled envelope. The group key is the replace flag plus the ordered list of (entry kind, sector, payload object) for the tick; the tick number is common. Equal bytes in different payload objects make separate groups (a missed share, never a wrong one). Every session still gets its own `socket.send` of the shared bytes.
+
+| `MMO_FANOUT_SHARE` | Behaviour |
+|---|---|
+| unset / `assembly` | one assembled envelope per group (default) |
+| `off` | one per session (the rollback) |
+| `publish` | experimental: non-replace sessions subscribe to a topic named by the group key and each group is sent with one uWS `publish` |
+
+Measured in `perf/shared-fanout-2026-11-03.md` (1,000 players, towns, paired exclusive-phase runs): assemble 10.3 -> 0.86 ms, send 26.3 -> 22.5 ms, tick mean 73.2 -> 62.5 ms, ticks/s 12.0 -> 14.1. `publish` gave no further gain (the cost moved into the publish calls), so it is not the default. Tests: every envelope shadow-checked against the JS encoding in a live Gateway for default, assembly and publish, and every client-received DeltaSet is one built for that client's session.
+
+The arena view is shared by a group's sessions for the tick; it is valid until the next tick's `begin()`, as before. A closed socket still gets a `slice()` copy.
+
+## Send batching (`MMO_UWS_CORK=1`, opt-in)
+
+Outside a uWS callback every `ws.send` is its own write syscall, and a session gets several messages a tick (names, delta, stats). With `MMO_UWS_CORK=1` the uWS transport copies each send into one reusable arena during `broadcast()` and, at the end of the broadcast, writes each socket's run inside a single `ws.cork`. Order per socket is unchanged, `publish()` flushes held sends first, and nothing is held past the tick. Off by default: **[unmeasured]** — typechecked only; it must be benchmarked on the pinned Linux/Node 22 real-uWS harness (syscalls per tick, tick p50/p99, bytes per send) before it is considered for default. Same change set: `BigInt(tick)` is now made once per tick rather than once per session delivery.
+
 ## selectNames: skipping what a session already knows
 
-Per tick the addon hashes each sector's id list (order independent). A session remembers, per sector, the hash it last fully scanned. Same hash: nothing to do. Hash equals last call's hash (the session was current): only the ids that were not in that sector last call are checked. Anything else (a new session, one that missed a tick, a changed sector it never saw) scans the whole list. `sent` stays the single source of truth for "told", so the outputs equal the old full scan (tested against the JS rule); the hash only decides how much to look at. A collision would delay a name by one change of that sector (2^-64 per change). In the 1,000-player benchmark ids scanned per call fell from about 200,000 to about 4,000 and selectNames from 5.9 to 0.77 ms per tick. `Fanout.stats()` reports the counters.
+Per tick the addon hashes each sector's id list (order independent). A session remembers, per sector, the hash it last fully scanned. Same hash: nothing to do. Hash equals last call's hash (the session was current): only the ids that were not in that sector last call are checked. Anything else (a new session, one that missed a tick, a changed sector it never saw) scans the whole list. `sent` stays the single source of truth for "told", so the outputs equal the old full scan (tested against the JS rule); the hash only decides how much to look at. The hash is a skip hint only, never the record of what was sent. In the 1,000-player benchmark ids scanned per call fell from about 200,000 to about 4,000 and selectNames from 5.9 to 0.77 ms per tick. `Fanout.stats()` reports the counters.
+
+**Hash collision policy.** If a sector's membership changes but its 64-bit hash equals the one a session last scanned (about 2^-64 per change), the session skips the change and a newly arrived name is not selected. Without more, that name could stay hidden for as long as the id stays in the sector and the session keeps scanning only "new" ids, so the addon bounds it: each session forgets what it scanned once every 256 `selectNames` calls (staggered by slot, so about 1/256 of sessions rescan per tick), and the next call scans every sector it sees in full against `sent`. A collision therefore hides a name for at most 256 ticks (about 8.5 s at 30 Hz), then recovers. The rescan costs about one full scan per session per 256 ticks, measured in the 1,000-session benchmark (3,000 ticks, Node 22.22.2) as median 0.39 to 0.43 ms with it and 0.39 to 0.40 ms without, p99 0.59 to 0.80 vs 0.79 to 0.87 ms, i.e. inside run-to-run noise. `new Fanout({ rescanEvery, hashBits })`: `rescanEvery` 0 turns it off, `hashBits` shortens the hash and exists to test collisions (tests force collisions with 3 bits and check the bound).
+
+**Name lifetime and invalidation.** A name is sent once per session per wire id, by both paths. The invariant the rule relies on is that a wire id (slot + generation) names one thing for its whole life and its name does not change.
+- *Entity-id reuse:* a reused slot gets a new generation, so a new wire id, so its name is sent (tested).
+- *Name changes without a membership change:* not detected; the old name stays on the client. The only change that exists today is a guild tag, and `pushTags` re-sends those rows to every welcomed session outside this rule. Anything else that renames an entity must do the same.
+- *Reconnect:* a new session has new state; a closed one is released by the sweep (at most 64 ticks later) and its slot is cleared on reuse (tested).
+- *Resync / baseline replace and view changes:* `sent` is not cleared, because the client keeps the names it has been told. An entity that leaves view and returns is not named again; the client's name table must outlive visibility.

@@ -26,6 +26,7 @@ import {
   encodeSnapshotFromSim,
   splitU64,
 } from "../src/index.js";
+import { encodeEidsFromSim } from "../src/snapshot.js";
 import { Animation, CharacterRef, Stamina } from "../src/components.js";
 import type { ChunkDataSource } from "../src/procgen/chunk-source.js";
 
@@ -184,4 +185,98 @@ test("SoA snapshot with a reused builder matches the fresh-builder bytes", () =>
   // A second encode through the same builder overwrites cleanly.
   const reused2 = encodeSnapshotFromSim(sim, 10, { builder });
   assertBytesEqual(reused2, encodeSnapshotFromSim(sim, 10));
+});
+
+test("Direct FlatBuffers vector writes match row builder for 0, 1, and 1,500 entities (builder growth, ordering, >32-bit wireIds, PositionBlock)", () => {
+  for (const count of [0, 1, 1500]) {
+    const sim = new SimWorld();
+    const tracker = new DeltaTracker();
+    const eids: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const e = sim.spawn();
+      eids.push(e);
+      addComponent(sim.ecs, Transform, e);
+      Transform.px[e] = i * 1.25 - 100;
+      Transform.py[e] = (i % 7) * 0.5;
+      Transform.pz[e] = -i * 0.75;
+      Transform.qw[e] = 1;
+      Transform.sx[e] = 1;
+      Transform.sy[e] = 1;
+      Transform.sz[e] = 1;
+    }
+    // Use a tiny initial builder (64 bytes) to force multiple FlatBuffers buffer growths during vector writes
+    const tinyBuilder = new flatbuffers.Builder(64);
+    assertBytesEqual(
+      encodeSnapshotFromSim(sim, 1, { builder: tinyBuilder }),
+      encodeSnapshot(collectFullState(sim, 1)),
+    );
+
+    // Commit baseline so subsequent position moves emit PositionBlock (v29)
+    tracker.commit(sim);
+    sim.endTick();
+
+    sim.beginTick(2);
+    const posEids: number[] = [];
+    const fullEids: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const e = eids[i];
+      if (i % 2 === 0) {
+        Transform.px[e] += 2.5;
+        Transform.pz[e] -= 1.25;
+        posEids.push(e);
+      } else {
+        Transform.px[e] -= 1.0;
+        Transform.qy[e] = 0.25;
+        Transform.qw[e] = 0.9682458;
+        fullEids.push(e);
+      }
+    }
+    let spawnedWid: bigint | null = null;
+    if (count > 0) {
+      const sp = sim.spawn();
+      addComponent(sim.ecs, Transform, sp);
+      Transform.px[sp] = 999;
+      Transform.qw[sp] = 1;
+      Transform.sx[sp] = Transform.sy[sp] = Transform.sz[sp] = 1;
+      spawnedWid = sim.wireId(sp);
+      fullEids.push(sp);
+    }
+    sim.emitTick(2);
+
+    assertBytesEqual(
+      encodeDeltaFromSim(sim, 2, 1, tracker),
+      encodeDelta(collectDeltaState(sim, 2, 1, tracker)),
+    );
+
+    // Also test PositionBlock (Delta.positions) vector order and round-trip decode for 0, 1, and 750 position-only rows
+    const sectorBytes = encodeEidsFromSim(
+      sim,
+      2,
+      1,
+      {
+        transforms: fullEids,
+        positions: posEids,
+        velocities: [], intents: [], chunks: [], healths: [], staminas: [],
+        characterRefs: [], bodies: [], assets: [], locomotions: [],
+        appearances: [], actions: [], animations: [], vfxEmitters: [],
+      },
+      { spawned: spawnedWid !== null ? [spawnedWid] : [], despawned: [0x123456789abcdef0n] },
+    );
+    const decoded = decodeDelta(sectorBytes);
+    assert.equal(decoded.tick, 2);
+    assert.equal(decoded.baseTick, 1);
+    assert.deepEqual(decoded.despawned, [0x123456789abcdef0n]);
+    if (spawnedWid !== null) {
+      assert.deepEqual(decoded.spawned, [spawnedWid]);
+    }
+    assert.equal(decoded.positions?.length ?? 0, posEids.length, `count=${count} position-only rows`);
+    for (let j = 0; j < posEids.length; j++) {
+      const e = posEids[j];
+      const row = decoded.positions![j];
+      assert.equal(row.wireId, sim.wireId(e), `count=${count} pos[${j}] wireId order`);
+      assert.ok(Math.abs(row.px - Transform.px[e]) < 1e-5);
+      assert.ok(Math.abs(row.py - Transform.py[e]) < 1e-5);
+      assert.ok(Math.abs(row.pz - Transform.pz[e]) < 1e-5);
+    }
+  }
 });

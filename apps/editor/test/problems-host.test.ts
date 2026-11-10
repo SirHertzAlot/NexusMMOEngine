@@ -55,6 +55,15 @@ describe("problems", () => {
     assert.equal(problemLink(hit), "#/artaudio/scale");
     rmSync(root, { recursive: true });
   });
+  it("a bad local rig override is a rigs problem that links to the Rig view; none is no problem", async () => {
+    const root = fakeRepo();
+    assert.deepEqual((await collectProblems(root)).filter((p) => p.source === "rigs"), []);
+    put(join(root, "content/rigs.local.json"), JSON.stringify({ version: 1, models: { "a/b": { legTop: 4 } } }));
+    const hit = (await collectProblems(root)).find((p) => p.source === "rigs");
+    assert.ok(hit && hit.severity === "error" && hit.file === "content/rigs.local.json" && hit.message.startsWith("models.a/b.legTop:"));
+    assert.equal(problemLink(hit), "#/artaudio/rig");
+    rmSync(root, { recursive: true });
+  });
   it("a collector that throws becomes one warning and the rest still run", async () => {
     const ps = await collectProblems("/nowhere", [
       ["flow", () => { throw new Error("boom"); }],

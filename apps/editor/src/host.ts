@@ -51,6 +51,7 @@
  *   GET/PUT /api/editor/docs/<n>   → designer settings documents under content/ (content-docs-host.ts)
  *   GET/PUT /api/editor/settlements/rules, POST /settlements/preview → the town generator's
  *                                    rules content/settlements/rules.json and a town built from them (settlement-host.ts)
+ *   GET/PUT /api/editor/rigs       → per-model rig overrides content/rigs.local.json, gitignored (rig-host.ts)
  *   GET  /api/editor/content-catalog → every species, creature, item, prefab, PICG asset, scene, quest (EA15)
  *   GET  /api/editor/story         → the quest and dialog documents (EA20)
  *   GET  /api/editor/story/:name   → one document and the rules references
@@ -132,6 +133,7 @@ import { handleScaleRoute } from "./scale-host.js";
 import { handleContentDocsRoute } from "./content-docs-host.js";
 import { handleSettlementRoute } from "./settlement-host.js";
 import { SettlementBake } from "./settlement-bake.js";
+import { handleRigRoute } from "./rig-host.js";
 import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
@@ -1557,6 +1559,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (settlementReply) {
             sendJson(res, settlementReply.status, settlementReply.body);
+            return;
+          }
+          // Per-model rig overrides (content/rigs.local.json, rig-host.ts).
+          const rigReply = handleRigRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "PUT" && scenesUrl.pathname === "/api/editor/rigs" ? await readBody(req) : undefined,
+          );
+          if (rigReply) {
+            sendJson(res, rigReply.status, rigReply.body);
             return;
           }
           // Playtests (EA26) and the Network workspace's routes file.

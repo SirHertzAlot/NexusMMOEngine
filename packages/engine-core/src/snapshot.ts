@@ -67,6 +67,7 @@ import type {
   StaminaRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "@mmo-engine/protocol";
 export type {
   ActionRow,
@@ -83,6 +84,7 @@ export type {
   StaminaRow,
   TransformRow,
   VelocityRow,
+  VfxEmitterRow,
 } from "@mmo-engine/protocol";
 // ------------------------------------------------------------ collection
 
@@ -99,6 +101,7 @@ const qAppearance: Query = defineQuery([C.Appearance]);
 const qAction: Query = defineQuery([C.Action]);
 const qCharacterRef: Query = defineQuery([C.CharacterRef]);
 const qAnimation: Query = defineQuery([C.Animation]);
+const qVfxEmitter: Query = defineQuery([C.VfxEmitter]);
 
 function readTransform(sim: SimWorld, eid: number): TransformRow {
   const T = C.Transform;
@@ -214,6 +217,11 @@ function readAnimation(sim: SimWorld, eid: number): AnimationRow {
   return { wireId: sim.wireId(eid), clipId: A.clipId[eid], startTick: A.startTick[eid], rate: A.rate[eid], layerMask: A.layerMask[eid] };
 }
 
+function readVfxEmitter(sim: SimWorld, eid: number): VfxEmitterRow {
+  const E = C.VfxEmitter;
+  return { wireId: sim.wireId(eid), template: E.template[eid], intensity: E.intensity[eid] };
+}
+
 function readCharacterRef(sim: SimWorld, eid: number): CharacterRefRow {
   const R = C.CharacterRef;
   return { wireId: sim.wireId(eid), characterId: R.idHi[eid] * 4294967296 + R.idLo[eid] };
@@ -237,6 +245,7 @@ export function collectFullState(sim: SimWorld, tick: number): CollectedState {
     staminas: qStamina(sim.ecs).map((e) => readStamina(sim, e)),
     characterRefs: qCharacterRef(sim.ecs).map((e) => readCharacterRef(sim, e)),
     animations: qAnimation(sim.ecs).map((e) => readAnimation(sim, e)),
+    vfxEmitters: qVfxEmitter(sim.ecs).map((e) => readVfxEmitter(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -266,6 +275,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
     staminas: having(C.Stamina).map((e) => readStamina(sim, e)),
     characterRefs: having(C.CharacterRef).map((e) => readCharacterRef(sim, e)),
     animations: having(C.Animation).map((e) => readAnimation(sim, e)),
+    vfxEmitters: having(C.VfxEmitter).map((e) => readVfxEmitter(sim, e)),
     spawned: [],
     despawned: [],
   };
@@ -273,7 +283,7 @@ export function collectEntitiesState(sim: SimWorld, eids: readonly number[], tic
 
 // ---------------------------------------------------------- delta diff
 
-type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "staminas" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs" | "animations";
+type DiffKey = "transforms" | "velocities" | "intents" | "chunks" | "healths" | "staminas" | "bodies" | "assets" | "locomotions" | "appearances" | "actions" | "characterRefs" | "animations" | "vfxEmitters";
 
 interface TrackedComponent {
   key: DiffKey;
@@ -353,10 +363,22 @@ const TRACKED: TrackedComponent[] = [
     stores: C.Animation as unknown as Record<string, ArrayLike<number>>,
     fields: ["clipId", "startTick", "rate", "layerMask"],
   },
+  {
+    // Configuration: template/intensity change only via spawn or admin
+    // verbs, so this diff is idle in the steady state.
+    key: "vfxEmitters", query: qVfxEmitter,
+    stores: C.VfxEmitter as unknown as Record<string, ArrayLike<number>>,
+    fields: ["template", "intensity"],
+  },
 ];
 
 export interface DiffResult {
   transforms: number[];
+  /**
+   * The subset of `transforms` whose only change since the last commit is the position (rotation and scale
+   * equal their baselines, and the entity is not newly spawned). Empty when MMO_POSITION_ROWS=0.
+   */
+  positionOnly: Set<number>;
   velocities: number[];
   intents: number[];
   chunks: number[];
@@ -369,6 +391,7 @@ export interface DiffResult {
   actions: number[];
   characterRefs: number[];
   animations: number[];
+  vfxEmitters: number[];
 }
 
 /**
@@ -384,9 +407,27 @@ export interface DiffResult {
  * at 10k entities — the whole tick budget.)
  */
 export class DeltaTracker {
+  /** MMO_POSITION_ROWS=0 turns position-only classification off (every changed transform is a full row). */
+  private readonly positionRows = process.env.MMO_POSITION_ROWS !== "0";
   private readonly prev: Float64Array[][] = TRACKED.map((t) =>
     t.fields.map(() => new Float64Array(0)),
   );
+  private readonly fieldStores: ArrayLike<number>[][] = TRACKED.map((t) =>
+    t.fields.map((f) => t.stores[f]),
+  );
+  private posOnlyTag = new Uint32Array(0);
+  private posOnlySeq = 0;
+  private posOnlyCount = 0;
+
+  /** True when the most recent diff() recorded at least one position-only entity. */
+  hasPositionOnly(): boolean {
+    return this.posOnlyCount > 0;
+  }
+
+  /** Fast O(1) slot check for whether `eid` was classified position-only in the most recent diff(). */
+  isPositionOnly(eid: number): boolean {
+    return this.posOnlyTag[eid] === this.posOnlySeq;
+  }
 
   /** This component's baselines, grown (never shrunk) to cover `bound` slots. */
   private baselines(ti: number, bound: number): Float64Array[] {
@@ -407,22 +448,67 @@ export class DeltaTracker {
    */
   diff(sim: SimWorld, spawnedSlots: Set<number>): DiffResult {
     const bound = sim.maxSlotSeen + 1;
+    if (this.posOnlyTag.length < bound) {
+      this.posOnlyTag = new Uint32Array(Math.max(bound * 2, 1024));
+    }
+    let seq = (this.posOnlySeq + 1) >>> 0;
+    if (seq === 0) {
+      seq = 1;
+      this.posOnlyTag.fill(0);
+    }
+    this.posOnlySeq = seq;
+    const posOnlyTag = this.posOnlyTag;
+    this.posOnlyCount = 0;
+    const posOnlyList: number[] = [];
+    let lazyPosOnlySet: Set<number> | null = null;
     const out: DiffResult = {
-      transforms: [], velocities: [], intents: [], chunks: [], healths: [],
+      transforms: [],
+      get positionOnly(): Set<number> {
+        return (lazyPosOnlySet ??= new Set(posOnlyList));
+      },
+      velocities: [], intents: [], chunks: [], healths: [],
       staminas: [],
-      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [],
+      bodies: [], assets: [], locomotions: [], appearances: [], actions: [], characterRefs: [], animations: [], vfxEmitters: [],
     };
+    const hasSpawned = spawnedSlots.size !== 0;
     for (let ti = 0; ti < TRACKED.length; ti++) {
       const t = TRACKED[ti];
       const changed = out[t.key];
       const eids = t.query(sim.ecs);
       if (eids.length === 0) continue;
       const prevs = this.baselines(ti, bound);
-      const stores = t.fields.map((f) => t.stores[f]);
+      const stores = this.fieldStores[ti];
       const nf = stores.length;
+      if (t.key === "transforms" && this.positionRows) {
+        const s0 = stores[0], s1 = stores[1], s2 = stores[2];
+        const p0 = prevs[0], p1 = prevs[1], p2 = prevs[2];
+        for (let i = 0; i < eids.length; i++) {
+          const eid = eids[i];
+          if (hasSpawned && spawnedSlots.has(eid)) {
+            changed.push(eid);
+            continue;
+          }
+          let other = false;
+          for (let fi = 3; fi < nf; fi++) {
+            if (stores[fi][eid] !== prevs[fi][eid]) {
+              other = true;
+              break;
+            }
+          }
+          if (other) {
+            changed.push(eid);
+          } else if (s0[eid] !== p0[eid] || s1[eid] !== p1[eid] || s2[eid] !== p2[eid]) {
+            changed.push(eid);
+            posOnlyTag[eid] = seq;
+            posOnlyList.push(eid);
+            this.posOnlyCount++;
+          }
+        }
+        continue;
+      }
       for (let i = 0; i < eids.length; i++) {
         const eid = eids[i];
-        if (spawnedSlots.size !== 0 && spawnedSlots.has(eid)) {
+        if (hasSpawned && spawnedSlots.has(eid)) {
           changed.push(eid);
           continue;
         }
@@ -441,10 +527,10 @@ export class DeltaTracker {
   commit(sim: SimWorld): void {
     const bound = sim.maxSlotSeen + 1;
     for (let ti = 0; ti < TRACKED.length; ti++) {
-      const t = TRACKED[ti];
       const prevs = this.baselines(ti, bound);
-      for (let fi = 0; fi < t.fields.length; fi++) {
-        const store = t.stores[t.fields[fi]];
+      const stores = this.fieldStores[ti];
+      for (let fi = 0; fi < stores.length; fi++) {
+        const store = stores[fi];
         const prev = prevs[fi];
         const n = Math.min(bound, store.length);
         if (ArrayBuffer.isView(store)) {
@@ -487,6 +573,7 @@ export function collectDeltaState(
     staminas: d.staminas.map((e) => readStamina(sim, e)),
     characterRefs: d.characterRefs.map((e) => readCharacterRef(sim, e)),
     animations: d.animations.map((e) => readAnimation(sim, e)),
+    vfxEmitters: d.vfxEmitters.map((e) => readVfxEmitter(sim, e)),
     spawned: [...sim.spawnedWireIds()],
     despawned: [...sim.despawnedWireIds()],
   };
@@ -535,6 +622,7 @@ export type {
   AppearanceSoA,
   ActionSoA,
   AnimationSoA,
+  VfxEmitterSoA,
 } from "@mmo-engine/protocol";
 
 // ------------------------------------------- SoA encode from the sim
@@ -553,15 +641,23 @@ export type {
 // hot path (per-tick deltas, welcome snapshots) uses these SoA
 // entry points.
 
+const EMPTY_SPAWNED_SLOTS = new Set<number>();
+
 /** Slots spawned this tick, for the tracker's spawned fast path. */
 export function spawnedSlotsOf(sim: SimWorld): Set<number> {
-  return new Set(
-    [...sim.spawnedWireIds()].map((w) => parseWireEntityId(w).slot),
-  );
+  const wids = sim.spawnedWireIds();
+  if (wids.length === 0) return EMPTY_SPAWNED_SLOTS;
+  const out = new Set<number>();
+  for (let i = 0; i < wids.length; i++) {
+    out.add(Number(wids[i] & 0xffffffffn));
+  }
+  return out;
 }
 
 export interface SoAEidLists {
   transforms: ArrayLike<number>;
+  /** Position-only rows (Delta only): entities in the position stores whose rotation and scale the receiver keeps. */
+  positions?: ArrayLike<number>;
   velocities: ArrayLike<number>;
   intents: ArrayLike<number>;
   chunks: ArrayLike<number>;
@@ -574,6 +670,7 @@ export interface SoAEidLists {
   appearances: ArrayLike<number>;
   actions: ArrayLike<number>;
   animations: ArrayLike<number>;
+  vfxEmitters: ArrayLike<number>;
 }
 
 /** Heights resolver for chunk rows, mirroring attachChunkHeights. */
@@ -622,6 +719,7 @@ function soaState(
   const L = C.Locomotion;
   const AC = C.Action;
   const AN = C.Animation;
+  const VE = C.VfxEmitter;
   return {
     tick,
     baseTick,
@@ -631,6 +729,9 @@ function soaState(
       qx: T.qx, qy: T.qy, qz: T.qz, qw: T.qw,
       sx: T.sx, sy: T.sy, sz: T.sz,
     },
+    ...(eids.positions && eids.positions.length > 0
+      ? { positions: { eids: eids.positions, wireIdOf, px: T.px, py: T.py, pz: T.pz } }
+      : {}),
     velocities: {
       eids: eids.velocities, wireIdOf,
       lx: V.lx, ly: V.ly, lz: V.lz, ax: V.ax, ay: V.ay, az: V.az,
@@ -674,6 +775,10 @@ function soaState(
       eids: eids.animations, wireIdOf,
       clipId: AN.clipId, startTick: AN.startTick, rate: AN.rate, layerMask: AN.layerMask,
     },
+    vfxEmitters: {
+      eids: eids.vfxEmitters, wireIdOf,
+      template: VE.template, intensity: VE.intensity,
+    },
     spawned: ids ? [...ids.spawned] : sim.spawnedWireIds(),
     despawned: ids ? [...ids.despawned] : sim.despawnedWireIds(),
   };
@@ -710,6 +815,7 @@ export function encodeSnapshotFromSim(
     appearances: qAppearance(sim.ecs),
     actions: qAction(sim.ecs),
     animations: qAnimation(sim.ecs),
+    vfxEmitters: qVfxEmitter(sim.ecs),
   };
   return encodeSnapshotSoA(
     soaState(sim, tick, 0, eids, opts?.chunkSource ?? null),
@@ -777,6 +883,105 @@ export function encodeFastDeltaFromSim(
   );
 }
 
+const EMPTY_POSITIONS_EIDS: readonly number[] = Object.freeze([]);
+const EMPTY_WIRE_IDS: readonly bigint[] = Object.freeze([]);
+
+interface ReusableSoAContext {
+  state: CollectedStateSoA & { positions: NonNullable<CollectedStateSoA["positions"]> };
+  lastChunkSource: ChunkDataSource | null;
+}
+
+const reusableSoAByWorld = new WeakMap<SimWorld, ReusableSoAContext>();
+
+function getReusableSoA(sim: SimWorld): ReusableSoAContext {
+  let ctx = reusableSoAByWorld.get(sim);
+  if (!ctx) {
+    const wireIdOf = (eid: number): bigint => sim.wireId(eid);
+    const lookOf = (eid: number): string => sim.lookJson(C.Appearance.look[eid]);
+    const T = C.Transform;
+    const V = C.Velocity;
+    const I = C.PlayerIntent;
+    const K = C.Chunk;
+    const H = C.Health;
+    const S = C.Stamina;
+    const R = C.CharacterRef;
+    const B = C.BodyConfig;
+    const A = C.AssetRef;
+    const L = C.Locomotion;
+    const AC = C.Action;
+    const AN = C.Animation;
+    const VE = C.VfxEmitter;
+    ctx = {
+      lastChunkSource: null,
+      state: {
+        tick: 0,
+        baseTick: 0,
+        transforms: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          px: T.px, py: T.py, pz: T.pz,
+          qx: T.qx, qy: T.qy, qz: T.qz, qw: T.qw,
+          sx: T.sx, sy: T.sy, sz: T.sz,
+        },
+        positions: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          px: T.px, py: T.py, pz: T.pz,
+        },
+        velocities: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          lx: V.lx, ly: V.ly, lz: V.lz, ax: V.ax, ay: V.ay, az: V.az,
+        },
+        intents: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          mx: I.mx, my: I.my, mz: I.my,
+          lookYaw: I.lookYaw, lookPitch: I.lookPitch,
+          jump: I.jump, buttons: I.buttons,
+        },
+        chunks: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          chunkIdHi: K.chunkIdHi, chunkIdLo: K.chunkIdLo,
+          seedHi: K.seedHi, seedLo: K.seedLo, lod: K.lod,
+        },
+        healths: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, current: H.current, max: H.max },
+        staminas: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, current: S.current, max: S.max },
+        characterRefs: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, idHi: R.idHi, idLo: R.idLo },
+        bodies: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          shapeKind: B.shapeKind,
+          halfX: B.halfX, halfY: B.halfY, halfZ: B.halfZ,
+          radius: B.radius, mass: B.mass, motionType: B.motionType,
+          layer: B.layer, friction: B.friction, restitution: B.restitution,
+        },
+        assets: { eids: EMPTY_POSITIONS_EIDS, wireIdOf, assetHash: A.assetHash, variant: A.variant },
+        locomotions: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          mode: L.mode, abilities: L.abilities, breath: L.breath,
+        },
+        appearances: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          lookOf,
+        },
+        actions: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          move: AC.move, started: AC.started, seq: AC.seq, yaw: AC.yaw,
+        },
+        animations: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          clipId: AN.clipId, startTick: AN.startTick, rate: AN.rate, layerMask: AN.layerMask,
+        },
+        vfxEmitters: {
+          eids: EMPTY_POSITIONS_EIDS, wireIdOf,
+          template: VE.template, intensity: VE.intensity,
+        },
+        spawned: EMPTY_WIRE_IDS,
+        despawned: EMPTY_WIRE_IDS,
+      },
+    };
+    ctx.state.intents.mz = I.mz;
+    reusableSoAByWorld.set(sim, ctx);
+  }
+  return ctx;
+}
+
 /**
  * Interest management (IM3): a Delta payload for the caller's own eid
  * lists and spawn/despawn ids (one sector's share of the tick, or a
@@ -790,7 +995,33 @@ export function encodeEidsFromSim(
   ids: { spawned: Iterable<bigint>; despawned: Iterable<bigint> },
   chunkSource?: ChunkDataSource | null,
 ): Uint8Array {
-  return encodeDeltaSoA(soaState(sim, tick, baseTick, eids, chunkSource ?? null, ids), sharedBuilder, true);
+  const ctx = getReusableSoA(sim);
+  const cs = chunkSource ?? null;
+  if (ctx.lastChunkSource !== cs) {
+    ctx.lastChunkSource = cs;
+    ctx.state.chunks.heightsOf = heightsOfFor(sim, cs);
+  }
+  const s = ctx.state;
+  s.tick = tick;
+  s.baseTick = baseTick;
+  s.transforms.eids = eids.transforms;
+  s.positions.eids = eids.positions ?? EMPTY_POSITIONS_EIDS;
+  s.velocities.eids = eids.velocities;
+  s.intents.eids = eids.intents;
+  s.chunks.eids = eids.chunks;
+  s.healths.eids = eids.healths;
+  s.staminas.eids = eids.staminas;
+  s.characterRefs.eids = eids.characterRefs;
+  s.bodies.eids = eids.bodies;
+  s.assets.eids = eids.assets;
+  s.locomotions.eids = eids.locomotions;
+  s.appearances.eids = eids.appearances;
+  s.actions.eids = eids.actions;
+  s.animations.eids = eids.animations;
+  s.vfxEmitters.eids = eids.vfxEmitters;
+  s.spawned = Array.isArray(ids.spawned) ? ids.spawned : [...ids.spawned];
+  s.despawned = Array.isArray(ids.despawned) ? ids.despawned : [...ids.despawned];
+  return encodeDeltaSoA(s, sharedBuilder, true);
 }
 
 const sharedBuilder = new flatbuffers.Builder(4096);
@@ -811,5 +1042,6 @@ export function fullEidLists(sim: SimWorld): SoAEidLists {
     appearances: qAppearance(sim.ecs),
     actions: qAction(sim.ecs),
     animations: qAnimation(sim.ecs),
+    vfxEmitters: qVfxEmitter(sim.ecs),
   };
 }

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "models": {
+    "example-pack/Example_Stag_01": {
+      "bodyPlan": "quadruped",
+      "headSign": 1,
+      "legTop": 0.46,
+      "knee": 0.5,
+      "limits": {
+        "lowerFL": { "min": 30, "max": 165 },
+        "lowerHL": { "min": 40, "max": 150 }
+      },
+      "targets": {
+        "lowerFL": { "offset": [0, 0.12, 0.18], "pole": [0, 0, 1], "weight": 1 },
+        "tail": { "offset": [0.1, 0.05, 0], "weight": 0.5 }
+      },
+      "inactive": ["upperHR"]
+    },
+    "example-pack/Example_Hound_01": {
+      "bodyPlan": "quadruped",
+      "headSign": -1
+    }
+  }
+}

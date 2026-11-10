@@ -96,7 +96,19 @@ class Fanout : public Napi::ObjectWrap<Fanout> {
                         InstanceMethod("selectNames", &Fanout::SelectNames), InstanceMethod("takeWanted", &Fanout::TakeWanted),
                         InstanceMethod("release", &Fanout::Release), InstanceMethod("stats", &Fanout::Stats)});
   }
-  explicit Fanout(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Fanout>(info) {}
+  // new Fanout({ rescanEvery?, hashBits? }). rescanEvery: every session forgets what it scanned once per this
+  // many selectNames calls (staggered by slot), which bounds how long a hash collision can hide a name
+  // (default 256 calls; 0 turns it off). hashBits shortens the sector hash and exists to test collisions.
+  explicit Fanout(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Fanout>(info) {
+    if (info.Length() > 0 && info[0].IsObject()) {
+      Napi::Object o = info[0].As<Napi::Object>();
+      if (o.Has("rescanEvery")) rescanEvery_ = o.Get("rescanEvery").As<Napi::Number>().Uint32Value();
+      if (o.Has("hashBits")) {
+        uint32_t b = o.Get("hashBits").As<Napi::Number>().Uint32Value();
+        if (b >= 1 && b < 64) hashMask_ = (uint64_t{1} << b) - 1;
+      }
+    }
+  }
 
  private:
   std::vector<std::string> names_;  // sector name index -> utf8 bytes
@@ -111,6 +123,8 @@ class Fanout : public Napi::ObjectWrap<Fanout> {
   std::unordered_map<uint64_t, int32_t> prevSector_;  // last call: id -> sector index
   std::vector<uint64_t> added_;         // this call: ids new to their sector, grouped by sector
   std::vector<int32_t> addedStart_, addedLen_;
+  uint64_t rescanEvery_ = 256;
+  uint64_t hashMask_ = ~uint64_t{0};
   uint64_t statRefs_ = 0, statSkipped_ = 0, statScannedIds_ = 0, statCalls_ = 0;
 
 Napi::Value SetName(const Napi::CallbackInfo& info) {
@@ -219,6 +233,7 @@ Napi::Value SelectNames(const Napi::CallbackInfo& info) {
       x ^= (m << 17) | (m >> 47);
     }
     uint64_t h = Mix64(sum ^ Mix64(x) ^ (static_cast<uint64_t>(sl[sec]) << 40));
+    h &= hashMask_;
     sectorHash_[sec] = h == 0 ? 1 : h;
   }
   // Ids that were not in the same sector last call. A session that was current for a sector last call
@@ -249,6 +264,9 @@ Napi::Value SelectNames(const Napi::CallbackInfo& info) {
     Session& sess = sent_[slot];
     IdSet& sent = sess.sent;
     if (sess.sectorSeen.size() < nSectors) sess.sectorSeen.resize(nSectors, 0);
+    // Bounded recovery from a hash collision: once per rescanEvery_ calls this session scans every sector in full.
+    if (rescanEvery_ && (statCalls_ + static_cast<uint64_t>(slot)) % rescanEvery_ == 0)
+      std::fill(sess.sectorSeen.begin(), sess.sectorSeen.end(), 0);
     size_t before = want_.size();
     if (hasPlayer) {
       uint64_t id = *pv++;

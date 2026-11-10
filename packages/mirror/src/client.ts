@@ -1072,12 +1072,13 @@ export class MirrorClient {
       this.chests.delete(wid);
     }
     this.serverTick = set.tick;
+    if (this.state.needsResync) this.requestResync();
     this.events.onState(set.tick);
     this.flushIntent();
   }
 
   private onDelta(payload: Uint8Array): void {
-    const d = decodeDelta(payload);
+    const d = this.state.expandPositions(decodeDelta(payload));
     this.state.applyDelta(d);
     this.interpolator.push(d.tick, d.transforms);
     for (const wid of d.despawned) {
@@ -1088,8 +1089,17 @@ export class MirrorClient {
       this.chests.delete(wid);
     }
     this.serverTick = d.tick;
+    if (this.state.needsResync) this.requestResync();
     this.events.onState(d.tick);
     this.flushIntent();
+  }
+
+  /** Ask the server for a full replace baseline when an orphan position-only row was discarded. */
+  private requestResync(): void {
+    this.state.needsResync = false;
+    if (this.socket) {
+      this.socket.send(encodeEnvelope(MessageType.Ping, encodeControl({ t: Date.now(), resync: true })));
+    }
   }
 
   /** Send the oldest intent held back by sendIntent, now that a new tick arrived. */

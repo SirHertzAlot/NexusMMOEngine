@@ -138,15 +138,17 @@ import { createTransport, type HttpHandler, type Transport, type TransportKind, 
 import { REGION_TOPIC } from "./sector.js";
 import { ChannelTransport, type EdgePlan } from "./channel-transport.js";
 import { loadNativeFanout, type FanoutResult, type FanoutStatus, type NativeFanout } from "./native-fanout.js";
-import { borderTicket, clampInto, encodePinned, farVisibleOf, homeSector, interestSectors, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
+import { borderTicket, clampInto, encodePinned, farVisibleOf, freezeCanonicalSet, homeSector, interestSectors, interestSectorsCached, PINNED_SECTOR, rectDistance, sectorDistance, SectorIndex, ticketOk, type InterestRadii, type RegionRect, type SectorFrame } from "./interest.js";
 
 const EMPTY_BYTES = new Uint8Array(0);
+const EMPTY_BIGINT_LIST: readonly bigint[] = [];
 /** How long foes stay pinned after a blow (IM5): 10 s at 30 Hz. */
 const COMBAT_PIN_TICKS = 300;
 /** IM8: a border ticket lives 60 s and is renewed with 20 s left. */
 const BORDER_TICKET_S = 60;
 const BORDER_RENEW_S = 20;
 import {
+  invalidateSessionInterest,
   MAX_QUEUED_DELTAS,
   type ClientSession,
 } from "../session.js";
@@ -1411,6 +1413,7 @@ export class Gateway {
 
   private runTick(tick: number): void {
     this.tick = tick;
+    this.playerIndex = null;
     const sim = this.world;
     sim.beginTick(tick); // drain intent events into PlayerIntent components
     const dt = STEP_MS / 1000;
@@ -1422,17 +1425,27 @@ export class Gateway {
       timings.recordSystem(s.name, performance.now() - t0);
     }
     sim.emitTick(tick);
-    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage> = [
-      ...this.sendHits(sim, tick),
-      ...this.sendLife(sim, tick),
-      ...this.sendAbilities(sim, tick),
-      ...this.sendTelegraphs(sim, tick),
-      ...this.sendStatuses(sim, tick),
-      ...this.sendDuels(sim, tick),
-      ...this.sendTrades(sim, tick),
-      ...this.sendWallets(sim, tick),
-      ...this.sendAuctions(sim, tick),
-    ];
+    const hits = this.sendHits(sim, tick);
+    const life = this.sendLife(sim, tick);
+    const abilities = this.sendAbilities(sim, tick);
+    const telegraphs = this.sendTelegraphs(sim, tick);
+    const statuses = this.sendStatuses(sim, tick);
+    const duels = this.sendDuels(sim, tick);
+    const trades = this.sendTrades(sim, tick);
+    const wallets = this.sendWallets(sim, tick);
+    const auctions = this.sendAuctions(sim, tick);
+    const events: Array<HitMessage | LifeMessage | AbilityMessage | TelegraphMessage | StatusMessage | DuelMessage | TradeMessage | WalletMessage | VendorMessage | AuctionMessage> =
+      hits.length === 0 &&
+      life.length === 0 &&
+      abilities.length === 0 &&
+      telegraphs.length === 0 &&
+      statuses.length === 0 &&
+      duels.length === 0 &&
+      trades.length === 0 &&
+      wallets.length === 0 &&
+      auctions.length === 0
+        ? []
+        : [...hits, ...life, ...abilities, ...telegraphs, ...statuses, ...duels, ...trades, ...wallets, ...auctions];
     this.sendResources(sim);
     this.sendChests(sim);
     this.checkCasts();
@@ -2129,18 +2142,47 @@ export class Gateway {
   fanoutStatus: FanoutStatus;
   /** Ticks fanned out on each path, since boot. */
   readonly fanoutTicks = { native: 0, js: 0 };
+  /** Wire id -> [position, session] of the sessions with an avatar; built lazily during broadcast so namesFor can look ids up. */
+  private playerIndex: Map<bigint, [number, ClientSession]> | null = null;
+  private inBroadcast = false;
+  private readonly canonicalInterestSets = new Map<string, ReadonlySet<string>>();
+  private readonly globalOnlySet: ReadonlySet<string> = freezeCanonicalSet(new Set<string>([GLOBAL_SECTOR]));
+  private tickFarVisible: readonly number[] | null = null;
+  private tickQuestExt: { pinnedResidentsOf?(characterId: number | null): string[] } | null | undefined = undefined;
 
-  /** Fan one tick's state out to every connected session (broadcast). */
+  /**
+   * Fan one tick's state out to every connected session (broadcast). With MMO_UWS_CORK=1 the uWS
+   * transport batches each socket's sends for the tick into one corked write (see UwsBatch).
+   */
   private broadcast(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
+    const t = this.transport;
+    t?.beginBatch?.();
+    try {
+      this.broadcastInner(tick, deltaBytes, namesEnv, dropsEnv, frame);
+    } finally {
+      t?.endBatch?.();
+    }
+  }
+
+  private broadcastInner(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
-    const bySector = frame ? this.bucketBySector(this.namedWireIds()) : null;
+    this.inBroadcast = true;
+    this.playerIndex = null;
+    this.tickFarVisible = frame ? farVisibleOf(this.world) : null;
+    this.tickQuestExt = frame
+      ? ((this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined) ?? null)
+      : undefined;
+    const bySector = frame ? this.namedBySector() : null;
     const dropped = frame && this.items ? this.droppedIndex() : null;
     // IM2: every tick goes out as a DeltaSet; one global entry until
-    // interest management splits it per sector (IM3).
-    const deltaEnv = encodeEnvelope(
-      MessageType.DeltaSet,
-      encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
-    );
+    // interest management splits it per sector (IM3). Built lazily so
+    // interest-managed ticks (frame !== null) do not allocate a global DeltaSet.
+    let deltaEnv: Uint8Array | undefined;
+    const deltaEnvFor = (): Uint8Array =>
+      (deltaEnv ??= encodeEnvelope(
+        MessageType.DeltaSet,
+        encodeDeltaSet({ tick, replace: false, entries: [{ kind: DeltaSetKind.Delta, sector: GLOBAL_SECTOR, bytes: deltaBytes }] }),
+      ));
     let snapshotEnv: Uint8Array | undefined;
     const snapshotFor = (): Uint8Array =>
       (snapshotEnv ??= encodeEnvelope(
@@ -2161,26 +2203,34 @@ export class Gateway {
     const edgeBytes = new Map<string, Uint8Array>();
     const edgePlans: EdgePlan[] = [];
     const publishSectors = new Map<string, ClientSession[]>();
+    const fanGroups = new Map<string, { env: Uint8Array; members: ClientSession[] }>();
 
     // Native fan-out: compute every eligible session's entries first, then assemble all envelopes
     // (and pick all names) in two native calls. Per session the delivery order below is unchanged.
-    let nat: Map<ClientSession, FanoutResult & { replace: boolean }> | null = null;
+    let natSessions: ClientSession[] | null = null;
+    let natReplaces: boolean[] | null = null;
+    let natResults: FanoutResult[] | null = null;
+    let natIdx = 0;
     // uWS copies on send; the ws fallback keeps the buffer until it is flushed, so it stays on the JavaScript path.
     if (this.fanout && frame && !edge && this.transport?.kind === "uws") {
       const nf = this.fanout;
-      const order: Array<{ s: ClientSession; replace: boolean; entries: DeltaSetEntry[] }> = [];
+      const sessionsList: ClientSession[] = [];
+      const replacesList: boolean[] = [];
+      const entriesList: Array<readonly DeltaSetEntry[]> = [];
       try {
         nf.begin(tick, bySector);
         for (const s of this.sessions.values()) {
           if (!s.welcomed || !s.socket) continue;
           const replace = isSnapshotTick || s.needsResync || !s.interestSet;
           const entries = this.interestEntries(s, frame, replace);
-          order.push({ s, replace, entries });
+          sessionsList.push(s);
+          replacesList.push(replace);
+          entriesList.push(entries);
           nf.add(s, replace, entries);
         }
-        const results = nf.run();
-        nat = new Map();
-        for (let i = 0; i < order.length; i++) nat.set(order[i].s, { ...results[i], replace: order[i].replace });
+        natResults = nf.run();
+        natSessions = sessionsList;
+        natReplaces = replacesList;
         if (tick % 64 === 0) nf.sweep(this.sessions);
         this.fanoutTicks.native++;
       } catch (err) {
@@ -2188,11 +2238,14 @@ export class Gateway {
         // (interestEntries advanced each session's interest set, so it must not run twice), then stay on JS.
         this.fanout = null;
         this.fanoutStatus = { path: "js", reason: `native call failed: ${(err as Error).message}` };
-        nat = new Map();
-        for (const o of order) {
-          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace: o.replace, entries: o.entries }));
-          nat.set(o.s, { env, want: null, jsNames: true, replace: o.replace });
+        const fallbackResults: FanoutResult[] = new Array(sessionsList.length);
+        for (let i = 0; i < sessionsList.length; i++) {
+          const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace: replacesList[i], entries: entriesList[i] as DeltaSetEntry[] }));
+          fallbackResults[i] = { env, want: null, jsNames: true };
         }
+        natResults = fallbackResults;
+        natSessions = sessionsList;
+        natReplaces = replacesList;
         this.fanoutTicks.js++;
       }
     } else if (frame) this.fanoutTicks.js++;
@@ -2203,8 +2256,14 @@ export class Gateway {
       if (namesEnv && !frame) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (frame) {
-        const pre = nat?.get(s);
-        const replace = pre ? pre.replace : isSnapshotTick || s.needsResync || !s.interestSet;
+        let pre: FanoutResult | undefined;
+        let preReplace = false;
+        if (natSessions !== null && natIdx < natSessions.length && natSessions[natIdx] === s) {
+          pre = natResults![natIdx];
+          preReplace = natReplaces![natIdx];
+          natIdx++;
+        }
+        const replace = pre ? preReplace : isSnapshotTick || s.needsResync || !s.interestSet;
         const entries = pre ? null : this.interestEntries(s, frame, replace);
         if (pre) {
           if (pre.jsNames) {
@@ -2217,10 +2276,28 @@ export class Gateway {
         if (dropped) this.deliverDropsFor(s, dropped, tick);
         const sid = edge && entries && s.socket.isOpen && s.sendQueue.length === 0 ? (s.socket as { sid?: string }).sid : undefined;
         if (pre) {
-          // The arena is reused next tick, and a closed socket keeps what it is given: copy only then.
-          const env = s.socket.isOpen ? pre.env : pre.env.slice();
-          if (replace) this.deliverSnapshot(s, env, tick);
-          else this.deliver(s, env, tick);
+          const nf = this.fanout;
+          // Shared publish: a session on a stable group topic gets the group's envelope from one publish, after the loop.
+          if (nf && nf.share === "publish" && !replace && pre.group !== undefined && s.socket.isOpen && s.sendQueue.length === 0) {
+            const topic = "fo:" + nf.groupKey(pre.group);
+            if (s.fanTopic !== topic) {
+              if (s.fanTopic) s.socket.unsubscribe(s.fanTopic);
+              s.socket.subscribe(topic);
+              s.fanTopic = topic;
+            }
+            let g = fanGroups.get(topic);
+            if (!g) fanGroups.set(topic, (g = { env: pre.env, members: [] }));
+            g.members.push(s);
+          } else {
+            if (s.fanTopic) {
+              s.socket.unsubscribe(s.fanTopic);
+              s.fanTopic = null;
+            }
+            // The arena is reused next tick, and a closed socket keeps what it is given: copy only then.
+            const env = s.socket.isOpen ? pre.env : pre.env.slice();
+            if (replace) this.deliverSnapshot(s, env, tick);
+            else this.deliver(s, env, tick);
+          }
         } else if (sid !== undefined && entries) {
           // IM4: the edge assembles this session's DeltaSet from the tick's shared bytes.
           const plan: Array<[number, string, string]> = [];
@@ -2232,9 +2309,9 @@ export class Gateway {
           edgePlans.push({ sid, replace, entries: plan });
           if (replace) {
             s.needsResync = false;
-            s.lastSnapshotTick = BigInt(tick);
+            s.lastSnapshotTick = this.bigTick(tick);
           }
-          s.lastAckedTick = BigInt(tick);
+          s.lastAckedTick = this.bigTick(tick);
         } else {
           const env = encodeEnvelope(MessageType.DeltaSet, encodeDeltaSet({ tick, replace, entries: entries! }));
           if (replace) this.deliverSnapshot(s, env, tick);
@@ -2253,10 +2330,10 @@ export class Gateway {
           else publishSectors.set(s.sectorTopic, [s]);
         } else {
           // No sector (no player entity yet): per-socket, as before.
-          this.deliver(s, deltaEnv, tick);
+          this.deliver(s, deltaEnvFor(), tick);
         }
       } else {
-        this.deliver(s, deltaEnv, tick);
+        this.deliver(s, deltaEnvFor(), tick);
       }
       this.sendStats(s, tick);
       if (tick % BODY_EVERY_TICKS === 0) this.sendBody(s, tick);
@@ -2264,14 +2341,24 @@ export class Gateway {
       if (tick % SKILLS_EVERY_TICKS === 0) this.sendSkills(s, tick);
     }
 
+    this.inBroadcast = false;
+    this.playerIndex = null;
+    this.tickFarVisible = null;
+    this.tickQuestExt = undefined;
     if (edge && edgePlans.length > 0) edge.sendSectors(tick, edgeBytes, edgePlans);
+
+    // Shared publish: one publish per equivalence group (the transport copies the bytes before the arena is reused).
+    for (const [topic, g] of fanGroups) {
+      this.transport!.publish(topic, g.env);
+      for (const m of g.members) m.lastAckedTick = this.bigTick(tick);
+    }
 
     // One publish per occupied sector topic. Per-session messages
     // (names/drops above) already flushed each member's queue through
     // deliver(), so the published delta cannot overtake them.
     for (const [topic, members] of publishSectors) {
-      this.transport!.publish(topic, deltaEnv);
-      for (const s of members) s.lastAckedTick = BigInt(tick);
+      this.transport!.publish(topic, deltaEnvFor());
+      for (const s of members) s.lastAckedTick = this.bigTick(tick);
     }
   }
 
@@ -2329,7 +2416,7 @@ export class Gateway {
     }
     s.observer = { x: NaN, z: NaN, home: home!.rect };
     s.welcomed = true;
-    s.interestSet = null;
+    invalidateSessionInterest(s);
     const welcome: WelcomeMessage = {
       protocol: PROTOCOL_VERSION,
       player_entity: "0",
@@ -2357,41 +2444,51 @@ export class Gateway {
   }
 
   /** IM5: the wire ids a session always sees: its party in this region and recent foes. */
-  private pinsOf(s: ClientSession): bigint[] {
-    const out: bigint[] = [];
+  private pinsOf(s: ClientSession): readonly bigint[] {
+    let out: bigint[] | null = null;
     const me = s.character?.name ?? s.username;
     const mates = this.parties.partyOf(me);
     if (mates.length > 0) {
       const names = new Set(mates.map((n) => n.toLowerCase()));
       for (const r of this.sessions.values()) {
         if (r === s || r.playerEntity === null) continue;
-        if (names.has((r.character?.name ?? r.username).toLowerCase())) out.push(r.playerEntity);
+        if (names.has((r.character?.name ?? r.username).toLowerCase())) (out ??= []).push(r.playerEntity);
       }
     }
-    if (s.combatPins) {
+    if (s.combatPins && s.combatPins.size > 0) {
       for (const [wid, until] of s.combatPins) {
         if (until < this.tick) s.combatPins.delete(wid);
-        else out.push(wid);
+        else (out ??= []).push(wid);
       }
     }
     // FarVisible entities (IM5) within farM of the session's avatar, wherever they stand.
-    const far = farVisibleOf(this.world);
-    const avatar = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    if (far.length > 0 && avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
-      const farM = this.interest?.farM ?? 400;
-      const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
-      for (const eid of far) {
-        if (eid === avatar) continue;
-        if (Math.hypot(C.Transform.px[eid]! - x, C.Transform.pz[eid]! - z) <= farM) out.push(this.world.wireId(eid));
+    const far = this.tickFarVisible ?? farVisibleOf(this.world);
+    if (far.length > 0 && s.playerEntity !== null) {
+      const avatar = this.world.resolveWireId(s.playerEntity);
+      if (avatar >= 0 && hasComponent(this.world.ecs, C.Transform, avatar)) {
+        const farM = this.interest?.farM ?? 400;
+        const farSq = farM * farM;
+        const x = C.Transform.px[avatar]!, z = C.Transform.pz[avatar]!;
+        for (let i = 0; i < far.length; i++) {
+          const eid = far[i];
+          if (eid === avatar) continue;
+          const dx = C.Transform.px[eid]! - x;
+          const dz = C.Transform.pz[eid]! - z;
+          if (dx * dx + dz * dz <= farSq) (out ??= []).push(this.world.wireId(eid));
+        }
       }
     }
     // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
-    const quests = this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined;
-    for (const name of quests?.pinnedResidentsOf?.(s.character?.id ?? null) ?? []) {
-      const e = this.residents?.entityOf(name);
-      if (e !== undefined) out.push(this.world.wireId(e));
+    const quests = this.tickQuestExt !== undefined
+      ? this.tickQuestExt
+      : (this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined);
+    if (quests?.pinnedResidentsOf) {
+      for (const name of quests.pinnedResidentsOf(s.character?.id ?? null)) {
+        const e = this.residents?.entityOf(name);
+        if (e !== undefined) (out ??= []).push(this.world.wireId(e));
+      }
     }
-    return out;
+    return out ?? EMPTY_BIGINT_LIST;
   }
 
   /**
@@ -2490,56 +2587,130 @@ export class Gateway {
     return out;
   }
 
-  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
-    const prev = replace ? null : (s.interestSet ?? null);
-    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
-    const next = s.observer
-      ? (Number.isFinite(s.observer.x) ? interestSectors(s.observer.x, s.observer.z, this.interest!, prev) : new Set([GLOBAL_SECTOR]))
-      : s.interestAll && s.isAdmin
-      ? frame.occupied()
-      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)
-      ? interestSectors(C.Transform.px[eid], C.Transform.pz[eid], this.interest!, prev)
-      : new Set([GLOBAL_SECTOR]);
-    const entries: DeltaSetEntry[] = [];
-    // IM7: sectors beyond enterM (kept only by hysteresis) send a rate-limited delta, when a rate is set.
-    const every = this.interest!.outerEvery;
-    const at = s.observer
-      ? { x: s.observer.x, z: s.observer.z }
-      : eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid) ? { x: C.Transform.px[eid], z: C.Transform.pz[eid] } : null;
-    for (const sector of next) {
-      if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-      else if (every && at && sectorDistance(sector, at.x, at.z) > this.interest!.enterM) {
-        if (frame.tick % every !== 0) continue;
-        const d = frame.rateDelta(sector, every);
-        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
-      } else {
-        const d = frame.delta(sector);
-        if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+  /** Named entities bucketed directly by home sector without intermediate wire-id arrays or redundant sector math. */
+  private namedBySector(): Map<string, bigint[]> {
+    const bySector = new Map<string, bigint[]>();
+    const sim = this.world;
+    const idx = this.sectorIndex;
+    const put = (eid: number, w: bigint): void => {
+      if (eid < 0 || !hasComponent(sim.ecs, C.Transform, eid)) return;
+      const sector = idx.sectorOfEntity(sim, eid, w);
+      const list = bySector.get(sector);
+      if (list) list.push(w);
+      else bySector.set(sector, [w]);
+    };
+    for (const other of this.sessions.values()) {
+      const w = other.playerEntity;
+      if (w !== null) put(sim.resolveWireId(w), w);
+    }
+    const creatures = this.creatures;
+    if (creatures?.nameOf) {
+      const ents = creatures.entities?.();
+      if (ents) {
+        for (const e of ents) {
+          if (creatures.nameOf(e)) put(e, sim.wireId(e));
+        }
       }
     }
-    if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    return bySector;
+  }
+
+  private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
+    const r = this.interest!;
+    const prev = replace ? null : (s.interestSet ?? null);
+    const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
+    let next: ReadonlySet<string>;
+    let atX = NaN, atZ = NaN;
+    let hasAt = false;
+    if (s.observer) {
+      if (Number.isFinite(s.observer.x)) {
+        atX = s.observer.x;
+        atZ = s.observer.z;
+        hasAt = true;
+      }
+    } else if (!(s.interestAll && s.isAdmin) && eid >= 0 && hasComponent(this.world.ecs, C.Transform, eid)) {
+      atX = C.Transform.px[eid];
+      atZ = C.Transform.pz[eid];
+      hasAt = true;
+    }
+    if (hasAt) {
+      const dx = atX - (s.interestRefX ?? NaN);
+      const dz = atZ - (s.interestRefZ ?? NaN);
+      if (
+        prev !== null &&
+        s.interestEnterM === r.enterM &&
+        s.interestLeaveM === r.leaveM &&
+        dx * dx + dz * dz < (s.interestSafeMoveSq ?? 0)
+      ) {
+        next = prev;
+      } else {
+        const res = interestSectorsCached(atX, atZ, r, prev, this.canonicalInterestSets);
+        next = res.set;
+        s.interestRefX = atX;
+        s.interestRefZ = atZ;
+        s.interestSafeMoveSq = res.safeMoveSq;
+        s.interestEnterM = r.enterM;
+        s.interestLeaveM = r.leaveM;
+      }
+    } else if (!s.observer && s.interestAll && s.isAdmin) {
+      next = frame.occupied();
+      s.interestSafeMoveSq = 0;
+    } else {
+      next = this.globalOnlySet;
+      s.interestSafeMoveSq = 0;
+    }
+    const every = r.outerEvery;
+    let entries: DeltaSetEntry[] | null = null;
+    let sharedEntries: readonly DeltaSetEntry[] | null = null;
+    if (!replace && next === prev && !every) {
+      sharedEntries = frame.steadyDeltaEntries(next);
+    } else {
+      entries = [];
+      for (const sector of next) {
+        if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
+        else if (every && hasAt && sectorDistance(sector, atX, atZ) > r.enterM) {
+          if (frame.tick % every !== 0) continue;
+          const d = frame.rateDelta(sector, every);
+          if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+        } else {
+          const d = frame.delta(sector);
+          if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+        }
+      }
+      if (prev) for (const sector of prev) if (!next.has(sector)) entries.push({ kind: DeltaSetKind.Leave, sector, bytes: EMPTY_BYTES });
+    }
     s.interestSet = next;
     // Pinned (IM5): party members and recent foes, wherever they are.
-    const was = replace ? new Set<bigint>() : (s.pinnedOut ?? new Set<bigint>());
+    const pins = this.pinsOf(s);
+    const was = replace ? null : s.pinnedOut;
+    const hadPins = was !== null && was !== undefined && was.size > 0;
+    if (pins.length === 0 && !hadPins) {
+      if (replace && s.pinnedOut && s.pinnedOut.size > 0) s.pinnedOut.clear();
+      return (sharedEntries as DeltaSetEntry[] | null) ?? entries!;
+    }
     const out = new Set<bigint>();
     const fresh: number[] = [], kept: number[] = [];
-    for (const wid of this.pinsOf(s)) {
+    for (let i = 0; i < pins.length; i++) {
+      const wid = pins[i];
       const pe = this.world.resolveWireId(wid);
-      if (pe < 0 || next.has(homeSector(this.world, pe))) continue;
+      if (pe < 0 || next.has(this.sectorIndex.sectorOfEntity(this.world, pe, wid))) continue;
       out.add(wid);
-      (was.has(wid) ? kept : fresh).push(pe);
+      (was?.has(wid) ? kept : fresh).push(pe);
     }
     const left: bigint[] = [];
-    for (const wid of was) {
-      if (out.has(wid)) continue;
-      const pe = this.world.resolveWireId(wid);
-      if (pe < 0 || !next.has(homeSector(this.world, pe))) left.push(wid);
+    if (was) {
+      for (const wid of was) {
+        if (out.has(wid)) continue;
+        const pe = this.world.resolveWireId(wid);
+        if (pe < 0 || !next.has(this.sectorIndex.sectorOfEntity(this.world, pe, wid))) left.push(wid);
+      }
     }
     s.pinnedOut = out;
+    const finalEntries = sharedEntries ? [...sharedEntries] : entries!;
     if (fresh.length + kept.length + left.length > 0) {
-      entries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
+      finalEntries.push({ kind: DeltaSetKind.Pinned, sector: PINNED_SECTOR, bytes: encodePinned(this.world, frame.tick, fresh, kept, left) });
     }
-    return entries;
+    return finalEntries;
   }
 
   /**
@@ -2735,6 +2906,17 @@ export class Gateway {
     }));
   }
 
+  private bigTickNo = -1;
+  private bigTickVal = 0n;
+  /** BigInt(tick), made once per tick instead of once per session per delivery. */
+  private bigTick(tick: number): bigint {
+    if (tick !== this.bigTickNo) {
+      this.bigTickNo = tick;
+      this.bigTickVal = BigInt(tick);
+    }
+    return this.bigTickVal;
+  }
+
   /** Queue-or-send one enveloped message, preserving order, bounded. */
   private deliver(s: ClientSession, env: Uint8Array, tick: number): void {
     if (s.socket && s.socket.isOpen) {
@@ -2750,7 +2932,7 @@ export class Gateway {
       }
     }
     // Delivery is implicitly acked by subsequent deltas (catalog).
-    s.lastAckedTick = BigInt(tick);
+    s.lastAckedTick = this.bigTick(tick);
   }
 
   private deliverSnapshot(
@@ -2761,7 +2943,7 @@ export class Gateway {
     s.sendQueue.length = 0;
     s.needsResync = false;
     this.deliver(s, env, tick);
-    s.lastSnapshotTick = BigInt(tick);
+    s.lastSnapshotTick = this.bigTick(tick);
   }
 
   /** Despawn player entities whose grace period has elapsed. */
@@ -2862,6 +3044,7 @@ export class Gateway {
   /** Send `socket`'s events to session `s` (replacing any earlier routing). */
   private route(s: ClientSession, socket: WireSocket): void {
     socket.listen({
+      borrowMessage: true,
       message: (data) => this.onMessage(s, data),
       close: () => {
         // Ignore closes from a superseded socket after takeover.
@@ -2957,6 +3140,13 @@ export class Gateway {
         this.onIntent(s, payload);
         break;
       case MessageType.Ping:
+        if (payload.length > 0) {
+          try {
+            if ((decodeControl(payload) as { resync?: boolean } | null)?.resync === true) s.needsResync = true;
+          } catch {
+            /* opaque ping payload */
+          }
+        }
         // Echo the payload back as pong (heartbeat + RTT).
         this.sendEnvelope(s, MessageType.Pong, payload);
         break;
@@ -3246,7 +3436,7 @@ export class Gateway {
         return;
       }
       s.interestAll = mode === "all";
-      s.interestSet = null; // a full replace of the new view next tick
+      invalidateSessionInterest(s); // a full replace of the new view next tick
       res = { kind: "admin", command: cmd.command, ok: true, message: `interest ${mode}${this.interest ? "" : " (interest management is off: every client sees everything)"}` };
     } else if (cmd.command === "loglevel") {
       const r = runLogLevelCommand(this.logger.ring, cmd.args);
@@ -4817,7 +5007,7 @@ export class Gateway {
     if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
     if (this.interest) {
       // Interest management: the next tick sends a full replace of what this session sees.
-      s.interestSet = null;
+      invalidateSessionInterest(s);
       return;
     }
     this.deliverSnapshot(
@@ -6395,14 +6585,39 @@ export class Gateway {
    */
   private namesFor(only: readonly bigint[] | null): Uint8Array | null {
     const rows: Array<[string, string, string]> = [];
-    for (const other of this.sessions.values()) {
-      if (other.playerEntity === null) continue;
-      if (only !== null && !only.includes(other.playerEntity)) continue;
+    const row = (other: ClientSession): void => {
       rows.push([
-        other.playerEntity.toString(),
+        other.playerEntity!.toString(),
         other.character?.name ?? other.username,
         this.guilds.tagOf(other.character?.name ?? other.username),
       ]);
+    };
+    if (only !== null && this.inBroadcast) {
+      if (this.playerIndex === null) {
+        const idx = new Map<bigint, [number, ClientSession]>();
+        let i = 0;
+        for (const o of this.sessions.values()) {
+          if (o.playerEntity !== null && !idx.has(o.playerEntity)) idx.set(o.playerEntity, [i, o]);
+          i++;
+        }
+        this.playerIndex = idx;
+      }
+      // During a broadcast: look each wanted id up instead of scanning every session per call. Rows keep the
+      // sessions' own order, as the scan produced them.
+      const hit: Array<[number, ClientSession]> = [];
+      const seen = new Set<bigint>();
+      for (const w of only) {
+        const e = this.playerIndex.get(w);
+        if (e && !seen.has(w)) { seen.add(w); hit.push(e); }
+      }
+      if (hit.length > 1) hit.sort((a, b) => a[0] - b[0]);
+      for (const [, other] of hit) row(other);
+    } else {
+      for (const other of this.sessions.values()) {
+        if (other.playerEntity === null) continue;
+        if (only !== null && !only.includes(other.playerEntity)) continue;
+        row(other);
+      }
     }
     const creatures = this.creatures;
     if (creatures?.nameOf) {

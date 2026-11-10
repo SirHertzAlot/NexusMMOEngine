@@ -115,3 +115,32 @@ describe("MirrorState.applyDelta", () => {
     assert.equal(state.get(A)?.asset?.assetHash, 0xdeadbeef);
   });
 });
+
+describe("MirrorState.expandPositions (v29)", () => {
+  it("merges a position-only row into the entity's transform and discards rows with no baseline while requesting resync", () => {
+    const state = new MirrorState();
+    const s = emptyState(1);
+    s.transforms = [{ ...transformRow(A, 1), qx: 0.1, qy: 0.2, qz: 0.3, qw: 0.9, sx: 2, sy: 3, sz: 4 }];
+    state.applySnapshot(decodeSnapshot(encodeSnapshot(s)));
+    const d = emptyState(2);
+    d.positions = [{ wireId: A, px: 10, py: 11, pz: 12 }, { wireId: B, px: 1, py: 2, pz: 3 }];
+    const out = state.expandPositions(d);
+    assert.deepEqual(out.positions, []);
+    const a = out.transforms.find((r) => r.wireId === A)!;
+    assert.deepEqual([a.px, a.py, a.pz, a.qx, a.qy, a.qz, a.qw, a.sx, a.sy, a.sz], [10, 11, 12, ...[0.1, 0.2, 0.3, 0.9].map(Math.fround), 2, 3, 4]); // rotation survives the snapshot as float32
+    const b = out.transforms.find((r) => r.wireId === B);
+    assert.equal(b, undefined, "no baseline: orphan position row is discarded");
+    assert.equal(state.orphanPositionRows, 1, "orphan position row is counted");
+    assert.equal(state.needsResync, true, "receiver flags needsResync");
+    state.applyDelta(out);
+    assert.equal(state.entities.get(A)!.transform!.px, 10);
+    assert.equal(state.entities.get(A)!.transform!.qw, Math.fround(0.9));
+    assert.equal(state.entities.has(B), false);
+  });
+
+  it("returns the delta untouched when it carries no position rows", () => {
+    const state = new MirrorState();
+    const d = emptyState(3);
+    assert.equal(state.expandPositions(d), d);
+  });
+});

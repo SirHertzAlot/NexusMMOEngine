@@ -1098,7 +1098,94 @@ async function atomicStoreContract(store: WorldStore): Promise<void> {
   assert.deepEqual(await store.listPendingCredits(2), [], "the drain consumed the credit");
   const again = await store.applyPendingCredits(2);
   assert.equal(again.total, 0, "a second drain folds nothing");
+
+  // Store-level opId replay (the dedup contract): an atomic store
+  // method is idempotent by opId on its own, with no core bracket —
+  // replaying a committed op returns the stored outcome and applies
+  // nothing twice (even with now-stale fences), and a rejected op
+  // replays its stored rejection.
+  const ledgerBeforeReplay = await store.getAtomicLedger();
+  const goldBeforeReplay = ((await store.getCharacterState(1))?.state as { gold: number }).gold;
+  const replay = await store.tradeCommit({
+    regionId: "r1", opId: "contract-trade-1",
+    a: fence(1), b: fence(2),
+    aGivesGold: 25, bGivesGold: 0, aGivesItems: ["x-1"], bGivesItems: [],
+  });
+  assert.deepEqual(replay, res, "store-level replay must return the stored outcome");
+  assert.equal(
+    ((await store.getCharacterState(1))?.state as { gold: number }).gold,
+    goldBeforeReplay,
+    "replay re-applied the trade",
+  );
+  assert.equal(
+    (await store.getAtomicLedger()).length,
+    ledgerBeforeReplay.length,
+    "replay appended ledger entries",
+  );
+  const badReplay = await store.tradeCommit({
+    regionId: "r1", opId: "contract-trade-2",
+    a: { ...fence(1), expectedVersion: 2 }, b: { ...fence(2), expectedVersion: 2 },
+    aGivesGold: 10000, bGivesGold: 0, aGivesItems: [], bGivesItems: [],
+  });
+  assert.deepEqual(badReplay, bad, "a rejected op must replay its stored rejection");
 }
+
+test("atomic ops: concurrent disjoint trades do not convoy on the ledger sequence (surreal store)", async () => {
+  const store = new SurrealWorldStore(surrealTestOptions("convoy_" + Date.now()));
+  try {
+    await store.connect();
+    const core = new WorldCoreImpl({
+      store,
+      heartbeatTimeoutMs: 1000,
+      heartbeatIntervalMs: 100,
+      apiKeyHash: await apiKeyHash(),
+    });
+    await register(core, "r1", RANGE_A);
+    await register(core, "r2", RANGE_B);
+    // Eight disjoint character pairs across two regions: no shared
+    // records, no shared locks — nothing to legitimately conflict.
+    const pairs: Array<{ regionId: string; aId: number; bId: number; a: Seeded; b: Seeded }> = [];
+    for (let i = 0; i < 8; i++) {
+      const regionId = i % 2 === 0 ? "r1" : "r2";
+      const aId = 100 + i * 2;
+      const bId = aId + 1;
+      const a = await seedCharacter(core, store, regionId, aId, 100, []);
+      const b = await seedCharacter(core, store, regionId, bId, 100, []);
+      pairs.push({ regionId, aId, bId, a, b });
+    }
+    const results = await Promise.all(
+      pairs.map((p, i) =>
+        core.tradeCommit(p.regionId, {
+          regionId: p.regionId,
+          opId: opId(`convoy-${i}`),
+          a: p.a.fence,
+          b: p.b.fence,
+          aGivesGold: 5,
+          bGivesGold: 0,
+          aGivesItems: [],
+          bGivesItems: [],
+        }),
+      ),
+    );
+    const rejected = results.filter((r) => !r.ok);
+    assert.equal(
+      rejected.length,
+      0,
+      `disjoint concurrent ops must not reject (the seq convoy): ${JSON.stringify(rejected)}`,
+    );
+    const ledger = await store.getAtomicLedger();
+    assert.equal(
+      new Set(ledger.map((e) => e.seq)).size,
+      ledger.length,
+      "ledger seqs must stay unique under concurrency",
+    );
+    let total = 0;
+    for (const p of pairs) total += (await goldOf(store, p.aId)) + (await goldOf(store, p.bId));
+    assert.equal(total, 8 * 200, "gold conserved across all pairs");
+  } finally {
+    await store.close();
+  }
+});
 
 test("atomic store contract: memory", async () => {
   await atomicStoreContract(new MemoryWorldStore());
