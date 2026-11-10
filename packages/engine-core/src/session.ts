@@ -92,6 +92,8 @@ export interface ClientSession {
   disconnectedAtMs: number | null;
   /** Set when the send queue overflowed: the next outbound is a full snapshot. */
   needsResync: boolean;
+  /** Send-rate cap (MMO_SEND_CAP_BYTES): the session's last envelope size per tick covered, its stagger, and its state. */
+  capBytes?: number; capTick?: number; capSkipNow?: boolean; capPhase?: number; capSkipped?: boolean; capWin?: number;
   /** Remote IP of the connection (auth rate limiting). */
   remoteIp: string;
   /** The account, once authenticated ("" before). */
