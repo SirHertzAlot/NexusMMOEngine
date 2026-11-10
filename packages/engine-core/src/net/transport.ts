@@ -39,6 +39,8 @@ export interface WireSocket {
   send(bytes: Uint8Array): void;
   /** Close with a WebSocket close code and reason (graceful). */
   close(code: number, reason: string): void;
+  /** Bytes accepted by `send` that the peer has not read yet (a stalled reader's backlog). Absent: unknown, treated as 0. */
+  bufferedAmount?(): number;
   /**
    * Route this socket's events: replaces the previous listeners (a socket
    * moving onto a re-attached session). `close` fires once.
@@ -238,6 +240,10 @@ class WsSocket implements WireSocket {
     this.ws.close(code, reason);
   }
 
+  bufferedAmount(): number {
+    return this.closed ? 0 : this.ws.bufferedAmount;
+  }
+
   listen(on: SocketListener): void {
     this.on = on;
   }
@@ -434,6 +440,7 @@ interface UwsResponse {
 interface UwsWebSocket {
   getUserData(): UwsSocketData;
   send(message: Uint8Array, isBinary?: boolean, compress?: boolean): number;
+  getBufferedAmount?(): number;
   end(code?: number, reason?: string): void;
   close(): void;
   /** Join a publish topic (Phase 5, Part A). */
@@ -556,6 +563,10 @@ class UwsSocket implements WireSocket {
 
   close(code: number, reason: string): void {
     if (!this.closed) this.ws.end(code, reason);
+  }
+
+  bufferedAmount(): number {
+    return this.closed ? 0 : (this.ws.getBufferedAmount?.() ?? 0);
   }
 
   /** Drop the connection at once (shutdown). */

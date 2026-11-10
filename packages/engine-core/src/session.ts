@@ -142,6 +142,10 @@ export interface ClientSession {
   namedSent?: Set<bigint>;
   /** Shared fan-out (MMO_FANOUT_SHARE=publish): the publish topic of the equivalence group this session is subscribed to. */
   fanTopic?: string | null;
+  /** Set while the client's socket backlog is over the soft limit: no deltas go out, and a replace baseline follows when it drains. */
+  slowHold?: boolean;
+  /** When the current hold began (ms on the gateway clock), for the hold timeout. */
+  slowSinceMs?: number;
   /** IM5: the ground item wire ids whose drop row this session has been sent (a drop goes out once, when it is first in view). */
   droppedSent?: Set<bigint>;
   /** IM5: foes this session hit or was hit by, pinned until the tick given. */
