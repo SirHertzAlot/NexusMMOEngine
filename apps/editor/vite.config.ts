@@ -2,7 +2,28 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { editorHost } from "./src/host.js";
+
+/** Virtual plugin providing virtual:vfx-effects to resolve client/render dependencies */
+function vfxEffectsPlugin(files: string[]) {
+  const id = "virtual:vfx-effects";
+  return {
+    name: id,
+    resolveId: (req: string) => (req === id ? `\0${id}` : null),
+    load(req: string) {
+      if (req !== `\0${id}`) return null;
+      const out: Record<string, unknown> = {};
+      for (const file of files) {
+        if (existsSync(file)) {
+          const doc = JSON.parse(readFileSync(file, "utf8")) as { id: string };
+          out[doc.id] = doc;
+        }
+      }
+      return `export default ${JSON.stringify(out)};`;
+    },
+  };
+}
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 // apps/editor → repo root
@@ -72,6 +93,13 @@ export default defineConfig(() => {
         },
       }),
       editorHost({ repoRoot }),
+      vfxEffectsPlugin([
+        resolve(repoRoot, "content/vfx/shrine-fire.json"),
+        resolve(repoRoot, "content/vfx/shrine-water.json"),
+        resolve(repoRoot, "content/vfx/shrine-earth.json"),
+        resolve(repoRoot, "content/vfx/shrine-wind.json"),
+        resolve(repoRoot, "content/vfx/shrine-darkness.json"),
+      ]),
       resourceHintsPlugin(),
     ],
     resolve: {
