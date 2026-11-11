@@ -514,12 +514,14 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | # | Item | Status | Needs |
 | --- | --- | --- | --- |
 | WEB1 | Landing page for the engine: `site/index.html`, one self-contained file (GSAP and three.js from a CDN, no build). A full-viewport hero with a procedural 3D engine core that tilts toward the cursor, floating stack and tool nodes the pointer pushes away, a glass header, and an Engine / Editor switch that morphs the theme, spins the core and swaps the nodes. Every claim on it comes from the README and `docs/DECISIONS.md`. No art from `/assets/` | ✅ (#663) | Screenshots and a GIF of the switch go with the PR, not into the repo. Hosting is not decided |
+| WEB2 | Elevator-pitch page: `site/pitch.html`, a 30-second scroll tour of the engine's pillars (extensible, modular, scalable by design, fast, cross-platform, no-code, Git built in). Nine scenes on a scroll-driven clock with GSAP ScrollTrigger parallax; each scene has a [hairline](https://github.com/lucasmarkes/hairline) figure whose `intensity` follows the scroll. Every number on it is from `docs/DECISIONS.md`, the roadmap or a measured run | ✅ (#664) | Hairline 0.5.1 (MIT) is vendored unmodified in `site/vendor/hairline/` with its license; the page needs to be served over http. Checked in headless Chromium: no JS errors, all 9 figures mount |
 
 ---
 
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-11**: WEB2 pitch page (#664, ✅): `site/pitch.html`, nine scroll scenes on a 30-second clock with parallax and a hairline figure per pillar; hairline 0.5.1 (MIT) vendored in `site/vendor/hairline/`.
 - **2026-11-11**: WEB1 landing page (#663, ✅): `site/index.html`, a single-file hero page for the engine adapted from a layout spec; procedural three.js core instead of the spec's soda can, so no third-party or licensed art is used.
 - **2026-11-10**: PF4 prop-collision grid (#662, ✅): the SG4b grid's 32 m cells made each mover's query return nearly every static on the `prop-collision-tick` tile (500 props, 64 m), so the system cost 55.9 M instructions per tick against 18.3 M for the old scan. With 4 m cells it costs 5.9 M, and the walkers end every tick where the old scan put them (150,000 walker-ticks compared, 78,584 of them pushed by a prop). New workload `prop-collision-wide` (5,000 props, 200 m) is 8.8 M. `perf/callgrind-baseline.json` was measured on Node 22 and these numbers on Node 24, so it was not updated: it wants a re-baseline on one Node version in its own PR.
 - **2026-11-03**: PF3 native selectNames (#654, ✅): sectors whose id list is unchanged are skipped, so `selectNames` drops from 5.9 to 0.77 ms per tick at 1,000 players.
