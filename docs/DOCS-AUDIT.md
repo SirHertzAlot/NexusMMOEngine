@@ -21,87 +21,75 @@ Run it again with `python3 scripts/docs-audit.py`. It writes `valgrind-out/docs-
 
 ## Result
 
-| Check | Before | After this pass |
+| Check | Before | After |
 |---|---:|---:|
 | Broken relative links | 1 | **0** |
 | `file:///c:/Users/user/...` links (dead on GitHub for everyone else) | 65 | **0** |
-| Repo paths named in docs that do not exist | 57 | 55 (see below: most are not errors) |
+| Repo paths named in docs that do not exist | 57 | 57 (none is a broken link; see "Still open" 4: the rest are local-by-design, generated, planned or defaults documented as absent) |
 | Env vars in code and in no doc | 20 | **1** (a prefix, `MMO_DAY_`) |
-| Env vars documented only outside `CONFIGURATION.md` | 41 | 30 |
+| Env vars documented only outside `CONFIGURATION.md` | 41 | **0** |
 | Root scripts not in the CLI docs | 24 | 6 (all `test:addon-<name>`, documented as one pattern: a false positive) |
 | Packages not named in README or `ARCHITECTURE.md` | 7 | **0** |
 | Message codes in the protocol but not the catalog | 5 | 2 (`0x46` is the fast-path magic byte and `0xff` a bit mask: not messages) |
 | Protocol version in the catalog | 25 (code: 29) | **29** |
-| First-read docs that state something false about combat or the hooks | 2 | **0** (found by reading, not by the script) |
+| Docs that say "not yet built" or "design" for something that is built | 6 | **0** (found by reading) |
+| False statements in first-read docs (combat "deals no damage", hooks "not driven", the edge as opt-in) | 3 | **0** (found by reading) |
+| Roadmap "what is left" IDs that were already done | about 35 | list rebuilt |
 
-## Fixed in this pass
+## Fixed
 
-- **`PERFORMANCE.md` (new, DOC2).** Measured cost and constraints, with every number sourced and dated and each marked measured, derived or not measured. Published on the docs site under Start here.
-- **`MESSAGE-CATALOG.md`.** Protocol version 25 to 29, with the v26 to v29 history from the code; added messages `0x25` DeltaSet, `0x26` border and `0x27` interact.
-- **`CONFIGURATION.md`.** 28 variables added in three sections: performance and transport switches (data plane, native fan-out, send batching, slow-consumer policy, interest management, edge), content file locations, and bake and editor switches. Each default was checked in the code.
-- **`CLI.md`.** Added the valgrind family, `lint`, `test:scripts`, `smoke:editor-load`, the ragdoll and persistence benchmarks and three other tools.
-- **`ARCHITECTURE.md`.** A new "How it runs today" section (standalone, edge and core, data plane, many regions); the addon table gained `geometry`, `terrain-kernel` and `fanout`; the package list gained seven packages; the persistence decision now reflects SurrealKV and SurrealMX.
-- **`README.md`.** The layout block lists every package; pointers to the performance page and the docs site.
-- **65 dead `file:///` links** across 13 docs rewritten to correct relative links (all targets exist). They were dead on GitHub for everyone except one Windows checkout.
-- **Roadmap.** Two unresolved merge-conflict blocks resolved (keeping the current summary); the stale "GitHub Actions is out of credits" note replaced with CI's current state.
-- **Gameplay sections written (second pass).** `GAMEPLAY.md` gained Hurt, healing and death (with Medicine); Abilities, telegraphs and status effects; Duels; Magic and mana; Gathering; and Gold, shops, trading and the auction house, each from the code and rules (limits, defaults and refusals checked in the source). The Controls table gained E, R, T, H, Tab and B. `ARCHITECTURE.md` gained Interest management; `GETTING-STARTED.md` gained "Optional: the fast paths".
-- **Two false statements removed.** `GAMEPLAY.md` said combat "deals no damage yet" (damage, body parts, injury, bleeding and death have shipped), and `ARCHITECTURE.md` said the rules hooks were "not yet driven by the simulation" (they are: `CombatSystem`, `BodySystem` and `DeathSystem` call them).
-- **A wrong default corrected.** `npm start` runs the core **behind the edge** (it sets `MMO_EDGE=1` and starts the edge on 7777); a core started alone listens directly. Three docs written earlier in this audit had the edge as opt-in. It matters for performance: native fan-out only runs when the core serves players directly, so the 1,000-player fan-out numbers are for that shape, and `PERFORMANCE.md` now says so.
-- **Smaller fixes.** Two wrong relative links in the wiki, a malformed math span, the `transport-bench` path (it moved to `src/net/`) in three docs, an implementation note on `EDGE-CORE-SPLIT.md`, and a dead image link.
+**First pass.** `PERFORMANCE.md` (new); message catalog (version 25 to 29, messages `0x25` to `0x27`); 28 environment variables in `CONFIGURATION.md`; scripts in `CLI.md`; `ARCHITECTURE.md` (how it runs today, the new addons and packages, persistence); the README layout; 65 dead `file:///` links; the roadmap's conflict markers; the `transport-bench` path; smaller link and math fixes.
+
+**Second pass.**
+- `GAMEPLAY.md`: Hurt, healing and death; Abilities, telegraphs and status effects (from `content/combat/abilities.json`, including that the `heal` ability is **not** the Mend spell); Duels; Magic and mana; Gathering; Gold, shops, trading and the auction house; chests and interactions; the people of the towns. The Controls table gained E, R, T, H, Tab and B.
+- `ARCHITECTURE.md`: Interest management. `GETTING-STARTED.md`: the fast paths.
+- Two false statements removed (combat "deals no damage yet"; rules hooks "not yet driven by the simulation").
+- A wrong default corrected: `npm start` runs the core **behind the edge**. Native fan-out only runs when the core serves players directly, so the fan-out numbers are for that shape, and `PERFORMANCE.md` says so.
+
+**Third pass.**
+- The 29 environment variables still outside `CONFIGURATION.md`, from the server's own header block.
+- Status headers corrected on `MASTERY-AND-COMBAT.md`, `DUNGEONS-AND-LOOT.md`, `CHARACTERS-AND-SOCIAL.md`, `WORLD-SERVER-SPEC.md` and `SETTLEMENTS.md` (all built, per the roadmap); `SETTLEMENTS.md`'s body no longer says roads and residents are unbuilt. Dated notes on `EDITOR-ARCHITECTURE.md`, `LIVING-SIM-DEEP-DIVE.md`, `ALPHA-PLAN.md`, `CHARACTER-PLAN.md`, `OPEN-WORLD-PLAN.md`, `PCG-SPEC.md` and `ENGINE-COMPARISON-AND-PERFORMANCE.md` §4.
+- `PERFORMANCE.md` corrected: E5a and E5c are done and interest management is built, so the base64 encode numbers are labeled as the earlier stream. Its links to the private business analysis and the comparison doc are removed.
+- The roadmap: the stale "what is left" list rebuilt from the open follow-ups the tables record; the at-a-glance counts recomputed from the tables (284 built, 4 in progress); notes where cited perf result files are not in the repository; armour wear shipped with U10b, so three statements that armour "waits" are fixed.
+- A repeated block removed from wiki chapter 1; the duplicate SAB report replaced by a pointer; `npm run db` made precise (`-w @mmo-engine/world-server`); a `CLIENT-FX.md` path corrected. The README now carries the headline capacity numbers with their limits, as `ALPHA-PLAN.md` asked for.
 
 ## Still open, in priority order
 
-### 1. Features and systems with thin or no documentation
+### 1. Not re-read in this audit
 
-Closed in the second pass: duels, magic and mana, trade, vendors, the auction house, gathering, hurt, healing and death, abilities, telegraphs and status effects, interest management, and the data plane. What is left:
+The machine checks above ran over all of these. **What I did not do is read their prose against the code**, so each can still be wrong in ways the script cannot see:
 
-| Item | State |
-|---|---|
-| **Residents** (people living in the towns; capped at 800, 300 simulated in full) | `SETTLEMENTS.md` covers the generator; how residents live and what to configure is not written up |
-| **`MASTERY-AND-COMBAT.md`** (last changed 2026-09-29) | **Not re-read in this pass.** It is the design behind skills, damage and injury, and the code has moved on (abilities, statuses, duels). It needs a read against the code |
-| **Ragdolls** | Not a shipped gameplay feature (roadmap: planned). Documented as a cost study in `RAGDOLL-COST-GATE.md` only |
-| **Chests, interactions and quest-giver or dungeon-entrance use of E** | In `DUNGEONS-AND-LOOT.md`; not in `GAMEPLAY.md` beyond the Controls row |
+- Wiki chapters 02 to 10 (written 2026-10-27), `EDITOR.md`, `WORLD-BUILDING.md`, `ART-PIPELINE.md` (its "not built" notes about moving creatures and rig views), the body of `ARCHITECTURE.md` outside the sections changed here, `GETTING-STARTED.md` sections 1 to 8, and `GAMEPLAY.md`'s Movement, Characters and Bots sections.
+- The `CONFIGURATION.md` rows that were already there. Only the rows added in this audit were checked against the code.
+- `MASTERY-AND-COMBAT.md` §§2 to 6 (the design itself). Its status, slice table and open questions were corrected; its numbers and mechanics were not re-checked.
+- `GAMEPLAY.md`'s residents section rests on the roadmap rows RS3 to RS7 and the system's header, not on a running world. In particular the roadmap says homestead people are baked (RS4) while SG7's row says the families "are next"; I did not check which is current.
 
-**A product gap, found while writing:** the client has **no UI for player-to-player trade, the auction house, or casting a spell directly**. Those systems are built on the server and in the protocol (messages `0x21` and `0x1c`) and are usable by bots and tools, not yet by a player. `GAMEPLAY.md` says so plainly. That is a feature to schedule, not a documentation gap.
+### 2. Plan checklists that are stale
 
-### 2. Docs not changed for a month or more
-
-Last change on `main` for the first-read set, oldest first: `CHARACTER-PLAN.md` and `PCG-SPEC.md` (2026-09-28), `CLIENT-FX.md` and `MASTERY-AND-COMBAT.md` (09-29), `ALPHA-PLAN.md` and `EDGE-CORE-SPLIT.md` (10-01), `WORLD-SERVER-SPEC.md` and `WORLD-STRESS-RESULTS.md` (10-04). (`GAMEPLAY.md` was in this list and was rewritten in the second pass.) Most of the combat, economy and interaction features above landed after these dates, which is why they are the ones with gaps. Each needs a read against the code, not just a date check.
+`CHARACTER-PLAN.md` and `OPEN-WORLD-PLAN.md` carry dated notes that their unchecked boxes are not current. The boxes themselves were not re-ticked: each needs checking against the code.
 
 ### 3. Files the docs cite that are not in the repository
 
-- `perf/native-fanout-results-2026-11-03.md` and `perf/drop-tick-delta-push` (roadmap PF2), `perf/shared-fanout-2026-11-03.md` (`NATIVE-FANOUT.md`). The measurements they support are quoted in the roadmap and in `PERFORMANCE.md`, but **the raw results are missing**, so the numbers cannot be checked. Commit the files or reword the citations.
-- `perf/history.json` (`CLI.md`, roadmap): created only when someone runs `valgrind:record --promote`; say so.
-- `scripts/fetch-surfaces.mjs` (`CLIENT-FX.md`), `scripts/dev.mjs` and `scripts/export-scene.mjs` (roadmap): gone or renamed.
-- `content/items`, `content/recipes`, `content/ecology` (`DUNGEONS-AND-LOOT.md`): the folders no longer exist; the content moved.
+`perf/native-fanout-results-2026-11-03.md` (roadmap PF2), `perf/shared-fanout-2026-11-03.md` (`NATIVE-FANOUT.md`) and `perf/drop-tick-delta-push` (a branch name, cited as a path). The docs now say the files are missing, but the raw results are still gone: commit them if they exist elsewhere. `perf/history.json` exists only after someone runs `valgrind:record --promote`.
 
-### 4. Design documents that name files that were never built
+### 4. The "missing path" findings that remain
 
-`EDITOR-ARCHITECTURE.md` lists planned folders (`content/dialog`, `content/editor/layouts`, `content/tests`, `packages/sidecar`); `EDITOR-GAP-AUDIT.md` lists `content/prefabs` and `content/play/setups.json`; `LIVING-SIM-DEEP-DIVE.md` lists `content/lore/factions.json`. These are plans. Each should say so at the top, as `EDGE-CORE-SPLIT.md` now does.
+Eight are `.local.json` files meant to be machine-local, five are generated or fetched at setup, two are created at runtime (`content/locks.json`), three are defaults documented as absent in a fresh checkout (`content/biomes.json`, `content/prefabs`, `content/scale.local.json`). The rest are planned folders in design docs (`EDITOR-ARCHITECTURE.md`, `EDITOR-GAP-AUDIT.md`, `LIVING-SIM-DEEP-DIVE.md`), historical entries in the append-only `DECISIONS.md` and roadmap log, and a few roadmap rows that cite scripts that were renamed (`scripts/dev.mjs`, `scripts/export-scene.mjs`).
 
-The remaining "missing path" findings are not errors: eight are `.local.json` files that are meant to be machine-local, five are generated or fetched at setup (`region.db`, `apps/client/public/surfaces`), and two are created at runtime (`content/locks.json`).
+### 5. Documents that mislead, or may
 
-### 5. Environment variables still outside `CONFIGURATION.md`
+- **`docs/business-analysis/`** is marked private and was not touched. Its cost figures are not derived from anything measured in this repository, and `03-benchmark-telemetry.md` cites three test files that do not exist (`playtest-loft-accessibility.spec.ts`, `synthesizer.test.ts`, a dungeon decomposition JSON). Treat it as unverified until each claim is traced.
+- **`ENGINE-COMPARISON-AND-PERFORMANCE.md`** now has a status note on §4, but it is still a competitive comparison in the public `docs/` folder. See the policy question below.
+- **`DECISIONS.md` line 44** reports a 0.562 ms p99 tick at 1,000 players and 50,000 entities. That is the sim worker's step on the data plane, not the end-to-end tick (about 62 to 66 ms at 1,000 players, roadmap PF2). The decision log is append-only, so a clarifying entry would be the way to fix it; `PERFORMANCE.md` explains the difference.
+- **A few roadmap row notes** are probably stale in the way M3's armour note was (for example IX1a "still to do", WL1 "not built"). I fixed the ones I could contradict from the tables and left the rest.
 
-They are documented somewhere, just not on the page people look at. Thirty names, mostly content locations: `MMO_ADMINS`, `MMO_ASSETS_DIR`, `MMO_BAKE_SHAPE`, `MMO_BAKE_SIZE_CHUNKS`, `MMO_BIOMES`, `MMO_CATALOG`, `MMO_COMBAT`, `MMO_CONTENT_DIR`, `MMO_CRAFTING`, `MMO_DEV_SERVER`, `MMO_DUNGEONS`, `MMO_INSTANCE_HOST`, `MMO_MODULES`, `MMO_ORDERED_BUILD`, `MMO_PREFABS`, `MMO_QUESTS`, `MMO_REPO`, `MMO_SCALE`, `MMO_SCALE_OUT`, `MMO_SCENE`, `MMO_SCENES`, `MMO_SCENES_DIR`, `MMO_SETTLEMENT_OUT`, `MMO_SETTLEMENT_RULES`, `MMO_SPAWN_OVERRIDE`, `MMO_SPECIES`, `MMO_USERS_CSV`, `MMO_WILDLIFE`, `MMO_WILDLIFE_LOG`, `MMO_WILD_CREATURES`.
-
-### 6. Documents that mislead
-
-- **`ENGINE-COMPARISON-AND-PERFORMANCE.md` §4 "Current bottlenecks"** is out of date. It describes interest-management allocation churn that has been worked on since (PF1 and the zero-allocation interest commits), and a WebGL draw-call ceiling that nothing in the repository measures. Its comparison matrix is a positioning document, not a benchmark. `PERFORMANCE.md` is the current account; this section should point to it or be removed.
-- **`docs/business-analysis/`** quotes cloud costs per concurrent user and a "benchmark telemetry" table. The cost figures are not derived from anything measured in the repository, and `03-benchmark-telemetry.md` cites three test files that do not exist (`playtest-loft-accessibility.spec.ts`, `synthesizer.test.ts`, a dungeon decomposition JSON). Treat it as unverified until each claim is traced.
-- **`DECISIONS.md` line 44** reports a 0.562 ms p99 tick at 1,000 players and 50,000 entities. That figure is the sim worker's step on the data plane, not the end-to-end tick (about 62 to 66 ms at 1,000 players, the roadmap's PF2). Both are true; the decision log should say which one it means. `PERFORMANCE.md` does.
-
-### 6b. A policy question
+### 6. A policy question
 
 `docs/business-analysis/README.md` says competitive comparisons and commercial analyses live only in the private suite, and that public manuals cover the engine alone. `ENGINE-COMPARISON-AND-PERFORMANCE.md` is in the public `docs/` folder and is a competitive comparison, and the root README links to the business analysis. `PERFORMANCE.md` deliberately links to neither. Whether the comparison doc should move is a decision for the owners, not something this audit changed.
 
-### 7. Duplicates and drift
+### 7. Product gaps found while writing
 
-- `docs/SAB-LOGGING-PERFORMANCE-REPORT.md` and `docs/wiki/SAB-LOGGING-PERFORMANCE-REPORT.md` are the same report.
-- `docs/WIKI.md` is the single-page form of `docs/wiki/`; they will drift. Pick one as the source.
-- `docs/wiki/01-architecture-overview.md` repeats its first three sections at the end.
-- `npm run db` appears in several docs without saying it is a script of `@mmo-engine/world-server` (`npm run db -w @mmo-engine/world-server`) and needs the `surreal` binary.
-- The roadmap's "At a glance" counts (279 built, 1 in progress, 0 planned, dated 2026-11-01) were computed from the tables and are out of date as items have been added since. They should be regenerated by a script, not edited by hand.
+The client has no UI for player-to-player trade, the auction house or casting a spell directly. They are built on the server and in the protocol (`0x21`, `0x1c`) and are usable by bots and tools. `GAMEPLAY.md` says so. No 1,000-session run through the edge exists, and the send-batching gate has not been run; both are on the roadmap's what-is-left list.
 
 ## Not audited
 
