@@ -32,6 +32,7 @@ Run it again with `python3 scripts/docs-audit.py`. It writes `valgrind-out/docs-
 | Packages not named in README or `ARCHITECTURE.md` | 7 | **0** |
 | Message codes in the protocol but not the catalog | 5 | 2 (`0x46` is the fast-path magic byte and `0xff` a bit mask: not messages) |
 | Protocol version in the catalog | 25 (code: 29) | **29** |
+| First-read docs that state something false about combat or the hooks | 2 | **0** (found by reading, not by the script) |
 
 ## Fixed in this pass
 
@@ -43,30 +44,29 @@ Run it again with `python3 scripts/docs-audit.py`. It writes `valgrind-out/docs-
 - **`README.md`.** The layout block lists every package; pointers to the performance page and the docs site.
 - **65 dead `file:///` links** across 13 docs rewritten to correct relative links (all targets exist). They were dead on GitHub for everyone except one Windows checkout.
 - **Roadmap.** Two unresolved merge-conflict blocks resolved (keeping the current summary); the stale "GitHub Actions is out of credits" note replaced with CI's current state.
+- **Gameplay sections written (second pass).** `GAMEPLAY.md` gained Hurt, healing and death (with Medicine); Abilities, telegraphs and status effects; Duels; Magic and mana; Gathering; and Gold, shops, trading and the auction house, each from the code and rules (limits, defaults and refusals checked in the source). The Controls table gained E, R, T, H, Tab and B. `ARCHITECTURE.md` gained Interest management; `GETTING-STARTED.md` gained "Optional: the fast paths".
+- **Two false statements removed.** `GAMEPLAY.md` said combat "deals no damage yet" (damage, body parts, injury, bleeding and death have shipped), and `ARCHITECTURE.md` said the rules hooks were "not yet driven by the simulation" (they are: `CombatSystem`, `BodySystem` and `DeathSystem` call them).
+- **A wrong default corrected.** `npm start` runs the core **behind the edge** (it sets `MMO_EDGE=1` and starts the edge on 7777); a core started alone listens directly. Three docs written earlier in this audit had the edge as opt-in. It matters for performance: native fan-out only runs when the core serves players directly, so the 1,000-player fan-out numbers are for that shape, and `PERFORMANCE.md` now says so.
 - **Smaller fixes.** Two wrong relative links in the wiki, a malformed math span, the `transport-bench` path (it moved to `src/net/`) in three docs, an implementation note on `EDGE-CORE-SPLIT.md`, and a dead image link.
 
 ## Still open, in priority order
 
-### 1. Features that exist and have no doc
+### 1. Features and systems with thin or no documentation
 
-Found by checking which docs mention features the roadmap and protocol say shipped. A count of 0 across the player and designer docs means the feature is only in the code and the message catalog.
+Closed in the second pass: duels, magic and mana, trade, vendors, the auction house, gathering, hurt, healing and death, abilities, telegraphs and status effects, interest management, and the data plane. What is left:
 
-| Feature | Evidence it exists | Where it is documented today |
-|---|---|---|
-| **Duels** | message `0x20`, roadmap M5 | the message catalog only |
-| **Magic, mana and spells** | message `0x1c`, protocol v21 | `DUNGEONS-AND-LOOT.md` mentions mana in passing; nowhere explained |
-| **Trade, vendors and auctions** | message `0x21`, roadmap EC1 | `CHARACTERS-AND-SOCIAL.md` (2 mentions), `GAMEPLAY.md` (none) |
-| **Gathering and resource nodes** | message `0x24` | one line in `GAMEPLAY.md` |
-| **Residents** (people living in towns) | roadmap RS and SG7, 800 resident cap | `SETTLEMENTS.md` partly |
-| **Ragdolls** | roadmap, cost gate | `RAGDOLL-COST-GATE.md` and `CLIENT-PHYSICS.md` only; not in `GAMEPLAY.md` |
-| **Interest management** | on by default; messages `0x25`, `0x26` | the wiki and `CONFIGURATION.md`, as a switch; the concept is not explained anywhere player-facing |
-| **The data plane** | `MMO_DATA_PLANE=1` | wiki chapter 1 only; `GETTING-STARTED.md` never says it exists |
+| Item | State |
+|---|---|
+| **Residents** (people living in the towns; capped at 800, 300 simulated in full) | `SETTLEMENTS.md` covers the generator; how residents live and what to configure is not written up |
+| **`MASTERY-AND-COMBAT.md`** (last changed 2026-09-29) | **Not re-read in this pass.** It is the design behind skills, damage and injury, and the code has moved on (abilities, statuses, duels). It needs a read against the code |
+| **Ragdolls** | Not a shipped gameplay feature (roadmap: planned). Documented as a cost study in `RAGDOLL-COST-GATE.md` only |
+| **Chests, interactions and quest-giver or dungeon-entrance use of E** | In `DUNGEONS-AND-LOOT.md`; not in `GAMEPLAY.md` beyond the Controls row |
 
-**Write next:** `GAMEPLAY.md` and `MASTERY-AND-COMBAT.md` need new sections for duels, magic and mana, trade and vendors, and gathering; `GETTING-STARTED.md` needs a short "turn on the fast paths" section.
+**A product gap, found while writing:** the client has **no UI for player-to-player trade, the auction house, or casting a spell directly**. Those systems are built on the server and in the protocol (messages `0x21` and `0x1c`) and are usable by bots and tools, not yet by a player. `GAMEPLAY.md` says so plainly. That is a feature to schedule, not a documentation gap.
 
 ### 2. Docs not changed for a month or more
 
-Last change on `main` for the first-read set, oldest first: `CHARACTER-PLAN.md` and `PCG-SPEC.md` (2026-09-28), `CLIENT-FX.md` and `MASTERY-AND-COMBAT.md` (09-29), `ALPHA-PLAN.md` and `EDGE-CORE-SPLIT.md` (10-01), `WORLD-SERVER-SPEC.md` and `WORLD-STRESS-RESULTS.md` (10-04), `GAMEPLAY.md` (10-06). Most of the combat, economy and interaction features above landed after these dates, which is why they are the ones with gaps. Each needs a read against the code, not just a date check.
+Last change on `main` for the first-read set, oldest first: `CHARACTER-PLAN.md` and `PCG-SPEC.md` (2026-09-28), `CLIENT-FX.md` and `MASTERY-AND-COMBAT.md` (09-29), `ALPHA-PLAN.md` and `EDGE-CORE-SPLIT.md` (10-01), `WORLD-SERVER-SPEC.md` and `WORLD-STRESS-RESULTS.md` (10-04). (`GAMEPLAY.md` was in this list and was rewritten in the second pass.) Most of the combat, economy and interaction features above landed after these dates, which is why they are the ones with gaps. Each needs a read against the code, not just a date check.
 
 ### 3. Files the docs cite that are not in the repository
 

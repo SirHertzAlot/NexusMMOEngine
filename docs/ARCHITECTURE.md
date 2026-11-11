@@ -54,16 +54,29 @@ process — no IPC, no serialisation at the boundary beyond plain typed arrays:
 
 ## How it runs today
 
-The diagram above is the engine at its simplest: one process does everything, and that is what `npm start` runs. The same code runs in three other shapes, each opted into with a flag. Every one of them keeps the same rule: the browser mirrors, the server decides.
+The diagram above is the engine at its simplest: one process does everything. That is a core started alone (`npm run server`, the tests, the editor's play mode). **`npm start` runs it as an edge plus a core**, and the same code can run in two more shapes opted into with a flag. Every shape keeps the same rule: the browser mirrors, the server decides.
 
 | Shape | Turn it on | What changes |
 |---|---|---|
-| **Standalone** (default) | nothing | One process: gateway, tick loop, persistence. Simulation and sockets share the main thread. |
-| **Edge and core** | `MMO_EDGE=1` | A separate edge process (`apps/edge`) terminates the players' WebSockets, validates and rate-limits input, and cuts per-player deltas by area of interest. The core drops its player listener and talks to the edge over a framed channel (`packages/channel`). In the edge drills (E5), a crash, restart or freeze on either side left no request hung. |
+| **Core alone** | `npm run server` | One process: gateway, tick loop, persistence. Simulation and sockets share the main thread, and the core's own gateway fans state out to players. |
+| **Edge and core** (what `npm start` runs) | `MMO_EDGE=1`, set by `npm start`, which also starts the edge on port 7777 | A separate edge process (`apps/edge`) terminates the players' WebSockets, validates and rate-limits input, and cuts per-player deltas by area of interest. The core drops its player listener and talks to the edge over a framed channel (`packages/channel`). In the edge drills (E5), a crash, restart or freeze on either side left no request hung. |
 | **Data plane** | `MMO_DATA_PLANE=1` | Three threads over one `SharedArrayBuffer`: the gateway pushes packed intents onto a lock-free ring, a 30 Hz sim worker drains them and steps native kernels, and a persistence worker drains a second ring into a durable ledger. If the sim worker dies, client sockets stay open. |
 | **Many regions** | `npm start -- --world`, plus a world server | Each region is its own process owning a range of chunks. A world server (`packages/world-server`) keeps the registry and leases and coordinates hand-offs when a player crosses a border. Player traffic never passes through it, and it never simulates. |
 
 Which of these you want depends on the player counts you plan for. [Performance and constraints](PERFORMANCE.md) has the measured cost and limits of each, and the [wiki's architecture chapter](wiki/01-architecture-overview.md) has the full diagrams.
+
+### Interest management
+
+A client should not be told about the whole region. The world is cut into **64 m sectors**. Each tick the core encodes **one delta per sector that changed**, once, and a client's message (`DeltaSet`, message `0x25`) is the concatenation of the sectors near it. The cost per client is copying bytes, not encoding them.
+
+| Rule | Value | Meaning |
+|---|---|---|
+| `enterM` | 96 m | A client's interest set is every sector within this distance of its avatar |
+| `leaveM` | 128 m | A sector stays in the set until it is past this, so walking along a border does not flicker |
+| `outerEvery` | 3 | Sectors kept only by that margin send a delta every third tick |
+| `farM` | 400 m | How far an entity marked far-visible (something large, such as a landmark) is seen |
+
+Terrain chunks and entities with no position live in a **global sector** (`g`) that every client receives. Interest management is **on by default**; `MMO_INTEREST=0` turns it off, so every client gets the whole region's delta, and dungeon instances always see everything. The values are `content/rules/interest.json`. What it saves, and what crowds still cost, is in [Performance and constraints](PERFORMANCE.md#network).
 
 ## Locked decisions
 
@@ -154,10 +167,9 @@ part) and reports all of them at once.
 `packages/rules` also exports the *hook registry* — `computeDamage`,
 `resolveLanding`, `skillGain`, `onInjury`, `onDeath`, `onRespawn` — where each
 hook has a default implementation derived from the rules and a game may
-override it as `(input, base) => …`. Be aware of the current wiring: on `main`
-the hooks are constructed at boot and then only the one-line summary is used,
-so the mechanics behind them are **specified and tested but not yet driven by
-the simulation**. [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md) is the
+override it as `(input, base) => …`. The simulation drives them: `CombatSystem` and the telegraph
+system call `computeDamage` (and `resolveLanding`), `BodySystem` calls `onInjury` and
+`resolveTreatment`, and `DeathSystem` calls `onDeath` and `onRespawn`. [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md) is the
 design; [content/rules/README.md](../content/rules/README.md) documents the
 files.
 

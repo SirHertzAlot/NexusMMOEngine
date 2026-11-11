@@ -190,7 +190,23 @@ The game server only talks to it when started with `WORLD_URL` and
 On its own, the game server runs as a standalone region, which is the
 normal development setup.
 
-## 9. Where to go next
+## 9. Optional: the fast paths
+
+`npm start` already runs the core behind the edge. Two more switches change how the core runs. Neither is needed to play, and both are off by default. Set them as environment variables (see the shell note at the top) before the server starts.
+
+**The data plane: `MMO_DATA_PLANE=1`.** Runs three threads over shared memory: the gateway, a 30 Hz sim worker and a persistence worker. It needs a durable ledger server running, so start one in another terminal first:
+
+```sh
+npm run db -w @mmo-engine/world-server     # needs the `surreal` binary (SurrealDB 3.0 or newer) on your PATH
+```
+
+Boot **refuses to start** if the ledger is unreachable. For a throwaway local run, `MMO_DATA_PLANE_DB=mem://` uses a volatile in-memory ledger instead. The server prints `3-thread data-plane topology ENABLED` when it is on.
+
+**Send batching: `MMO_UWS_CORK=1`.** Batches each player's messages for a tick into one write. It matters with many clients, and it is off because its gate (the full gateway at scale, with no ordering failures) has not been run yet.
+
+The server's `listening` line says whether native fan-out is on. Behind the edge, fan-out runs in JavaScript each tick (the `fanoutTicks.js` counter), which is expected: native fan-out runs only when the core serves players directly. What each switch buys, and costs, is in [PERFORMANCE.md](PERFORMANCE.md); every variable is in [CONFIGURATION.md](CONFIGURATION.md).
+
+## 10. Where to go next
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): how the pieces fit, one tick at a time.
 - [GAMEPLAY.md](GAMEPLAY.md): movement, characters, combat and bots, and how to extend them.

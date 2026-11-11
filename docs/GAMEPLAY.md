@@ -21,6 +21,11 @@ While the canvas has the pointer (click it to capture; `Esc` releases):
 | Left mouse | Attack — press again in rhythm to chain the combo |
 | Right mouse (held) | Guard |
 | `Q` | Dodge roll |
+| `E` | Interact: open a chest or a shop, pick up a ground item, gather from a node, talk to a quest giver, enter a dungeon |
+| `R` / `T` | Next technique / next body part to aim at |
+| `H` | Treat your worst wound (Medicine) |
+| `Tab` | Cycle targets |
+| `B` | Bag |
 
 `Space`, `F`, left mouse and `Q` are **press** inputs; the rest are held
 state. The client's input layer is DOM-free and unit-tested, and it sends one
@@ -84,14 +89,15 @@ off in mid-air drops you; diving into deep water starts you swimming.
 
 ## Combat
 
-Combat is server-authoritative and, deliberately, **deals no damage yet**.
-What exists is the move system: the server runs each character's current move
-and tells clients which move they are in and from which tick, so a client only
-ever plays the clip it is told about. The move table lives in
-`packages/protocol/src/combat.ts` and is shared by the server (timing,
-chaining, movement) and the client (which clip). **Move ids are wire
-contract**; the durations are the animation clips' own, and a test keeps the
-two in step.
+Combat is server-authoritative: the client asks for a move, and the server decides what
+happens. Blows land on body parts, and damage, injury, bleeding, healing and death all run on
+the server and come back to clients as events (see [Hurt, healing and death](#hurt-healing-and-death)).
+The server runs each character's current move and tells clients which move they are in and from
+which tick, so a client only ever plays the clip it is told about. The move table lives in
+`packages/protocol/src/combat.ts` and is shared by the server (timing, chaining, movement) and
+the client (which clip). **Move ids are wire contract**; the durations are the animation clips'
+own, and a test keeps the two in step. The design behind mastery, damage and injury is in
+[MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md).
 
 ### The moves
 
@@ -132,11 +138,151 @@ than frame-perfect.
 
 ### What combat does *not* do yet
 
-No damage, no hit detection, no hit reactions. The system's header says so
-plainly. Mastery, body-part damage, injury, bleeding, death and respawn are
-specified with working reference implementations in `@mmo-engine/rules` and
-documented in [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md); the simulation
-does not call them yet. That is the next slice, not a bug.
+- **Armour.** It waits for armour items to exist (roadmap U10).
+- **Some discipline unlocks** (sweep, lunge, throw down, reattach) are data only so far.
+- **Ragdolls and a physics character controller** are planned. See [RAGDOLL-COST-GATE.md](RAGDOLL-COST-GATE.md) for why ragdolls for every player do not fit one world today.
+- **Range filtering.** `hit` and `life` events go to every welcomed session in the region, not just those nearby.
+
+## Hurt, healing and death
+
+Fights have consequences, and all of them are decided on the server and told to clients as events.
+
+- **Blows land on body parts.** A character's body is a tree of parts (`content/rules/body.json`). A blow lands on a part (the aim you chose, if your precision lets it land there). A part is `healthy`, `harmed`, `maimed` or `dismembered`; a severing cut takes the part and everything below it.
+- **Wounds bleed.** Open wounds bleed, then clot. Injuries slow you, lame you or weaken you. Parts heal over time.
+- **Death.** A vital part destroyed, or too much blood lost, kills. The server sends `life` with `dead` and the tick the body rises (`respawnAt`); players come back at the spawn point, bots where they fell. Corpses are left and deaths are recorded.
+- **You see your own body** part by part (hp share, state, bleeding), sent to you only and only when it changes.
+
+### Medicine
+
+Press **H** to treat your own worst wound: a stump first, then the worst bleeding, then a maimed part. You can also treat another character within the body rules' `treatment.reach`.
+
+| Treatment | What it does |
+|---|---|
+| Bandage | Stops a bleeding wound |
+| Stump | Closes the stump of a lost part |
+| Set | Turns a maimed part back to harmed so it can heal |
+
+A treatment takes time (shorter with more Medicine skill) and holds while the healer stands still, stays out of a fight and keeps in reach. At the end it works or fails, and the healer's Medicine trains either way.
+
+## Abilities, telegraphs and status effects
+
+Abilities (M5) sit on a generic trigger layer. The client sends `trigger` with an ability id, and the server's `AbilitySystem` decides.
+
+- **Global cooldown.** Firing any ability locks all of them for a short time. Pressing during it **queues one press** (one deep, the latest wins), so mashing is harmless.
+- **Per-ability cooldowns and cast times.** Each ability has its own cooldown, and a cast can be interrupted.
+- **The answer is an event.** The result comes back as `ability` with a state: `casting`, `queued`, `fired`, `interrupted` or `rejected`. A rejection is the answer; no error is sent, so the ability bar can show it.
+- **Targeting.** Tab cycles targets. The ability bar is part of the HUD layout.
+- **The starter set** is strike, heal (which is the spell Mend, below) and guard, tuned from the combat balance numbers. In the live two-account check of 2026-11-02 a strike did 10 and a guarded strike 5.
+
+**Telegraphs** are danger zones the server owns. `warned` is sent when a cast starts (the client draws the zone), `resolved` when its timer runs out (who was hit and how hard, decided that tick from authoritative positions), and `cancelled` if the caster died or was stunned. They go to every welcomed session.
+
+**Status effects** are buffs and debuffs with a stack count. `applied` is sent with the stacks, and `removed` when one expires, is cleansed or is dispelled. The client's status frame shows only the entities it is displaying.
+
+## Duels
+
+Duels are consensual player-versus-player fights. By default **strangers cannot hurt each other**; a duel is what lets two players hurt each other.
+
+1. A player **challenges** another. A challenge fails if either player is already dueling, or if you challenge yourself. One incoming challenge is held at a time (a newer one replaces it) and it **waits 30 seconds** for an answer.
+2. The target **accepts** or **declines**. Accepting starts the duel.
+3. While it runs, **only the two duelists** can hurt each other.
+4. It ends at **first blood** (a duelist's health reaches zero), when someone **yields**, or after **5 minutes** (a draw).
+
+A duelist felled by their opponent **does not die**: the death system is told it was a duel, so there is no death penalty. If either duelist disconnects, the challenge or duel is cancelled.
+
+The client shows challenges and results in the duel panel. Everyone gets `duel` events with a state (`challenged`, `accepted`, `declined`, `expired`, `started`, `ended`); an ending carries the reason (`blood`, `yield`, `timeout`, `declined`, `expired`, `cancelled`) and the winner. Duel messages share the pickup rate-limit bucket. A bad shape is error 4003; a refusal ("cannot challenge now", "nothing to accept", "not dueling") is 4005.
+
+**For developers.** `DuelSystem.canHit(a, b)` is what the combat path asks before a blow lands. `setHostile(a, b, true)` marks ad-hoc hostility without a duel, for events such as a brawl pit or a faction war. The 30-second and 5-minute limits are constructor defaults of `DuelSystem`.
+
+## Magic and mana
+
+Every character gets a mana pool, full, the first time the server sees it. The pool is not saved: you enter the world with it full.
+
+| | Rule |
+|---|---|
+| **Maximum** | The `maxMana` stat: 20 + 3 per point of intellect (`content/rules/stats.json`). If the stat is absent, `defaultMax` (50) |
+| **Regeneration** | The `manaRegen` stat: 0.5 + 0.1 per point of willpower, per second. If absent, `defaultRegen` (1). It only regenerates **while no cast is under way** |
+| **Spell power** | The `spellPower` stat: 0.8 + 0.02 per point of intellect. Multiplies a spell's effect |
+
+**Casting.** A cast starts on yourself or on a character within the spell's reach. It takes `castSeconds` and **holds only while you stand still, stay out of a fight, and the target stays alive and in reach**. The mana is spent when the cast completes; a cast that stops costs nothing. Then the spell's cooldown starts.
+
+Refusals you can get: you can't cast now (dead), no one to cast on, the spell is self-only, too far away, you or they are unhurt (for a heal), cooling down, or not enough mana. Each is a 4005.
+
+**The one spell today is Mend** (`content/rules/spells.json`):
+
+| Field | Mend |
+|---|---|
+| Mana | 25 |
+| Cast time | 2 s |
+| Cooldown | 6 s |
+| Target | any (yourself or another) |
+| Reach | 3 m |
+| Effect | Heals `15 × spellPower` |
+
+The body system spreads the heal over the parts that are harmed. A heal **does not set a maimed part and does not stop bleeding**: that is Medicine's job.
+
+Your mana shows in the player frame. Casting is the `cast` message (`0x1c`); the starter `heal` ability is Mend. As of this audit the client has no dedicated spell UI, and no client code that sends `cast` directly.
+
+**Adding a spell.** Add an entry to `spells.json` with `id`, `name`, `mana`, `castSeconds`, `cooldownSeconds`, `target` (`self` or `any`), `reach` and an `effect`. The only effect kind today is `heal`. A rules reload applies new spells at once, and stops casts under way.
+
+## Gathering
+
+Resource nodes are the tree stands, ore veins and fishing spots round the towns. A node is a scene node with a `ResourceNode` component:
+
+| Field | Meaning |
+|---|---|
+| `material` | What it gives |
+| `tier` | 1 to 5; harder tiers train the skill faster (see below) |
+| `skill` | The skill it trains, such as mining |
+| `stock` | How many gathers it holds |
+| `regrowHours` | Hours of **real time** before an empty node refills; `0` means never (ore veins) |
+| `town` | The settlement whose stock it is |
+
+Press **E** at a node. The server owns every stock:
+
+- You must be within **2.5 m** of the node, and a gather needs a **2-second** cast. You can gather once per **1.2 seconds**.
+- Each gather takes one from the node into your **materials pouch** (a separate store from your bag). The pouch holds **999** of one material.
+- It trains the node's skill at a difficulty of `tier × 0.2`, capped at 1.
+- An empty node says how long it has left ("it comes back in about 3 hours") or that it is worked out for good.
+
+Stocks and pouches are saved (`gathering.db`), so a worked-out node **stays worked out across a restart** and comes back on the wall clock, not the tick. Node stocks also ride the world snapshot. The pouch panel in the client shows what you carry.
+
+The numbers above are `content/rules/gathering.json`: `reachM`, `cooldownSeconds`, `castSeconds`, `pouchMax`, `trainDifficultyPerTier`.
+
+## Gold, shops, trading and the auction house
+
+**Gold** is integer coins per character: no fractions and no debt. It comes from loot, quest rewards, vendors and trades; a new character starts at 0. It is private (only you are told your balance) and it survives restarts (`economy.db`), because it belongs to the character, not the avatar.
+
+### Vendors
+
+A vendor is a world entity with a price list. Press **E** at one to open its shop (the client has a vendor panel).
+
+- **Buy:** you pay the listed price and a fresh item goes into your bag. Stock is infinite or counts down per sale (`quantity`).
+- **Sell:** you sell a bag item back for `floor(price × buybackRate)`, and only items that vendor stocks ("doesn't want that" otherwise).
+- You must be within **4 m**, have the gold, and have room in your bag.
+- **Vendors never run out of gold, and there is no restock timer:** a finite stock that sells out stays out until the template is redefined.
+
+Shops are templates in `content/vendors.json` (`MMO_VENDORS` points elsewhere): a name, a `buybackRate` (0.2 to 0.4 in the shipped shops) and a stock list. `byArchetype` maps a settlement building (bakery, smithy, or `*` for anything else) to a template, and a scene node that names a vendor places a shop.
+
+### Trading between players
+
+A two-sided flow: open a trade with a player, each side offers **gold and bag items** (equipped gear stays out), both accept, and it settles.
+
+- **Changing an offer after accepting resets both accepts**: no bait and switch.
+- Either side can cancel before it settles, and **an open trade expires after 2 minutes** by default.
+- Settlement is **all or nothing.** It checks both balances, that every item is still owned and that both bags have room, and moves nothing if any check fails.
+- When the region is connected to a world server, the completing accept settles **atomically through the world tier**; if that server cannot be reached the trade is refused ("trade refused: the world tier is unreachable") and nothing moves. Standalone, it settles locally.
+
+### The auction house
+
+- **List** a bag item with a starting bid, an optional **buyout** and a duration: 24 hours by default, 1 minute at least, 48 hours at most. The item stays in your bag while listed, and a listed item cannot be listed twice. Listings live in memory, so a restart clears them, and the items never left the bag.
+- **Bid** must top the current bid. The gold leaves the bidder at once and the previous top bidder is refunded immediately.
+- **Buyout** is an instant sale at the buyout price; the top bidder, if any, is refunded.
+- **Cancel** reclaims a listing, but only while nobody has bid.
+- **Expiry:** the top bidder wins at their bid; with no bids the seller keeps the item.
+- **Every sale takes a 5% fee** (rounded down), a gold sink.
+- If the seller no longer holds the item when it settles (they traded it away), the sale aborts and every bid is refunded.
+
+**In the client today:** there is a vendor panel and a duel panel, and the pouch panel for gathering. **There is no client UI for player-to-player trade or the auction house**; both are built and exposed through the protocol (message `0x21`, actions `trade` and `auction`), so they are usable by bots and tools but not yet by a player.
 
 ## Characters
 
@@ -207,6 +353,9 @@ Where to make a change depends on what kind of thing it is:
   `content/rules/*.json`, with a hook override if you need behaviour the
   defaults do not express. Prefer data over a new branch in the engine; see
   [ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data).
+- **A spell** — an entry in `content/rules/spells.json` (see [Magic and mana](#magic-and-mana)); the only effect kind today is `heal`.
+- **Gathering** — a `ResourceNode` on a scene node, plus `content/rules/gathering.json` for reach, cooldown and pouch size (see [Gathering](#gathering)).
+- **A shop** — a template in `content/vendors.json` and a scene node that names it (see [Gold, shops, trading and the auction house](#gold-shops-trading-and-the-auction-house)).
 - **A new move** — add it to `COMBAT_MOVES` with a **new id** (never renumber
   existing ones), give it a clip, and wire the button in `CombatSystem`. Add a
   protocol test alongside the existing ones.

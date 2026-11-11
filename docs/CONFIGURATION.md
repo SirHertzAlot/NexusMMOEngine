@@ -103,7 +103,7 @@ Most of these are opt-in speed or safety switches. The defaults are the safe pat
 | `MMO_DATA_PLANE_DB` | `ws://127.0.0.1:8000/rpc` | The ledger's URL. `mem://` is a volatile in-memory store for benchmarks. An explicit value beats `MMO_DATA_PLANE_STORE`. |
 | `MMO_DATA_PLANE_USER`, `MMO_DATA_PLANE_PASS` | `root` / `root` for a remote server | Credentials for the ledger server. Override them in anything but local development. |
 | `MMO_TRANSPORT` | `auto` | `uws` forces uWebSockets.js, `ws` forces the pure-JavaScript fallback, `auto` uses uWS when its binary loads. |
-| `MMO_EDGE` | off | `1` runs the core's gateway on the edge channel, so a separate edge process serves the players. |
+| `MMO_EDGE` | off for a core started alone; `npm start` sets it | `1` runs the core's gateway on the edge channel, so a separate edge process serves the players. Native fan-out only runs on the core's own gateway, so it is off behind the edge ([NATIVE-FANOUT.md](NATIVE-FANOUT.md)). |
 | `MMO_INTEREST` | on | `0` turns interest management off: every client gets the whole region's delta. Dungeon instances always see everything. |
 | `MMO_NATIVE_FANOUT` | on | `0` keeps per-session delta assembly in JavaScript. The native path also falls back to JavaScript on its own if the addon is missing or a call throws. |
 | `MMO_FANOUT_SHARE` | `assembly` | Sessions with byte-identical envelopes share one. `off` is the rollback; `publish` is experimental. |
