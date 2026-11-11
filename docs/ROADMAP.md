@@ -44,7 +44,7 @@ What is left, by area:
 - **Physics**: ragdolls (the cost gate and slices 1 and 2, with the sleep threshold, threads and contact cap; ragdolls and CharacterVirtual are planned), dungeon physics, prop blocking without CharacterVirtual, and the zero-copy data plane.
 - **Scale and edge**: binary mirror frames (E5a) and pushing the encode off the tick (E5b) are planned. Dropping the base64 mirror stream (E5c) is in progress, and interest management (IM) and the region↔world event stream (S2) are open.
 - **Checks**: Helgrind's gate counts only our own code (#496 and #497 are merged). ThreadSanitizer runs as `npm run valgrind:tsan` (not in CI).
-- **CI**: GitHub Actions is out of credits, so every change is checked locally with `npm test` and valgrind.
+- **CI**: GitHub Actions runs `build-test` and an automated review on every pull request. As of 2026-11-11 `main` fails the first step, the no-console guard (`npm run lint`: three findings in `packages/engine-core/src/server.ts` and `packages/world-server`), so the build and tests behind it do not run. Until it is green, check every change locally with `npm test` and valgrind.
 
 ## Where things live
 

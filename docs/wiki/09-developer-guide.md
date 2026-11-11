@@ -72,7 +72,7 @@ npm start
    }
    ```
 4. **Enable the Module**:
-   Add `"my-gameplay"` to [`content/modules.json`](file:///c:/Users/user/Downloads/mmo-engine-full/content/modules.json).
+   Add `"my-gameplay"` to [`content/modules.json`](../../content/modules.json).
 
 ---
 

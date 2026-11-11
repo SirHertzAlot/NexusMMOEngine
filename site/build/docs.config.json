@@ -2,55 +2,203 @@
   "repo": "SirHertzAlot/NexusMMOEngine",
   "branch": "main",
   "groups": [
-    { "id": "start", "title": "Start here", "blurb": "Run it, understand it, and know why it is the way it is.", "pages": [
-      { "slug": "getting-started", "file": "GETTING-STARTED.md" },
-      { "slug": "architecture", "file": "ARCHITECTURE.md" },
-      { "slug": "decisions", "file": "DECISIONS.md" },
-      { "slug": "configuration", "file": "CONFIGURATION.md" },
-      { "slug": "cli", "file": "CLI.md" }
-    ]},
-    { "id": "wiki", "title": "Engine wiki", "blurb": "The technical manual, chapter by chapter.", "pages": [
-      { "slug": "engine-wiki", "file": "WIKI.md" },
-      { "slug": "wiki-index", "file": "wiki/README.md" },
-      { "slug": "wiki-architecture", "file": "wiki/01-architecture-overview.md" },
-      { "slug": "wiki-engine-game-split", "file": "wiki/02-engine-game-split.md" },
-      { "slug": "wiki-ecs", "file": "wiki/03-ecs-and-simulation.md" },
-      { "slug": "wiki-native-addons", "file": "wiki/04-native-addons.md" },
-      { "slug": "wiki-networking", "file": "wiki/05-networking-and-edge.md" },
-      { "slug": "wiki-multi-region", "file": "wiki/06-multi-region-world.md" },
-      { "slug": "wiki-procgen", "file": "wiki/07-procedural-generation.md" },
-      { "slug": "wiki-client", "file": "wiki/08-client-and-rendering.md" },
-      { "slug": "wiki-developer-guide", "file": "wiki/09-developer-guide.md" },
-      { "slug": "wiki-tooling", "file": "wiki/10-developer-tooling-and-yank-note.md" }
-    ]},
-    { "id": "content", "title": "Content and gameplay", "blurb": "Build the world, the creatures, the rules and the art.", "pages": [
-      { "slug": "gameplay", "file": "GAMEPLAY.md" },
-      { "slug": "world-building", "file": "WORLD-BUILDING.md" },
-      { "slug": "art-pipeline", "file": "ART-PIPELINE.md" },
-      { "slug": "characters-and-social", "file": "CHARACTERS-AND-SOCIAL.md" },
-      { "slug": "mastery-and-combat", "file": "MASTERY-AND-COMBAT.md" },
-      { "slug": "dungeons-and-loot", "file": "DUNGEONS-AND-LOOT.md" },
-      { "slug": "settlements", "file": "SETTLEMENTS.md" },
-      { "slug": "pcg-spec", "file": "PCG-SPEC.md" }
-    ]},
-    { "id": "editor", "title": "The editor", "blurb": "Inspect, edit and play the game without writing code.", "pages": [
-      { "slug": "editor", "file": "EDITOR.md" },
-      { "slug": "editor-architecture", "file": "EDITOR-ARCHITECTURE.md" }
-    ]},
-    { "id": "protocol", "title": "Protocol and world", "blurb": "The wire, the edge, the regions and the open world.", "pages": [
-      { "slug": "message-catalog", "file": "MESSAGE-CATALOG.md" },
-      { "slug": "edge-core-split", "file": "EDGE-CORE-SPLIT.md" },
-      { "slug": "world-server-spec", "file": "WORLD-SERVER-SPEC.md" },
-      { "slug": "open-world-plan", "file": "OPEN-WORLD-PLAN.md" }
-    ]},
-    { "id": "status", "title": "Status and results", "blurb": "What is built, what is next, and what we measured.", "pages": [
-      { "slug": "roadmap", "file": "ROADMAP.md" },
-      { "slug": "alpha-plan", "file": "ALPHA-PLAN.md" },
-      { "slug": "character-plan", "file": "CHARACTER-PLAN.md" },
-      { "slug": "client-fx", "file": "CLIENT-FX.md" },
-      { "slug": "edge-split-results", "file": "EDGE-SPLIT-RESULTS.md" },
-      { "slug": "world-stress-results", "file": "WORLD-STRESS-RESULTS.md" },
-      { "slug": "sab-logging-report", "file": "wiki/SAB-LOGGING-PERFORMANCE-REPORT.md" }
-    ]}
+    {
+      "id": "start",
+      "title": "Start here",
+      "blurb": "Run it, understand it, and know why it is the way it is.",
+      "pages": [
+        {
+          "slug": "getting-started",
+          "file": "GETTING-STARTED.md"
+        },
+        {
+          "slug": "architecture",
+          "file": "ARCHITECTURE.md"
+        },
+        {
+          "slug": "performance",
+          "file": "PERFORMANCE.md"
+        },
+        {
+          "slug": "decisions",
+          "file": "DECISIONS.md"
+        },
+        {
+          "slug": "configuration",
+          "file": "CONFIGURATION.md"
+        },
+        {
+          "slug": "cli",
+          "file": "CLI.md"
+        }
+      ]
+    },
+    {
+      "id": "wiki",
+      "title": "Engine wiki",
+      "blurb": "The technical manual, chapter by chapter.",
+      "pages": [
+        {
+          "slug": "engine-wiki",
+          "file": "WIKI.md"
+        },
+        {
+          "slug": "wiki-index",
+          "file": "wiki/README.md"
+        },
+        {
+          "slug": "wiki-architecture",
+          "file": "wiki/01-architecture-overview.md"
+        },
+        {
+          "slug": "wiki-engine-game-split",
+          "file": "wiki/02-engine-game-split.md"
+        },
+        {
+          "slug": "wiki-ecs",
+          "file": "wiki/03-ecs-and-simulation.md"
+        },
+        {
+          "slug": "wiki-native-addons",
+          "file": "wiki/04-native-addons.md"
+        },
+        {
+          "slug": "wiki-networking",
+          "file": "wiki/05-networking-and-edge.md"
+        },
+        {
+          "slug": "wiki-multi-region",
+          "file": "wiki/06-multi-region-world.md"
+        },
+        {
+          "slug": "wiki-procgen",
+          "file": "wiki/07-procedural-generation.md"
+        },
+        {
+          "slug": "wiki-client",
+          "file": "wiki/08-client-and-rendering.md"
+        },
+        {
+          "slug": "wiki-developer-guide",
+          "file": "wiki/09-developer-guide.md"
+        },
+        {
+          "slug": "wiki-tooling",
+          "file": "wiki/10-developer-tooling-and-yank-note.md"
+        }
+      ]
+    },
+    {
+      "id": "content",
+      "title": "Content and gameplay",
+      "blurb": "Build the world, the creatures, the rules and the art.",
+      "pages": [
+        {
+          "slug": "gameplay",
+          "file": "GAMEPLAY.md"
+        },
+        {
+          "slug": "world-building",
+          "file": "WORLD-BUILDING.md"
+        },
+        {
+          "slug": "art-pipeline",
+          "file": "ART-PIPELINE.md"
+        },
+        {
+          "slug": "characters-and-social",
+          "file": "CHARACTERS-AND-SOCIAL.md"
+        },
+        {
+          "slug": "mastery-and-combat",
+          "file": "MASTERY-AND-COMBAT.md"
+        },
+        {
+          "slug": "dungeons-and-loot",
+          "file": "DUNGEONS-AND-LOOT.md"
+        },
+        {
+          "slug": "settlements",
+          "file": "SETTLEMENTS.md"
+        },
+        {
+          "slug": "pcg-spec",
+          "file": "PCG-SPEC.md"
+        }
+      ]
+    },
+    {
+      "id": "editor",
+      "title": "The editor",
+      "blurb": "Inspect, edit and play the game without writing code.",
+      "pages": [
+        {
+          "slug": "editor",
+          "file": "EDITOR.md"
+        },
+        {
+          "slug": "editor-architecture",
+          "file": "EDITOR-ARCHITECTURE.md"
+        }
+      ]
+    },
+    {
+      "id": "protocol",
+      "title": "Protocol and world",
+      "blurb": "The wire, the edge, the regions and the open world.",
+      "pages": [
+        {
+          "slug": "message-catalog",
+          "file": "MESSAGE-CATALOG.md"
+        },
+        {
+          "slug": "edge-core-split",
+          "file": "EDGE-CORE-SPLIT.md"
+        },
+        {
+          "slug": "world-server-spec",
+          "file": "WORLD-SERVER-SPEC.md"
+        },
+        {
+          "slug": "open-world-plan",
+          "file": "OPEN-WORLD-PLAN.md"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "title": "Status and results",
+      "blurb": "What is built, what is next, and what we measured.",
+      "pages": [
+        {
+          "slug": "roadmap",
+          "file": "ROADMAP.md"
+        },
+        {
+          "slug": "alpha-plan",
+          "file": "ALPHA-PLAN.md"
+        },
+        {
+          "slug": "character-plan",
+          "file": "CHARACTER-PLAN.md"
+        },
+        {
+          "slug": "client-fx",
+          "file": "CLIENT-FX.md"
+        },
+        {
+          "slug": "edge-split-results",
+          "file": "EDGE-SPLIT-RESULTS.md"
+        },
+        {
+          "slug": "world-stress-results",
+          "file": "WORLD-STRESS-RESULTS.md"
+        },
+        {
+          "slug": "sab-logging-report",
+          "file": "wiki/SAB-LOGGING-PERFORMANCE-REPORT.md"
+        }
+      ]
+    }
   ]
 }

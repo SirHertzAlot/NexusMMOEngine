@@ -1,5 +1,7 @@
 # Edge / Core Split — Build Plan
 
+> **Implementation note (2026-11-11).** This is the build plan the split was written from, kept as the design record. All its slices are built (roadmap E1 to E6). The files it says to "create" (`apps/edge/src/mirror.ts`, `mirror-buffer.ts`, `tick-buffer.ts`) were not built under those names; the edge today is `apps/edge/src/` (`game-relay.ts`, `router.ts`, `edge-registry.ts`, `lifecycle.ts`, `config.ts`, `metrics.ts` and `modules/`) with the framed channel in `packages/channel`. For how it runs now, read [ARCHITECTURE.md](ARCHITECTURE.md#how-it-runs-today) and the [networking wiki chapter](wiki/05-networking-and-edge.md); for what it costs, [PERFORMANCE.md](PERFORMANCE.md).
+
 **For:** Claude (the implementing agent). **Goal:** separate the engine into two processes — the **edge** API layer (client connections, HTTP routes, generic packet router, content services) and **engine-core** (pure simulation) — with zero open decisions. Work the slices in order, E1 through E6. Do not start a slice until the previous slice's done checklist is fully green.
 
 **Why:** today the front door (player connections) and the engine room (simulation) are one process. If the core crashes or stalls, every player disconnects. After this change: core-down → the edge holds connections and degrades gracefully; edge-down → the core keeps simulating with no rollback.

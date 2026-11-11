@@ -37,8 +37,8 @@ The wiki is organized into focused, hierarchical chapters:
 ---
 
 ## 🎯 Quick Reference Links
-- Master Wiki: [`docs/WIKI.md`](file:///c:/Users/user/Downloads/mmo-engine-full/docs/WIKI.md)
-- Getting Started Guide: [`docs/GETTING-STARTED.md`](file:///c:/Users/user/Downloads/mmo-engine-full/docs/GETTING-STARTED.md)
-- Wire Schema (`mmo_engine.fbs`): [`packages/schema/mmo_engine.fbs`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/schema/mmo_engine.fbs)
-- Engine Core: [`packages/engine-core`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core)
-- Native Addons: [`packages/addons`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons)
+- Master Wiki: [`docs/WIKI.md`](../WIKI.md)
+- Getting Started Guide: [`docs/GETTING-STARTED.md`](../GETTING-STARTED.md)
+- Wire Schema (`mmo_engine.fbs`): [`packages/schema/mmo_engine.fbs`](../../packages/schema/mmo_engine.fbs)
+- Engine Core: [`packages/engine-core`](../../packages/engine-core)
+- Native Addons: [`packages/addons`](../../packages/addons)

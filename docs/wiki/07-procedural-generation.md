@@ -22,7 +22,7 @@ The procedural generation toolchain creates vast, coherent game spaces ranging f
 
 ## 2. Continuous Model Synthesis (`@mmo-engine/synthesis`)
 
-Traditional procedural generation relies on discrete grid blocks (voxels or cubic tiles), which can create repetitive tiling artifacts and rigid layouts. The Continuous Model Synthesis engine ([`packages/synthesis`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/synthesis)) synthesizes tileless 3D spaces using continuous transforms:
+Traditional procedural generation relies on discrete grid blocks (voxels or cubic tiles), which can create repetitive tiling artifacts and rigid layouts. The Continuous Model Synthesis engine ([`packages/synthesis`](../../packages/synthesis)) synthesizes tileless 3D spaces using continuous transforms:
 
 ```
 3D Source Scene (FBX)
@@ -44,7 +44,7 @@ Coherent Procedural Level (Multi-level halls, boss arenas, lofts)
 
 ## 3. Universal Measurement System (UMS) & SI Standards
 
-To ensure spaces feel authentic and physically functional for human avatars, the Universal Measurement System ([`packages/scene`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/scene)) defines authoritative scale standards:
+To ensure spaces feel authentic and physically functional for human avatars, the Universal Measurement System ([`packages/scene`](../../packages/scene)) defines authoritative scale standards:
 
 | Dimension / Metric | Standard Value | Rationale |
 | :--- | :--- | :--- |

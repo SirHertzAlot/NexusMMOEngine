@@ -12,6 +12,7 @@ or planned.
 | [WIKI.md](WIKI.md) ([wiki/](wiki/README.md)) | Master hierarchical technical manual: architecture, engine/game decoupling, ECS, native C++ addons, networking, synthesis |
 | [GETTING-STARTED.md](GETTING-STARTED.md) | Fresh clone to a playable world: prerequisites, `npm start`, editor, world server, troubleshooting |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit: the tick, the ECS, replication, persistence, streaming |
+| [PERFORMANCE.md](PERFORMANCE.md) | What the engine costs today, measured, and what that means for the game you build: per-region limits, scaling, trade-offs, what is not measured |
 | [CONFIGURATION.md](CONFIGURATION.md) | Environment variables and data files for the server, world, client, and art tools |
 | [CLI.md](CLI.md) | Every command, admin console commands, chat commands, keys |
 | [GAMEPLAY.md](GAMEPLAY.md) | Movement, combat, bots, skills, body, inventory, quests, and how to extend them |
@@ -35,6 +36,7 @@ or planned.
 |---|---|
 | [ALPHA-PLAN.md](ALPHA-PLAN.md) | What alpha means and its exit criteria |
 | [ROADMAP.md](ROADMAP.md) | Built, in progress, and planned, with an update log |
+| [DOCS-AUDIT.md](DOCS-AUDIT.md) | The latest documentation audit: what was checked, what was fixed, and what is still stale |
 | [DECISIONS.md](DECISIONS.md) | The locked engineering decisions |
 | [CHARACTER-PLAN.md](CHARACTER-PLAN.md) | Character plan |
 | [CLIENT-FX.md](CLIENT-FX.md) | Client visual effects notes |

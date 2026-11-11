@@ -8,10 +8,10 @@
 The Nexus MMO Engine is an authoritative, data-oriented spatial simulation engine engineered for large-scale persistent virtual worlds. 
 
 The architecture physically isolates:
-1. **Network Ingress & Session Handling** ([`apps/edge`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/edge))
-2. **Authoritative Simulation** ([`packages/engine-core`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core))
-3. **World Coordination & Persistence** ([`packages/world-server`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/world-server))
-4. **Client Visualization** ([`apps/client`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client))
+1. **Network Ingress & Session Handling** ([`apps/edge`](../../apps/edge))
+2. **Authoritative Simulation** ([`packages/engine-core`](../../packages/engine-core))
+3. **World Coordination & Persistence** ([`packages/world-server`](../../packages/world-server))
+4. **Client Visualization** ([`apps/client`](../../apps/client))
 
 ---
 
@@ -102,10 +102,10 @@ The loop in [`packages/engine-core/src/tick-loop.ts`](../../packages/engine-core
 The Nexus MMO Engine is an authoritative, data-oriented spatial simulation engine engineered for large-scale persistent virtual worlds. 
 
 The architecture physically isolates:
-1. **Network Ingress & Session Handling** ([`apps/edge`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/edge))
-2. **Authoritative Simulation** ([`packages/engine-core`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core))
-3. **World Coordination & Persistence** ([`packages/world-server`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/world-server))
-4. **Client Visualization** ([`apps/client`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client))
+1. **Network Ingress & Session Handling** ([`apps/edge`](../../apps/edge))
+2. **Authoritative Simulation** ([`packages/engine-core`](../../packages/engine-core))
+3. **World Coordination & Persistence** ([`packages/world-server`](../../packages/world-server))
+4. **Client Visualization** ([`apps/client`](../../apps/client))
 
 ---
 
@@ -161,7 +161,7 @@ Communication across threads uses lock-free queues over a single page-aligned `S
 
 ## 4. The 30 Hz Fixed Timestep Loop
 
-The loop in [`packages/engine-core/src/tick-loop.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/tick-loop.ts) decouples simulation time from wall-clock variance:
+The loop in [`packages/engine-core/src/tick-loop.ts`](../../packages/engine-core/src/tick-loop.ts) decouples simulation time from wall-clock variance:
 
 - **Accumulator**: Wall time is accumulated; when accumulated time exceeds $33.33\text{ms}$, a tick executes.
 - **Spiral Guard**: If frame time exceeds $166.6\text{ms}$ (5 catch-up ticks), excess backlog is dropped and counted as a `spiralEvent`. This prevents catastrophic frame death cascades.

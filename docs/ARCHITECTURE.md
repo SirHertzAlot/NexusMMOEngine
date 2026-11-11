@@ -46,8 +46,24 @@ process — no IPC, no serialisation at the boundary beyond plain typed arrays:
 | `addon-procgen` | FastNoise2: deterministic terrain heightfields |
 | `addon-picg` | PCG: cooks `.pcg` node graphs into procedural meshes |
 | `addon-scatter` | the scatter lattice (bit-identical to the JS reference) |
-| `addon-integrate` | benchmark kernel (particle integration) |
+| `addon-integrate` | benchmark kernel (particle integration), and the native movement kernel of the data plane |
+| `addon-geometry` | mesh and polygon Booleans (manifold, Clipper2) for bakes such as dungeon shells |
+| `addon-terrain-kernel` | grid-level terrain math: tectonics and erosion on the heightfield |
+| `addon-fanout` | per-tick fan-out: assembles every session's delta envelope and picks the names each session still needs ([NATIVE-FANOUT.md](NATIVE-FANOUT.md)) |
 | `addon-template` | the addon skeleton, and a toolchain smoke test |
+
+## How it runs today
+
+The diagram above is the engine at its simplest: one process does everything, and that is what `npm start` runs. The same code runs in three other shapes, each opted into with a flag. Every one of them keeps the same rule: the browser mirrors, the server decides.
+
+| Shape | Turn it on | What changes |
+|---|---|---|
+| **Standalone** (default) | nothing | One process: gateway, tick loop, persistence. Simulation and sockets share the main thread. |
+| **Edge and core** | `MMO_EDGE=1` | A separate edge process (`apps/edge`) terminates the players' WebSockets, validates and rate-limits input, and cuts per-player deltas by area of interest. The core drops its player listener and talks to the edge over a framed channel (`packages/channel`). In the edge drills (E5), a crash, restart or freeze on either side left no request hung. |
+| **Data plane** | `MMO_DATA_PLANE=1` | Three threads over one `SharedArrayBuffer`: the gateway pushes packed intents onto a lock-free ring, a 30 Hz sim worker drains them and steps native kernels, and a persistence worker drains a second ring into a durable ledger. If the sim worker dies, client sockets stay open. |
+| **Many regions** | `npm start -- --world`, plus a world server | Each region is its own process owning a range of chunks. A world server (`packages/world-server`) keeps the registry and leases and coordinates hand-offs when a player crosses a border. Player traffic never passes through it, and it never simulates. |
+
+Which of these you want depends on the player counts you plan for. [Performance and constraints](PERFORMANCE.md) has the measured cost and limits of each, and the [wiki's architecture chapter](wiki/01-architecture-overview.md) has the full diagrams.
 
 ## Locked decisions
 
@@ -58,8 +74,11 @@ casual revision:
   and procgen. The benchmark ran the same C++ kernel over a bitECS world and
   a pure C++ world: even at 10k entities, bitECS is faster at 100k, both under
   1% of the tick. See [OPEN-WORLD-PLAN.md](OPEN-WORLD-PLAN.md).
-- **SQLite embedded in the Node process** for region state; **SurrealDB
-  embedded** for the world-level chunk catalog.
+- **SQLite embedded in the region process** (`region.db`, a hot cache) for region state, with the
+  **world server as the source of truth** for world-level records when `WORLD_URL` is set. The
+  world store is embedded SurrealDB (SurrealKV by default); the recommended durable shape is the
+  SurrealMX server, which is also where the data plane's ledger goes. See
+  [DECISIONS.md](DECISIONS.md) (2026-10-28 and 2026-11-02).
 - **FlatBuffers** is the C++ ↔ JS contract, owned by
   `packages/schema/mmo_engine.fbs`.
 - **30 Hz fixed sim tick.**
@@ -91,6 +110,14 @@ packages/engine-core the authoritative server: tick loop, world, net, persist.
 packages/world-server the region registry (world-level service).
 packages/channel     the edge↔core internal channel (framed TCP).
 packages/nethealth   network metrics helpers shared by edge and core.
+packages/logging     the SAB logging layer: lock-free rings, a code dictionary with generated
+                     producers, and the log worker every server process hosts (leaf package).
+packages/build       build and deploy: profiles, the input-hash stage cache, package manifest.
+packages/playtest    automated playtests: scenario documents, headless runner, replays.
+packages/animal-rig  procedural skeletons and gaits for static animal meshes (presentation only,
+                     shared by the client and the editor's rig view).
+packages/fortify     bake-time threat-driven fortification of settlements (deterministic per seed).
+packages/synthesis   bake-time model synthesis: inverse procedural modeling and seeded growth.
 packages/bench       the tick-budget benchmark harness.
 packages/addons/*    the C++ N-API addons.
 apps/client          the player-facing browser game client (React 19 + React

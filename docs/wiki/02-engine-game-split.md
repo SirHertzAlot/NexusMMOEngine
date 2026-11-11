@@ -42,7 +42,7 @@ The Nexus MMO Engine solves this through strict **Engine / Game Decoupling**:
 
 ## 3. Pluggable Modular Architecture (`modules/`)
 
-All gameplay features are isolated into modular packages located in [`modules/<name>/`](file:///c:/Users/user/Downloads/mmo-engine-full/modules).
+All gameplay features are isolated into modular packages located in [`modules/<name>/`](../../modules).
 
 ### Anatomy of a Module: `module.json`
 Every module declares its metadata and server execution hooks:
@@ -62,7 +62,7 @@ Every module declares its metadata and server execution hooks:
 ```
 
 ### Module Selection: `content/modules.json`
-Modules are enabled or disabled by listing their names in [`content/modules.json`](file:///c:/Users/user/Downloads/mmo-engine-full/content/modules.json):
+Modules are enabled or disabled by listing their names in [`content/modules.json`](../../content/modules.json):
 ```json
 {
   "modules": [
@@ -84,7 +84,7 @@ Game rules are defined entirely as JSON data files located under `content/rules/
 - `combat.json`: Defense contests, posture recovery rates, and weapon technique parameters.
 
 ### Validation at Boot
-The [`@mmo-engine/rules`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/rules) package inspects all rules against strict Zod schemas:
+The [`@mmo-engine/rules`](../../packages/rules) package inspects all rules against strict Zod schemas:
 - A missing rule pack causes the engine to use inert defaults.
 - A present but malformed rule pack halts the boot sequence immediately, specifying the exact file, path, and error:
   ```

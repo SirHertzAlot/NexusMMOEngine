@@ -23,7 +23,7 @@ The networking subsystem decouples client socket management from authoritative s
 
 ## 2. Transport Layer (`uWebSockets.js`)
 
-In [`packages/engine-core/src/net/transport.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/net/transport.ts), the engine defines a polymorphic `Transport` interface:
+In [`packages/engine-core/src/net/transport.ts`](../../packages/engine-core/src/net/transport.ts), the engine defines a polymorphic `Transport` interface:
 
 - **`uws` (Production Default)**: Integrates `uWebSockets.js` directly over native C++ libuv/epoll sockets. Handles TLS handshakes, HTTP parsing, and WebSocket framing without touching the JavaScript event loop.
 - **`ws` (Fallback & Reference)**: Pure JavaScript implementation using `ws` over `node:http`. Provides a baseline reference for environments where native binaries are unavailable.
@@ -91,10 +91,10 @@ The continuous world is partitioned into a 2D grid of **64-meter sectors**:
 
 ## 5. Binary State Serialization
 
-The wire protocol contract is defined in [`packages/schema/mmo_engine.fbs`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/schema/mmo_engine.fbs):
+The wire protocol contract is defined in [`packages/schema/mmo_engine.fbs`](../../packages/schema/mmo_engine.fbs):
 
 ### Fast-Path v1 Binary Codec
-For high-frequency transform and velocity updates, the engine bypasses FlatBuffers builders in favor of the **Fast-Path Binary Codec** ([`fast-path.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/protocol/src/fast-path.ts)):
+For high-frequency transform and velocity updates, the engine bypasses FlatBuffers builders in favor of the **Fast-Path Binary Codec** ([`fast-path.ts`](../../packages/protocol/src/fast-path.ts)):
 - **Header (12 bytes)**: Magic `0x46` ('F'), Version `1`, Tick `u32`, Record Count `u32`.
 - **Records (32 bytes per entity)**:
   - `u64 wireId` (8 bytes)

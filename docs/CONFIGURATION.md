@@ -92,6 +92,55 @@ runs standalone, which is the normal development setup.
 
 ---
 
+## Performance, transport and logging switches
+
+Most of these are opt-in speed or safety switches. The defaults are the safe path; see [Performance and constraints](PERFORMANCE.md) for what each one buys and costs.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_DATA_PLANE` | off | `1` or `true` runs the three-thread data plane: gateway, then a lock-free input ring, then the 30 Hz sim worker, then a persistence worker. Unset runs the simulation in-process (the rollback path). |
+| `MMO_DATA_PLANE_STORE` | the SurrealMX server | The data plane's ledger. `rocksdb` restores embedded RocksDB. Boot refuses to start if the default server is unreachable (start it with `npm run db -w @mmo-engine/world-server`). |
+| `MMO_DATA_PLANE_DB` | `ws://127.0.0.1:8000/rpc` | The ledger's URL. `mem://` is a volatile in-memory store for benchmarks. An explicit value beats `MMO_DATA_PLANE_STORE`. |
+| `MMO_DATA_PLANE_USER`, `MMO_DATA_PLANE_PASS` | `root` / `root` for a remote server | Credentials for the ledger server. Override them in anything but local development. |
+| `MMO_TRANSPORT` | `auto` | `uws` forces uWebSockets.js, `ws` forces the pure-JavaScript fallback, `auto` uses uWS when its binary loads. |
+| `MMO_EDGE` | off | `1` runs the core's gateway on the edge channel, so a separate edge process serves the players. |
+| `MMO_INTEREST` | on | `0` turns interest management off: every client gets the whole region's delta. Dungeon instances always see everything. |
+| `MMO_NATIVE_FANOUT` | on | `0` keeps per-session delta assembly in JavaScript. The native path also falls back to JavaScript on its own if the addon is missing or a call throws. |
+| `MMO_FANOUT_SHARE` | `assembly` | Sessions with byte-identical envelopes share one. `off` is the rollback; `publish` is experimental. |
+| `MMO_UWS_CORK` | off | `1` batches each session's messages for a tick into one write on uWS. Not the default: its gate has not been run. |
+| `MMO_SEND_CAP_BYTES` | off | A number of bytes. A session whose envelopes are smaller than that per tick covered is sent every second tick. |
+| `MMO_SLOW_SOFT_BYTES` | `2097152` (2 MiB) | A client whose send queue passes this stops being sent to, and gets a fresh baseline once it catches up (slow-consumer policy). `0` turns the policy off. uWebSockets.js would otherwise buffer up to 64 MiB per socket and then drop sends silently. |
+| `MMO_SLOW_LOW_BYTES` | `262144` (256 KiB) | A held client resumes, with a baseline, once its queue falls to this. |
+| `MMO_SLOW_HOLD_MS` | `15000` | A client held longer than this is closed ("slow consumer"). |
+| `MMO_POSITION_ROWS` | on | `0` stops splitting out position-only transform rows (protocol v29). |
+| `MMO_LOG` | on | `0` starts no log worker; events are only counted as ring drops. Boot banners and fatal errors always go to the console. |
+| `MMO_LOG_DIR` | `<data dir>/logs` | Where the log worker writes. |
+| `MMO_HOST_ID` | the hostname | This host's id when the world assigns regions (assignment mode). |
+| `MMO_RESIDENTS_MAX` | `800` | The most resident entities (people living in the towns) at once. |
+| `MMO_RESIDENTS_FULL` | `300` | How many of them are simulated in full (`maxFull` in the residents system; see [SETTLEMENTS.md](SETTLEMENTS.md)). |
+
+## Content file locations
+
+Each of these points a content file or folder somewhere other than its default under `content/`.
+
+| Variable | Default | What it points at |
+|---|---|---|
+| `MMO_CHARACTER_RULES` | `content/settlements/character.json` | The settlement character rules. |
+| `MMO_LESSONS` | `content/lessons.json` | Lessons a pupil can take. |
+| `MMO_SETTLEMENTS` | `content/settlements` | Settlement manifests. |
+| `MMO_SPECIES_DIR` | `content/species` | Species definitions. |
+| `MMO_STRUCTURES` | `content/structures.json` | Breakable structure kinds. |
+| `MMO_VENDORS` | `content/vendors.json` | Shop templates placed in scenes. |
+
+## More world-bake switches
+
+| Variable | What it does |
+|---|---|
+| `MMO_BAKE_REGION=rx,rz` | Re-bake only one region's tiles (incremental). |
+| `MMO_BAKE_SURVEY_ONLY=1` | Re-run the survey and invalidate the tile cache without regenerating tiles. |
+
+The editor's play mode runs the built server directly. `MMO_EDITOR_REBUILD=1` (or no build yet) takes the slower `npm run server` path, which rebuilds every workspace first.
+
 ## World bake
 
 `npm run bake:world` (refuses to overwrite) or `npm run bake:world:force`

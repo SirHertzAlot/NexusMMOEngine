@@ -17,12 +17,12 @@ The engine operates across three decoupled tiers:
 
 1. **Native C++ Kernel Tier (`packages/addons`)**:
    - C++20 N-API compiled binaries executing heavy numerical operations directly in-process.
-   - **Physics & Collisions**: Jolt Physics ([`packages/addons/physics`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/physics)).
-   - **Pathfinding & Navmesh**: Recast & Detour ([`packages/addons/navigation`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/navigation)).
-   - **Procedural Noise & SIMD**: FastNoise2 and FastSIMD ([`packages/addons/procgen`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/procgen)).
-   - **Constructive Solid Geometry (CSG)**: Manifold 3D & Clipper2 ([`packages/addons/geometry`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/geometry)).
-   - **Spatial Poisson Distribution**: SIMD Poisson-disc sampling ([`packages/addons/scatter`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/scatter)).
-   - **Particle Integration Kernel**: Vectorized Euler/Verlet integration ([`packages/addons/integrate`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/integrate)).
+   - **Physics & Collisions**: Jolt Physics ([`packages/addons/physics`](../packages/addons/physics)).
+   - **Pathfinding & Navmesh**: Recast & Detour ([`packages/addons/navigation`](../packages/addons/navigation)).
+   - **Procedural Noise & SIMD**: FastNoise2 and FastSIMD ([`packages/addons/procgen`](../packages/addons/procgen)).
+   - **Constructive Solid Geometry (CSG)**: Manifold 3D & Clipper2 ([`packages/addons/geometry`](../packages/addons/geometry)).
+   - **Spatial Poisson Distribution**: SIMD Poisson-disc sampling ([`packages/addons/scatter`](../packages/addons/scatter)).
+   - **Particle Integration Kernel**: Vectorized Euler/Verlet integration ([`packages/addons/integrate`](../packages/addons/integrate)).
 
 2. **Authoritative Core Engine (`packages/engine-core`)**:
    - Node.js runtime executing a fixed 30Hz lock-free simulation loop.
@@ -139,7 +139,7 @@ To eliminate serialization tails, memory churn, and single-threaded main loop co
 - **Expected Outcome**: Eliminates all temporary string keys and `Set<string>` allocations, removing the primary source of tick-loop garbage collection pauses.
 
 ### P3: Jolt Physics Multi-Threaded Job System
-- **Action**: Configure `JPH::JobSystemThreadPool` in [`packages/addons/physics`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/physics).
+- **Action**: Configure `JPH::JobSystemThreadPool` in [`packages/addons/physics`](../packages/addons/physics).
 - **Mechanism**: While the Node.js event loop runs on one thread, Jolt spawns native OS worker threads across available CPU cores to execute broadphase and narrowphase collision solving in parallel before returning control to Node.js.
 - **Expected Outcome**: Increases physics simulation capacity from hundreds of dynamic bodies to tens of thousands of active ragdolls, projectiles, and destruction pieces without consuming main-loop CPU budget.
 

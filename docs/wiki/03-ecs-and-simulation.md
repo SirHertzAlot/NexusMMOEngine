@@ -5,7 +5,7 @@
 ---
 
 ## 1. Overview
-The simulation subsystem in [`packages/engine-core`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core) coordinates tick timing, component storage, entity lifecycle management, and spatial queries.
+The simulation subsystem in [`packages/engine-core`](../../packages/engine-core) coordinates tick timing, component storage, entity lifecycle management, and spatial queries.
 
 ---
 
@@ -39,7 +39,7 @@ The primary motion pass updates positions based on linear velocity:
 
 $$\vec{p}_{t+1} = \vec{p}_t + \vec{v}_t \cdot \Delta t$$
 
-In [`packages/addons/integrate`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons/integrate), this is executed in native C++ using SIMD vector intrinsics:
+In [`packages/addons/integrate`](../../packages/addons/integrate), this is executed in native C++ using SIMD vector intrinsics:
 - **Throughput**: 100,000 entities integrated in **$0.2024\text{ms}$** ($2.02\text{ns}$ per entity).
 - **Headroom**: Consumes only $0.6\%$ of the $33.33\text{ms}$ budget, leaving $99.4\%$ of frame time available for gameplay logic.
 
@@ -70,7 +70,7 @@ Verified in `packages/engine-core/test/bench/b3-network-injected-load.bench.mjs`
 
 ## 4. Lockless SPSC & MPSC Ring Buffers
 
-To prevent thread contention between the network gateway, simulation loop, and persistence workers, the engine utilizes lock-free atomic queues located in [`packages/engine-core/src/lockless-ring.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/lockless-ring.ts):
+To prevent thread contention between the network gateway, simulation loop, and persistence workers, the engine utilizes lock-free atomic queues located in [`packages/engine-core/src/lockless-ring.ts`](../../packages/engine-core/src/lockless-ring.ts):
 
 ### `AtomicSPSCQueue` (Single-Producer Single-Consumer)
 - Used for command dispatch from Edge to Sim Worker, and from Sim Worker to Persist Worker.
@@ -88,7 +88,7 @@ To prevent thread contention between the network gateway, simulation loop, and p
 
 Dynamic entity recycling can introduce ABA stale-slot errors if a client holds a reference to an entity ID that has since been despawned and reassigned.
 
-The [`GenerationalSlabAllocator`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/sab-store.ts) solves this:
+The [`GenerationalSlabAllocator`](../../packages/engine-core/src/sab-store.ts) solves this:
 - **Packed 32-bit Handle**:
   ```
   [ 16-bit Generation Counter | 16-bit Slot Index ]

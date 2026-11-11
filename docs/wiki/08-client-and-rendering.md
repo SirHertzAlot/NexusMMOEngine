@@ -5,7 +5,7 @@
 ---
 
 ## 1. Overview
-The client application in [`apps/client`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client) acts as a decoupled visual mirror of the authoritative server world.
+The client application in [`apps/client`](../../apps/client) acts as a decoupled visual mirror of the authoritative server world.
 
 ---
 
@@ -42,7 +42,7 @@ Canvas Output (WebGL2 / WebGPU)
 
 ## 4. Biomechanical First-Person Rig & Viewmodel
 
-The client features an articulated first-person viewmodel and arms rig ([`FirstPersonRig`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client/src/render/first-person-rig.ts)):
+The client features an articulated first-person viewmodel and arms rig ([`FirstPersonRig`](../../apps/client/src/render/first-person-rig.ts)):
 
 - **Biomechanical Camera Coupling**:
   - Lissajous idle breathing harmonics ($0.40\text{Hz}$).
