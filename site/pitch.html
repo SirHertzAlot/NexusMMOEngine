@@ -8,53 +8,13 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbcfe8' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2l8.5 5v10L12 22l-8.5-5V7z'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23fbcfe8'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;700&family=Galada&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Galada&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/nexus.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" integrity="sha384-d+vyQ0dYcymoP8ndq2hW7FGC50nqGdXUEgoOUGxbbkAJwZqL7h+jKN0GGgn9hFDS" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js" integrity="sha384-poC0r6usQOX2Ayt/VGA+t81H6V3iN9L+Irz9iO8o+s0X20tLpzc9DOOtnKxhaQSE" crossorigin="anonymous"></script>
     <style>
-        :root {
-            --text-color: #ffffff;
-            --muted-color: rgba(255, 255, 255, 0.72);
-            --glass-bg: rgba(255, 255, 255, 0.06);
-            --glass-border: rgba(255, 255, 255, 0.14);
-            --accent: #fbcfe8;
-            --on-accent: #011d17;
-            --font-main: 'Inter', sans-serif;
-            --font-heading: 'Galada', cursive;
-
-            /* Theme: the page's backdrop and the figures' palette (tweened between scenes) */
-            --bg-inner: #0b8a78;
-            --bg-mid: #044e3b;
-            --bg-outer: #011411;
-            --plate: #04201b;
-            --line-edge: #8fd3c7;
-            --line-mid: #3f7f76;
-            --line-lo: #1f4a44;
-        }
-
-        body.blue-theme {
-            --bg-inner: #0b4f8a;
-            --bg-mid: #04294e;
-            --bg-outer: #010c14;
-            --plate: #04162a;
-            --line-edge: #93c0f0;
-            --line-mid: #3d6fa6;
-            --line-lo: #1d3f66;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
         html { scroll-behavior: smooth; }
-
-        body {
-            background: radial-gradient(circle at 50% 40%, var(--bg-inner) 0%, var(--bg-mid) 50%, var(--bg-outer) 100%) fixed;
-            color: var(--text-color);
-            font-family: var(--font-main);
-            overflow-x: hidden;
-            transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        a { color: inherit; }
-        a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        body { overflow-x: hidden; }
 
         /* ---------- Parallax backdrop ---------- */
         #backdrop { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
@@ -70,97 +30,35 @@
             mask-image: radial-gradient(ellipse at center, #000 20%, transparent 72%);
         }
 
-        .orb {
-            position: absolute;
-            border-radius: 50%;
-            background: radial-gradient(circle at 35% 30%, rgba(251, 207, 232, 0.5), rgba(251, 207, 232, 0.06) 62%, transparent 72%);
-        }
-
+        .orb { position: absolute; border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(251, 207, 232, 0.5), rgba(251, 207, 232, 0.06) 62%, transparent 72%); }
         .orb.o1 { width: 220px; height: 220px; top: 8%; left: 6%; }
         .orb.o2 { width: 120px; height: 120px; top: 60%; left: 88%; opacity: 0.7; }
         .orb.o3 { width: 320px; height: 320px; top: 78%; left: 14%; opacity: 0.35; }
 
-        /* ---------- Header and the 30-second clock ---------- */
-        .header {
+        /* ---------- The 30-second clock (bottom left) ---------- */
+        .clock {
             position: fixed;
-            top: 0;
-            width: 100%;
+            left: 4%;
+            bottom: 1.6rem;
             z-index: 100;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 1.4rem 4%;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-family: var(--font-heading);
-            font-size: 1.2rem;
-            font-weight: 700;
-            text-decoration: none;
-        }
-
-        .clock {
-            font-family: 'Manrope', sans-serif;
+            gap: 0.8rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 100px;
+            font-family: var(--font-mono);
             font-variant-numeric: tabular-nums;
-            font-size: 0.85rem;
-            font-weight: 700;
+            font-size: 0.82rem;
+            font-weight: 500;
             letter-spacing: 0.08em;
-            padding: 0.55rem 1.1rem;
-            border-radius: 100px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            display: flex;
-            align-items: center;
-            gap: 0.7rem;
         }
-
-        .clock .bar { width: 90px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
+        .clock .bar { width: 110px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
         .clock .bar i { display: block; height: 100%; width: 0%; background: var(--accent); }
-        .clock .total { color: var(--muted-color); font-weight: 500; }
-
-        .gh-btn {
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 0.8rem 1.8rem;
-            border-radius: 100px;
-            font-weight: 600;
-            font-size: 0.85rem;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        .gh-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-2px); }
+        .clock .total { color: var(--muted-color); }
 
         /* Right-hand timeline: one dot per scene */
-        .timeline {
-            position: fixed;
-            right: 2.2%;
-            top: 50%;
-            transform: translateY(-50%);
-            z-index: 100;
-            display: flex;
-            flex-direction: column;
-            gap: 0.9rem;
-            align-items: flex-end;
-        }
-
-        .timeline a {
-            display: flex;
-            align-items: center;
-            gap: 0.7rem;
-            text-decoration: none;
-            font-family: 'Manrope', sans-serif;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            color: var(--muted-color);
-        }
-
+        .timeline { position: fixed; right: 2.2%; top: 50%; transform: translateY(-50%); z-index: 100; display: flex; flex-direction: column; gap: 0.9rem; align-items: flex-end; }
+        .timeline a { display: flex; align-items: center; gap: 0.7rem; text-decoration: none; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.06em; color: var(--muted-color); }
         .timeline a span { opacity: 0; transform: translateX(8px); transition: all 0.3s ease; }
         .timeline a i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.6); transition: all 0.3s ease; }
         .timeline a:hover span, .timeline a.active span { opacity: 1; transform: none; }
@@ -179,7 +77,6 @@
             padding: 7rem 7% 5rem;
             overflow: hidden;
         }
-
         .scene:nth-of-type(even) .copy { order: 2; }
 
         .big-num {
@@ -187,89 +84,50 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-family: var(--font-heading);
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-stretch: 80%;
             font-size: clamp(14rem, 34vw, 34rem);
             line-height: 1;
+            letter-spacing: -0.04em;
             color: transparent;
-            -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.14);
+            -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.13);
             pointer-events: none;
             user-select: none;
             z-index: 0;
         }
 
-        .copy { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 1.4rem; }
+        .copy { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 1.5rem; }
 
-        .eyebrow {
-            font-family: 'Manrope', sans-serif;
-            font-size: 0.75rem;
-            font-weight: 700;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--accent);
-        }
+        h1.display { font-size: var(--step-display); }
+        h2.display { font-size: clamp(3rem, 6.4vw, 7rem); position: relative; }
 
-        h1, h2 {
-            font-family: var(--font-heading);
-            font-weight: 400;
-            line-height: 0.92;
-            font-size: clamp(3.4rem, 8vw, 8.5rem);
-            color: white;
-        }
+        /* Kinetic type, per feature ------------------------------------------------ */
 
-        h1 em, h2 em { font-style: normal; color: var(--accent); }
+        /* 02 Modular: each word is a module that separates and snaps back */
+        [data-kinetic="modules"] .wd { padding: 0.04em 0.2em 0.1em; margin: 0 0.04em 0.06em 0; border-radius: 0.18em; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.22); }
+        [data-kinetic="modules"] em .wd { border-color: rgba(251, 207, 232, 0.5); }
 
-        .lead { font-size: clamp(1.15rem, 1.8vw, 1.5rem); font-weight: 500; line-height: 1.35; max-width: 30ch; }
-        .body { color: var(--muted-color); font-size: 1.02rem; line-height: 1.65; max-width: 46ch; }
-        .body code { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 0.88em; color: var(--accent); }
+        /* 03 Scalable: outlined copies of the line multiply behind it */
+        .echo-copy { position: absolute; inset: 0; pointer-events: none; color: transparent !important; -webkit-text-stroke: 1px rgba(255, 255, 255, 0.2); z-index: -1; transform-origin: 0 50%; }
+        .echo-copy.pink { -webkit-text-stroke-color: rgba(251, 207, 232, 0.24); }
+        .echo-copy em { color: transparent !important; }
 
-        .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+        /* 04 Fast: the whole line leans into the scroll */
+        [data-kinetic="speed"] .skew { display: block; will-change: transform; }
 
-        .chip {
-            font-family: 'Manrope', sans-serif;
-            font-size: 0.78rem;
-            font-weight: 700;
-            padding: 0.45rem 0.95rem;
-            border-radius: 100px;
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-        }
+        /* 06 No-code: a typewriter with a caret */
+        [data-kinetic="type"] .ch.cur { box-shadow: 3px 0 0 var(--accent); }
 
-        .chip b { color: var(--accent); font-weight: 700; }
-
-        .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
-
-        .primary-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 1.5rem;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 0.4rem 0.4rem 0.4rem 1.5rem;
-            border-radius: 100px;
-            font-weight: 700;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        .primary-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-3px); }
-
-        .plus-icon {
-            background: var(--accent);
-            color: var(--on-accent);
-            width: 38px;
-            height: 38px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            font-size: 1.3rem;
-            font-weight: 900;
-        }
-
-        .ghost-link { font-weight: 600; font-size: 0.9rem; color: var(--muted-color); text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.3); padding-bottom: 2px; }
-        .ghost-link:hover { color: white; }
+        /* 07 Git: the old line struck, the new line added */
+        .diff { display: flex; flex-direction: column; gap: 0.5rem; font-size: clamp(2rem, 3.7vw, 4.2rem); line-height: 1.02; }
+        .diff-line { position: relative; padding-left: 2.2rem; }
+        .diff-line::before { position: absolute; left: 0; top: 0.12em; font-family: var(--font-mono); font-weight: 700; font-size: 0.55em; }
+        .diff-line.del { color: rgba(255, 255, 255, 0.5); text-decoration: line-through; text-decoration-color: #ff8fa3; text-decoration-thickness: 0.07em; background: linear-gradient(90deg, rgba(255, 90, 120, 0.16), transparent 80%); border-radius: 0.12em; }
+        .diff-line.del::before { content: '−'; color: #ff8fa3; }
+        .diff-line.add { background: linear-gradient(90deg, rgba(110, 231, 183, 0.2), transparent 80%); border-radius: 0.12em; }
+        .diff-line.add::before { content: '+'; color: #6ee7b7; }
+        .diff-line.add em { color: var(--accent); }
 
         /* The figure's stage: a solid plate, because hairline plates are filled */
         .stage-wrap { position: relative; z-index: 2; perspective: 900px; }
@@ -293,39 +151,10 @@
         .figure { width: 100%; }
         .figure:empty { aspect-ratio: 5 / 4; }
 
-        .readout {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 0.4rem;
-            font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
-            font-size: 0.72rem;
-            letter-spacing: 0.06em;
-            color: var(--line-edge);
-            min-height: 1.2em;
-        }
-
+        .readout { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--line-edge); min-height: 1.2em; }
         .readout .hint { color: var(--muted-color); }
 
-        .scroll-cue {
-            position: absolute;
-            left: 50%;
-            bottom: 1.6rem;
-            transform: translateX(-50%);
-            z-index: 3;
-            font-family: 'Manrope', sans-serif;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--muted-color);
-            text-decoration: none;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
+        .scroll-cue { position: absolute; left: 50%; bottom: 1.6rem; transform: translateX(-50%); z-index: 3; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-color); text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
         .scroll-cue i { width: 1px; height: 38px; background: linear-gradient(var(--accent), transparent); animation: cue 1.8s ease-in-out infinite; transform-origin: top; }
         @keyframes cue { 0% { transform: scaleY(0); } 50% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
 
@@ -337,13 +166,13 @@
             .scene:nth-of-type(even) .copy { order: 0; }
             .stage-wrap { order: -1; }
             .timeline { display: none; }
-            .clock .bar { width: 50px; }
-            .gh-btn { display: none; }
+            .clock { left: 50%; transform: translateX(-50%); bottom: 1rem; }
+            .clock .bar { width: 70px; }
             .big-num { font-size: 18rem; }
+            .diff { font-size: clamp(1.8rem, 7vw, 3rem); }
         }
 
         @media (prefers-reduced-motion: reduce) {
-            html { scroll-behavior: auto; }
             .scroll-cue i { animation: none; }
         }
     </style>
@@ -357,20 +186,28 @@
     </div>
 
     <header class="header">
-        <a class="logo" href="#top">
+        <a class="logo" href="index.html">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M12 2L20.5 7V17L12 22L3.5 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
                 <circle cx="12" cy="12" r="2.5" fill="currentColor" />
             </svg>
             <span>Nexus</span>
         </a>
-        <div class="clock" role="timer" aria-label="Tour progress">
-            <span id="clock-now">0:00</span>
-            <span class="bar"><i id="clock-bar"></i></span>
-            <span class="total">0:30</span>
-        </div>
+        <nav class="nav" aria-label="Primary">
+            <a href="index.html" class="nav-item">Home</a>
+            <a href="pitch.html" class="nav-item active" aria-current="page">The tour</a>
+            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/GETTING-STARTED.md" class="nav-item" target="_blank" rel="noopener">Docs</a>
+            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/DECISIONS.md" class="nav-item" target="_blank" rel="noopener">Architecture</a>
+            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/ROADMAP.md" class="nav-item" target="_blank" rel="noopener">Roadmap</a>
+        </nav>
         <a class="gh-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">View on GitHub</a>
     </header>
+
+    <div class="clock glass" role="timer" aria-label="Tour progress">
+        <span id="clock-now">0:00</span>
+        <span class="bar"><i id="clock-bar"></i></span>
+        <span class="total">0:30</span>
+    </div>
 
     <nav class="timeline" aria-label="Scenes" id="timeline"></nav>
 
@@ -380,12 +217,10 @@
             <div class="big-num" aria-hidden="true">00</div>
             <div class="copy">
                 <span class="eyebrow reveal">Nexus engine · the 30-second tour</span>
-                <h1 class="reveal">Living worlds, <em>built your way.</em></h1>
+                <h1 class="display kinetic" data-kinetic="weight">Living worlds, <em>built your way.</em></h1>
                 <p class="lead reveal">An authoritative MMO engine for people who write code and people who don't.</p>
-                <p class="body reveal">A fixed 30 Hz, server-authoritative simulation with streamed 4 × 4 km worlds, an editor, and a client that only mirrors the truth. Playable end to end today, from account creation to the world.</p>
-                <div class="cta-row reveal">
-                    <a class="primary-btn" href="#s1">Start the tour <span class="plus-icon">↓</span></a>
-                </div>
+                <p class="body-text reveal">A fixed 30 Hz, server-authoritative simulation with streamed 4 × 4 km worlds, an editor, and a client that only mirrors the truth. Playable end to end today, from account creation to the world.</p>
+                <div class="reveal"><a class="primary-btn" href="#s1">Start the tour <span class="plus-icon">↓</span></a></div>
             </div>
             <div class="stage-wrap">
                 <div class="stage">
@@ -400,9 +235,9 @@
             <div class="big-num" aria-hidden="true">01</div>
             <div class="copy">
                 <span class="eyebrow reveal">01 · Extensible</span>
-                <h2 class="reveal">Plug it <em>in.</em></h2>
+                <h2 class="display kinetic reveal" data-kinetic="tracking">Plug it <em>in.</em></h2>
                 <p class="lead reveal">Add a system without touching the core.</p>
-                <p class="body reveal">Server systems, editor tools and edge services are modules with manifests. Boot orders them by <code>after</code> and <code>before</code>, and stops on a cycle with every problem listed. Native C++ comes in the same way, as an addon.</p>
+                <p class="body-text reveal">Server systems, editor tools and edge services are modules with manifests. Boot orders them by <code>after</code> and <code>before</code>, and stops on a cycle with every problem listed. Native C++ comes in the same way, as an addon.</p>
                 <div class="chips reveal"><span class="chip">Server modules</span><span class="chip">Edge modules</span><span class="chip">Editor modules</span><span class="chip">C++ addons</span></div>
             </div>
             <div class="stage-wrap">
@@ -417,9 +252,9 @@
             <div class="big-num" aria-hidden="true">02</div>
             <div class="copy">
                 <span class="eyebrow reveal">02 · Modular</span>
-                <h2 class="reveal">Every layer <em>on its own.</em></h2>
+                <h2 class="display kinetic reveal" data-kinetic="modules">Every layer <em>on its own.</em></h2>
                 <p class="lead reveal">The client is never the source of truth.</p>
-                <p class="body reveal">The client mirrors state. Behind it sit an edge for ingress, one engine process per region, and a world server that coordinates the regions. Each one is a separate process with a framed internal transport between them.</p>
+                <p class="body-text reveal">The client mirrors state. Behind it sit an edge for ingress, one engine process per region, and a world server that coordinates the regions. Each one is a separate process with a framed internal transport between them.</p>
                 <div class="chips reveal"><span class="chip">Client</span><span class="chip">Edge</span><span class="chip">Region</span><span class="chip">World server</span></div>
             </div>
             <div class="stage-wrap">
@@ -434,10 +269,14 @@
             <div class="big-num" aria-hidden="true">03</div>
             <div class="copy">
                 <span class="eyebrow reveal">03 · Scalable by design</span>
-                <h2 class="reveal">More players, <em>more regions.</em></h2>
+                <h2 class="display kinetic reveal" data-kinetic="echo">More players, <em>more regions.</em></h2>
                 <p class="lead reveal">Each region owns its simulation and its state.</p>
-                <p class="body reveal">In our stress run, one world server and 16 regions on a 4-core box, each at 30 Hz with 500 entities and 100 players crossing borders, committed every hand-off. The world server used 15% of one core.</p>
-                <div class="chips reveal"><span class="chip"><b>16</b> regions on 4 cores</span><span class="chip">hand-off p99 <b>15 ms</b></span><span class="chip">world server <b>15%</b> of a core</span></div>
+                <p class="body-text reveal">In our stress run, one world server and 16 regions on a 4‑core box, each at 30 Hz with 500 entities and 100 players crossing borders, committed every hand-off.</p>
+                <div class="stats reveal">
+                    <div class="stat"><span class="num"><span data-count="16">16</span></span><span class="cap">regions on one 4‑core box</span></div>
+                    <div class="stat"><span class="num"><span data-count="15">15</span><small>ms</small></span><span class="cap">hand-off p99</span></div>
+                    <div class="stat"><span class="num"><span data-count="15">15</span><small>%</small></span><span class="cap">of one core: the world server</span></div>
+                </div>
             </div>
             <div class="stage-wrap">
                 <div class="stage">
@@ -451,10 +290,13 @@
             <div class="big-num" aria-hidden="true">04</div>
             <div class="copy">
                 <span class="eyebrow reveal">04 · Fast</span>
-                <h2 class="reveal">Measured on <em>every change.</em></h2>
+                <h2 class="display kinetic reveal" data-kinetic="speed">Measured on <em>every change.</em></h2>
                 <p class="lead reveal">A fixed 30 Hz tick, with the hot paths in C++.</p>
-                <p class="body reveal">Jolt physics and the fan-out that decides what each player sees run natively. Each system's instruction cost is baselined under Valgrind, and a gate fails a build that gets slower.</p>
-                <div class="chips reveal"><span class="chip">1,000-entity tick <b>≈14 M</b> instructions</span><span class="chip">name selection <b>5.9 → 0.77 ms</b> at 1,000 players</span></div>
+                <p class="body-text reveal">Jolt physics and the fan-out that decides what each player sees run natively. Each system's instruction cost is baselined under Valgrind, and a gate fails a build that gets slower.</p>
+                <div class="stats reveal">
+                    <div class="stat"><span class="num">≈<span data-count="14">14</span><small>M</small></span><span class="cap">instructions per 1,000-entity tick</span></div>
+                    <div class="stat"><span class="num">5.9<small>→</small><span data-count="0.77" data-dec="2">0.77</span><small>ms</small></span><span class="cap">name selection per tick at 1,000 players</span></div>
+                </div>
             </div>
             <div class="stage-wrap">
                 <div class="stage">
@@ -468,9 +310,9 @@
             <div class="big-num" aria-hidden="true">05</div>
             <div class="copy">
                 <span class="eyebrow reveal">05 · Cross-platform</span>
-                <h2 class="reveal">Players in a browser. <em>Servers anywhere.</em></h2>
+                <h2 class="display kinetic reveal" data-kinetic="width">Players in a browser. <em>Servers anywhere.</em></h2>
                 <p class="lead reveal">One codebase on three operating systems.</p>
-                <p class="body reveal">The client is React Three Fiber, so it runs in a browser. The server and the tools run the same on Linux, macOS and Windows, and the native addons build with each platform's standard compiler.</p>
+                <p class="body-text reveal">The client is React Three Fiber, so it runs in a browser. The server and the tools run the same on Linux, macOS and Windows, and the native addons build with each platform's standard compiler.</p>
                 <div class="chips reveal"><span class="chip">Browser client</span><span class="chip">Linux</span><span class="chip">macOS</span><span class="chip">Windows</span></div>
             </div>
             <div class="stage-wrap">
@@ -485,9 +327,9 @@
             <div class="big-num" aria-hidden="true">06</div>
             <div class="copy">
                 <span class="eyebrow reveal">06 · Designed for no-code</span>
-                <h2 class="reveal">Content is data, <em>so designers ship it.</em></h2>
+                <h2 class="display kinetic reveal" data-kinetic="type">Content is data, <em>so designers ship it.</em></h2>
                 <p class="lead reveal">Add an entry and the game takes it.</p>
-                <p class="body reveal">Creature rules, loot pools, spawn tables and gameplay rules are tables in the editor, and new entries need no code change. Graph editors cover procedural assets and dungeons, and terrain is edited at world scale.</p>
+                <p class="body-text reveal">Creature rules, loot pools, spawn tables and gameplay rules are tables in the editor, and new entries need no code change. Graph editors cover procedural assets and dungeons, and terrain is edited at world scale.</p>
                 <div class="chips reveal"><span class="chip">Rules &amp; tables</span><span class="chip">PICG graphs</span><span class="chip">Dungeon tools</span><span class="chip">Terrain</span></div>
             </div>
             <div class="stage-wrap">
@@ -502,9 +344,12 @@
             <div class="big-num" aria-hidden="true">07</div>
             <div class="copy">
                 <span class="eyebrow reveal">07 · Git, built in</span>
-                <h2 class="reveal">Version control <em>in the editor.</em></h2>
+                <h2 class="display diff reveal" data-kinetic="diff" aria-label="Version control, in the editor">
+                    <span class="diff-line del" aria-hidden="true">Version control in a terminal.</span>
+                    <span class="diff-line add" aria-hidden="true">Version control <em>in the editor.</em></span>
+                </h2>
                 <p class="lead reveal">Designers and developers work in the same repo.</p>
-                <p class="body reveal">A Changes panel shows semantic diffs keyed by node id, and commits, pulls and pushes through git. Three-way merge resolves by stable ids, and soft locks keep two people out of the same document.</p>
+                <p class="body-text reveal">A Changes panel shows semantic diffs keyed by node id, and commits, pulls and pushes through git. Three-way merge resolves by stable ids, and soft locks keep two people out of the same document.</p>
                 <div class="chips reveal"><span class="chip">Semantic diffs</span><span class="chip">Three-way merge</span><span class="chip">Soft locks</span><span class="chip">Plain git</span></div>
             </div>
             <div class="stage-wrap">
@@ -519,9 +364,9 @@
             <div class="big-num" aria-hidden="true">30</div>
             <div class="copy">
                 <span class="eyebrow reveal">That was thirty seconds</span>
-                <h2 class="reveal">One engine. <em>Snapped into place.</em></h2>
+                <h2 class="display kinetic" data-kinetic="snap">One engine. <em>Snapped into place.</em></h2>
                 <p class="lead reveal">Playable end to end, from account creation to an authoritative world.</p>
-                <div class="cta-row reveal">
+                <div class="reveal" style="display:flex;gap:1rem 1.6rem;flex-wrap:wrap;align-items:center">
                     <a class="primary-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/GETTING-STARTED.md" target="_blank" rel="noopener">Get started <span class="plus-icon">+</span></a>
                     <a class="ghost-link" href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Read the roadmap</a>
                 </div>
@@ -536,11 +381,23 @@
 
     </main>
 
+    <footer class="site-footer">
+        <span>Nexus Engine · authoritative, data-oriented, extensible</span>
+        <nav aria-label="Footer">
+            <a href="index.html">Home</a>
+            <a href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">GitHub</a>
+            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
+            <a href="https://github.com/lucasmarkes/hairline" target="_blank" rel="noopener">Figures: hairline (MIT), Lucas Marques</a>
+        </nav>
+    </footer>
+
     <script>
         const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const scenes = [...document.querySelectorAll('.scene')];
         const body = document.body;
         const TOTAL_SECONDS = 30;
+        const clamp01 = (v) => Math.min(1, Math.max(0, v));
+        const hasGsap = !!(window.gsap && window.ScrollTrigger);
 
         const THEMES = {
             classic: { inner: '#0b8a78', mid: '#044e3b', outer: '#011411' },
@@ -549,7 +406,7 @@
 
         /* ---------- Timeline dots ---------- */
         const timeline = document.getElementById('timeline');
-        scenes.forEach((s, i) => {
+        scenes.forEach((s) => {
             const a = document.createElement('a');
             a.href = '#' + s.id;
             a.innerHTML = `<span>${s.dataset.label}</span><i></i>`;
@@ -582,38 +439,185 @@
                     onRead: (text) => { read.textContent = text; }
                 }));
             });
-            if (window.ScrollTrigger) ScrollTrigger.refresh();
+            if (hasGsap) ScrollTrigger.refresh();
         }).catch(err => {
             console.warn('hairline failed to load', err);
             document.documentElement.classList.add('no-figures');
         });
 
-        /* ---------- Scroll: parallax, reveals, clock, figure intensity ---------- */
+        /* ---------- Clock ---------- */
         const clockNow = document.getElementById('clock-now');
         const clockBar = document.getElementById('clock-bar');
-
         function setClock(progress) {
             const sec = Math.min(TOTAL_SECONDS, Math.round(progress * TOTAL_SECONDS));
             clockNow.textContent = '0:' + String(sec).padStart(2, '0');
             clockBar.style.width = (progress * 100).toFixed(1) + '%';
         }
 
-        if (window.gsap && window.ScrollTrigger && !reduceMotion) {
+        /* ---------- Type helpers ---------- */
+        // Wrap every character of a heading (keeping <em> and other inline tags) in spans, grouped into words.
+        function splitText(el) {
+            el.setAttribute('aria-label', el.textContent.replace(/\s+/g, ' ').trim());
+            const chars = [], words = [];
+            (function walk(node) {
+                [...node.childNodes].forEach(n => {
+                    if (n.nodeType === 3) {
+                        const frag = document.createDocumentFragment();
+                        n.textContent.split(/(\s+)/).forEach(tok => {
+                            if (!tok) return;
+                            if (/^\s+$/.test(tok)) { frag.appendChild(document.createTextNode(' ')); return; }
+                            const w = document.createElement('span');
+                            w.className = 'wd';
+                            w.setAttribute('aria-hidden', 'true');
+                            [...tok].forEach(c => {
+                                const s = document.createElement('span');
+                                s.className = 'ch';
+                                s.textContent = c;
+                                w.appendChild(s);
+                                chars.push(s);
+                            });
+                            frag.appendChild(w);
+                            words.push(w);
+                        });
+                        n.replaceWith(frag);
+                    } else if (n.nodeType === 1) { walk(n); }
+                });
+            })(el);
+            return { chars, words };
+        }
+
+        // Deterministic pseudo-random so the snap-into-place scatter is the same every visit.
+        function seeded(seed) { let a = seed; return () => { a = (a * 1664525 + 1013904223) % 4294967296; return a / 4294967296; }; }
+
+        /* Each kinetic type effect gets (progress 0..1 through its scene). `spread` swells to 1 at mid-scene. */
+        const KINETICS = {
+            // 01 Extensible: the letters extend away from the centre
+            tracking(el) {
+                const { chars } = splitText(el);
+                const n = chars.length;
+                return (p) => {
+                    const spread = Math.sin(Math.PI * p);
+                    chars.forEach((c, i) => { c.style.transform = `translateX(${((i - n / 2) * spread * 9).toFixed(1)}px)`; });
+                };
+            },
+            // 02 Modular: words are modules that drift apart, then snap together
+            modules(el) {
+                const { words } = splitText(el);
+                return (p) => {
+                    const spread = Math.sin(Math.PI * p);
+                    words.forEach((w, i) => {
+                        const dir = i % 2 ? -1 : 1;
+                        w.style.transform = `translate(${(dir * spread * 6).toFixed(1)}px, ${(dir * spread * 9).toFixed(1)}px) rotate(${(dir * spread * 1.1).toFixed(2)}deg)`;
+                    });
+                };
+            },
+            // 03 Scalable: outlined copies of the line multiply behind it
+            echo(el) {
+                splitText(el);
+                const html = el.innerHTML; // taken once, so copies never nest
+                const copies = [0, 1].map(k => {
+                    const c = document.createElement('span');
+                    c.className = 'echo-copy' + (k === 1 ? ' pink' : '');
+                    c.setAttribute('aria-hidden', 'true');
+                    c.innerHTML = html;
+                    el.appendChild(c);
+                    return c;
+                });
+                return (p) => {
+                    const spread = Math.sin(Math.PI * p);
+                    copies.forEach((c, k) => {
+                        const d = (k + 1) * spread;
+                        c.style.opacity = String(Math.min(1, spread * 3));
+                        c.style.transform = `translate(${(d * 9).toFixed(1)}px, ${(d * 8).toFixed(1)}px) scale(${(1 + d * 0.018).toFixed(3)})`;
+                    });
+                };
+            },
+            // 04 Fast: the line leans into the scroll with a motion trail (driven by scroll velocity, see below)
+            speed(el) {
+                el.innerHTML = '<span class="skew">' + el.innerHTML + '</span>';
+                const skew = el.querySelector('.skew');
+                KINETICS._speedEl = skew;
+                return () => {};
+            },
+            // 05 Cross-platform: width and weight morph, so the line reflows like a new screen size
+            width(el) {
+                const { chars } = splitText(el);
+                const apply = (w, h) => chars.forEach((c) => { c.style.fontStretch = w + '%'; c.style.fontWeight = String(h); });
+                apply(100, 800);
+                // Hold the widest height so the layout around it doesn't jump while the line rewraps.
+                requestAnimationFrame(() => { el.style.minHeight = el.offsetHeight + 'px'; apply(88, 800); });
+                return (p) => {
+                    const spread = Math.sin(Math.PI * p);
+                    chars.forEach((c, i) => {
+                        const wave = 0.5 + 0.5 * Math.sin(p * Math.PI * 4 + i * 0.4);
+                        c.style.fontStretch = (75 + 25 * (0.35 * spread + 0.65 * wave * spread + (1 - spread) * 0.5)).toFixed(1) + '%';
+                        c.style.fontWeight = String(Math.round(300 + 500 * (0.3 + 0.7 * wave)));
+                    });
+                };
+            },
+            // 06 No-code: typed out, with a caret
+            type(el) {
+                const { chars } = splitText(el);
+                const n = chars.length;
+                return (p) => {
+                    const k = Math.floor(clamp01((p - 0.12) / 0.28) * n);
+                    chars.forEach((c, i) => {
+                        c.style.opacity = i < k ? '1' : '0';
+                        c.classList.toggle('cur', i === k - 1 && k < n);
+                    });
+                };
+            },
+            // 07 Git: the old line is struck, the new one is added
+            diff(el) {
+                const del = el.querySelector('.del'), add = el.querySelector('.add');
+                return (p) => {
+                    const struck = p > 0.24;
+                    del.style.textDecorationColor = struck ? '#ff8fa3' : 'transparent';
+                    del.style.opacity = struck ? '0.55' : '1';
+                    const r = clamp01((p - 0.26) / 0.16);
+                    add.style.clipPath = `inset(0 ${((1 - r) * 100).toFixed(1)}% 0 0)`;
+                    add.style.opacity = r > 0 ? '1' : '0';
+                };
+            },
+            // 08 Close: the letters snap into place from a scatter
+            snap(el) {
+                const { chars } = splitText(el);
+                const rnd = seeded(7);
+                const scatter = chars.map(() => ({ x: (rnd() - 0.5) * 260, y: (rnd() - 0.5) * 160, r: (rnd() - 0.5) * 50 }));
+                return (p) => {
+                    const k = 1 - clamp01((p - 0.12) / 0.32);
+                    chars.forEach((c, i) => {
+                        const s = scatter[i];
+                        c.style.transform = `translate(${(s.x * k).toFixed(1)}px, ${(s.y * k).toFixed(1)}px) rotate(${(s.r * k).toFixed(1)}deg)`;
+                    });
+                };
+            }
+        };
+
+        /* ---------- Scroll: parallax, reveals, type, clock, figure intensity ---------- */
+        if (hasGsap && !reduceMotion) {
             gsap.registerPlugin(ScrollTrigger);
 
-            // Whole-tour progress drives the 30-second clock.
-            ScrollTrigger.create({
-                trigger: 'main',
-                start: 'top top',
-                end: 'bottom bottom',
-                onUpdate: (self) => setClock(self.progress)
-            });
+            ScrollTrigger.create({ trigger: 'main', start: 'top top', end: 'bottom bottom', onUpdate: (self) => setClock(self.progress) });
 
-            // Backdrop layers drift at different speeds against the page scroll.
             gsap.to('.grid-layer', { yPercent: -18, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 0.6 } });
             gsap.to('.o1', { y: -420, x: 80, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 1 } });
             gsap.to('.o2', { y: -900, x: -120, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 1.4 } });
             gsap.to('.o3', { y: -1300, x: 160, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 1.8 } });
+
+            // Scroll velocity drives the "Fast" line: lean and a trail while scrolling, settle when still.
+            let lastY = scrollY, vel = 0;
+            gsap.ticker.add(() => {
+                const y = scrollY;
+                vel += ((y - lastY) - vel) * 0.18;
+                lastY = y;
+                const el = KINETICS._speedEl;
+                if (!el) return;
+                const s = Math.max(-16, Math.min(16, -vel * 0.5));
+                const k = Math.abs(s) * 1.5;
+                el.style.transform = `skewX(${s.toFixed(2)}deg)`;
+                el.style.textShadow = k > 0.4 ? `${k.toFixed(1)}px 0 0 rgba(251,207,232,.38), ${(k * 2).toFixed(1)}px 0 0 rgba(251,207,232,.17)` : 'none';
+            });
 
             scenes.forEach((scene, i) => {
                 const num = scene.querySelector('.big-num');
@@ -622,43 +626,54 @@
                 const reveals = scene.querySelectorAll('.reveal');
                 const sceneRange = { trigger: scene, start: 'top bottom', end: 'bottom top', scrub: 0.8 };
 
-                // Three depths: the numeral slowest, the copy medium, the stage fastest, tilting in 3D.
                 gsap.fromTo(num, { yPercent: -35 }, { yPercent: 15, ease: 'none', scrollTrigger: sceneRange });
                 gsap.fromTo(copy, { y: 60 }, { y: -60, ease: 'none', scrollTrigger: sceneRange });
                 gsap.fromTo(stage,
                     { y: 120, rotateY: i % 2 ? 16 : -16, rotateX: 8, transformPerspective: 900 },
                     { y: -120, rotateY: i % 2 ? -16 : 16, rotateX: -8, ease: 'none', scrollTrigger: sceneRange });
 
-                // Copy lines reveal in sequence as the scene arrives.
-                gsap.from(reveals, {
-                    y: 40, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.09,
-                    scrollTrigger: { trigger: scene, start: 'top 62%', toggleActions: 'play none none reverse' }
+                if (reveals.length) {
+                    gsap.from(reveals, { y: 40, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.09, scrollTrigger: { trigger: scene, start: 'top 62%', toggleActions: 'play none none reverse' } });
+                }
+
+                // Count-ups: numbers run up from zero as the scene arrives.
+                scene.querySelectorAll('[data-count]').forEach(el => {
+                    const target = parseFloat(el.dataset.count), dec = parseInt(el.dataset.dec || '0', 10);
+                    const o = { v: 0 };
+                    gsap.to(o, { v: target, duration: 1.6, ease: 'power2.out', onUpdate: () => { el.textContent = o.v.toFixed(dec); },
+                        scrollTrigger: { trigger: scene, start: 'top 58%', once: true } });
+                    el.textContent = (0).toFixed(dec);
                 });
 
-                // The figure answers the scroll: intensity swells to a peak at mid-scene.
+                // Per-feature kinetic type.
+                const headline = scene.querySelector('[data-kinetic]');
+                let kin = null;
+                if (headline && headline.dataset.kinetic !== 'weight') kin = KINETICS[headline.dataset.kinetic](headline);
+
                 let last = -1;
                 ScrollTrigger.create({
-                    trigger: scene,
-                    start: 'top bottom',
-                    end: 'bottom top',
+                    trigger: scene, start: 'top bottom', end: 'bottom top',
                     onUpdate: (self) => {
+                        if (kin) kin(self.progress);
                         const fig = figures.get(scene.id);
                         if (!fig) return;
                         const v = Math.round((0.2 + 0.8 * Math.sin(Math.PI * self.progress)) * 50) / 50;
                         if (v !== last) { last = v; fig.update({ intensity: v }); }
                     }
                 });
+                if (kin) kin(0.0);
 
-                // The scene that holds the viewport's middle is the active one.
-                ScrollTrigger.create({
-                    trigger: scene,
-                    start: 'top 55%',
-                    end: 'bottom 55%',
-                    onToggle: (self) => { if (self.isActive) setActive(i); }
-                });
+                ScrollTrigger.create({ trigger: scene, start: 'top 55%', end: 'bottom 55%', onToggle: (self) => { if (self.isActive) setActive(i); } });
+            });
+
+            // The intro headline settles in from a thin weight.
+            const h1 = document.querySelector('h1[data-kinetic="weight"]');
+            const { chars: h1chars } = splitText(h1);
+            document.fonts.ready.then(() => {
+                gsap.from(h1chars, { fontWeight: 200, opacity: 0, y: 28, duration: 1, ease: 'power3.out', stagger: 0.03, delay: 0.15 });
             });
         } else {
-            // No GSAP (offline CDN) or reduced motion: still keep the clock and active dot honest.
+            // No GSAP (offline CDN) or reduced motion: static type, but keep the clock and active dot honest.
             const onScroll = () => {
                 const max = document.documentElement.scrollHeight - innerHeight;
                 setClock(max > 0 ? scrollY / max : 0);
