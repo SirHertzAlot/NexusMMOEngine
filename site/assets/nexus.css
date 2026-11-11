@@ -1,0 +1,327 @@
+/*
+ * Nexus site design system, shared by every page.
+ *
+ * Themes: "classic" (teal-green, the default) and "blue" (body.blue-theme).
+ * Pages tween --bg-* and swap the theme class; everything else reads these tokens.
+ *
+ * Type system (load the four families from the <link> in each page):
+ *   --font-display  Bricolage Grotesque: headings. A variable font with weight (200-800)
+ *                   and width (75-100%) axes, so type can move: see .kinetic below.
+ *   --font-script   Galada: the brand's script accent (logo, pink emphasis words).
+ *   --font-body     Inter: running text.
+ *   --font-mono     JetBrains Mono: numbers, readouts, labels.
+ */
+
+:root {
+    /* Colour */
+    --text-color: #ffffff;
+    --muted-color: rgba(255, 255, 255, 0.72);
+    --glass-bg: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --accent: #fbcfe8;
+    --on-accent: #011d17;
+
+    /* Themed (tweened by pages) */
+    --bg-inner: #0b8a78;
+    --bg-mid: #044e3b;
+    --bg-outer: #011411;
+    --node: #2dd4bf;
+    --plate: #04201b;
+    --line-edge: #8fd3c7;
+    --line-mid: #3f7f76;
+    --line-lo: #1f4a44;
+
+    /* Type families */
+    --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-script: 'Galada', cursive;
+    --font-body: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+    /* Fluid type scale */
+    --step--1: clamp(0.72rem, 0.7rem + 0.1vw, 0.8rem);
+    --step-0: clamp(1rem, 0.96rem + 0.2vw, 1.1rem);
+    --step-1: clamp(1.2rem, 1.05rem + 0.7vw, 1.6rem);
+    --step-2: clamp(1.6rem, 1.3rem + 1.4vw, 2.4rem);
+    --step-display: clamp(3.2rem, 7.4vw, 8rem);
+    --step-hero: clamp(5rem, 10vw, 12rem);
+
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+    /* Back-compat names used by older page CSS */
+    --font-main: var(--font-body);
+    --font-heading: var(--font-script);
+}
+
+body.blue-theme {
+    --bg-inner: #0b4f8a;
+    --bg-mid: #04294e;
+    --bg-outer: #010c14;
+    --node: #60a5fa;
+    --plate: #04162a;
+    --line-edge: #93c0f0;
+    --line-mid: #3d6fa6;
+    --line-lo: #1d3f66;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+body {
+    background: radial-gradient(circle at center, var(--bg-inner) 0%, var(--bg-mid) 50%, var(--bg-outer) 100%) fixed;
+    color: var(--text-color);
+    font-family: var(--font-body);
+    font-size: var(--step-0);
+    line-height: 1.6;
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+a { color: inherit; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* ---------- Type ---------- */
+
+.display {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-stretch: 88%;
+    font-variation-settings: 'opsz' 96;
+    line-height: 0.92;
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+}
+
+/* The script accent: pink words inside a display line */
+.display em, .script {
+    font-family: var(--font-script);
+    font-style: normal;
+    font-weight: 400;
+    font-stretch: 100%;
+    letter-spacing: 0;
+    color: var(--accent);
+    font-size: 1.12em;
+    line-height: 0.8;
+}
+
+.eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.lead {
+    font-family: var(--font-display);
+    font-size: var(--step-1);
+    font-weight: 500;
+    font-stretch: 94%;
+    font-variation-settings: 'opsz' 24;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    max-width: 30ch;
+    text-wrap: balance;
+}
+
+.body-text {
+    color: var(--muted-color);
+    font-size: var(--step-0);
+    line-height: 1.7;
+    max-width: 46ch;
+    text-wrap: pretty;
+}
+
+.body-text code, code.inline {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--accent);
+}
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Big numbers with a small mono caption */
+.stats { display: flex; flex-wrap: wrap; gap: 1.6rem 2.6rem; }
+.stat { display: flex; flex-direction: column; gap: 0.25rem; }
+.stat .num {
+    font-family: var(--font-display);
+    font-size: clamp(2.6rem, 5vw, 4.4rem);
+    font-weight: 800;
+    font-stretch: 85%;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+}
+.stat .num small { font-size: 0.5em; font-weight: 600; margin-left: 0.15em; color: var(--accent); letter-spacing: 0; }
+.stat .cap { font-family: var(--font-mono); font-size: var(--step--1); letter-spacing: 0.04em; color: var(--muted-color); max-width: 22ch; line-height: 1.4; }
+
+/* Kinetic type: pages move these (see the tour). Chars/words get wrapped by JS. */
+.kinetic .ch { display: inline-block; will-change: transform; }
+.kinetic .wd { display: inline-block; white-space: nowrap; }
+
+/* ---------- Glass pieces ---------- */
+
+.glass {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+.chip {
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    font-weight: 500;
+    padding: 0.45rem 0.95rem;
+    border-radius: 100px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+.chip b { color: var(--accent); font-weight: 700; }
+
+/* ---------- Header (same on every page) ---------- */
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.6rem 4%;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 100;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    font-size: 1.25rem;
+    font-family: var(--font-script);
+    text-decoration: none;
+}
+
+.nav {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.4rem;
+    border-radius: 100px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.nav-item {
+    font-family: var(--font-display);
+    font-stretch: 92%;
+    color: var(--muted-color);
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    padding: 0.5rem 1.15rem;
+    border-radius: 100px;
+    transition: all 0.3s ease;
+}
+
+.nav-item:hover, .nav-item.active { background: var(--accent); color: var(--on-accent); }
+
+.contact-btn, .gh-btn {
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    padding: 0.85rem 1.9rem;
+    border-radius: 100px;
+    font-family: var(--font-display);
+    font-stretch: 92%;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+.contact-btn:hover, .gh-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-2px); }
+
+.primary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 1.5rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    padding: 0.4rem 0.4rem 0.4rem 1.5rem;
+    border-radius: 100px;
+    font-family: var(--font-display);
+    font-stretch: 92%;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    width: fit-content;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+.primary-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-3px); }
+
+.plus-icon {
+    background: var(--accent);
+    color: var(--on-accent);
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 1.35rem;
+    font-weight: 900;
+    line-height: 1;
+    padding-bottom: 2px;
+}
+
+.ghost-link {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--muted-color);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 2px;
+}
+.ghost-link:hover { color: white; }
+
+/* ---------- Footer ---------- */
+
+.site-footer {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+    padding: 2rem 7% 2.4rem;
+    border-top: 1px solid var(--glass-border);
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    color: var(--muted-color);
+}
+.site-footer a { text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.25); }
+.site-footer a:hover { color: white; }
+.site-footer nav { display: flex; gap: 1.4rem; flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+    .nav { display: none; }
+    .header { padding: 1.2rem 5%; }
+    .gh-btn, .contact-btn { padding: 0.7rem 1.3rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+}

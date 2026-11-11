@@ -8,48 +8,11 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbcfe8' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2l8.5 5v10L12 22l-8.5-5V7z'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23fbcfe8'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Inter:wght@400;500&family=Manrope:wght@400;700&family=Galada&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Galada&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/nexus.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" integrity="sha384-d+vyQ0dYcymoP8ndq2hW7FGC50nqGdXUEgoOUGxbbkAJwZqL7h+jKN0GGgn9hFDS" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
     <style>
-        :root {
-            --bg-color: #0a0a0a;
-            --text-color: #ffffff;
-            --accent-color: #ffffff;
-            --muted-color: rgba(255, 255, 255, 0.7);
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --font-main: 'Inter', sans-serif;
-            --font-heading: 'Galada', cursive;
-
-            /* Dynamic Background Variables */
-            --bg-inner: #0b8a78;
-            --bg-mid: #044e3b;
-            --bg-outer: #011411;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background: radial-gradient(circle at center, var(--bg-inner) 0%, var(--bg-mid) 50%, var(--bg-outer) 100%);
-            color: var(--text-color);
-            font-family: var(--font-main);
-            overflow: hidden; /* One screen, no scroll */
-            height: 100vh;
-            transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        body.blue-theme {
-            --bg-inner: #0b4f8a;
-            --bg-mid: #04294e;
-            --bg-outer: #010c14;
-        }
-
-        a { color: inherit; }
 
         /* ---------- Rising particles ---------- */
         #bubbles-container {
@@ -77,82 +40,6 @@
             10% { opacity: 0.4; }
             90% { opacity: 0.4; }
             100% { transform: translateY(-110vh) translateX(30px) rotate(360deg); opacity: 0; }
-        }
-
-        /* ---------- Header ---------- */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 2rem 4%;
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 100;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 700;
-            font-size: 1.2rem;
-            font-family: var(--font-heading);
-            text-decoration: none;
-        }
-
-        .nav {
-            display: flex;
-            gap: 0.5rem;
-            background: var(--glass-bg);
-            padding: 0.4rem;
-            border-radius: 100px;
-            border: 1px solid var(--glass-border);
-        }
-
-        .nav.glass {
-            position: relative;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-        }
-
-        .nav-item {
-            font-family: 'Manrope', sans-serif;
-            color: var(--muted-color);
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 500;
-            padding: 0.5rem 1.2rem;
-            border-radius: 100px;
-            transition: all 0.3s ease;
-        }
-
-        .nav-item:hover,
-        .nav-item.active {
-            background: #fbcfe8;
-            color: #011d17;
-        }
-
-        .contact-btn {
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            border: none;
-            padding: 0.9rem 2rem;
-            border-radius: 100px;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            box-shadow: none;
-        }
-
-        .contact-btn:hover {
-            background: rgba(0, 0, 0, 0.7);
-            transform: translateY(-2px);
         }
 
         /* ---------- Hero ---------- */
@@ -239,42 +126,6 @@
         .description.fading { opacity: 0; }
 
         .cta-group { display: flex; }
-
-        .primary-btn {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            border: none;
-            padding: 0.4rem 0.4rem 0.4rem 1.5rem;
-            border-radius: 100px;
-            font-weight: 700;
-            cursor: pointer;
-            width: fit-content;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        .primary-btn:hover {
-            background: rgba(0, 0, 0, 0.7);
-            transform: translateY(-3px);
-        }
-
-        .plus-icon {
-            background: #fbcfe8;
-            color: #011d17;
-            width: 38px;
-            height: 38px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            font-size: 1.4rem;
-            font-weight: 900;
-            line-height: 1;
-            padding-bottom: 2px;
-        }
 
         .award-badge {
             display: flex;
@@ -365,7 +216,6 @@
             display: flex;
             align-items: center;
             gap: calc(0.5rem * var(--s));
-            font-family: 'Manrope', sans-serif;
             font-weight: 700;
             font-size: calc(0.8rem * var(--s));
             white-space: nowrap;
@@ -390,9 +240,6 @@
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
         }
-
-        body { --node: #2dd4bf; }
-        body.blue-theme { --node: #60a5fa; }
 
         .b1 { top: 25%; left: 30%; --s: 1.5; }
         .b2 { top: 60%; left: 42%; --s: 1; }
@@ -530,8 +377,6 @@
         .primary-btn, .contact-btn { will-change: transform; }
         .card { transform-style: preserve-3d; }
 
-        a:focus-visible, button:focus-visible { outline: 2px solid #fbcfe8; outline-offset: 3px; }
-
         /* ---------- Responsive ---------- */
         @media (max-width: 1200px) {
             .main-product-3d { width: 100vw; height: 60vh; top: 40%; }
@@ -561,27 +406,38 @@
             .hero-center { animation: fadeIn 0.01s forwards; }
             .award-subtitle { animation: none; color: inherit; background: none; }
         }
-    </style>
+        /* The hero is one screen: no scrolling (small screens override this below) */
+        body { overflow: hidden; height: 100vh; }
+
+        /* Type: the giant words stay in the script face; everything around them uses the shared system */
+        .eyebrow { margin-bottom: 0.4rem; }
+        .description { font-size: var(--step-0); line-height: 1.65; text-wrap: pretty; }
+        .award-title { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.14em; }
+        .award-subtitle { font-family: var(--font-display); font-stretch: 92%; font-weight: 700; letter-spacing: 0.05em; }
+        .berry { font-family: var(--font-mono); font-weight: 500; }
+        .card-info span:first-child { font-family: var(--font-display); font-stretch: 92%; font-weight: 700; font-size: 0.82rem; }
+        .card-info span:last-child { font-family: var(--font-mono); font-size: 0.62rem; }
+</style>
 </head>
 <body>
     <div id="bubbles-container"></div>
 
     <header class="header">
-        <a class="logo" href="#">
+        <a class="logo" href="index.html">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M12 2L20.5 7V17L12 22L3.5 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
                 <circle cx="12" cy="12" r="2.5" fill="currentColor" />
             </svg>
             <span>Nexus</span>
         </a>
-        <nav class="nav glass" aria-label="Primary">
-            <a href="#" class="nav-item active">Home</a>
-            <a href="https://github.com/SirHertzAlot/NexusMMOEngine#implemented-features" class="nav-item" target="_blank" rel="noopener">Features</a>
+        <nav class="nav" aria-label="Primary">
+            <a href="index.html" class="nav-item active" aria-current="page">Home</a>
+            <a href="pitch.html" class="nav-item">The tour</a>
+            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/GETTING-STARTED.md" class="nav-item" target="_blank" rel="noopener">Docs</a>
             <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/DECISIONS.md" class="nav-item" target="_blank" rel="noopener">Architecture</a>
-            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/WIKI.md" class="nav-item" target="_blank" rel="noopener">Wiki</a>
             <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/ROADMAP.md" class="nav-item" target="_blank" rel="noopener">Roadmap</a>
         </nav>
-        <a class="contact-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">View on GitHub</a>
+        <a class="gh-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">View on GitHub</a>
     </header>
 
     <main class="hero">
@@ -594,6 +450,7 @@
             </div>
 
             <div class="hero-left">
+                <span class="eyebrow">Authoritative MMO engine</span>
                 <h1 class="main-title large-animation-1">
                     <span class="outline">Living</span><br>
                     Worlds
