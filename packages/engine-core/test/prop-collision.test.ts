@@ -188,7 +188,7 @@ test("flying over a prop does not collide (no vertical overlap)", () => {
 });
 
 test("a walker is blocked by a prop that straddles a grid cell boundary, among many props", () => {
-  // The per-tick grid bins statics into 32 m cells. A prop spanning the
+  // The per-tick grid bins statics into 4 m cells. A prop spanning the
   // x = 64 boundary, with a field of other props around it, must still stop
   // a walker that reaches it from the cell on the near side.
   const sim = new SimWorld();
