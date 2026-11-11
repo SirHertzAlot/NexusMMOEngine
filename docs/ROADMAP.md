@@ -20,17 +20,10 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-<<<<<<< HEAD
 ## At a glance (2026-11-01)
 
 **279 items built, 1 in progress, 0 planned** (and 3 spikes not adopted: TS5 and TS7 closed, TS6 deferred) (counted
 from the tables below). The game is playable end to end: `npm start`
-=======
-## At a glance (2026-10-06)
-
-**85 items built, 10 in progress, 34 planned** (26 of the planned are the
-modular editor's slices). The game is playable end to end: `npm start`
->>>>>>> feat/t2-editor-telemetry-graphs
 bakes and runs it. The world (4 × 4 km bake, streaming, LOD terrain,
 biomes and wild creatures), combat and the body (stances, defence
 contests, injuries, bleeding, dismemberment, Medicine, disciplines, mana
@@ -43,7 +36,6 @@ E6, with the E5 follow-ups open) and the world server's migration and stress har
 
 What is left, by area:
 
-<<<<<<< HEAD
 - **Modular editor** (1c): only the docking shell (EA1) is open. Its layout, navigation, toolbar and deep links are implemented on `feat/editor-backend-connector`.
 - **Editor and admin**: the admin channel and the inspect and spawn commands (A1 to A3) are partly built, with search and cursor targeting still open. The appearance editor panel (A6) and bots in web workers (A7, planned) remain, along with repeated editor workflows (M9) and tooling phase 0 (TL0).
 - **Gameplay**: combat abilities (M5), currency, trading and vendors (EC1), dungeon chests, traps and the boss crystal (D4f), residents (RS3, RS5), the loading screen (LS1, planned), recorded and positional sounds (U4b, planned), enemy models (EM1, planned), dungeon decals (D4g, planned), dungeon resource nodes (RN1, planned), and weather (WX1).
@@ -53,22 +45,6 @@ What is left, by area:
 - **Scale and edge**: binary mirror frames (E5a) and pushing the encode off the tick (E5b) are planned. Dropping the base64 mirror stream (E5c) is in progress, and interest management (IM) and the region↔world event stream (S2) are open.
 - **Checks**: Helgrind's gate counts only our own code (#496 and #497 are merged). ThreadSanitizer runs as `npm run valgrind:tsan` (not in CI).
 - **CI**: GitHub Actions is out of credits, so every change is checked locally with `npm test` and valgrind.
-=======
-- **Modular editor** (1c): the docking shell, scenes and game flow,
-  modules, the database editor and production tools, EA1 to EA26.
-- **Editor and admin**: the developer panels leave the client (E5), the
-  play-mode admin tools finish (A1 to A5, cursor targeting, gold, god
-  mode, time and weather), and the appearance editor (A6).
-- **Gameplay**: armour and the rest of equipment (U10), recorded and
-  positional sounds (U4b), dungeon results ingested by the world server
-  (D4), ragdolls and character collision.
-- **Scale**: the client cutover to the edge (E3b), binary mirror frames
-  (E5a, E5b), the region↔world event stream (S2), accounts on the world
-  server (C1).
-- **Checks**: Helgrind on the threaded addons.
-- **CI**: GitHub Actions is out of credits, so every change is checked
-  locally with `npm test` and valgrind.
->>>>>>> feat/t2-editor-telemetry-graphs
 
 ## Where things live
 
