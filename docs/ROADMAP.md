@@ -508,11 +508,18 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 | SG7 | Homesteads: one family of up to 10 on a farm or ranch by itself between the towns | ✅ | Planned by `planPlaces` into `places.json` (family 2 to 10, farm or ranch by biome, 3 per town, 700 m from towns and each other, within 1.4 km of a route). The farmhouses and their fields or pens are built as scenes (`places.scene.json`); the families themselves are next Boot check: the places scene logs `[residents] 11 town(s), 52 people` in data/logs/engine.log.|
 | SG8 | Roadside places on the routes between towns: shacks, camp sites, guard outposts; an inn only beside a guard outpost (protection from bandits, raiders, thieves and wildlife) | ✅ | Routes (A* between towns, MST plus nearest links, sharing roads) and the places along them are planned into `places.json` (`settlement:places`, a `bake:all` step; its rules are the `places` section of `content/settlements/rules.json`); `test/places.test.ts`. Built as scenes (`places.scene.json`, `MMO_SCENE=places`); guards and keepers are next Boot check: the places scene logs `[residents] 11 town(s), 52 people` in data/logs/engine.log.|
 
+## 8. Public site
+
+| # | Item | Status | Needs |
+| --- | --- | --- | --- |
+| WEB1 | Landing page for the engine: `site/index.html`, one self-contained file (GSAP and three.js from a CDN, no build). A full-viewport hero with a procedural 3D engine core that tilts toward the cursor, floating stack and tool nodes the pointer pushes away, a glass header, and an Engine / Editor switch that morphs the theme, spins the core and swaps the nodes. Every claim on it comes from the README and `docs/DECISIONS.md`. No art from `/assets/` | 🚧 | Branch `feat/website`; screenshots and a GIF of the switch go with the PR, not into the repo. Hosting is not decided |
+
 ---
 
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-11**: WEB1 landing page (🚧, `feat/website`): `site/index.html`, a single-file hero page for the engine adapted from a layout spec; procedural three.js core instead of the spec's soda can, so no third-party or licensed art is used.
 - **2026-11-03**: PF3 native selectNames (#654, ✅): sectors whose id list is unchanged are skipped, so `selectNames` drops from 5.9 to 0.77 ms per tick at 1,000 players.
 - **2026-11-03**: PF2 native fan-out (#652, ✅): DeltaSet assembly and name selection run in C++, on by default. Mean tick at 1,000 players falls from 156.7 to 66.4 ms; 1,000 players is still at 43% of ticks.
 - **2026-11-03**: PF1 SectorIndex.frame leak (#650, ✅): old frames stayed reachable through `prior`, so heap grew about 26 MB/s at 200 players. Retained heap is flat after the fix and tick max falls from 356 and 383 ms to 145 and 72 ms at 200 players.
