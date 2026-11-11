@@ -52,14 +52,16 @@ Every module declares its metadata and server execution hooks:
   "version": "1.0.0",
   "description": "Orbital mechanics and thrust vectors",
   "server": {
-    "entry": "dist/index.js",
+    "entry": "server/index.js",
     "systems": [
-      { "name": "ThrustSystem", "after": ["TransformSystem"] },
-      { "name": "GravitySystem", "after": ["ThrustSystem"] }
+      { "name": "thrust", "after": "intent" },
+      { "name": "gravity", "after": "thrust" }
     ]
   }
 }
 ```
+
+The full manifest, the ordering rules and a working example are in [MODULES.md](../MODULES.md).
 
 ### Module Selection: `content/modules.json`
 Modules are enabled or disabled by listing their names in [`content/modules.json`](../../content/modules.json):

@@ -141,6 +141,17 @@ Each of these points a content file or folder somewhere other than its default u
 
 The editor's play mode runs the built server directly. `MMO_EDITOR_REBUILD=1` (or no build yet) takes the slower `npm run server` path, which rebuilds every workspace first.
 
+## Input limits: `content/rules/ingress.json`
+
+How much a client may send before the server stops listening. This is the first line of defense against floods and forged input (the full boundary is in [the networking wiki chapter](wiki/05-networking-and-edge.md)).
+
+| Setting | Value | Meaning |
+|---|---:|---|
+| `maxClientPayloadBytes` | 65536 | The largest message the server accepts from a client |
+| `intentsPerSecond`, `intentBurst` | 40, 60 | A token bucket for player intents: refilled at this rate, holding at most the burst |
+| `pickupsPerSecond`, `pickupBurst` | 5, 10 | The same for the "pickup" bucket, which also covers duels, trades, treatment and stance changes |
+| `abuseWindowSeconds`, `maxViolations` | 10, 100 | A client that is rate-limited or malformed this many times inside the window is **disconnected** ("too many requests"), once per window |
+
 ## More server and tool variables
 
 These were documented only in the server's source header and the bake script. Defaults are paths relative to the repo.

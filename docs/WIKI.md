@@ -149,11 +149,12 @@ Gameplay systems are decoupled into discrete, isolated packages located under [`
 {
   "name": "custom-propulsion",
   "version": "1.0.0",
+  "dependsOn": ["core"],
   "server": {
-    "entry": "dist/index.js",
+    "entry": "server/index.js",
     "systems": [
-      { "name": "ThrustSystem", "after": ["TransformSystem"] },
-      { "name": "AerodynamicDragSystem", "after": ["ThrustSystem"] }
+      { "name": "thrust", "after": "intent" },
+      { "name": "drag", "after": "thrust" }
     ]
   }
 }
@@ -175,7 +176,7 @@ The [`packages/rules`](../packages/rules) package validates all content rules at
    export MMO_RULES=my-game/rules
    export MMO_MODULES=my-game/modules.json
    ```
-3. Add custom game logic modules under `modules/` and declare their execution order relative to engine core systems (`TransformSystem`, `PhysicsSystem`).
+3. Add custom game logic modules under `modules/` and declare their execution order with `after` and `before` relative to the systems that exist (`intent`, `integrate`, `physics`, `combat` and so on; the real ids are in each `modules/*/module.json`). See [MODULES.md](MODULES.md).
 
 ---
 
@@ -381,12 +382,12 @@ To add a new gameplay mechanic:
      "name": "my-system",
      "version": "1.0.0",
      "server": {
-       "entry": "dist/index.js",
-       "systems": [{ "name": "CustomMovement", "after": ["TransformSystem"] }]
+       "entry": "server/index.js",
+       "systems": [{ "name": "custom-movement", "after": "intent" }]
      }
    }
    ```
-3. Export `createSystems(world)` in your entry script to operate over `bitECS` component stores.
+3. Export `createSystems(ctx)` from your entry script. It returns **an object with one system per name the manifest declares**, keyed by that name; a system is `{ name, step(sim, dt) }`, and `ctx.sim` is the `SimWorld` whose `bitECS` stores it operates over. The full contract is in [MODULES.md](MODULES.md).
 4. Add `"my-system"` to `content/modules.json`.
 
 ### 9.3 Authoring a Native C++ Addon

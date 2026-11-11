@@ -48,29 +48,27 @@ npm start
    {
      "name": "my-gameplay",
      "version": "1.0.0",
+     "dependsOn": ["core"],
      "server": {
-       "entry": "dist/index.js",
-       "systems": [
-         { "name": "CustomPhysicsSystem", "after": ["TransformSystem"] }
-       ]
+       "entry": "server/index.js",
+       "systems": [{ "name": "my-gameplay", "after": "intent" }]
      }
    }
    ```
-3. **Implement the System in `modules/my-gameplay/src/index.ts`**:
-   ```ts
-   import type { SimWorld } from "@mmo-engine/engine-core";
-   
-   export function createSystems(world: SimWorld) {
-     return [
-       {
-         name: "CustomPhysicsSystem",
-         step: (dt: number) => {
-           // Iterate over bitECS components
-         }
-       }
-     ];
+3. **Implement the system in `modules/my-gameplay/server/index.js`**. `createSystems(ctx)` returns an object with one system per name the manifest declares, keyed by that name:
+   ```js
+   export function createSystems(ctx) {
+     return {
+       "my-gameplay": {
+         name: "my-gameplay",
+         step(sim, dt) {
+           // iterate over bitECS components of ctx.sim
+         },
+       },
+     };
    }
    ```
+   The context, ordering rules and failure messages are in [MODULES.md](../MODULES.md); `modules/sample-heartbeat/` is a working example.
 4. **Enable the Module**:
    Add `"my-gameplay"` to [`content/modules.json`](../../content/modules.json).
 

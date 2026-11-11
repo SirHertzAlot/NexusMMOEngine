@@ -291,7 +291,7 @@ walk into.
 Candidates are **world-space cells**, so a candidate belongs to exactly one
 chunk and chunks agree at their borders no matter what order they load in.
 Formation tiles are solved at bake time and cached in `region.db`
-(`formation_tiles`), keyed by world seed, terrain version, plan hash, layer and
+(`formation_tiles_v2`), keyed by world seed, terrain version, plan hash, layer and
 tile index, because solving a tile takes tens of milliseconds — far too long
 for a tick. A tile missing from the cache is solved on demand.
 

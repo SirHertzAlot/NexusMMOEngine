@@ -47,6 +47,8 @@ The speed is the server's, by mode:
 | Swimming | `SWIM_SPEED` = 3 m/s |
 | Flying | `FLY_SPEED` = 12 m/s |
 
+These numbers are rules data: `content/rules/movement.json` (`walkSpeed`, `swimSpeed`, `flySpeed`, `gravity`, `jumpSpeed`, `breathSeconds`, `breathRecovery`, `drownDamagePerSecond`, `flightCeilingM` and the stamina costs below). The capitalised names in this section are the engine's code names for them.
+
 The client cannot exceed these: `sanitizeIntent` normalises your horizontal
 wish-move to unit length, so the *direction* is yours but the *speed* is the
 server's.
@@ -62,6 +64,20 @@ re-generate heightfields every tick.
 **World edge.** Your X and Z are clamped just inside the world's bounds
 (`maxX - 0.01`), so you walk into an invisible wall rather than off the map.
 
+### Stamina
+
+Exertion costs stamina (`StaminaSystem`, with the costs in `movement.json`):
+
+| Action | Cost |
+|---|---|
+| Dodge | 20, flat |
+| Attack | 10, flat |
+| Jump | 8, on the press (only from the ground) |
+| Swimming | 10 per second while you are moving |
+| Running | 6 per second |
+
+Attacks and dodges spend at the start of the move, and **a move you cannot afford never starts**. After your last spend there is a 1 second pause, then stamina regenerates at the `staminaRegen` stat (12 per second by default), slower while injured. The pool floors at zero. Climbing has no locomotion yet, so nothing drains for it.
+
 ### Swimming
 
 Walk into water deeper than `SWIM_DEPTH` = 1.3 m and you start swimming;
@@ -71,7 +87,7 @@ become vertical control at `SWIM_VERTICAL_SPEED` = 2 m/s. Afloat, your head
 Walk back into the shallows and you stand up.
 
 **Breath.** Underwater you hold `BREATH_SECONDS` = 30 s of air. Surfacing
-refills it over `BREATH_RECOVERY` = 3 s. Run out and you lose
+refills it over `breathRecovery` = 3 s. Run out and you lose
 `DROWN_DAMAGE_PER_SECOND` = 10 health per second and are pushed up toward the
 surface until you can breathe.
 
@@ -141,6 +157,81 @@ than frame-perfect.
 - **Some discipline unlocks** (sweep, lunge, throw down, reattach) are data only so far.
 - **Ragdolls and a physics character controller** are planned. See [RAGDOLL-COST-GATE.md](RAGDOLL-COST-GATE.md) for why ragdolls for every player do not fit one world today.
 - **Range filtering.** `hit` and `life` events go to every welcomed session in the region, not just those nearby.
+
+## Attributes and stats
+
+A character has five **attributes**, each 10 at the start (range 1 to 100): strength, agility, vitality, intellect and willpower. The twelve **stats** are computed from them (`content/rules/stats.json`), and buffs and statuses can modify a stat (the `guarded` status does). A stat that is not listed under "rises with" is a flat number.
+
+| Stat | Name | Base | Rises with |
+|---|---|---:|---|
+| `maxHealth` | Max health | 50 | +5 × vitality |
+| `maxStamina` | Max stamina | 100 | +2 × vitality |
+| `staminaRegen` | Stamina regeneration | 12 | none |
+| `maxMana` | Max mana | 20 | +3 × intellect |
+| `manaRegen` | Mana regeneration | 0.5 | +0.1 × willpower |
+| `healthRegen` | Health regeneration | 0 | +0.05 × vitality |
+| `moveSpeed` | Movement speed | 0.95 | +0.005 × agility |
+| `attackSpeed` | Attack speed | 0.9 | +0.01 × agility |
+| `power` | Power | 0.8 | +0.02 × strength |
+| `spellPower` | Spell power | 0.8 | +0.02 × intellect |
+| `armour` | Armour | 0 | none |
+| `resilience` | Resilience | 0 | +0.01 × willpower |
+
+## Creatures
+
+Creatures (`content/rules/creatures.json`) spawn in packs and share one behavior: they notice you inside their **aggro radius**, chase, attack, and give up and walk home if you take them past their **leash**. A pack that is killed comes back after its **respawn** time. Each kind carries its own health, a list of weapons it may carry, a chase speed (a share of walking speed), a seconds between attacks and a loot table for what it drops (rolled at the corpse).
+
+| Creature | Health | Aggro radius (m) | Leash (m) | Respawn (s) | Pack |
+|---|---:|---:|---:|---:|---:|
+| Goblin | 60 | 12 | 30 | 60 | 2 to 4 |
+| Orc | 140 | 14 | 32 | 60 | 2 to 4 |
+| Troll | 350 | 16 | 35 | 90 | 1 to 2 |
+| Ogre | 420 | 15 | 35 | 120 | 1 to 2 |
+| Wolf | 80 | 16 | 35 | 60 | 3 to 6 |
+| Bear | 260 | 12 | 30 | 90 | 1 to 2 |
+| Boar | 110 | 10 | 25 | 60 | 2 to 4 |
+| Giant Spider | 90 | 14 | 30 | 60 | 2 to 5 |
+| Skeleton | 75 | 12 | 28 | 60 | 2 to 4 |
+| Ghoul | 120 | 15 | 32 | 60 | 2 to 4 |
+| Wraith | 150 | 16 | 35 | 90 | 1 to 3 |
+| Bone Champion | 280 | 16 | 35 | 120 | 1 to 2 |
+| Lich | 500 | 18 | 40 | 180 | 1 |
+| Imp | 50 | 14 | 30 | 45 | 3 to 6 |
+| Fiend | 160 | 15 | 35 | 75 | 2 to 3 |
+| Infernal Brute | 380 | 16 | 38 | 120 | 1 to 2 |
+| Pit Lord | 800 | 20 | 45 | 240 | 1 |
+| Elemental Shard | 130 | 14 | 30 | 60 | 2 to 4 |
+| Void Watcher | 650 | 22 | 45 | 240 | 1 |
+
+The goblin attacks every 1.5 seconds and carries a dagger, axe or mace.
+
+## Hunger and thirst
+
+Every character has a hunger meter and a thirst meter (`content/rules/needs.json`). Both start full at 100 and drain per minute (hunger 2, thirst 3), **1.5 times faster while you run or swim**. A meter at zero costs 1 health per second, for each empty meter. Standing in or at water (feet within 0.5 m of the surface) refills thirst at 10 per second. Respawning refills both, so a starved player does not respawn into the same death.
+
+**What is not built:** food and drink items cannot refill a meter yet (the system has a `restore()` for them, but there is no consumable item or use action). The meters are not saved with the character, and they are not on the wire, so the client shows no meter for them.
+
+## Loot and drops
+
+A dropped item becomes a **ground item**, an ordinary entity that streams to clients like any prop (`content/rules/loot.json`).
+
+- **Ownership.** A drop belongs to whoever earned it for **30 seconds**, then to anyone.
+- **Despawn.** A drop disappears after **300 seconds** (5 minutes).
+- **Pickup.** Press **E** within **2.5 m**; the server validates range and ownership. Pickups share a rate limit with duels, treatment and trades.
+- **Bags.** A bag has **24 slots**. The region keeps at most **4096** items on the ground at once.
+- **Drops.** A creature's `drops` name a loot table and say how many rolls, and the chance, to take at the corpse. Tables (`loot.json`, `tables`) are lists of `{ base, chance, count? }` entries: `key-rack`, `chest-common`, `goblin-spoils`, `orc-spoils`, `troll-spoils`, `beast-spoils`, `undead-spoils`, `demon-spoils`, `boss-spoils`. Chests roll the `chest-common` table (see [Chests](#chests-doors-and-things-you-press-e-on)).
+
+## Chat, parties and guilds: the numbers
+
+All from `content/rules/social.json`.
+
+| | Limit |
+|---|---|
+| Party | up to 6 members; an invite lasts 60 s; a member who goes offline keeps their place 5 minutes |
+| Guild | up to 500 members; an invite lasts 60 s; message of the day up to 200 characters; the officer log keeps the last 200 entries |
+| Say | heard within 30 m; a chat line is up to 500 characters; you can block up to 200 people |
+| Chat cooldowns | say 2 s, yell 10 s, emote 2 s, whisper 1 s, party 0.5 s, guild 0.5 s |
+| Characters per account | 8 |
 
 ## Hurt, healing and death
 

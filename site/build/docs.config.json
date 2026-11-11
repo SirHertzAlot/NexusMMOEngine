@@ -20,6 +20,10 @@
           "file": "PERFORMANCE.md"
         },
         {
+          "slug": "modules",
+          "file": "MODULES.md"
+        },
+        {
           "slug": "decisions",
           "file": "DECISIONS.md"
         },

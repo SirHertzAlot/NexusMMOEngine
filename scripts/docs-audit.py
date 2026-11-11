@@ -92,6 +92,25 @@ for d in docs:
     age[d] = r
 res["last_changed"] = age
 
+# ---- G. symbols: every `identifier` a doc names should exist somewhere in the code
+corpus = set()
+src_globs = ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "packages/**/*.tsx", "packages/**/*.mjs", "packages/**/*.cpp", "packages/**/*.h",
+             "packages/**/*.fbs", "rogue-packages/**/*.ts", "rogue-packages/**/*.md", "scripts/**/*.mjs", "scripts/**/*.js", "content/**/*.json"]
+for pat in src_globs:
+    for f in glob.glob(pat, recursive=True):
+        if "/node_modules/" in f or "/dist/" in f or "/third_party/" in f or "/generated/" in f or "/build/" in f: continue
+        corpus |= set(re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", read(f)))
+ident = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?`")
+unknown = {}
+for d in docs:
+    t = re.sub(r"```.*?```", "", read(d), flags=re.S)
+    for name in set(ident.findall(t)):
+        if len(name) < 5 or name in corpus: continue
+        if name.islower() and "_" not in name: continue          # plain English words in backticks
+        if name.startswith("MMO_") or name.startswith("npm"): continue
+        unknown.setdefault(d, []).append(name)
+res["symbols_not_in_code"] = {d: sorted(v) for d, v in unknown.items()}
+
 json.dump(res, open(os.path.join(OUT, "docs-audit.json"), "w"), indent=1)
 print("docs checked:", res["docs_checked"])
 print("broken relative links:", len(broken_links))
@@ -99,4 +118,5 @@ print("backticked repo paths that do not exist:", len(res["missing_paths"]))
 print(f"env vars used in code: {len(used)}; undocumented anywhere: {len(res['env_undocumented_anywhere'])}; documented elsewhere but not in CONFIGURATION: {len(res['env_missing_from_CONFIGURATION'])}; in CONFIGURATION but unused: {len(res['env_documented_but_unused'])}")
 print(f"root npm scripts: {len(root_scripts)}; not mentioned in CLI/GETTING-STARTED/README: {len(res['root_scripts_not_in_CLI_or_GETTING_STARTED_or_README'])}; mentioned in docs but nonexistent: {len(res['scripts_mentioned_but_nonexistent'])}")
 print(f"packages/apps: {len(pkgs)}; not named in README/ARCHITECTURE: {len(res['packages_not_named_in_README_or_ARCHITECTURE'])}")
+print("docs naming symbols not found in the code:", len(unknown), "docs,", sum(len(v) for v in unknown.values()), "names")
 print(f"protocol codes: {len(codes)}; missing from catalog: {len(res['codes_in_protocol_not_in_catalog'])}; catalog-only: {len(res['codes_in_catalog_not_in_protocol'])}")

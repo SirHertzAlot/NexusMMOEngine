@@ -12,6 +12,7 @@ or planned.
 | [WIKI.md](WIKI.md) ([wiki/](wiki/README.md)) | Master hierarchical technical manual: architecture, engine/game decoupling, ECS, native C++ addons, networking, synthesis |
 | [GETTING-STARTED.md](GETTING-STARTED.md) | Fresh clone to a playable world: prerequisites, `npm start`, editor, world server, troubleshooting |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit: the tick, the ECS, replication, persistence, streaming |
+| [MODULES.md](MODULES.md) | The module system: the manifest, how modules are enabled and ordered, how to write a server module, and the 34 that ship |
 | [PERFORMANCE.md](PERFORMANCE.md) | What the engine costs today, measured, and what that means for the game you build: per-region limits, scaling, trade-offs, what is not measured |
 | [CONFIGURATION.md](CONFIGURATION.md) | Environment variables and data files for the server, world, client, and art tools |
 | [CLI.md](CLI.md) | Every command, admin console commands, chat commands, keys |
