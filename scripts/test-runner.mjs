@@ -39,6 +39,22 @@ for (const w of workspaces) {
   const testScript = pkg.scripts?.test;
   if (!testScript) continue;
 
+  // Run lifecycle pretest if present (unless it is just redundant build:deps)
+  const pretest = pkg.scripts?.pretest;
+  if (pretest && !pretest.includes("build:deps")) {
+    console.log(`\n--- [${pkg.name}:pretest] ${pretest} ---`);
+    const preResult = spawnSync(pretest, {
+      cwd: join(root, w),
+      stdio: "inherit",
+      shell: true,
+      env: { ...process.env, MMO_ORDERED_BUILD: "1" },
+    });
+    if (preResult.status !== 0) {
+      failures.push({ name: `${pkg.name} (pretest)`, status: preResult.status });
+      continue;
+    }
+  }
+
   // Strip leading build commands ("npm run build && ", "npm run build:lib && ")
   const stripped = testScript.replace(/^npm run (build|build:lib)\s*&&\s*/, "");
   console.log(`\n--- [${pkg.name}] ${stripped} ---`);
