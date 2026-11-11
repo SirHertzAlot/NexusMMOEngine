@@ -86,7 +86,7 @@ flowchart TD
 
 ## 4. The 30 Hz Fixed Timestep Loop
 
-The loop in [`packages/engine-core/src/tick-loop.ts`](../packages/engine-core/src/tick-loop.ts) and [`packages/engine-core/src/sim-worker.ts`](../packages/engine-core/src/sim-worker.ts) decouples simulation time from wall-clock variance:
+The loop in [`packages/engine-core/src/tick-loop.ts`](../../packages/engine-core/src/tick-loop.ts) and [`packages/engine-core/src/sim-worker.ts`](../../packages/engine-core/src/sim-worker.ts) decouples simulation time from wall-clock variance:
 
 - **Accumulator**: Wall time is accumulated ($dt = 1/30\text{s} = 33.33\text{ms}$). Frame gaps exceeding $250\text{ms}$ are clamped to absorb pathological pauses (tab switches, debugger stops).
 - **Spiral Guard**: At most 5 catch-up steps (`MAX_STEPS_PER_FRAME = 5`) run per frame. Excess backlog is dropped and atomically counted as a `spiralEvent` in telemetry, preventing frame death cascades.

@@ -57,7 +57,7 @@ To ensure spaces feel authentic and physically functional for human avatars, the
 ### Visual Perspective Tiers
 UMS calculates vertical and horizontal visual angles ($\theta = 2 \arctan\frac{S}{2D}$) to classify spatial perception:
 - **Intimate ($< 3\text{m}$)**: Narrow crawlspaces and catacomb tunnels ($> 45^\circ$ FoV occupancy).
-- **Room ($3–10\text{m}$)**: Functional chambers, crypts, and guard rooms.
+- **Room ($3\text{--}10\text{m}$)**: Functional chambers, crypts, and guard rooms.
 - **Monumental ($> 10\text{m}$)**: Grand boss colosseums and vaulted cathedral naves.
 
 ---
