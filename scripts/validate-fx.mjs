@@ -1,61 +1,36 @@
 #!/usr/bin/env node
 /**
- * scripts/validate-fx.mjs — validate FX asset JSON against the PR1 contract.
+ * scripts/validate-fx.mjs — validate FX asset JSON against the normative schema.
  * Usage: node scripts/validate-fx.mjs <file> [--quiet]
- * Exit 0 = valid, 2 = invalid, 1 = usage/IO error.
+ * Exit 0 = valid, 2 = invalid, 1 = usage/IO error (including missing build output).
  *
- * PR1 ships the validator dependency-free (mirrors the zod schema in
- * packages/render-fx/src/asset-schema.ts). The zod schema is the normative
- * definition; this CLI is the offline/CI mirror. Any drift between them is
- * a bug — both are pinned by packages/render-fx/test/asset-schema.test.mjs.
+ * Consumes the built normative exports from packages/render-fx/dist
+ * (validateAsset). No independent validation logic lives here; run the
+ * package build first (`npm run build --workspace=@mmo-engine/render-fx`).
  */
 import { readFileSync } from "node:fs";
-
-const MODULES = new Set([
-  "ShellModule",
-  "RingBurstModule",
-  "PoolModule",
-  "TrailModule",
-  "MuzzleFlashModule",
-  "ShieldModule",
-]);
-const TIERS = new Set(["low", "medium", "high", "ultra"]);
-
-function isParamValue(v) {
-  if (typeof v === "number") return Number.isFinite(v);
-  if (typeof v === "string") return v.length >= 1 && v.length <= 256;
-  if (Array.isArray(v)) {
-    if (v.length === 3) return v.every((n) => typeof n === "number" && Number.isFinite(n));
-    return v.length >= 1 && v.length <= 512 && v.every((n) => typeof n === "number" && Number.isFinite(n));
-  }
-  return false;
-}
-
-function validate(def) {
-  const issues = [];
-  if (typeof def !== "object" || def === null) return ["root must be an object"];
-  if (typeof def.assetId !== "string" || def.assetId.length < 1) issues.push("assetId: required");
-  if (def.version !== 1) issues.push(`version: must be 1 (got ${String(def.version)})`);
-  if (!["oneshot", "persistent"].includes(def.kind)) issues.push("kind: oneshot|persistent");
-  if (!Array.isArray(def.modules) || def.modules.length < 1 || def.modules.length > 8) {
-    issues.push("modules: must have 1..8 entries");
-  }
-  if (!Array.isArray(def.bindings) || def.bindings.length < 1) issues.push("bindings: >= 1 entry required");
-  for (const m of def.modules ?? []) {
-    if (!MODULES.has(m?.module)) issues.push(`modules: unknown module ${m?.module}`);
-    for (const [k, v] of Object.entries(m?.params ?? {})) {
-      if (!isParamValue(v)) issues.push(`modules.${m?.module}.${k}: bad ParamValue`);
-    }
-  }
-  if (def.quality !== undefined && !TIERS.has(def.quality?.minTier)) issues.push("quality.minTier: bad tier");
-  if (!["fade", "detach", "kill"].includes(def.onOrphan)) issues.push("onOrphan: fade|detach|kill");
-  return issues;
-}
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const file = process.argv[2];
 const quiet = process.argv.includes("--quiet");
 if (!file) {
   console.error("usage: node scripts/validate-fx.mjs <file> [--quiet]");
+  process.exit(1);
+}
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+let validateAsset;
+try {
+  ({ validateAsset } = require(path.join(here, "../packages/render-fx/dist/src/asset-schema.js")));
+} catch (e) {
+  console.error(
+    "validate-fx: missing build output at packages/render-fx/dist/src/asset-schema.js — " +
+      "run `npm run build --workspace=@mmo-engine/render-fx` first.",
+  );
+  console.error(`validate-fx: loader error: ${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);
 }
 
@@ -67,11 +42,11 @@ try {
   process.exit(1);
 }
 
-const issues = validate(json);
-if (issues.length > 0) {
+const result = validateAsset(json);
+if (!result.ok) {
   if (!quiet) {
     console.error(`validate-fx: INVALID ${file}`);
-    for (const i of issues) console.error(`  - ${i}`);
+    for (const i of result.issues) console.error(`  - ${i}`);
   }
   process.exit(2);
 }

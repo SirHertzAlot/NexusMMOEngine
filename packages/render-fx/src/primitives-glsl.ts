@@ -19,7 +19,12 @@ float prim_fresnel(vec3 viewNormal) {
 `;
 
 /**
- * Snippet pin for snapshot tests: every symbol the runtime requires from
- * the combined (NOISE_GLSL + FX_WARP_GLSL) chunk.
+ * Symbol pins for snapshot tests, split by the chunk that must provide them:
+ * - NOISE_GLSL ([EXISTING] glsl.ts) provides the noise family;
+ * - FX_WARP_GLSL (this file) provides only the warp + fresnel additions.
+ * A test asserting an FX_WARP_GLSL-local symbol against the FX_WARP_GLSL
+ * string is self-contained; cross-chunk presence is asserted by checking
+ * that FX_WARP_GLSL *calls* the noise family without redefining it.
  */
-export const REQUIRED_GLSL_SYMBOLS = ["fxHash(", "fxFbm(", "fxWarp2(", "prim_fresnel("] as const;
+export const REQUIRED_NOISE_SYMBOLS = ["fxHash(", "fxFbm("] as const;
+export const REQUIRED_WARP_SYMBOLS = ["fxWarp2(", "prim_fresnel("] as const;

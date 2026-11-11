@@ -19,7 +19,7 @@ export type {
 } from "./types.js";
 export { FX_TIERS } from "./types.js";
 export { effectDefinitionSchema, validateAsset, migrateAsset, resolveModuleParams } from "./asset-schema.js";
-export { FX_WARP_GLSL, REQUIRED_GLSL_SYMBOLS } from "./primitives-glsl.js";
+export { FX_WARP_GLSL, REQUIRED_NOISE_SYMBOLS, REQUIRED_WARP_SYMBOLS } from "./primitives-glsl.js";
 export {
   FRAME_GRAPH_ORDER,
   KUWAHARA_TIER_TABLE,

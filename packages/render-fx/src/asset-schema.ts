@@ -3,14 +3,18 @@
  * [PROPOSED, PR1] packages/render-fx/src/asset-schema.ts
  */
 import { z } from "zod";
-import { FX_TIERS, type EffectDefinition } from "./types.js";
+import { FX_TIERS, type EffectDefinition, type ParamValue } from "./types.js";
 
-const paramValueSchema = z.union([
-  z.number().finite(),
-  z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]),
-  z.string().min(1).max(256),
-  z.array(z.number().finite()).min(1).max(512),
-]);
+// ParamValue union, ordered most-specific-first:
+// - exact 3-tuples are vec3 (offsets/positions in metres)
+// - other finite-number arrays are ramp/curve LUT stops (1..512 entries)
+const vec3Schema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
+const lutSchema = z.array(z.number().finite()).min(1).max(512);
+
+const paramValueSchema = z.union(
+  [z.number().finite(), vec3Schema, z.string().min(1).max(256), z.number().finite().array().min(4).max(512)],
+  // 1- and 2-element arrays are rejected: vec3 is exactly 3, LUTs need >= 4 stops.
+);
 
 const paramDeclSchema = z
   .object({
@@ -72,7 +76,8 @@ export const effectDefinitionSchema = z
     quality: z
       .object({
         minTier: tierSchema,
-        slotCaps: z.record(tierSchema, z.number().int().min(0).max(1024)).optional(),
+        // Partial tiers: absent tier = no override (shield sets low: 0 to disable on Low).
+        slotCaps: z.partialRecord(tierSchema, z.number().int().min(0).max(1024)).optional(),
       })
       .strict(),
     onOrphan: z.enum(["fade", "detach", "kill"]),
