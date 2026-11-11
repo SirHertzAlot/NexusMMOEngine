@@ -17,10 +17,12 @@
 import * as THREE from "three";
 import {
   advancePhase, attackPose, deathProgress, gaitAt, legCurve, newGait, type GaitParams,
+  spineCurve, tailChain,
   avianFlightCurve, serpentineWave, aquaticWave, arachnidGait, floraSway,
 } from "./gait.js";
 import {
-  BONE_BODY, BONE_FL, BONE_HEAD, BONE_LOWER, BONE_NAMES, BONE_TAIL, namedRigType, segmentQuadruped,
+  BONE_BODY, BONE_FL, BONE_HEAD, BONE_LOWER, BONE_NAMES, BONE_LOIN, BONE_NECK,
+  BONE_TAIL, BONE_TAIL1, BONE_TAIL2, QUADRUPED_PARENTS, namedRigType, segmentQuadruped,
   segmentModel, type SegmentHints, type Segmentation,
 } from "./segment.js";
 
@@ -86,6 +88,8 @@ export class AnimalTemplate {
 
 const scratchPose = { angle: 0, lift: 0, flex: 0 };
 const scratchAttack = { windup: 0, strike: 0 };
+const scratchSpine = { chestYaw: 0, loinYaw: 0, loinPitch: 0, chestRoll: 0, neckPitch: 0, neckYaw: 0 };
+const scratchTail = new Float32Array(3);
 const scratchAvian = { wingRoll: 0, wingPitch: 0, headBob: 0 };
 const scratchAquatic = { tailYaw: 0, finPitch: 0, dorsalRoll: 0 };
 const scratchSerpentine = new Float32Array(8);
@@ -119,8 +123,7 @@ export class AnimalRig {
       b.name = name;
       this.bones.push(b);
     }
-    const defaultParents = (i: number) =>
-      i === BONE_BODY ? -1 : i >= BONE_LOWER ? i - BONE_LOWER + BONE_FL : BONE_BODY;
+    const defaultParents = (i: number) => QUADRUPED_PARENTS[i] ?? -1;
     for (let i = 0; i < this.bones.length; i++) {
       const [x, y, z] = pivots[i];
       const parentIndex = parentIndices ? parentIndices[i] : defaultParents(i);
@@ -230,23 +233,38 @@ export class AnimalRig {
       return;
     }
 
+    // Spine: the chest leads and the loin follows with a larger, lagged lateral wave; at a gallop
+    // the loin arches dorsoventrally (spineCurve). The loin carries the hind legs and the tail,
+    // so its flexion moves the haunches with it. Everything fades out with `alive`.
+    spineCurve(this.phase, g.moveW, g.gait, scratchSpine);
+    const sp = scratchSpine;
+
     const body = this.bones[BONE_BODY];
+    const loin = this.bones[BONE_LOIN];
+    const neck = this.bones[BONE_NECK];
     const bob = g.bob * Math.cos(4 * Math.PI * this.phase) * g.moveW;
     const breathe = Math.sin(this.clock * 2.1) * 0.004 * seg.height;
+    const bodyLift = (bob + breathe - windup * 0.1 * L) * alive;
     body.position.set(
       this.rest[BONE_BODY][0],
-      this.rest[BONE_BODY][1] + (bob + breathe - windup * 0.1 * L) * alive,
+      this.rest[BONE_BODY][1] + bodyLift,
       this.rest[BONE_BODY][2] + (strike * 0.35 * L - windup * 0.12 * L) * alive,
     );
-    // Gallop bounds nose-up/down; the windup rocks the weight back onto the haunches.
     const pitch = Math.sin(2 * Math.PI * this.phase) * 0.05 * g.moveW * Math.min(1, g.gait) + windup * 0.12 - strike * 0.08;
-    const trotW = g.moveW * Math.max(0, 1 - Math.max(0, g.gait - 1)); // the spine twists in walk and trot, less in a gallop
-    const twist = Math.sin(2 * Math.PI * this.phase) * 0.04 * trotW;
-    body.rotation.set(pitch * alive, twist * alive, Math.sin(2 * Math.PI * this.phase + 1.2) * 0.02 * trotW * alive);
+    const pc = pitch * alive, qc = sp.chestYaw * alive, sc = sp.chestRoll * alive;
+    body.rotation.set(pc, qc, sc);
+    const pl = (sp.loinPitch + windup * 0.1) * alive, ql = sp.loinYaw * alive, sl = -0.6 * sp.chestRoll * alive;
+    loin.rotation.set(pl, ql, sl);
+    // Neck: holds the head level against the chest's pitch and the loin's arch;
+    // lowered in the windup, thrown out in the strike.
+    neck.rotation.set((sp.neckPitch + windup * 0.2 - strike * 0.25) * alive + d * 0.25, sp.neckYaw * alive, 0);
 
-    // Legs: the upper leg swings from the hip, the lower leg bends at the knee only. The knee
-    // folds the foot back on a front leg (carpus) and forward on a hind leg (hock): the opposite way.
-    const bodyDrop = (bob + breathe - windup * 0.1 * L) * alive;
+    // Legs: the femur/humerus swings from the hip/shoulder, the knee (carpus) and hock flex only in
+    // swing, and the upper segment counter-rotates against the lower's flexion (the femur sits back
+    // as the hock folds forward, the humerus reaches as the carpus folds back): the way a real
+    // animal folds a leg. The spine's rotation would drag the hips (and any planted foot) with it,
+    // so a first-order inverse rotation is folded into the hip position: the stance foot stays put.
+    const loinRest = this.rest[BONE_LOIN];
     for (let k = 0; k < 4; k++) {
       const upper = this.bones[BONE_FL + k];
       const lower = this.bones[BONE_LOWER + k];
@@ -256,9 +274,11 @@ export class AnimalRig {
       // The foot's reach is L sin(angle): sin(angle) runs linearly through stance (constant ground
       // speed, no sliding), and the hip drops by L (1 - cos) so a straight stance leg keeps its foot down.
       const ang = Math.asin(Math.sin(g.sweep) * scratchPose.angle) * alive;
-      const flex = ((front ? g.flexF : g.flexH) * scratchPose.flex) * alive + d * 0.5;
+      const flexPeak = (front ? g.flexF : g.flexH) * scratchPose.flex * alive;
+      const flex = flexPeak + d * 0.5;
       const bend = front ? flex : -flex;
-      upper.rotation.set(-ang, 0, side * d * 0.5);
+      const contra = front ? -0.25 * flexPeak : 0.35 * flexPeak;
+      upper.rotation.set(-ang + contra, 0, side * d * 0.5);
       lower.rotation.set(bend, 0, 0);
       // Where the flexed foot would be relative to the straight leg at this angle: the knee lifts it,
       // but a leg reaching forward with a straightening lower leg would dip it below the ground, so
@@ -266,27 +286,40 @@ export class AnimalRig {
       const cosA = Math.cos(ang);
       const rise = seg.kneeHeight * (cosA - Math.cos(ang - bend));
       const clearance = Math.max(rise, 0.5 * g.lift * scratchPose.lift * g.moveW * alive);
-      upper.position.set(
-        this.rest[BONE_FL + k][0],
-        this.rest[BONE_FL + k][1] - bodyDrop - L * (1 - cosA) + (clearance - rise),
-        this.rest[BONE_FL + k][2],
-      );
+      const restU = this.rest[BONE_FL + k];
+      const ikY = -bodyLift - L * (1 - cosA) + (clearance - rise);
+      // The wanted hip, in the chest's unrotated space (through the loin for a hind leg)...
+      const vx = front ? restU[0] : loinRest[0] + restU[0];
+      const vy = (front ? restU[1] : loinRest[1] + restU[1]) + ikY;
+      const vz = front ? restU[2] : loinRest[2] + restU[2];
+      // ...minus what the chest's rotation would do to it (delta = angle x offset, small angles)...
+      const dcx = qc * vz - sc * vy, dcy = sc * vx - pc * vz, dcz = pc * vy - qc * vx;
+      let ax = restU[0] - dcx, ay = restU[1] + ikY - dcy, az = restU[2] - dcz;
+      if (!front) {
+        // ...and the loin's: a hind hip hangs one rotation deeper.
+        const dlx = ql * az - sl * ay, dly = sl * ax - pl * az, dlz = pl * ay - ql * ax;
+        ax -= dlx; ay -= dly; az -= dlz;
+      }
+      upper.position.set(ax, ay, az);
     }
 
-    // Head: steadied against the body's pitch, nodding with the stride; lowered in the windup, thrown out in the strike.
+    // Head: steadied against what is left of the chest's pitch, nodding with the stride;
+    // lowered in the windup, thrown out in the strike; watching around when idle.
     const head = this.bones[BONE_HEAD];
     head.rotation.set(
-      (-pitch * 0.8 + Math.sin(4 * Math.PI * this.phase) * 0.05 * g.moveW + windup * 0.35 - strike * 0.5 + Math.sin(this.clock * 0.7) * 0.03) * alive + d * 0.4,
-      (Math.sin(this.clock * 0.4) * 0.15 * (1 - g.moveW) - twist * 1.5) * alive,
+      (-pitch * 0.5 + Math.sin(4 * Math.PI * this.phase) * 0.05 * g.moveW + windup * 0.35 - strike * 0.5 + Math.sin(this.clock * 0.7) * 0.03) * alive + d * 0.4,
+      (Math.sin(this.clock * 0.4) * 0.15 * (1 - g.moveW)) * alive,
       0,
     );
-    // Tail: swings side to side with the stride, lagging it; a lazy drift when idle.
-    const tail = this.bones[BONE_TAIL];
-    tail.rotation.set(
-      0.1 * Math.sin(4 * Math.PI * this.phase - 0.9) * g.moveW + windup * -0.2,
-      (0.35 * Math.sin(2 * Math.PI * this.phase - 1) * g.moveW + 0.12 * Math.sin(this.clock * 1.1)) * alive,
+    // Tail: a lagged chain, the root following the stride and the tip flicking on; limp when dead.
+    tailChain(this.phase, this.clock, g.moveW, 3, scratchTail);
+    this.bones[BONE_TAIL].rotation.set(
+      (0.08 * Math.sin(4 * Math.PI * this.phase - 0.9) * g.moveW - windup * 0.2) * alive + d * 0.35,
+      scratchTail[0] * alive,
       0,
     );
+    this.bones[BONE_TAIL1].rotation.set(d * 0.25, scratchTail[1] * alive, 0);
+    this.bones[BONE_TAIL2].rotation.set(d * 0.2, scratchTail[2] * alive, 0);
 
     // Lying: roll about the feet line and lower the body so it rests on the ground.
     this.lie.rotation.z = this.fallSide * d * (Math.PI / 2);

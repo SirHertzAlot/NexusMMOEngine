@@ -1,7 +1,8 @@
 /**
  * Procedural animals: gait maths, region segmentation of a static quadruped
  * mesh (on synthetic geometry, no licensed art), and the skinned rig's
- * pose: legs swing with speed, the attack telegraphs, death lays it down.
+ * pose: legs swing with speed, the spine undulates and arches, the tail
+ * follows as a lagged chain, the attack telegraphs, death lays it down.
  */
 
 import { describe, it } from "node:test";
@@ -10,7 +11,8 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { advancePhase, attackPose, deathProgress, gaitAt, legCurve, MAX_SWEEP } from "../src/gait.js";
 import {
-  BONE_BODY, BONE_FL, BONE_FR, BONE_HEAD, BONE_HL, BONE_HR, BONE_LOWER, BONE_TAIL, findFrame, segmentQuadruped,
+  BONE_BODY, BONE_FL, BONE_FR, BONE_HEAD, BONE_HL, BONE_HR, BONE_LOWER, BONE_LOIN, BONE_NECK,
+  BONE_TAIL, BONE_TAIL1, BONE_TAIL2, findFrame, segmentQuadruped,
 } from "../src/segment.js";
 import { AnimalTemplate } from "../src/animal-rig.js";
 
@@ -21,15 +23,18 @@ function box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: num
   return g;
 }
 
-/** A dog-like animal, 1.2 m long facing +Z: body, a detailed head at the front, a thin tail, four legs. */
+/** A dog-like animal, 1.2 m long facing +Z: body, a detailed head at the front, a thin tail,
+ * four legs with haunch and shoulder mass (the upper legs carry them, as a real animal does). */
 function quadruped(): THREE.BufferGeometry {
   const parts = [
     box(-0.2, 0.2, 0.4, 0.75, -0.5, 0.35, [4, 3, 8]),
     box(-0.12, 0.12, 0.6, 0.95, 0.35, 0.6, [3, 3, 3]), // head and neck
-    box(-0.02, 0.02, 0.55, 0.65, -0.75, -0.5), // tail
+    box(-0.02, 0.02, 0.55, 0.65, -0.75, -0.5, [1, 1, 4]), // tail
   ];
   for (const x of [-0.14, 0.14]) {
+    parts.push(box(x - 0.055, x + 0.055, 0.15, 0.6, 0.16, 0.34, [1, 3, 2])); // shoulder
     parts.push(box(x - 0.04, x + 0.04, 0, 0.4, 0.2, 0.3, [1, 3, 1])); // front legs
+    parts.push(box(x - 0.055, x + 0.055, 0.15, 0.6, -0.44, -0.26, [1, 3, 2])); // haunch
     parts.push(box(x - 0.04, x + 0.04, 0, 0.4, -0.45, -0.35, [1, 3, 1])); // hind legs
   }
   return mergeGeometries(parts.map((p) => p.toNonIndexed()), false)!;
@@ -139,11 +144,15 @@ describe("quadruped segmentation", () => {
     assert.equal(dominant(-0.18, 0, -0.4), BONE_LOWER + 3);
     assert.equal(dominant(0.18, 0.27, 0.3), BONE_FL, "above the knee it is the upper leg");
     assert.equal(dominant(-0.18, 0.27, -0.4), BONE_HR);
+    assert.equal(dominant(0.18, 0.45, 0.25), BONE_FL, "the shoulder mass swings with the front leg");
+    assert.equal(dominant(-0.18, 0.45, -0.35), BONE_HR, "the haunch swings with the hind leg");
     assert.ok(seg.kneeHeight > 0.35 * seg.legLength && seg.kneeHeight < 0.65 * seg.legLength, `knee ${seg.kneeHeight} of leg ${seg.legLength}`);
     assert.ok(Math.abs(segmentQuadruped(g.getAttribute("position").array, { knee: 0.45 })!.kneeHeight - 0.45 * seg.legLength) < 1e-6, "a hint moves the knee");
     assert.equal(dominant(0, 0.95, 0.5), BONE_HEAD, "top of the head");
-    assert.equal(dominant(0, 0.6, -0.75), BONE_TAIL, "tail tip");
-    assert.equal(dominant(0, 0.6, 0), BONE_BODY, "middle of the back");
+    assert.equal(dominant(0, 0.6, -0.75), BONE_TAIL2, "tail tip is the end of the chain");
+    assert.equal(dominant(0, 0.6, -0.68), BONE_TAIL1, "tail middle follows the root");
+    assert.equal(dominant(0, 0.6, 0), BONE_BODY, "middle of the back is the chest");
+    assert.equal(dominant(0, 0.6, -0.3), BONE_LOIN, "the rump is the loin, which carries the hind legs");
     for (let i = 0; i < p.count; i++) {
       let sum = 0;
       for (let k = 0; k < 4; k++) sum += seg.skinWeight[i * 4 + k];
@@ -167,10 +176,15 @@ describe("AnimalRig", () => {
   }
   const leg = (r: ReturnType<typeof rig>, i: number): THREE.Object3D => r.skeleton.bones[i];
 
-  it("builds a skinned mesh with seven bones and the geometry skin attributes", () => {
+  it("builds a skinned mesh with the full anatomical skeleton and the geometry skin attributes", () => {
     const r = rig();
-    assert.equal(r.skeleton.bones.length, 11);
+    assert.equal(r.skeleton.bones.length, 15);
     assert.equal(r.skeleton.bones[BONE_LOWER].parent, r.skeleton.bones[BONE_FL], "the lower leg hangs off the upper leg");
+    assert.equal(r.skeleton.bones[BONE_HEAD].parent, r.skeleton.bones[BONE_NECK], "the head hangs off the neck");
+    assert.equal(r.skeleton.bones[BONE_LOIN].parent, r.skeleton.bones[BONE_BODY], "the loin follows the chest");
+    assert.equal(r.skeleton.bones[BONE_HL].parent, r.skeleton.bones[BONE_LOIN], "the hind leg swings from the loin (pelvis)");
+    assert.equal(r.skeleton.bones[BONE_TAIL].parent, r.skeleton.bones[BONE_LOIN], "the tail grows out of the loin");
+    assert.equal(r.skeleton.bones[BONE_TAIL2].parent, r.skeleton.bones[BONE_TAIL1], "the tail is a chain");
     assert.ok(r.mesh.geometry.getAttribute("skinIndex") && r.mesh.geometry.getAttribute("skinWeight"));
   });
 
@@ -178,16 +192,30 @@ describe("AnimalRig", () => {
     const r = rig();
     for (let i = 0; i < 30; i++) r.update(1 / 60, idle);
     for (const b of [BONE_FL, BONE_FR, BONE_HL, BONE_HR]) assert.ok(Math.abs(leg(r, b).rotation.x) < 1e-6, "legs hang");
-    let diag = 0, swung = 0;
+    for (const b of [BONE_LOIN, BONE_NECK, BONE_BODY]) assert.ok(Math.abs(leg(r, b).rotation.y) < 1e-6, "the spine is quiet");
+    // Diagonal coupling, measured where it matters: the feet. In a trot the front-left and
+    // hind-right feet stride together (the upper bones differ by the femur's counter-flexion).
+    const fl = sole(r, 0), hr = sole(r, 3), fr = sole(r, 1);
+    const zf: number[] = [], zh: number[] = [], zr: number[] = [];
+    const p = new THREE.Vector3();
     for (let i = 0; i < 240; i++) {
       r.update(1 / 60, { ...idle, speed: 2.0 });
       if (i > 120) {
-        diag = Math.max(diag, Math.abs(leg(r, BONE_FL).rotation.x - leg(r, BONE_HR).rotation.x));
-        swung = Math.max(swung, Math.abs(leg(r, BONE_FL).rotation.x));
+        r.mesh.updateMatrixWorld(true);
+        zf.push(soleAt(r, fl, p).z);
+        zh.push(soleAt(r, hr, p.clone()).z);
+        zr.push(soleAt(r, fr, p.clone()).z);
       }
     }
-    assert.ok(swung > 0.2, `legs swing (${swung})`);
-    assert.ok(diag < 0.12, "front-left and hind-right move together in a trot");
+    const spread = (a: number[]): number => Math.max(...a) - Math.min(...a);
+    const mean = (a: number[]): number => a.reduce((s, v) => s + v, 0) / a.length;
+    const resid = (a: number[], b: number[]): number => {
+      const ma = mean(a), mb = mean(b);
+      return spread(a.map((v, i) => (v - ma) - (b[i]! - mb)));
+    };
+    assert.ok(spread(zf) > 0.15, `the foot strides (${spread(zf).toFixed(3)} m)`);
+    const diag = resid(zf, zh), lat = resid(zf, zr);
+    assert.ok(diag < 0.35 * lat, `diagonal feet move together (diag ${diag.toFixed(3)} vs lateral ${lat.toFixed(3)})`);
   });
 
   it("plants the stance foot: it stays on the ground and does not slide against it", () => {
@@ -270,9 +298,11 @@ describe("AnimalRig", () => {
       n++;
     }
     assert.ok(hi > 0.2 && lo < -0.2, `swings both ways (${lo.toFixed(2)} .. ${hi.toFixed(2)})`);
-    assert.ok(Math.abs(hi + lo) < 0.06 * (hi - lo), "peak forward equals peak back");
+    // The shoulder's counter-flexion deepens the forward reach in swing (the humerus reaches as
+    // the carpus folds), so the arc is allowed to lean forward — but only by a small share.
+    assert.ok(Math.abs(hi + lo) < 0.25 * (hi - lo), "peak forward roughly equals peak back");
     // The mean is not zero (stance is slower than swing), but it stays a small share of the range.
-    assert.ok(Math.abs(sum / n) < 0.25 * (hi - lo));
+    assert.ok(Math.abs(sum / n) < 0.3 * (hi - lo));
   });
 
   it("bends the hind hock the opposite way to the front knee", () => {
@@ -285,6 +315,54 @@ describe("AnimalRig", () => {
       if (Math.abs(h) > Math.abs(hind)) hind = h;
     }
     assert.ok(front > 0.5 && hind < -0.4, `front knee ${front.toFixed(2)}, hind hock ${hind.toFixed(2)}`);
+  });
+
+  it("locomotes with the spine: the loin leads the lateral wave and arches harder at a gallop", () => {
+    const r = rig();
+    let loinYawWalk = 0, chestYawWalk = 0, loinPitchWalk = 0, loinPitchGallop = 0;
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: i < 360 ? 1.2 : 6.0 });
+      if (i < 120) continue;
+      if (i < 360) {
+        loinYawWalk = Math.max(loinYawWalk, Math.abs(leg(r, BONE_LOIN).rotation.y));
+        chestYawWalk = Math.max(chestYawWalk, Math.abs(leg(r, BONE_BODY).rotation.y));
+        loinPitchWalk = Math.max(loinPitchWalk, Math.abs(leg(r, BONE_LOIN).rotation.x));
+      } else {
+        loinPitchGallop = Math.max(loinPitchGallop, Math.abs(leg(r, BONE_LOIN).rotation.x));
+      }
+    }
+    assert.ok(loinYawWalk > 0.05, `the spine undulates (${loinYawWalk.toFixed(3)} rad)`);
+    assert.ok(loinYawWalk > chestYawWalk * 1.5, "the loin leads, the chest follows smaller");
+    assert.ok(loinPitchGallop > loinPitchWalk * 1.5, `the gallop bounds the back (${loinPitchWalk.toFixed(3)} -> ${loinPitchGallop.toFixed(3)})`);
+  });
+
+  it("carries the tail as a lagged chain that whips with the stride", () => {
+    const r = rig();
+    const peak = [0, 0, 0];
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: 2.0 });
+      if (i < 120) continue;
+      peak[0] = Math.max(peak[0], Math.abs(leg(r, BONE_TAIL).rotation.y));
+      peak[1] = Math.max(peak[1], Math.abs(leg(r, BONE_TAIL1).rotation.y));
+      peak[2] = Math.max(peak[2], Math.abs(leg(r, BONE_TAIL2).rotation.y));
+    }
+    for (const b of [0, 1, 2]) assert.ok(peak[b] > 0.05, `tail segment ${b} swings (${peak[b].toFixed(3)})`);
+    assert.ok(peak[2]! > peak[0]!, "the tip travels farther than the root (a whip, not a plank)");
+  });
+
+  it("holds the head level: the neck answers the loin's arch", () => {
+    const r = rig();
+    let loinPitch = 0, neckPitch = 0, opposite = 0, n = 0;
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: 6.0 });
+      if (i < 240) continue;
+      const lp = leg(r, BONE_LOIN).rotation.x, np = leg(r, BONE_NECK).rotation.x;
+      loinPitch = Math.max(loinPitch, Math.abs(lp));
+      neckPitch = Math.max(neckPitch, Math.abs(np));
+      if (Math.abs(lp) > 0.02) { opposite += lp * np < 0 ? 1 : 0; n++; }
+    }
+    assert.ok(neckPitch > 0.02, `the neck pitches (${neckPitch.toFixed(3)})`);
+    assert.ok(n > 0 && opposite / n > 0.7, "the neck counters the loin most of the cycle");
   });
 
   it("winds up before the hit frame, lowers the head, and lies down when dead", () => {
