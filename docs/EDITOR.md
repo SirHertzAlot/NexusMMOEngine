@@ -1,16 +1,54 @@
 # MMO Engine — Editor
 
-The editor is the Rogue Engine Editor customization for this project: a
-**standalone companion app** (`apps/editor/`, Vite + React + Tailwind)
-with three inspectors, each owning its own tab:
+The editor is a **standalone companion app** (`apps/editor/`, Vite + React + Tailwind): a
+dockable shell of workspaces, assembled from modules ([MODULES.md](MODULES.md)). It began as a
+customization for the Rogue Engine Editor and can still be bridged to one (see the Rogue scene bridge below).
+It started as three inspectors (an ECS inspector, play mode and the art pipeline, still sections 1 to 3
+below) and is now an editor in the mould of Unreal and Unity, fitted to this engine. What you can do in it
+today (roadmap section 1c, EA1 to EA31):
 
-1. **ECS Inspector** — read-only entity/component browser over a live
-   mirror connection.
-2. **Play Mode** — launches one owned local authoritative server,
-   connects a client, and drives debug overlays (navmesh tiles, path
-   waypoints).
-3. **Art Asset Pipeline** — scans and validates an art pack, loads it in
-   the browser with per-asset placeholder fallback.
+- **Dock and arrange.** Panels you move, resize, fade and hide, workspaces for each job, a toolbar, a play
+  menu, and layouts saved per browser.
+- **Edit scenes and the game's flow.** Scene documents with viewport editing, playing a scene, and a flow
+  editor that can play from any node; a quest and dialog editor.
+- **Edit the data the game runs on.** Rules and gameplay tables (items, creatures, loot, death rules) with
+  validation and hot reload, a database workspace with functions and caches, scale factors for models, and
+  localization.
+- **Author presentation.** Animation, VFX and materials, a HUD layout editor, and audio.
+- **Play and debug.** Play mode with the game view, selection cards, the ECS inspector and the debugger
+  (performance graphs, network, heap), pause and step, and automated playtests with failure replays.
+- **Work with others.** Version control in the editor: semantic diffs, merge, soft locks and
+  commit, pull and push over plain git (EA18).
+- **Build and ship.** Build and deploy profiles with a stage cache and health check (EA19), and the
+  Modules workspace, where you enable modules and press **Apply modules** to restart the play server.
+
+Each workspace is a module with an `editor` entry. The ones that ship:
+
+| Module | What its workspace is |
+|---|---|
+| `art` | Editor module: Art tooling: asset inspector and materials |
+| `audio` | Editor module: the Art & audio workspace's audio panel |
+| `authoring` | Editor module: the Design workspace's Authoring panel — view-centered, no-code authoring (hierarchy navigator, selection widgets, … |
+| `changes` | Editor module: Version control: the Changes panel |
+| `characters` | Editor module: the Characters workspace's Records panel |
+| `core` | The engine's own contribution: the server's systems in their fixed tick order |
+| `database` | Editor module: Database workspace: data grid, query console, audit log |
+| `debug` | Editor module: Debug: play-mode viewport |
+| `dungeons` | Dungeon instances (D1): pool, content, InstanceManager as a gateway extension |
+| `ecs` | Editor module: ECS inspector viewport for the Scene workspace |
+| `flow` | Editor module: the Flow workspace's flow graph editor |
+| `gameplay` | Editor module: Gameplay data tooling: data grids, content browser, tables, rules |
+| `hud` | Editor module: the Release workspace's HUD layout editor |
+| `liveops` | Editor module: Live operations: server & world overview, admin console, telemetry |
+| `network` | Editor module: Network: edge routes and connections |
+| `release` | Editor module: Release: build pipeline and playtests |
+| `scenes` | Editor module: the Scenes workspace's Scene document panel |
+| `story` | Editor module: the Story workspace's quest & dialog editor |
+| `terrain` | Editor module: Terrain sculpting viewport for the World workspace |
+| `vfx` | Editor module: the Art & audio workspace's VFX particle editor |
+
+Developer tools (debug overlays, performance graphs, inspectors) live here, in the editor's play mode, and
+never in the player's client.
 
 It is standalone on purpose: Rogue Engine exposes no stable public API
 for custom dockable editor panels, so building on private editor

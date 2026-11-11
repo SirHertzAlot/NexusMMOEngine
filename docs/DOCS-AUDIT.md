@@ -53,6 +53,12 @@ Run it again with `python3 scripts/docs-audit.py`. It writes `valgrind-out/docs-
 - The roadmap: the stale "what is left" list rebuilt from the open follow-ups the tables record; the at-a-glance counts recomputed from the tables (284 built, 4 in progress); notes where cited perf result files are not in the repository; armour wear shipped with U10b, so three statements that armour "waits" are fixed.
 - A repeated block removed from wiki chapter 1; the duplicate SAB report replaced by a pointer; `npm run db` made precise (`-w @mmo-engine/world-server`); a `CLIENT-FX.md` path corrected. The README now carries the headline capacity numbers with their limits, as `ALPHA-PLAN.md` asked for.
 
+**Fourth to sixth passes.**
+- `MODULES.md` (new): the manifest, enabling, tick order, writing a module, and a generated table of all 34. `OPERATIONS.md` (new): processes, ports, health and metrics, data files, logs, failure behavior and a security checklist.
+- The edge corrected everywhere (it is the default front door, not opt-in) in the wiki, `ARCHITECTURE.md` and the website's architecture page. Wiki chapters fixed for structure, the addon catalog and the native addon guide.
+- `EDITOR.md` opening rewritten with a generated table of the 20 editor modules. The remaining environment variables, content locations and ingress limits are in `CONFIGURATION.md`. More scripts in `CLI.md`.
+- `CLI.md`'s admin console table now lists every command the gateway handles (13 were missing: `god`, `noclip`, `addcomponent`, `removecomponent`, `appearance`, `find`, `interest`, `bots`, `residents`, `loglevel`, `pause`, `resume`, `step`).
+
 ## Still open, in priority order
 
 ### 1. Not re-read in this audit

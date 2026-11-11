@@ -220,6 +220,18 @@ arguments as JSON (`teleport {"x":10,"z":-4}`), or `me` for yourself
 | `vendor` | `{sub, ...}` | Shops: `define {id, name?, buyback?}`, `stock {id, def\|name, price, qty?}`, `spawn {id, x?, z?}`, `attach {id, target}`, `detach {target}`, `disable\|enable {id}`, `remove {id}`, `list` |
 | `time` | `{scale?}` / `{hour?}` | Time controls (see `help`) |
 | `weather` | `{kind?}` | Weather controls (see `help`) |
+| `god` | `{on, entity?}` | Godhood on or off: every skill peaked; switching it off keeps what was learned |
+| `noclip` | `{on, entity?}` | Walk through the world on or off |
+| `addcomponent` | `{entity, component}` | Give an entity a component it lacks, set to its defaults. Refused if it is present or has no defaults |
+| `removecomponent` | `{entity, component}` | Take a component off an entity (not the God and Noclip tags, which their toggles own) |
+| `appearance` | `{entity, args}` | View and edit a character's look live; parts and colours are checked against the character catalog |
+| `find` | `{query}` | Entities matching a wire-id prefix, a component name or a creature name |
+| `interest` | `{mode}` | `"all"` shows you everything, `"near"` what a player would see (the debugger's view switch) |
+| `bots` | `{count, ...}` | Spawn 1 to 1000 bot clients |
+| `residents` | `{npc?}` | Where a named resident stands; with no name, a summary of the town |
+| `loglevel` | `{producer?, level}` | Change the log level while running (`trace`, `debug`, `info`, `warn`, `error`); errors are never masked |
+| `pause`, `resume` | | Stop and restart the tick |
+| `step` | | Run one tick while paused (refused unless paused) |
 
 Worked examples for placing and managing everything in-game:
 [ADMIN-COOKBOOK.md](ADMIN-COOKBOOK.md).
