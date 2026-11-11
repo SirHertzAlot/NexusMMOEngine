@@ -1,6 +1,6 @@
 # Characters and Social Systems
 
-Status: **design** (not yet built). Review this before any code lands.
+Status: **built** (2026-11-11), kept as the design record. Accounts and characters (C1 to C3), chat, whispers, friends and blocks (S1, S2), parties (S3), guilds (S4) and quests and dialog (P1) are done and persisted; see the [roadmap](ROADMAP.md) §3. Where this document differs from the code, the code is right, and [MESSAGE-CATALOG.md](MESSAGE-CATALOG.md) is the wire. The skills and combat half moved to [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md).
 Companion to `docs/WORLD-SERVER-SPEC.md` (where world-level data lives)
 and `docs/MESSAGE-CATALOG.md` (the wire protocol this extends).
 

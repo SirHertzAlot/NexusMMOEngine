@@ -3,8 +3,8 @@
 What a player can do today, and how each piece is implemented. The numbers
 here are the server's, read from source — the client sends intent, the server
 decides. For the machinery behind it see [ARCHITECTURE.md](ARCHITECTURE.md);
-for the combat and character systems that are *designed but not yet built*,
-see [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md).
+for the design behind mastery, damage and injury, see
+[MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md).
 
 ## Controls
 
@@ -138,7 +138,6 @@ than frame-perfect.
 
 ### What combat does *not* do yet
 
-- **Armour.** It waits for armour items to exist (roadmap U10).
 - **Some discipline unlocks** (sweep, lunge, throw down, reattach) are data only so far.
 - **Ragdolls and a physics character controller** are planned. See [RAGDOLL-COST-GATE.md](RAGDOLL-COST-GATE.md) for why ragdolls for every player do not fit one world today.
 - **Range filtering.** `hit` and `life` events go to every welcomed session in the region, not just those nearby.
@@ -309,13 +308,14 @@ A two-sided flow: open a trade with a player, each side offers **gold and bag it
 Baked towns have people living in them. Residents are **derived, not authored and not saved**: a restart gives the same people in the same places for the same time of day, and a resident looks the same on every boot and to every player (the look is seeded from their id).
 
 - **Schedules.** Once a second a resident's schedule says where they are. Someone outdoors has an entity standing at their anchor; someone indoors has none (buildings are boxes), so **at night nearly the whole town costs nothing**. Where a navigation crowd runs, a resident walks between places: out of the building they were in, to the next anchor, or to the door and gone on arrival.
-- **Only near players.** A town is simulated in three tiers by the nearest player's distance to its edge: close, its residents walk (a navigation agent each, up to `MMO_RESIDENTS_FULL`, 300 region-wide); a little further, they stand at their anchor and snap when their block of the schedule changes; far away, the town has **no entities at all** and is placed from the schedule when a player comes. A town changes tier with 25 m of hysteresis. The region as a whole is capped at `MMO_RESIDENTS_MAX` (800) resident entities.
-- **They can be hurt.** Residents have health and anyone may hurt them; the weak points of a town are its people. One who falls lies where they fell for a while, then is gone, and stays dead until three game days have passed. Then "someone new has moved in" to the same household slot: the same id with a new generation, so a new look. Deaths are kept in the places store, so a restart does not bring them back.
+- **Only near players.** A town is simulated in three tiers by the nearest player's distance to its edge: **within 150 m**, its residents walk (a navigation agent each, up to `MMO_RESIDENTS_FULL`, 300 region-wide); **within 400 m**, they stand at their anchor and snap when their block of the schedule changes; **beyond that**, the town has no entities at all and is placed from the schedule when a player comes. A town changes tier with 25 m of hysteresis, and the nearest town is served first. The region as a whole is capped at `MMO_RESIDENTS_MAX` (800) resident entities.
+- **They can be hurt.** Residents have health and anyone may hurt them; the weak points of a town are its people. One who falls lies where they fell for 10 seconds, then is gone, and stays dead until three game days have passed. There is no crime, reputation or guard response to killing one yet. Then "someone new has moved in" to the same household slot: the same id with a new generation, so a new look. Deaths are kept in the places store, so a restart does not bring them back.
 - **Raids.** When raiders reach a town, everyone outdoors runs for home (sprinting if they can) and is gone on arrival, while guards and the watch hold their posts. Schedules resume 20 to 60 seconds after the raid ends, and their talk is in the raid's voice meanwhile.
 - **Shops.** A resident who keeps a shop sells from the vendor template for that kind of shop (`content/vendors.json`, `byArchetype`), to whoever talks to them.
-- **Lessons.** A master of a profession teaches a skill **for gold, once a game day per pupil**. A lesson adds skill points on top of use-based gain, on an S curve of the pupil's level: small at the start (a beginner always gets a worthwhile first lesson), best about a third of the way up, and harder toward the top. The price rises with the pupil's level. Tuned in `content/lessons.json` (`MMO_LESSONS`).
+- **Lessons.** A master of a profession teaches a skill **for gold, once a game day per pupil** (you ask by talking to them). A lesson adds skill points on top of use-based gain, on an S curve of the pupil's level: small at the start (a beginner always gets a worthwhile first lesson), best about a third of the way up, and harder toward the top. The price rises with the pupil's level. Tuned in `content/lessons.json` (`MMO_LESSONS`).
 
-Homesteads (families on farms between the towns) are the next slice.
+- **Homesteads and roadside people.** Places between the towns have people too, baked into `places.json`: a homestead's family of 2 to 10 (the adult head, the grown work the field or pen, children and elders stay about the house), an inn's keeper and hand, and an outpost's three guards. Each place is run as a little town (the yard is its square).
+- **Talking.** Press **E** on a resident within 4 m. They answer with a line generated from the hour, their work, their class and whether a raid is on, seeded by their id and the game day, so it is the same for everyone. If they keep a shop, talking also opens it; a quest giver can be bound to a specific resident; and a master offers a lesson.
 
 ## Characters
 

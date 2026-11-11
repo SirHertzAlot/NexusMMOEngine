@@ -1,4 +1,6 @@
 # Open-World Landscapes — Plan & Checklist
+> **Status (2026-11-11):** the checklist below is **not current**. Several boxes still open here have shipped, for example a region owning a chunk range with the world server assigning ranges, and the client requesting chunks on demand (protocol v24, messages `0x22` and `0x23`). The roadmap is the source of truth for what is built; treat the unchecked items as the original plan.
+
 
 Goal: grow the world from a 48 m chunk demo into massive, explorable
 landscapes, where one generous biome is several kilometres across and a

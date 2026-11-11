@@ -355,8 +355,8 @@ its own PR, with tests.
 **Status (2026-11-11, from the [roadmap](ROADMAP.md)):** M0 built. M1 built, with skills saved with the
 character (M1b); Exposure waits on weather. M2 built: blows land on parts, wounds bleed and clot, parts
 heal, injuries slow, lame and weaken, and a vital part or blood loss kills. M3 built (stances, fit and
-power, precision and landing, defence contests, damage kinds, dismemberment); **armour waits for armour
-items**. M4 built (Medicine, item familiarity, disciplines and the Blade Master disarm); the other
+power, precision and landing, defence contests, damage kinds, dismemberment); armour wear shipped later
+with the inventory slice (U10b). M4 built (Medicine, item familiarity, disciplines and the Blade Master disarm); the other
 unlocks (sweep, lunge, throw down, reattach) are data only so far. M5 (abilities with a global cooldown
 and a one-deep queue, telegraphs, status effects, duels) is built.
 

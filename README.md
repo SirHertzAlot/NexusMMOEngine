@@ -18,6 +18,10 @@ engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 **Performance:** what the engine costs today, measured, and what that means for
 the game you would build on it, are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+In short: the 30 Hz tick holds with 16 regions on a 4-core box (500 entities and 100
+players each), and one region (the core serving players directly) held it at 200 players with
+3,000 NPCs in the last end-to-end run but finished only 43% of its ticks at 1,000. Those are repository
+benchmarks on shared hardware; re-measure before you plan around them.
 
 **Website and docs site:** `site/` holds the landing page, a 30-second tour, a 3D
 architecture explorer and a docs site built from `docs/`. Build the docs with

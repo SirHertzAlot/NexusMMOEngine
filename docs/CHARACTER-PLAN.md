@@ -1,4 +1,6 @@
 # Characters — Plan & Checklist
+> **Status (2026-11-11):** this checklist was last updated in late September and is **not current**. Some boxes still open here have shipped, for example damage and hit reactions (roadmap M2a, M3). The roadmap is the source of truth for what is built; treat the unchecked items below as the original plan, not as open work.
+
 
 Goal: players and enemy humans are built from the Modular Fantasy Hero
 parts and animated with open motion-capture data; monsters spawn as the
