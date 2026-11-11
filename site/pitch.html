@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Engine | The 30-Second Tour</title>
+    <meta name="description" content="Nexus in thirty seconds: an extensible, modular, scalable MMO engine with a no-code editor and Git built in. Scroll to play the tour.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbcfe8' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2l8.5 5v10L12 22l-8.5-5V7z'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23fbcfe8'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;700&family=Galada&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" integrity="sha384-d+vyQ0dYcymoP8ndq2hW7FGC50nqGdXUEgoOUGxbbkAJwZqL7h+jKN0GGgn9hFDS" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js" integrity="sha384-poC0r6usQOX2Ayt/VGA+t81H6V3iN9L+Irz9iO8o+s0X20tLpzc9DOOtnKxhaQSE" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --text-color: #ffffff;
+            --muted-color: rgba(255, 255, 255, 0.72);
+            --glass-bg: rgba(255, 255, 255, 0.06);
+            --glass-border: rgba(255, 255, 255, 0.14);
+            --accent: #fbcfe8;
+            --on-accent: #011d17;
+            --font-main: 'Inter', sans-serif;
+            --font-heading: 'Galada', cursive;
+
+            /* Theme: the page's backdrop and the figures' palette (tweened between scenes) */
+            --bg-inner: #0b8a78;
+            --bg-mid: #044e3b;
+            --bg-outer: #011411;
+            --plate: #04201b;
+            --line-edge: #8fd3c7;
+            --line-mid: #3f7f76;
+            --line-lo: #1f4a44;
+        }
+
+        body.blue-theme {
+            --bg-inner: #0b4f8a;
+            --bg-mid: #04294e;
+            --bg-outer: #010c14;
+            --plate: #04162a;
+            --line-edge: #93c0f0;
+            --line-mid: #3d6fa6;
+            --line-lo: #1d3f66;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: radial-gradient(circle at 50% 40%, var(--bg-inner) 0%, var(--bg-mid) 50%, var(--bg-outer) 100%) fixed;
+            color: var(--text-color);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        a { color: inherit; }
+        a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+        /* ---------- Parallax backdrop ---------- */
+        #backdrop { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+
+        .grid-layer {
+            position: absolute;
+            inset: -20% -10%;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+            background-size: 64px 64px;
+            -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 72%);
+            mask-image: radial-gradient(ellipse at center, #000 20%, transparent 72%);
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 30%, rgba(251, 207, 232, 0.5), rgba(251, 207, 232, 0.06) 62%, transparent 72%);
+        }
+
+        .orb.o1 { width: 220px; height: 220px; top: 8%; left: 6%; }
+        .orb.o2 { width: 120px; height: 120px; top: 60%; left: 88%; opacity: 0.7; }
+        .orb.o3 { width: 320px; height: 320px; top: 78%; left: 14%; opacity: 0.35; }
+
+        /* ---------- Header and the 30-second clock ---------- */
+        .header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.4rem 4%;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-heading);
+            font-size: 1.2rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .clock {
+            font-family: 'Manrope', sans-serif;
+            font-variant-numeric: tabular-nums;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 0.55rem 1.1rem;
+            border-radius: 100px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+        }
+
+        .clock .bar { width: 90px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
+        .clock .bar i { display: block; height: 100%; width: 0%; background: var(--accent); }
+        .clock .total { color: var(--muted-color); font-weight: 500; }
+
+        .gh-btn {
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.8rem 1.8rem;
+            border-radius: 100px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .gh-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-2px); }
+
+        /* Right-hand timeline: one dot per scene */
+        .timeline {
+            position: fixed;
+            right: 2.2%;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+            align-items: flex-end;
+        }
+
+        .timeline a {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            text-decoration: none;
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: var(--muted-color);
+        }
+
+        .timeline a span { opacity: 0; transform: translateX(8px); transition: all 0.3s ease; }
+        .timeline a i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.6); transition: all 0.3s ease; }
+        .timeline a:hover span, .timeline a.active span { opacity: 1; transform: none; }
+        .timeline a.active i { background: var(--accent); border-color: var(--accent); transform: scale(1.35); }
+
+        /* ---------- Scenes ---------- */
+        main { position: relative; z-index: 1; }
+
+        .scene {
+            position: relative;
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            align-items: center;
+            gap: 4%;
+            padding: 7rem 7% 5rem;
+            overflow: hidden;
+        }
+
+        .scene:nth-of-type(even) .copy { order: 2; }
+
+        .big-num {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: var(--font-heading);
+            font-size: clamp(14rem, 34vw, 34rem);
+            line-height: 1;
+            color: transparent;
+            -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.14);
+            pointer-events: none;
+            user-select: none;
+            z-index: 0;
+        }
+
+        .copy { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 1.4rem; }
+
+        .eyebrow {
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        h1, h2 {
+            font-family: var(--font-heading);
+            font-weight: 400;
+            line-height: 0.92;
+            font-size: clamp(3.4rem, 8vw, 8.5rem);
+            color: white;
+        }
+
+        h1 em, h2 em { font-style: normal; color: var(--accent); }
+
+        .lead { font-size: clamp(1.15rem, 1.8vw, 1.5rem); font-weight: 500; line-height: 1.35; max-width: 30ch; }
+        .body { color: var(--muted-color); font-size: 1.02rem; line-height: 1.65; max-width: 46ch; }
+        .body code { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 0.88em; color: var(--accent); }
+
+        .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+        .chip {
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 0.45rem 0.95rem;
+            border-radius: 100px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .chip b { color: var(--accent); font-weight: 700; }
+
+        .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+
+        .primary-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 1.5rem;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 0.4rem 0.4rem 0.4rem 1.5rem;
+            border-radius: 100px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .primary-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-3px); }
+
+        .plus-icon {
+            background: var(--accent);
+            color: var(--on-accent);
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 1.3rem;
+            font-weight: 900;
+        }
+
+        .ghost-link { font-weight: 600; font-size: 0.9rem; color: var(--muted-color); text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.3); padding-bottom: 2px; }
+        .ghost-link:hover { color: white; }
+
+        /* The figure's stage: a solid plate, because hairline plates are filled */
+        .stage-wrap { position: relative; z-index: 2; perspective: 900px; }
+
+        .stage {
+            --hairline-plate: var(--plate);
+            --hairline-hi: #fbcfe8;
+            --hairline-edge: var(--line-edge);
+            --hairline-mid: var(--line-mid);
+            --hairline-lo: var(--line-lo);
+            --hairline-stroke: 1;
+            background: var(--plate);
+            border: 1px solid var(--glass-border);
+            border-radius: 28px;
+            padding: 1.4rem 1.4rem 0.9rem;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+            transition: background 1.2s ease;
+            will-change: transform;
+        }
+
+        .figure { width: 100%; }
+        .figure:empty { aspect-ratio: 5 / 4; }
+
+        .readout {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.4rem;
+            font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            color: var(--line-edge);
+            min-height: 1.2em;
+        }
+
+        .readout .hint { color: var(--muted-color); }
+
+        .scroll-cue {
+            position: absolute;
+            left: 50%;
+            bottom: 1.6rem;
+            transform: translateX(-50%);
+            z-index: 3;
+            font-family: 'Manrope', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--muted-color);
+            text-decoration: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .scroll-cue i { width: 1px; height: 38px; background: linear-gradient(var(--accent), transparent); animation: cue 1.8s ease-in-out infinite; transform-origin: top; }
+        @keyframes cue { 0% { transform: scaleY(0); } 50% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
+
+        .no-figures .readout .hint::after { content: 'Figures need this page served over http (not opened from disk).'; }
+
+        /* ---------- Small screens ---------- */
+        @media (max-width: 900px) {
+            .scene { grid-template-columns: 1fr; padding: 6rem 6% 4rem; gap: 2rem; }
+            .scene:nth-of-type(even) .copy { order: 0; }
+            .stage-wrap { order: -1; }
+            .timeline { display: none; }
+            .clock .bar { width: 50px; }
+            .gh-btn { display: none; }
+            .big-num { font-size: 18rem; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            .scroll-cue i { animation: none; }
+        }
+    </style>
+</head>
+<body>
+    <div id="backdrop" aria-hidden="true">
+        <div class="grid-layer"></div>
+        <div class="orb o1"></div>
+        <div class="orb o2"></div>
+        <div class="orb o3"></div>
+    </div>
+
+    <header class="header">
+        <a class="logo" href="#top">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 2L20.5 7V17L12 22L3.5 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+            </svg>
+            <span>Nexus</span>
+        </a>
+        <div class="clock" role="timer" aria-label="Tour progress">
+            <span id="clock-now">0:00</span>
+            <span class="bar"><i id="clock-bar"></i></span>
+            <span class="total">0:30</span>
+        </div>
+        <a class="gh-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">View on GitHub</a>
+    </header>
+
+    <nav class="timeline" aria-label="Scenes" id="timeline"></nav>
+
+    <main id="top">
+
+        <section class="scene" id="s0" data-theme="classic" data-label="Intro" data-figure="terrain">
+            <div class="big-num" aria-hidden="true">00</div>
+            <div class="copy">
+                <span class="eyebrow reveal">Nexus engine · the 30-second tour</span>
+                <h1 class="reveal">Living worlds, <em>built your way.</em></h1>
+                <p class="lead reveal">An authoritative MMO engine for people who write code and people who don't.</p>
+                <p class="body reveal">A fixed 30 Hz, server-authoritative simulation with streamed 4 × 4 km worlds, an editor, and a client that only mirrors the truth. Playable end to end today, from account creation to the world.</p>
+                <div class="cta-row reveal">
+                    <a class="primary-btn" href="#s1">Start the tour <span class="plus-icon">↓</span></a>
+                </div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="Pillars on a plinth that rise around the pointer: a streamed world"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">move your pointer over it</span></div>
+                </div>
+            </div>
+            <a class="scroll-cue" href="#s1"><span>Scroll</span><i></i></a>
+        </section>
+
+        <section class="scene" id="s1" data-theme="classic" data-label="Extensible" data-figure="plug">
+            <div class="big-num" aria-hidden="true">01</div>
+            <div class="copy">
+                <span class="eyebrow reveal">01 · Extensible</span>
+                <h2 class="reveal">Plug it <em>in.</em></h2>
+                <p class="lead reveal">Add a system without touching the core.</p>
+                <p class="body reveal">Server systems, editor tools and edge services are modules with manifests. Boot orders them by <code>after</code> and <code>before</code>, and stops on a cycle with every problem listed. Native C++ comes in the same way, as an addon.</p>
+                <div class="chips reveal"><span class="chip">Server modules</span><span class="chip">Edge modules</span><span class="chip">Editor modules</span><span class="chip">C++ addons</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="A plug drawn toward its socket"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">draw the plug up</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s2" data-theme="blue" data-label="Modular" data-figure="exploded">
+            <div class="big-num" aria-hidden="true">02</div>
+            <div class="copy">
+                <span class="eyebrow reveal">02 · Modular</span>
+                <h2 class="reveal">Every layer <em>on its own.</em></h2>
+                <p class="lead reveal">The client is never the source of truth.</p>
+                <p class="body reveal">The client mirrors state. Behind it sit an edge for ingress, one engine process per region, and a world server that coordinates the regions. Each one is a separate process with a framed internal transport between them.</p>
+                <div class="chips reveal"><span class="chip">Client</span><span class="chip">Edge</span><span class="chip">Region</span><span class="chip">World server</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="An app window in four layers that open as the pointer moves"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">move across to open the layers</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s3" data-theme="classic" data-label="Scalable" data-figure="hub">
+            <div class="big-num" aria-hidden="true">03</div>
+            <div class="copy">
+                <span class="eyebrow reveal">03 · Scalable by design</span>
+                <h2 class="reveal">More players, <em>more regions.</em></h2>
+                <p class="lead reveal">Each region owns its simulation and its state.</p>
+                <p class="body reveal">In our stress run, one world server and 16 regions on a 4-core box, each at 30 Hz with 500 entities and 100 players crossing borders, committed every hand-off. The world server used 15% of one core.</p>
+                <div class="chips reveal"><span class="chip"><b>16</b> regions on 4 cores</span><span class="chip">hand-off p99 <b>15 ms</b></span><span class="chip">world server <b>15%</b> of a core</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="A hub with tiles around it on links: regions around a world server"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">hover a region</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s4" data-theme="blue" data-label="Fast" data-figure="slow">
+            <div class="big-num" aria-hidden="true">04</div>
+            <div class="copy">
+                <span class="eyebrow reveal">04 · Fast</span>
+                <h2 class="reveal">Measured on <em>every change.</em></h2>
+                <p class="lead reveal">A fixed 30 Hz tick, with the hot paths in C++.</p>
+                <p class="body reveal">Jolt physics and the fan-out that decides what each player sees run natively. Each system's instruction cost is baselined under Valgrind, and a gate fails a build that gets slower.</p>
+                <div class="chips reveal"><span class="chip">1,000-entity tick <b>≈14 M</b> instructions</span><span class="chip">name selection <b>5.9 → 0.77 ms</b> at 1,000 players</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="Crates on a belt through a gate; hovering slows the clock"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">hover to slow time</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s5" data-theme="classic" data-label="Cross-platform" data-figure="laptop">
+            <div class="big-num" aria-hidden="true">05</div>
+            <div class="copy">
+                <span class="eyebrow reveal">05 · Cross-platform</span>
+                <h2 class="reveal">Players in a browser. <em>Servers anywhere.</em></h2>
+                <p class="lead reveal">One codebase on three operating systems.</p>
+                <p class="body reveal">The client is React Three Fiber, so it runs in a browser. The server and the tools run the same on Linux, macOS and Windows, and the native addons build with each platform's standard compiler.</p>
+                <div class="chips reveal"><span class="chip">Browser client</span><span class="chip">Linux</span><span class="chip">macOS</span><span class="chip">Windows</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="A thin laptop whose lid follows the pointer's height"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">move up and down</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s6" data-theme="blue" data-label="No-code" data-figure="drawer">
+            <div class="big-num" aria-hidden="true">06</div>
+            <div class="copy">
+                <span class="eyebrow reveal">06 · Designed for no-code</span>
+                <h2 class="reveal">Content is data, <em>so designers ship it.</em></h2>
+                <p class="lead reveal">Add an entry and the game takes it.</p>
+                <p class="body reveal">Creature rules, loot pools, spawn tables and gameplay rules are tables in the editor, and new entries need no code change. Graph editors cover procedural assets and dungeons, and terrain is edited at world scale.</p>
+                <div class="chips reveal"><span class="chip">Rules &amp; tables</span><span class="chip">PICG graphs</span><span class="chip">Dungeon tools</span><span class="chip">Terrain</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="A cabinet of three drawers: the pointer's height picks one"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">move up and down to open a drawer</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s7" data-theme="classic" data-label="Git built in" data-figure="branches">
+            <div class="big-num" aria-hidden="true">07</div>
+            <div class="copy">
+                <span class="eyebrow reveal">07 · Git, built in</span>
+                <h2 class="reveal">Version control <em>in the editor.</em></h2>
+                <p class="lead reveal">Designers and developers work in the same repo.</p>
+                <p class="body reveal">A Changes panel shows semantic diffs keyed by node id, and commits, pulls and pushes through git. Three-way merge resolves by stable ids, and soft locks keep two people out of the same document.</p>
+                <div class="chips reveal"><span class="chip">Semantic diffs</span><span class="chip">Three-way merge</span><span class="chip">Soft locks</span><span class="chip">Plain git</span></div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="A commit graph with a branch forking off main and merging back"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">hover a commit</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="scene" id="s8" data-theme="blue" data-label="Start" data-figure="settle">
+            <div class="big-num" aria-hidden="true">30</div>
+            <div class="copy">
+                <span class="eyebrow reveal">That was thirty seconds</span>
+                <h2 class="reveal">One engine. <em>Snapped into place.</em></h2>
+                <p class="lead reveal">Playable end to end, from account creation to an authoritative world.</p>
+                <div class="cta-row reveal">
+                    <a class="primary-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/GETTING-STARTED.md" target="_blank" rel="noopener">Get started <span class="plus-icon">+</span></a>
+                    <a class="ghost-link" href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Read the roadmap</a>
+                </div>
+            </div>
+            <div class="stage-wrap">
+                <div class="stage">
+                    <div class="figure" data-label="Crooked tiles that slide into a tree as the pointer nears"></div>
+                    <div class="readout"><span class="read"></span><span class="hint">bring your pointer close</span></div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const scenes = [...document.querySelectorAll('.scene')];
+        const body = document.body;
+        const TOTAL_SECONDS = 30;
+
+        const THEMES = {
+            classic: { inner: '#0b8a78', mid: '#044e3b', outer: '#011411' },
+            blue: { inner: '#0b4f8a', mid: '#04294e', outer: '#010c14' }
+        };
+
+        /* ---------- Timeline dots ---------- */
+        const timeline = document.getElementById('timeline');
+        scenes.forEach((s, i) => {
+            const a = document.createElement('a');
+            a.href = '#' + s.id;
+            a.innerHTML = `<span>${s.dataset.label}</span><i></i>`;
+            a.setAttribute('aria-label', s.dataset.label);
+            timeline.appendChild(a);
+        });
+        const dots = [...timeline.querySelectorAll('a')];
+
+        function setActive(i) {
+            dots.forEach((d, k) => d.classList.toggle('active', k === i));
+            const theme = scenes[i].dataset.theme;
+            const t = THEMES[theme];
+            body.classList.toggle('blue-theme', theme === 'blue');
+            if (window.gsap) gsap.to(body, { '--bg-inner': t.inner, '--bg-mid': t.mid, '--bg-outer': t.outer, duration: 1.2, ease: 'power2.inOut', overwrite: 'auto' });
+        }
+
+        /* ---------- Hairline figures (vendored, MIT) ---------- */
+        const figures = new Map();
+        import('./vendor/hairline/index.js').then(hl => {
+            scenes.forEach(s => {
+                const make = hl[s.dataset.figure];
+                const el = s.querySelector('.figure');
+                if (typeof make !== 'function') return;
+                const read = s.querySelector('.read');
+                figures.set(s.id, make(el, {
+                    play: !reduceMotion,
+                    intensity: 0.4,
+                    theme: 'dark',
+                    label: el.dataset.label,
+                    onRead: (text) => { read.textContent = text; }
+                }));
+            });
+            if (window.ScrollTrigger) ScrollTrigger.refresh();
+        }).catch(err => {
+            console.warn('hairline failed to load', err);
+            document.documentElement.classList.add('no-figures');
+        });
+
+        /* ---------- Scroll: parallax, reveals, clock, figure intensity ---------- */
+        const clockNow = document.getElementById('clock-now');
+        const clockBar = document.getElementById('clock-bar');
+
+        function setClock(progress) {
+            const sec = Math.min(TOTAL_SECONDS, Math.round(progress * TOTAL_SECONDS));
+            clockNow.textContent = '0:' + String(sec).padStart(2, '0');
+            clockBar.style.width = (progress * 100).toFixed(1) + '%';
+        }
+
+        if (window.gsap && window.ScrollTrigger && !reduceMotion) {
+            gsap.registerPlugin(ScrollTrigger);
+
+            // Whole-tour progress drives the 30-second clock.
+            ScrollTrigger.create({
+                trigger: 'main',
+                start: 'top top',
+                end: 'bottom bottom',
+                onUpdate: (self) => setClock(self.progress)
+            });
+
+            // Backdrop layers drift at different speeds against the page scroll.
+            gsap.to('.grid-layer', { yPercent: -18, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 0.6 } });
+            gsap.to('.o1', { y: -420, x: 80, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 1 } });
+            gsap.to('.o2', { y: -900, x: -120, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 1.4 } });
+            gsap.to('.o3', { y: -1300, x: 160, ease: 'none', scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: 1.8 } });
+
+            scenes.forEach((scene, i) => {
+                const num = scene.querySelector('.big-num');
+                const copy = scene.querySelector('.copy');
+                const stage = scene.querySelector('.stage');
+                const reveals = scene.querySelectorAll('.reveal');
+                const sceneRange = { trigger: scene, start: 'top bottom', end: 'bottom top', scrub: 0.8 };
+
+                // Three depths: the numeral slowest, the copy medium, the stage fastest, tilting in 3D.
+                gsap.fromTo(num, { yPercent: -35 }, { yPercent: 15, ease: 'none', scrollTrigger: sceneRange });
+                gsap.fromTo(copy, { y: 60 }, { y: -60, ease: 'none', scrollTrigger: sceneRange });
+                gsap.fromTo(stage,
+                    { y: 120, rotateY: i % 2 ? 16 : -16, rotateX: 8, transformPerspective: 900 },
+                    { y: -120, rotateY: i % 2 ? -16 : 16, rotateX: -8, ease: 'none', scrollTrigger: sceneRange });
+
+                // Copy lines reveal in sequence as the scene arrives.
+                gsap.from(reveals, {
+                    y: 40, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.09,
+                    scrollTrigger: { trigger: scene, start: 'top 62%', toggleActions: 'play none none reverse' }
+                });
+
+                // The figure answers the scroll: intensity swells to a peak at mid-scene.
+                let last = -1;
+                ScrollTrigger.create({
+                    trigger: scene,
+                    start: 'top bottom',
+                    end: 'bottom top',
+                    onUpdate: (self) => {
+                        const fig = figures.get(scene.id);
+                        if (!fig) return;
+                        const v = Math.round((0.2 + 0.8 * Math.sin(Math.PI * self.progress)) * 50) / 50;
+                        if (v !== last) { last = v; fig.update({ intensity: v }); }
+                    }
+                });
+
+                // The scene that holds the viewport's middle is the active one.
+                ScrollTrigger.create({
+                    trigger: scene,
+                    start: 'top 55%',
+                    end: 'bottom 55%',
+                    onToggle: (self) => { if (self.isActive) setActive(i); }
+                });
+            });
+        } else {
+            // No GSAP (offline CDN) or reduced motion: still keep the clock and active dot honest.
+            const onScroll = () => {
+                const max = document.documentElement.scrollHeight - innerHeight;
+                setClock(max > 0 ? scrollY / max : 0);
+                const mid = scrollY + innerHeight * 0.55;
+                let idx = 0;
+                scenes.forEach((s, i) => { if (s.offsetTop <= mid) idx = i; });
+                setActive(idx);
+            };
+            addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        }
+
+        setActive(0);
+    </script>
+</body>
+</html>
