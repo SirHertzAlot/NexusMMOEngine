@@ -76,29 +76,22 @@ npm start
 
 ## 4. How to Author a Native C++ Addon
 
-1. **Create the Addon Folder**:
+Start from the template, which exists to prove the native toolchain builds and loads on your machine (`packages/addons/template`, with a working module wrapper in `modules/template-native`).
+
+1. **Copy the template.**
    ```sh
-   mkdir packages/addons/my-addon
+   cp -r packages/addons/template packages/addons/my-addon
    ```
-2. **Add `binding.gyp`**:
-   ```python
-   {
-     "targets": [
-       {
-         "target_name": "my_addon",
-         "sources": [ "src/addon.cc" ],
-         "include_dirs": [ "<!@(node -p \"require('node-addon-api').include\")" ],
-         "dependencies": [ "<!(node -p \"require('node-addon-api').gyp\")" ],
-         "cflags_cc": [ "-O3", "-mavx2" ],
-         "msvs_settings": {
-           "VCCLCompilerTool": { "Optimization": "3", "EnableEnhancedInstructionSet": "5" }
-         }
-       }
-     ]
-   }
+   In the copy, rename the package (`@mmo-engine/addon-my-addon`) and the `target_name` in `binding.gyp`. The package's scripts are `install` (`node-gyp rebuild`) and `test` (`node --test "test/*.test.js"`), and `index.js` loads the built `.node` file.
+2. **Write the addon** in `src/addon.cc` with `node-addon-api`. Follow the bulk-SoA rule from [chapter 4](04-native-addons.md): take typed arrays in, loop in C++, and never cross the N-API boundary per entity in a hot loop. The engine builds on Windows (Visual Studio Build Tools), macOS and Linux, so add `-mavx2` or similar only for a kernel that needs it, and keep a scalar path.
+3. **Register it.** Add `packages/addons/my-addon` to the root `package.json` `workspaces` list (the addons are listed one by one) and a `test:addon-my-addon` script beside the others.
+4. **Build and test.**
+   ```sh
+   cd packages/addons/my-addon && npx node-gyp rebuild && npm test
    ```
-3. **Implement Bulk SoA Processing**:
-   Accept raw `Float32Array` pointers via N-API and process buffers with SIMD vectorization.
+   A change to an addon needs it rebuilt before engine-core's tests use it.
+5. **Check memory.** `npm run valgrind:memcheck -- my-addon` must run clean for errors and leaks in your own code (Linux, needs Valgrind). If the addon is on a hot path, `npm run valgrind:perf` shows what it costs.
+6. **Hook it into the server** as a module, if it provides systems: a manifest with `native.entry` (the compiled `.node`) and `native.systems`, and a `.node` that exports `createSystems`. See [MODULES.md](../MODULES.md) and `modules/template-native`.
 
 ---
 

@@ -88,10 +88,9 @@ flowchart TD
     end
 
     subgraph EdgeTier ["Network Ingress Tier (apps/edge)"]
-        UWS["uWebSockets.js Gateway"]
-        Auth["Auth & Rate Limiting"]
-        Zod["Zod Packet Validation"]
-        MPSC["AtomicMPSCQueue (Lock-Free Ingress)"]
+        UWS["Game relay (ws)"]
+        Auth["Packet router (routes.json)"]
+        Zod["DeltaSet assembly"]
     end
 
     subgraph SimTier ["Authoritative Simulation Core (packages/engine-core)"]
@@ -104,16 +103,13 @@ flowchart TD
 
     subgraph WorldTier ["Persistence & World Tier (packages/world-server)"]
         Coord["World Coordinator"]
-        SPSC["AtomicSPSCQueue (Transaction Ledger)"]
         Surreal["Embedded SurrealDB / SQLite"]
     end
 
     ClientTier -->|"Binary WebSocket (Deltas & Intents)"| EdgeTier
-    EdgeTier --> MPSC
-    MPSC -->|"Zero-Copy Shared Memory"| SimTier
+    EdgeTier -->|"Framed TCP channel (loopback)"| SimTier
     SimTier <--> Addons
-    SimTier --> SPSC
-    SPSC --> WorldTier
+    SimTier <-->|"webrpc: leases, hand-offs, snapshots"| WorldTier
 ```
 
 ---
@@ -121,9 +117,9 @@ flowchart TD
 ### 1.3 The 3-Tier Execution Architecture
 
 1. **Ingress & Networking Tier ([`apps/edge`](../apps/edge))**:
-   - Manages client WebSocket connections over `uWebSockets.js`.
-   - Validates incoming packets before they enter the simulation boundary.
-   - Computes Area-of-Interest (AoI) sector visibility and serializes per-client binary deltas.
+   - Holds the players' WebSocket and HTTP connections (with the `ws` library) and relays them to the core over a framed channel.
+   - Routes packets by type and assembles each client's area-of-interest delta from the per-sector bytes the core encodes once.
+   - Authentication, rate limits and schema validation are in the core's gateway, not here.
 2. **Authoritative Simulation Tier ([`packages/engine-core`](../packages/engine-core))**:
    - Executes a deterministic 30 Hz fixed timestep loop ($33.33\text{ms}$ budget).
    - Manages entity lifecycles, transform updates, raycasting, physics integration, and module systems.
@@ -270,7 +266,7 @@ The engine uses **`uWebSockets.js`** as its production network transport:
 
 ### 5.2 The Edge / Core Split Topology
 Network I/O is physically decoupled from authoritative simulation:
-- **Edge Processes (`apps/edge`)**: Terminate client TLS/WebSockets, perform rate limiting, and route packets.
+- **Edge Processes (`apps/edge`)**: Hold the players' WebSockets and HTTP and relay them to the core, route packets by type, assemble per-client deltas, and serve health and metrics. The core's gateway does authentication, rate limiting and validation.
 - **Core Sim (`packages/engine-core`)**: Dedicated exclusively to stepping the world.
 - Communication between Edge and Core flows across high-speed framed channels with automatic reconnect and state resynchronization.
 

@@ -1,17 +1,5 @@
 # 05. Networking & Distributed Scaling
 
-
----
-
-## 5. Gateway Security Perimeter Boundary
-
-To ensure memory safety and protect worker threads from untrusted input:
-1. **Authentication Enforcement**: Intents arriving before `hello` handshake are rejected with code `4003` and never reach the SPSC ring.
-2. **Authority & Entity Ownership**: Verifies `msg.entity === s.playerEntity`; foreign entity manipulation triggers error `4003`.
-3. **Floating-Point Sanitization**: Input vectors are scrubbed for non-finite values (`NaN`, `Infinity`) and clamped to unit speed ($1.0\text{ m/s}$).
-4. **Out-of-Order Packet Dropping**: Stale packets (`clientTick <= s.lastIntentTick`) are dropped silently.
-5. **Fast 32-bit Action Packing**: Validated intents convert to bitwise masks and pack into a single 32-bit integer via `packCommandToken(slot, actionCode)`.
-
 [← Previous: Native C++ Addons](04-native-addons.md) | [Back to Wiki Index](README.md) | [Next: Multi-Region World Coordination →](06-multi-region-world.md)
 
 ---
@@ -27,6 +15,8 @@ In [`packages/engine-core/src/net/transport.ts`](../../packages/engine-core/src/
 
 - **`uws` (Production Default)**: Integrates `uWebSockets.js` directly over native C++ libuv/epoll sockets. Handles TLS handshakes, HTTP parsing, and WebSocket framing without touching the JavaScript event loop.
 - **`ws` (Fallback & Reference)**: Pure JavaScript implementation using `ws` over `node:http`. Provides a baseline reference for environments where native binaries are unavailable.
+
+> **Which gateway this is.** These transports belong to the core's own gateway, which serves players directly when the core runs alone. **Behind the edge (what `npm start` runs) the players' sockets are served by the edge with the `ws` library**, and the core talks to the edge over the channel, so the uWS advantage applies only when the core serves players itself.
 
 ### Transport Selection
 Transport is configured via `MMO_TRANSPORT`:
@@ -45,12 +35,12 @@ To protect the simulation tick from socket fan-out overhead:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        EDGE PROCESS (apps/edge)                        │
-│ - Client TLS & WebSocket Termination                                   │
-│ - Ingress Token Bucket Rate Limiting                                   │
-│ - Zod Payload Schema Validation                                        │
-│ - Area-of-Interest (AoI) Sector Delta Encoding                         │
+│ - Player WebSocket and HTTP relay (ws library)                         │
+│ - Packet routing by type (content/edge/routes.json)                    │
+│ - Per-client DeltaSet assembly (area of interest)                      │
+│ - Health and Prometheus metrics; no auth, no Zod                       │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Framed TCP / Shared Memory
+                                    │ Framed TCP, loopback
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                  AUTHORITATIVE CORE (packages/engine-core)             │
 │ - Pure 30 Hz Fixed Simulation                                          │
@@ -85,7 +75,10 @@ The continuous world is partitioned into a 2D grid of **64-meter sectors**:
 
 1. Each sector groups entities located within its bounds.
 2. Deltas are encoded **once per active sector**, rather than once per player.
-3. Using `uWebSockets.js` topic-based publish/subscribe (`publish("sector:0,0", delta)`), frames are fanned out in C++ in **$0.50\text{ms}$ for 1,000 subscribers** ($12\times$ faster than standard per-connection send loops).
+3. A client's message is a `DeltaSet` (`0x25`): the concatenation of the per-sector bytes for the sectors in its interest set. Whoever assembles it (the edge, or the core's gateway when it serves players directly) only **copies bytes**; nothing is re-encoded per player.
+4. Sectors kept only by the hysteresis margin send a delta every third tick, and entities marked far-visible are seen out to 400 m (`content/rules/interest.json`).
+
+A uWebSockets.js topic per sector (`publish("sector:0,0", delta)`) was measured at **0.50 ms for 1,000 subscribers**, 12 times faster than a send loop ([PERFORMANCE-SAB.md](../PERFORMANCE-SAB.md)), and survives as the experimental `MMO_FANOUT_SHARE=publish`; the default is per-client assembly with shared envelopes. The concept is explained in [ARCHITECTURE.md](../ARCHITECTURE.md#interest-management).
 
 ---
 
@@ -101,6 +94,17 @@ For high-frequency transform and velocity updates, the engine bypasses FlatBuffe
   - `f32 px, py, pz` (12 bytes)
   - `f32 lx, ly, lz` (12 bytes)
 - **Efficiency**: $16\times$ faster encoding and $3\times$ smaller bandwidth footprint than generic table serialization.
+
+---
+
+## 6. Gateway Security Perimeter Boundary
+
+To ensure memory safety and protect worker threads from untrusted input:
+1. **Authentication Enforcement**: Intents arriving before `hello` handshake are rejected with code `4003` and never reach the SPSC ring.
+2. **Authority & Entity Ownership**: Verifies `msg.entity === s.playerEntity`; foreign entity manipulation triggers error `4003`.
+3. **Floating-Point Sanitization**: Input vectors are scrubbed for non-finite values (`NaN`, `Infinity`) and clamped to unit speed ($1.0\text{ m/s}$).
+4. **Out-of-Order Packet Dropping**: Stale packets (`clientTick <= s.lastIntentTick`) are dropped silently.
+5. **Fast 32-bit Action Packing**: Validated intents convert to bitwise masks and pack into a single 32-bit integer via `packCommandToken(slot, actionCode)`.
 
 ---
 

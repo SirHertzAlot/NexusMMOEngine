@@ -247,6 +247,14 @@ never printed; only its argon2id hash is stored. 8–128 characters.
 | `WORLD_API_KEY` | unset | The bootstrap key regions register with. Unset = registration disabled. |
 | `WORLD_HEARTBEAT_INTERVAL_MS` | `5000` | Region lease heartbeat interval. |
 | `WORLD_HEARTBEAT_TIMEOUT_MS` | `15000` | A region silent this long is reaped. |
+| `WORLD_DB_CONNECT_TIMEOUT_MS` | `10000` | Bound on the SurrealDB connect handshake. Unset or not a positive number means the default. |
+| `WORLD_MIGRATION_TIMEOUT_MS` | `10000` | A hand-off not committed within this expires, and the source region keeps the entity. |
+| `WORLD_TOTAL_CHUNK_SPACE` | `0,0,4096,4096` | `x0,z0,x1,z1`: the total world chunk space the assignment policy carves region ranges from. |
+| `WORLD_HOST_REPORT_TIMEOUT_MS` | the heartbeat timeout | How long a host's resource report stays fresh for assigning ranges. |
+| `HOST_REPORT_INTERVAL_MS` | `5000` | How often the host sidecar reports its resources to the world server. |
+| `WORLD_DEDUP_RETENTION_MS` | 7 days | How long the world server remembers operation ids so a retried write is applied once. |
+| `WORLD_LOG` | on | `0` starts no log worker. Boot banners and fatal errors stay on the console. |
+| `WORLD_LOG_DIR` | `data/logs` | Where the world server's log worker writes. |
 
 ---
 
@@ -279,6 +287,29 @@ the other two, run `npm run build -w @mmo-engine/art` first.
 See [ART-PIPELINE.md](ART-PIPELINE.md).
 
 ---
+
+## Tools, benchmarks and smoke tests
+
+Variables read by the repo's scripts and helper tools, not by a running game.
+
+| Variable | Default | Used by |
+|---|---|---|
+| `BOT_WS_URL` | `ws://localhost:7777` | The admin bot launcher: the server the bots connect to. |
+| `BOT_USERNAME_PREFIX`, `BOT_PASSWORD` | `bot`, `bot-password` | The same: the names and password the bot accounts use. |
+| `GLTFPACK_BIN` | `gltfpack` on your PATH | The art pipeline's mesh compression. |
+| `GLTF_TRANSFORM_BIN` | `gltf-transform` on your PATH | The art pipeline's glTF transforms. |
+| `LOG_CODEGEN_OUT` | the source folder | `dist` makes the logging code generator write to `dist` instead. |
+| `OUT_DIR` | the generated folder | `npm run codegen`: write the generated bindings elsewhere, for a reproducibility check. |
+| `SURREAL_BIN` | `surreal` on your PATH | The fleet boot smoke test. |
+| `BOOT_SMOKE_PORT`, `BOOT_SMOKE_KEEP` | `7917`, off | The boot smoke test: its port, and `1` keeps its scratch folder. |
+| `EDITOR_SMOKE_PORT`, `EDITOR_SMOKE_CHROMIUM` | `5176`, a bundled Chromium path | `npm run smoke:editor-load`: the dev server's port and the browser it opens. |
+| `VALGRIND_WATCH_WORKTREE` | a `<repo>-watch` folder beside the repo | The valgrind watcher's separate worktree. |
+| `VALGRIND_WATCH_SKIP_PIPELINE` | off | `1` skips the pipeline step in the watcher's test. |
+| `PERF_JSON` | off | Set by `valgrind:perf` so the workloads print one machine-readable line. |
+| `BENCH_DB_URL`, `BENCH_DB_USER`, `BENCH_DB_PASS` | `mem://` | The data-plane benchmark's ledger: embedded in memory, or a SurrealMX server. |
+| `WORLD_BENCH_URL` | `mem://` | The world server's atomic-operations benchmark: `ws://127.0.0.1:8000/rpc` runs it against a server. |
+| `SYNTHESIS_ARTIFACTS`, `SYNTHESIS_CHROMIUM` | a temp folder, Playwright's | The synthesis package's example and chart renderers. |
+| `PAPERCLIP_API_URL` and the other `PAPERCLIP_*` | unset | The improvement crawler can post its report to a task tracker when these are set. |
 
 ## Data files
 

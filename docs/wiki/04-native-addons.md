@@ -48,7 +48,12 @@ Because `TypedArray.Data()` exposes the raw memory buffer allocated in the V8 he
 | **`addon-procgen`** | [`packages/addons/procgen`](../../packages/addons/procgen) | FastNoise2 & FastSIMD | Deterministic, vector-accelerated terrain heightfields and climate maps. |
 | **`addon-geometry`** | [`packages/addons/geometry`](../../packages/addons/geometry) | Manifold 3D & Clipper2 | Guaranteed 2-manifold topological booleans (union, difference) and 2D polygon offsetting. |
 | **`addon-scatter`** | [`packages/addons/scatter`](../../packages/addons/scatter) | SIMD Poisson Disc Sampling | Generates natural spatial distributions for foliage, boulders, and prop placement. |
-| **`addon-integrate`** | [`packages/addons/integrate`](../../packages/addons/integrate) | AVX2 / SSE2 FMA3 Kernels | Vectorized motion integration benchmarks ($2.02\text{ns}$/entity). |
+| **`addon-integrate`** | [`packages/addons/integrate`](../../packages/addons/integrate) | AVX2 / SSE2 FMA3 Kernels | Vectorized motion integration ($2.02\text{ns}$/entity in its benchmark). It is also the native movement kernel the data plane's sim worker steps. |
+| **`addon-picg`** | [`packages/addons/picg`](../../packages/addons/picg) | PICG cook, meshoptimizer | Cooks `.pcg` node graphs into procedural meshes off the tick thread. |
+| **`addon-terrain-kernel`** | [`packages/addons/terrain-kernel`](../../packages/addons/terrain-kernel) | N-API grid kernel | Grid-level terrain math: tectonics and erosion on the heightfield. |
+| **`addon-fanout`** | [`packages/addons/fanout`](../../packages/addons/fanout) | N-API | Per-tick fan-out: assembles every session's delta envelope and picks the names each session still needs ([NATIVE-FANOUT.md](../NATIVE-FANOUT.md)). Runs only when the core serves players directly. |
+| **`addon-codec`** | [`packages/addons/codec`](../../packages/addons/codec) | AVX2 / SIMD packer | The fast-path delta codec from the C++ main tick pilot (position and linear velocity). It is not in the root workspaces list, so `npm run build` does not build it. |
+| **`addon-perf-probe`** | [`packages/addons/perf-probe`](../../packages/addons/perf-probe) | Callgrind client requests | Start and stop marks for the instruction-count baselines (`npm run valgrind:perf`); a no-op outside valgrind. |
 | **`addon-template`** | [`packages/addons/template`](../../packages/addons/template) | N-API Baseline | Addon skeleton and CI toolchain smoke test. |
 
 ---

@@ -25,18 +25,19 @@ flowchart LR
     World["World Server<br/>(SurrealDB registry)"]
 
     Client <-->|"Binary WS (FlatBuffers)"| Edge
-    Edge <-->|"Zero-Copy SAB Ring"| Core
-    Core <-->|"Async Transaction Ring"| World
+    Edge <-->|"Framed TCP channel (loopback)"| Core
+    Core <-->|"webrpc: leases, hand-offs, snapshots"| World
 ```
 
 ### Tier 1: Client Mirror
 - The browser client runs **no authoritative game logic**.
-- The client receives binary snapshots and deltas, interpolates transforms, predicts local camera movement, and sends user intents back to the server.
+- The client receives binary snapshots and deltas, interpolates transforms one tick behind (there is no client-side prediction of game logic), and sends user intents back to the server.
 
 ### Tier 2: Edge Ingress Layer
-- Runs `uWebSockets.js` directly over native C++ socket polling.
-- Authenticates users, rate-limits requests, validates packets against strict schemas, and routes intents to the simulation core.
-- Computes sector-based Area of Interest (AoI) and serializes binary delta frames per connection.
+- Holds the players' WebSocket and HTTP on the public port (7777 under `npm start`) and relays them to the core over the framed channel. The edge serves sockets with the `ws` library.
+- Routes every packet by `type` through `content/edge/routes.json`: `core` forwards it over the channel, `local:<module>` is handled on the edge. While the core is unreachable, new sockets are refused (1013), open ones close (1012) and HTTP answers 503.
+- Assembles each client's `DeltaSet` from the per-sector bytes the core encodes once (interest management), and serves `/health` and a Prometheus `/metrics`.
+- **Authentication, rate limits and schema validation are in the core's gateway, not the edge.**
 
 ### Tier 3: Authoritative Simulation Core
 - Fixed 30 Hz simulation loop ($dt = 1/30\text{s} = 33.33\text{ms}$).
@@ -90,7 +91,7 @@ The loop in [`packages/engine-core/src/tick-loop.ts`](../../packages/engine-core
 
 - **Accumulator**: Wall time is accumulated ($dt = 1/30\text{s} = 33.33\text{ms}$). Frame gaps exceeding $250\text{ms}$ are clamped to absorb pathological pauses (tab switches, debugger stops).
 - **Spiral Guard**: At most 5 catch-up steps (`MAX_STEPS_PER_FRAME = 5`) run per frame. Excess backlog is dropped and atomically counted as a `spiralEvent` in telemetry, preventing frame death cascades.
-- **Measured Contention Performance (B3 Soak)**: In 51,000-entity stress benchmarks with 1,000 active client streams under injected network latency (45ms) and jitter (±15ms), $p99$ tick duration measures **$0.562\text{ms}$** (only $1.7\%$ of the $33.33\text{ms}$ budget), with **0 dropped steps**.
+- **Measured Contention Performance (B3 Soak)**: In 51,000-entity stress benchmarks with 1,000 active client streams under injected network latency (45ms) and jitter (±15ms), $p99$ tick duration measures **$0.562\text{ms}$** (only $1.7\%$ of the $33.33\text{ms}$ budget), with **0 dropped steps**. This is the **sim worker's step** on the data plane (movement, intents and the native kernels). It does not include fanning state out to 1,000 sockets, which is the larger cost: one region finished only 43% of its ticks at 1,000 players in the last end-to-end run. See [PERFORMANCE.md](../PERFORMANCE.md).
 
 ---
 

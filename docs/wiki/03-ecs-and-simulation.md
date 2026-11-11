@@ -29,7 +29,7 @@ Velocity X: [ vx0, vx1, vx2, vx3, ... ]
 When a system updates positions:
 1. It streams contiguous float arrays directly through CPU cache lines ($64\text{ bytes} = 16\text{ floats}$).
 2. Hardware prefetchers load upcoming data with zero cache thrashing.
-3. No temporary objects are allocated, completely eliminating V8 garbage collection on the tick.
+3. Component updates allocate no temporary objects, so they add no garbage. The rest of the tick (interest management, fan-out, systems written in JavaScript) can still allocate, and garbage collection has caused tick stalls before (roadmap PF1).
 
 ---
 
@@ -65,10 +65,10 @@ In Phase 3 of the C++ Main Tick migration (`docs/CPP-MAIN-TICK-PHASE3-REPORT.md`
 Verified in `packages/engine-core/test/bench/b3-network-injected-load.bench.mjs`:
 - **Scale**: 51,000 entities (1,000 player client streams + 50,000 NPCs) in a single region.
 - **Network Impairment Injection**: 45ms latency, ±15ms jitter, 2% packet loss.
-- **Telemetry Results**: Mean tick = **0.238ms**, p99 tick = **0.562ms** (1.7% of 33.33ms budget), **0 dropped steps**.
+- **Telemetry Results**: Mean tick = **0.238ms**, p99 tick = **0.562ms** (1.7% of 33.33ms budget), **0 dropped steps**. These are the **sim worker's step** on the data plane, not the whole tick: sending state to 1,000 sockets is the larger cost, and one region finished only 43% of its ticks at 1,000 players in the last end-to-end run ([PERFORMANCE.md](../PERFORMANCE.md)).
 - **PlayerIntent Edge-Trigger Re-Fire**: Verified sub-tick transition sequence (`PRESSED -> RELEASED -> RE-PRESSED (SPRINT)`) with zero dropped edge events.
 
-## 4. Lockless SPSC & MPSC Ring Buffers
+## 6. Lockless SPSC & MPSC Ring Buffers
 
 To prevent thread contention between the network gateway, simulation loop, and persistence workers, the engine utilizes lock-free atomic queues located in [`packages/engine-core/src/lockless-ring.ts`](../../packages/engine-core/src/lockless-ring.ts):
 
@@ -84,7 +84,7 @@ To prevent thread contention between the network gateway, simulation loop, and p
 
 ---
 
-## 5. Generational Slab Allocator
+## 7. Generational Slab Allocator
 
 Dynamic entity recycling can introduce ABA stale-slot errors if a client holds a reference to an entity ID that has since been despawned and reassigned.
 
