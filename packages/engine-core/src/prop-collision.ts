@@ -92,8 +92,15 @@ function yawOf(e: number): number {
   return Math.atan2(2 * (qw * qy + qx * qz), 1 - 2 * (qx * qx + qy * qy));
 }
 
-/** Side of a grid cell, metres. A static is binned into every cell its XZ bounding circle touches. */
-const CELL_M = 32;
+/**
+ * Side of a grid cell, metres, and also the slack a mover adds to its radius when it asks for
+ * neighbours (how far pushes can carry it before the next tick's query starts from where it
+ * ended up). A static is binned into every cell its XZ bounding circle touches. Kept small: a
+ * query returns every static in the cells it spans, and those are then sorted, so at 32 m the
+ * 64 m prop-collision-tick tile returned nearly all its 500 statics per mover and the grid cost
+ * 3x the plain scan (55.9 M against 18.3 M instructions per tick); at 4 m it is 0.3x of it (5.9 M).
+ */
+const CELL_M = 4;
 const CELL_OFFSET = 32768;
 
 /**

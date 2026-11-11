@@ -226,6 +226,52 @@ export const WORKLOADS = {
     },
   },
 
+  /** PropCollisionSystem on a wide world: the same 100 walkers among 5000 static props on a 200 m square (about the same prop density), per tick. It is where the XZ grid pays off; prop-collision-tick is the dense small tile where its overhead shows. */
+  "prop-collision-wide": {
+    n: 60, warm: 20, unit: "tick",
+    async setup() {
+      const C = await core();
+      const { addComponent } = await import("bitecs");
+      const prng = mulberry32(11);
+      const sim = new C.SimWorld();
+      for (let i = 0; i < 5000; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        addComponent(sim.ecs, C.BodyConfig, e);
+        const rock = i % 4 === 0;
+        C.Transform.px[e] = (prng() - 0.5) * 200;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 200;
+        C.Transform.qw[e] = 1;
+        C.BodyConfig.shapeKind[e] = rock ? C.ShapeKind.Sphere : C.ShapeKind.Box;
+        C.BodyConfig.halfX[e] = rock ? 0 : 0.8;
+        C.BodyConfig.halfY[e] = rock ? 0 : 2.5;
+        C.BodyConfig.halfZ[e] = rock ? 0 : 0.8;
+        C.BodyConfig.radius[e] = rock ? 0.6 : 0;
+        C.BodyConfig.mass[e] = 0;
+        C.BodyConfig.motionType[e] = C.MotionType.Static;
+        C.BodyConfig.layer[e] = 0;
+        C.BodyConfig.friction[e] = 0.8;
+        C.BodyConfig.restitution[e] = 0;
+      }
+      for (let i = 0; i < 100; i++) {
+        const e = sim.spawn();
+        addComponent(sim.ecs, C.Transform, e);
+        // Velocity first: attachDefaultCollider reads it to make a walker Kinematic rather than Static.
+        addComponent(sim.ecs, C.Velocity, e);
+        C.attachDefaultCollider(sim, e);
+        C.Transform.px[e] = (prng() - 0.5) * 200;
+        C.Transform.py[e] = 0;
+        C.Transform.pz[e] = (prng() - 0.5) * 200;
+        C.Transform.qw[e] = 1;
+      }
+      return { sim, prop: new C.PropCollisionSystem() };
+    },
+    run(s) {
+      s.prop.step(s.sim);
+    },
+  },
+
   /** The bridge version of prop-collision-tick (CharacterBridgeSystem, Jolt CharacterVirtual): the same 500 static props as Jolt bodies, the same 100 walkers as physics characters, one bridge step per tick. */
   "prop-bridge-tick": {
     n: 60, warm: 20, unit: "tick",
