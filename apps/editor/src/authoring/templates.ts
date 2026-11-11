@@ -143,8 +143,8 @@ export interface InterfaceComponentDef {
  * The component registry: every surface type a template may instantiate.
  * Adding a type is a code change (reviewed, tested); arranging instances
  * of existing types is a template change (drafted, diffed, published,
- * pinned, rolled back). T1 declares the registry in the model; the shell
- * renders from it in T2.
+ * pinned, rolled back). T1 declared the registry in the model; T2 added
+ * the shell-chrome types and the shell renders from the registry too.
  */
 export const INTERFACE_COMPONENTS: readonly InterfaceComponentDef[] = [
   { id: "hierarchy", kind: "navigation", label: "Hierarchy", accepts: ["editor", "graph"] },
@@ -154,6 +154,13 @@ export const INTERFACE_COMPONENTS: readonly InterfaceComponentDef[] = [
   { id: "ecs-inspector", kind: "inspector", label: "ECS inspector", accepts: ["editor", "graph", "live"] },
   { id: "data-tables", kind: "panel", label: "Data tables", accepts: ["editor"] },
   { id: "content", kind: "content", label: "Templated content", accepts: ["editor", "graph", "live"] },
+  { id: "shell-menu-bar", kind: "navigation", label: "Shell menu bar", accepts: ["editor"] },
+  { id: "shell-workspace-nav", kind: "navigation", label: "Workspace navigation", accepts: ["editor"] },
+  { id: "shell-tool-bar", kind: "panel", label: "Shell tool bar", accepts: ["editor"] },
+  { id: "shell-view-tabs", kind: "navigation", label: "View tabs", accepts: ["editor"] },
+  { id: "workspace-stage", kind: "viewport", label: "Workspace stage", accepts: ["editor", "live"] },
+  { id: "shell-dock", kind: "panel", label: "Shell dock", accepts: ["editor"] },
+  { id: "shell-status-bar", kind: "panel", label: "Shell status bar", accepts: ["editor", "live"] },
 ];
 
 const COMPONENT_BY_ID: ReadonlyMap<string, InterfaceComponentDef> = new Map(INTERFACE_COMPONENTS.map((c) => [c.id, c]));
@@ -535,6 +542,14 @@ export interface Resolution {
 /** The built-in fallback target per slot when nothing else is known-good. */
 export const LEGACY_TEMPLATE_ID = "legacy-data-editor";
 export const AUTHORING_TEMPLATE_ID = "viewport-authoring";
+export const SHELL_TEMPLATE_ID = "current-shell";
+export const LEGACY_SHELL_TEMPLATE_ID = "legacy-shell";
+
+/** Each slot's built-in legacy template: the resolver's fallback of last resort for that slot. */
+const LEGACY_TEMPLATE_IDS: Readonly<Record<string, string>> = {
+  authoring: LEGACY_TEMPLATE_ID,
+  shell: LEGACY_SHELL_TEMPLATE_ID,
+};
 
 /**
  * Stateful resolver: remembers the last known-good resolution per slot,
@@ -563,7 +578,7 @@ export class PresentationResolver {
     if (good && good.status !== "retired" && validateTemplateDefinition(good).length === 0) {
       return { slot, template: good, deprecated: good.status === "deprecated", fallbackReason: `${reason} — fell back to the last known-good ${keyOf(good.id, good.version)}` };
     }
-    const legacy = registry.versionsOf(LEGACY_TEMPLATE_ID).find((t) => t.slot === slot && t.status !== "retired" && t.status !== "draft");
+    const legacy = registry.versionsOf(LEGACY_TEMPLATE_IDS[slot] ?? LEGACY_TEMPLATE_ID).find((t) => t.slot === slot && t.status !== "retired" && t.status !== "draft");
     if (legacy) {
       this.knownGood.set(slot, legacy);
       return { slot, template: legacy, deprecated: legacy.status === "deprecated", fallbackReason: `${reason} — fell back to the built-in legacy template ${keyOf(legacy.id, legacy.version)}` };
@@ -591,7 +606,7 @@ export function retireTemplate(registry: TemplateRegistry, pins: PresentationPin
 
 // -------------------------------------------------------------- builtins
 
-/** Built-in templates, both addressable by pin from day one. */
+/** Built-in templates, all addressable by pin from day one: two for the authoring slot (T1), two for the shell slot (T2). */
 export function createBuiltinRegistry(provenance: Provenance): TemplateRegistry {
   const registry = new TemplateRegistry();
   registry.register(
@@ -694,6 +709,130 @@ export function createBuiltinRegistry(provenance: Provenance): TemplateRegistry 
         ],
         widgets: [...WIDGET_IDS],
         filters: ROLE_FILTERS.map((f) => f.id),
+      },
+    },
+    provenance,
+  );
+  registry.register(
+    {
+      id: LEGACY_SHELL_TEMPLATE_ID,
+      slot: "shell",
+      version: 1,
+      status: "published",
+      definition: {
+        regions: [
+          {
+            id: "shell",
+            direction: "column",
+            children: [
+              {
+                id: "shell-top",
+                direction: "row",
+                panes: [
+                  { id: "menu-bar", component: "shell-menu-bar", bindings: [{ name: "workspace", source: "editor", path: "shell.workspace" }] },
+                ],
+              },
+              {
+                id: "shell-main",
+                direction: "row",
+                panes: [
+                  { id: "stage", component: "workspace-stage", bindings: [{ name: "view", source: "editor", path: "shell.activeView" }] },
+                ],
+              },
+              {
+                id: "shell-status",
+                direction: "row",
+                panes: [
+                  { id: "status-bar", component: "shell-status-bar", bindings: [{ name: "session", source: "editor", path: "shell.session" }] },
+                ],
+              },
+            ],
+          },
+        ],
+        widgets: [],
+        filters: [],
+      },
+    },
+    provenance,
+  );
+  registry.register(
+    {
+      id: SHELL_TEMPLATE_ID,
+      slot: "shell",
+      version: 1,
+      status: "published",
+      definition: {
+        regions: [
+          {
+            id: "shell",
+            direction: "column",
+            children: [
+              {
+                id: "shell-top",
+                direction: "column",
+                panes: [
+                  { id: "menu-bar", component: "shell-menu-bar", bindings: [{ name: "workspace", source: "editor", path: "shell.workspace" }] },
+                  { id: "workspace-nav", component: "shell-workspace-nav", bindings: [{ name: "workspaces", source: "editor", path: "shell.workspaces" }] },
+                  { id: "tool-bar", component: "shell-tool-bar", bindings: [{ name: "toolbar", source: "editor", path: "shell.toolbar" }] },
+                ],
+              },
+              {
+                id: "shell-main",
+                direction: "row",
+                children: [
+                  {
+                    id: "shell-left",
+                    direction: "column",
+                    mobile: { presentation: "drawer" },
+                    panes: [
+                      { id: "dock-left", component: "shell-dock", config: { side: "left" }, bindings: [{ name: "layout", source: "editor", path: "layout.docks" }] },
+                    ],
+                  },
+                  {
+                    id: "shell-center",
+                    direction: "column",
+                    panes: [
+                      { id: "view-tabs", component: "shell-view-tabs", bindings: [{ name: "views", source: "editor", path: "shell.views" }] },
+                      {
+                        id: "stage",
+                        component: "workspace-stage",
+                        bindings: [
+                          { name: "view", source: "editor", path: "shell.activeView" },
+                          { name: "liveView", source: "live", path: "view" },
+                        ],
+                      },
+                      { id: "dock-bottom", component: "shell-dock", config: { side: "bottom" }, bindings: [{ name: "layout", source: "editor", path: "layout.docks" }] },
+                    ],
+                  },
+                  {
+                    id: "shell-right",
+                    direction: "column",
+                    mobile: { presentation: "drawer" },
+                    panes: [
+                      { id: "dock-right", component: "shell-dock", config: { side: "right" }, bindings: [{ name: "layout", source: "editor", path: "layout.docks" }] },
+                    ],
+                  },
+                ],
+              },
+              {
+                id: "shell-status",
+                direction: "row",
+                panes: [
+                  {
+                    id: "status-bar",
+                    component: "shell-status-bar",
+                    bindings: [
+                      { name: "session", source: "editor", path: "shell.session" },
+                      { name: "server", source: "live", path: "server.status" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        widgets: [],
+        filters: [],
       },
     },
     provenance,
