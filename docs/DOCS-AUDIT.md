@@ -91,6 +91,10 @@ They are documented somewhere, just not on the page people look at. Thirty names
 - **`docs/business-analysis/`** quotes cloud costs per concurrent user and a "benchmark telemetry" table. The cost figures are not derived from anything measured in the repository, and `03-benchmark-telemetry.md` cites three test files that do not exist (`playtest-loft-accessibility.spec.ts`, `synthesizer.test.ts`, a dungeon decomposition JSON). Treat it as unverified until each claim is traced.
 - **`DECISIONS.md` line 44** reports a 0.562 ms p99 tick at 1,000 players and 50,000 entities. That figure is the sim worker's step on the data plane, not the end-to-end tick (about 62 to 66 ms at 1,000 players, the roadmap's PF2). Both are true; the decision log should say which one it means. `PERFORMANCE.md` does.
 
+### 6b. A policy question
+
+`docs/business-analysis/README.md` says competitive comparisons and commercial analyses live only in the private suite, and that public manuals cover the engine alone. `ENGINE-COMPARISON-AND-PERFORMANCE.md` is in the public `docs/` folder and is a competitive comparison, and the root README links to the business analysis. `PERFORMANCE.md` deliberately links to neither. Whether the comparison doc should move is a decision for the owners, not something this audit changed.
+
 ### 7. Duplicates and drift
 
 - `docs/SAB-LOGGING-PERFORMANCE-REPORT.md` and `docs/wiki/SAB-LOGGING-PERFORMANCE-REPORT.md` are the same report.

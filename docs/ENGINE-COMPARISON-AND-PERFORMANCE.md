@@ -91,6 +91,8 @@ To modernize both browser client rendering and native desktop/server pipelines, 
 
 ## 4. Performance Deep Dive: Current Bottlenecks & Audit Findings
 
+> **Status (2026-11-11): this section is a snapshot from 2026-10-27 and is partly out of date.** Since then the base64 mirror stream measured in 4.1 was removed (E5a binary frames, E5c), interest management is built and on by default, and the interest-management leak and allocation work in 4.2 has landed (PF1 and later commits). 4.3 still describes the stress results accurately. The draw-call ceiling in 4.4 is a general WebGL figure; nothing in this repository measures it. [PERFORMANCE.md](PERFORMANCE.md) is the current, sourced account.
+
 Despite top-tier performance in ECS integration and edge ingress, our audits revealed several key bottlenecks:
 
 ```

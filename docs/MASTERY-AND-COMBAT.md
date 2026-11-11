@@ -1,8 +1,12 @@
 # Mastery and Combat
 
-Status: **design** (not yet built). Companion to
-`docs/CHARACTERS-AND-SOCIAL.md`, whose characters this gives skills,
-bodies and fights.
+Status: **built** (slices M0 to M4 here, and M5 after it; see the table in §7), kept as the design record.
+Companion to `docs/CHARACTERS-AND-SOCIAL.md`, whose characters this gives skills, bodies and fights.
+
+Sections 6 and 7 describe the plan as it was written. Where the code differs, the code is right:
+components are in `packages/engine-core/src/components.ts` and the wire is in
+[MESSAGE-CATALOG.md](MESSAGE-CATALOG.md). **Abilities, telegraphs, status effects and duels (M5) came
+after this document**; they are described in [GAMEPLAY.md](GAMEPLAY.md).
 
 ## 1. The idea
 
@@ -348,6 +352,14 @@ its own PR, with tests.
 | M3 | Items and melee: physical item properties, holding items, `Combat` phases, fit and power, precision and landing, defence contests, damage kinds and dismemberment; the attack and defend controls | M2 |
 | M4 | Disciplines, familiarity, disarms, and Medicine | M3 |
 
+**Status (2026-11-11, from the [roadmap](ROADMAP.md)):** M0 built. M1 built, with skills saved with the
+character (M1b); Exposure waits on weather. M2 built: blows land on parts, wounds bleed and clot, parts
+heal, injuries slow, lame and weaken, and a vital part or blood loss kills. M3 built (stances, fit and
+power, precision and landing, defence contests, damage kinds, dismemberment); **armour waits for armour
+items**. M4 built (Medicine, item familiarity, disciplines and the Blade Master disarm); the other
+unlocks (sweep, lunge, throw down, reattach) are data only so far. M5 (abilities with a global cooldown
+and a one-deep queue, telegraphs, status effects, duels) is built.
+
 M1 and M2 already work with what the world has today: swimming, falling,
 drowning and the climate exist, so skills, injuries and respawning can be
 tested before any weapons do.
@@ -356,8 +368,12 @@ tested before any weapons do.
 
 1. **The respawn lore**: why characters come back, and whether dying
    costs anything beyond the trip back (items dropped, time, a mark on
-   the character).
+   the character). *The cost is set in `content/rules/death.json`: a 10 second delay, respawn at the
+   nearest visited place (the spawn point if none), skills and items kept, injuries cleared. The lore
+   itself is still open.*
 2. **Player-versus-player rules**: where fighting other players is
-   allowed at all.
+   allowed at all. *Answered in part: the default is peace, and players hurt each other only in a
+   consensual duel (a duelist felled by the other does not die) or where a GM or event marks hostility.
+   See [GAMEPLAY.md](GAMEPLAY.md#duels). Open-world PvP does not exist.*
 3. **Regrowing lost parts**: only on respawn (this design), or also by
    rare healing or prosthetics.

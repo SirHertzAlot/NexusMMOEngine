@@ -172,11 +172,19 @@ Abilities (M5) sit on a generic trigger layer. The client sends `trigger` with a
 - **Per-ability cooldowns and cast times.** Each ability has its own cooldown, and a cast can be interrupted.
 - **The answer is an event.** The result comes back as `ability` with a state: `casting`, `queued`, `fired`, `interrupted` or `rejected`. A rejection is the answer; no error is sent, so the ability bar can show it.
 - **Targeting.** Tab cycles targets. The ability bar is part of the HUD layout.
-- **The starter set** is strike, heal (which is the spell Mend, below) and guard, tuned from the combat balance numbers. In the live two-account check of 2026-11-02 a strike did 10 and a guarded strike 5.
+- **The starter set** is in `content/combat/abilities.json`, designed from the existing balance numbers (strike is one blow's base damage; heal is Mend's amount):
+
+| Ability | Global cooldown | Own cooldown | Cast | Effect |
+|---|---:|---:|---:|---|
+| Strike | 1.0 s | none | instant | 10 damage within 2.5 m |
+| Guard | 1.0 s | 4 s | instant | Applies the `guarded` status (below) |
+| Heal | 1.0 s | 8 s | 1.5 s | Heals 15 |
+
+  The `heal` ability is **not** the Mend spell: it shares Mend's amount of 15 but has its own cast time and cooldown and costs no mana. In the live two-account check of 2026-11-02 a strike did 10 and a guarded strike 5.
 
 **Telegraphs** are danger zones the server owns. `warned` is sent when a cast starts (the client draws the zone), `resolved` when its timer runs out (who was hit and how hard, decided that tick from authoritative positions), and `cancelled` if the caster died or was stunned. They go to every welcomed session.
 
-**Status effects** are buffs and debuffs with a stack count. `applied` is sent with the stacks, and `removed` when one expires, is cleansed or is dispelled. The client's status frame shows only the entities it is displaying.
+**Status effects** are buffs and debuffs with a stack count. The one in the starter set is `guarded`: a buff that lasts 2.5 s, does not stack (a new one refreshes it), cannot be dispelled, and halves the damage you take. `applied` is sent with the stacks, and `removed` when one expires, is cleansed or is dispelled. The client's status frame shows only the entities it is displaying.
 
 ## Duels
 
@@ -220,7 +228,7 @@ Refusals you can get: you can't cast now (dead), no one to cast on, the spell is
 
 The body system spreads the heal over the parts that are harmed. A heal **does not set a maimed part and does not stop bleeding**: that is Medicine's job.
 
-Your mana shows in the player frame. Casting is the `cast` message (`0x1c`); the starter `heal` ability is Mend. As of this audit the client has no dedicated spell UI, and no client code that sends `cast` directly.
+Your mana shows in the player frame. Casting a spell is the `cast` message (`0x1c`). As of this audit the client has no UI and no code that sends `cast`, so Mend is reachable only through the protocol, by bots and tools. Players heal with the ability bar's separate `heal` ability, which costs no mana (see [Abilities](#abilities-telegraphs-and-status-effects)).
 
 **Adding a spell.** Add an entry to `spells.json` with `id`, `name`, `mana`, `castSeconds`, `cooldownSeconds`, `target` (`self` or `any`), `reach` and an `effect`. The only effect kind today is `heal`. A rules reload applies new spells at once, and stops casts under way.
 
@@ -283,6 +291,31 @@ A two-sided flow: open a trade with a player, each side offers **gold and bag it
 - If the seller no longer holds the item when it settles (they traded it away), the sale aborts and every bid is refunded.
 
 **In the client today:** there is a vendor panel and a duel panel, and the pouch panel for gathering. **There is no client UI for player-to-player trade or the auction house**; both are built and exposed through the protocol (message `0x21`, actions `trade` and `auction`), so they are usable by bots and tools but not yet by a player.
+
+## Chests, doors and things you press E on
+
+**E** is the one interact key. The client sends a single request (`interact`, message `0x27`) and the server decides what it means, after re-checking reach and state. A refusal is error 4005. E can:
+
+- open a **chest** or a **door**, or mend a broken **ruin**;
+- pick up a **ground item**;
+- **gather** from a resource node (see [Gathering](#gathering));
+- open a **shop** (see [Vendors](#vendors));
+- talk to a **quest giver**, or enter a **dungeon entrance**.
+
+**World chests** are shared by every player. Whoever opens one first gets the items from its loot table on the ground beside it. The chest is empty until its `refillSeconds` have passed (600 by default), then full for the next player. A chest is a scene node with a `Chest` component: `table` (which loot table, `chest-common` by default) and `refillSeconds`. The server sends all chests on joining, then the ones that changed. Loot tables are in [DUNGEONS-AND-LOOT.md](DUNGEONS-AND-LOOT.md).
+
+## The people of the towns (residents)
+
+Baked towns have people living in them. Residents are **derived, not authored and not saved**: a restart gives the same people in the same places for the same time of day, and a resident looks the same on every boot and to every player (the look is seeded from their id).
+
+- **Schedules.** Once a second a resident's schedule says where they are. Someone outdoors has an entity standing at their anchor; someone indoors has none (buildings are boxes), so **at night nearly the whole town costs nothing**. Where a navigation crowd runs, a resident walks between places: out of the building they were in, to the next anchor, or to the door and gone on arrival.
+- **Only near players.** A town is simulated in three tiers by the nearest player's distance to its edge: close, its residents walk (a navigation agent each, up to `MMO_RESIDENTS_FULL`, 300 region-wide); a little further, they stand at their anchor and snap when their block of the schedule changes; far away, the town has **no entities at all** and is placed from the schedule when a player comes. A town changes tier with 25 m of hysteresis. The region as a whole is capped at `MMO_RESIDENTS_MAX` (800) resident entities.
+- **They can be hurt.** Residents have health and anyone may hurt them; the weak points of a town are its people. One who falls lies where they fell for a while, then is gone, and stays dead until three game days have passed. Then "someone new has moved in" to the same household slot: the same id with a new generation, so a new look. Deaths are kept in the places store, so a restart does not bring them back.
+- **Raids.** When raiders reach a town, everyone outdoors runs for home (sprinting if they can) and is gone on arrival, while guards and the watch hold their posts. Schedules resume 20 to 60 seconds after the raid ends, and their talk is in the raid's voice meanwhile.
+- **Shops.** A resident who keeps a shop sells from the vendor template for that kind of shop (`content/vendors.json`, `byArchetype`), to whoever talks to them.
+- **Lessons.** A master of a profession teaches a skill **for gold, once a game day per pupil**. A lesson adds skill points on top of use-based gain, on an S curve of the pupil's level: small at the start (a beginner always gets a worthwhile first lesson), best about a third of the way up, and harder toward the top. The price rises with the pupil's level. Tuned in `content/lessons.json` (`MMO_LESSONS`).
+
+Homesteads (families on farms between the towns) are the next slice.
 
 ## Characters
 

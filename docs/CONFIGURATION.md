@@ -141,6 +141,61 @@ Each of these points a content file or folder somewhere other than its default u
 
 The editor's play mode runs the built server directly. `MMO_EDITOR_REBUILD=1` (or no build yet) takes the slower `npm run server` path, which rebuilds every workspace first.
 
+## More server and tool variables
+
+These were documented only in the server's source header and the bake script. Defaults are paths relative to the repo.
+
+### Accounts and admin
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_USERS_CSV` | `$MMO_DATA_DIR/users.csv` | The accounts file. The editor points play sessions at a scratch file. |
+| `MMO_ADMINS` | empty (nobody) | Comma-separated usernames allowed to use the admin console (message `0x10`). |
+| `MMO_DEV_SERVER` | off | `1` makes **every account an admin**. Development servers only; never on a public deployment. |
+| `MMO_SPAWN_OVERRIDE` | the world's stored spawn point | `x,z` for the player spawn point. The editor's Play menu "Start from" uses it. |
+
+### Content a server loads at boot
+
+| Variable | Default | What it points at |
+|---|---|---|
+| `MMO_COMBAT` | `content/combat/moves.json` | The combat moves. |
+| `MMO_CRAFTING` | `content/crafting/recipes.json` | Crafting rules. A missing file means no crafting; a bad file stops the boot. |
+| `MMO_QUESTS` | `content/quests` | Quest and dialog content. A missing folder means no quests, not a boot failure. |
+| `MMO_DUNGEONS` | `content/dungeons` | Dungeon instance rules and entrances. A missing folder means no dungeons. |
+| `MMO_MODULES` | `content/modules.json` | The enabled module set. The `core` module is always on; a bad set stops the server and names every problem. |
+| `MMO_BIOMES` | `content/biomes.json` (not in a fresh checkout) | The biome registry: per-biome scatter multipliers and creature tables. |
+| `MMO_SPECIES` | `content/species/species.json` | The species overlay, merged over the built-in roster. A bad file stops the boot. |
+| `MMO_SCENE` | none | A scene (`content/scenes/<name>.scene.json`) whose nodes spawn at boot as creatures, props, items and quest posts. A comma-separated list spawns each; `world` spawns every baked town plus places. |
+| `MMO_SCENES`, `MMO_SCENES_DIR` | `content/scenes` | The scenes folder (the two names are aliases; `bake:all` uses the second). |
+| `MMO_PREFABS` | `content/prefabs` (absent unless you create it) | The prefab files scenes expand. |
+| `MMO_INSTANCE_HOST` | `localhost` | The host clients use to reach dungeon instances. Each instance listens on its own free port. |
+
+### Wildlife
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_WILD_CREATURES` | off | `1` spawns the biome registry's packs as chunks load (on a baked world with biomes). Only kinds with creature rules spawn. |
+| `MMO_WILDLIFE` | off | With `MMO_WILD_CREATURES=1`: `1` plans the wildlife table (`content/wildlife/wildlife.json`) or give a file. See [WILDLIFE.md](WILDLIFE.md). |
+| `MMO_WILDLIFE_LOG` | off | `1` logs each pack spawned. |
+
+### Bakes and paths
+
+These apply to `npm run bake:all` and the settlement tools. A flag on the command wins over the variable; relative values resolve from where you ran npm.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_REPO` | the repo root | The checkout the other paths are relative to. |
+| `MMO_CONTENT_DIR` | `<repo>/content` | Where authored content lives. Settlement rules stay with the repo even if this moves. |
+| `MMO_ASSETS_DIR` | `<repo>/assets` | The art folder (present only where the licensed art is). |
+| `MMO_CATALOG` | `<assets>/catalog.json` | The art catalog. |
+| `MMO_SETTLEMENT_OUT` | `<content>/settlements` | Where baked settlements are written and read. |
+| `MMO_SETTLEMENT_RULES` | `content/settlements/rules.json` | The town generator's rules file (the editor's Towns screen edits it). |
+| `MMO_SCALE_OUT` | `<content>/scale.local.json` | Where `scale-fit` writes the fitted model scales (gitignored). |
+| `MMO_SCALE` | none | Run the server with this file (`content/scale.local.json`) to apply the fitted model scales. |
+| `MMO_BAKE_SHAPE` | the bake default | The landmass shape: `island`, `peninsula`, `continents` or `pangaea` (same as `--shape`). |
+| `MMO_BAKE_SIZE_CHUNKS` | the bake default | The world's side in chunks (same as `--size-chunks`). |
+| `MMO_ORDERED_BUILD` | unset | Set by the build orchestrator when it builds in dependency order, so each package's own dependency build does nothing. Not something you set by hand. |
+
 ## World bake
 
 `npm run bake:world` (refuses to overwrite) or `npm run bake:world:force`
@@ -175,7 +230,7 @@ never printed; only its argon2id hash is stored. 8–128 characters.
 | Variable | Default | What it does |
 |---|---|---|
 | `WORLD_PORT` | `7780` | HTTP listen port. |
-| `WORLD_DB_URL` | `surrealkv:<WORLD_DATA_DIR>/surreal` | Unset = embedded SurrealKV (durable). `mem:` = plain JS in-memory store (development, not durable). `mem://…` = embedded SurrealMX (in memory only, not durable). `ws://…` = a SurrealDB server, e.g. the SurrealMX server from `npm run db` (durable via AOL + snapshots), `ws://127.0.0.1:8000/rpc`. |
+| `WORLD_DB_URL` | `surrealkv:<WORLD_DATA_DIR>/surreal` | Unset = embedded SurrealKV (durable). `mem:` = plain JS in-memory store (development, not durable). `mem://…` = embedded SurrealMX (in memory only, not durable). `ws://…` = a SurrealDB server, e.g. the SurrealMX server from `npm run db -w @mmo-engine/world-server` (durable via AOL + snapshots), `ws://127.0.0.1:8000/rpc`. |
 | `WORLD_DB_NS` / `WORLD_DB_DB` | `mmo` / `world` | SurrealDB namespace and database. |
 | `WORLD_DB_USER` / `WORLD_DB_PASS` | — | SurrealDB credentials (`root` / `root` with `npm run world:db`). |
 | `WORLD_API_KEY` | unset | The bootstrap key regions register with. Unset = registration disabled. |

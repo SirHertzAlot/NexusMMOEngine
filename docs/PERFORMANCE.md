@@ -45,7 +45,7 @@ What is in that 1,000-player tick, after the work so far ([`NATIVE-FANOUT.md`](N
 | Socket sends | about **22 ms** | the largest piece now; `ws.send` outside a uWS callback is one syscall each |
 | Interest management | about 15% of the profile | native version is a listed follow-up |
 
-**Reading it:** at 1,000 players the simulation is nowhere near the limit and the network fan-out is. The open work in the roadmap (E5a binary frames, E5b encode off the tick, interest management, send batching) is aimed at exactly this.
+**Reading it:** at 1,000 players the simulation is nowhere near the limit and the network fan-out is. The fan-out work still open in the roadmap (the PF2 follow-ups, such as a native `interestEntries`, about 15% of the 1,000-player profile) and the send-batching gate are aimed at exactly this. Binary mirror frames (E5a), dropping the old base64 stream (E5c) and interest management (IM) are done.
 
 ## Scaling out: regions
 
@@ -72,7 +72,7 @@ What it says:
 
 ## Network
 
-**Bandwidth is the first thing that grows with entity count.** Interest management is on by default. With it off (`MMO_INTEREST=0`), every client gets the whole region's delta ("global" mode); with every entity moving every tick (the worst case), the delta frame is **74 KiB at 1,000 entities, about 2.2 MB/s per client at 30 Hz**, and scales linearly. Measured 2026-10-20 ([`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md) B4). That is why per-player interest management exists.
+**Bandwidth is the first thing that grows with entity count.** Interest management is on by default. With it off (`MMO_INTEREST=0`), every client gets the whole region's delta ("global" mode); with every entity moving every tick (the worst case), the delta frame is **74 KiB at 1,000 entities, about 2.2 MB/s per client at 30 Hz**, and scales linearly. Measured 2026-10-20 ([`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md) B4), on the stream as it was then: FlatBuffers bytes inside base64. Binary frames (E5a) and dropping that stream (E5c) have landed since, so expect about a quarter fewer bytes (derived: base64 adds a third), but there is no newer global-mode run in the repository. That is why per-player interest management exists.
 
 **Interest management cuts it hard.** Measured 2026-11-01 on a 4-core Xeon with 50 sessions over the edge channel, every entity moving ([`EDGE-SPLIT-RESULTS.md`](EDGE-SPLIT-RESULTS.md) B7):
 
@@ -85,7 +85,7 @@ What it says:
 
 With a burst of 100 ground items dropping at once every 30 ticks, the 5,000-entity p99 rises to 59 to 67 ms. **At 5,000 active entities in one region the tick is already near the budget, and bursts push it over.** Crowds are the expensive case: the same 5,000 entities cost five times the bandwidth when they stand in towns.
 
-**Encoding.** The mirror stream is FlatBuffers bytes wrapped in base64 inside JSON, which costs about a third more bytes and an extra copy. Measured p99 delta encode: 2.1 ms at 1,000 entities (inside the 5 ms budget), **11.7 ms at 5,000 and 12.9 ms at 10,000 (a miss)**, on a shared sandbox where some of the tail is noise (EDGE-SPLIT B4, 2026-10-20). Binary frames (E5a) and dropping base64 (E5c, in progress) are the planned fix. A separate "fast-path" codec for position and velocity is **16 to 20 times faster to encode and 3 times smaller** than FlatBuffers in its benchmark, but only covers position and linear velocity; any other change in a tick falls back to the full encoder ([`PERFORMANCE-SAB.md`](PERFORMANCE-SAB.md), 2026-10-20).
+**Encoding.** The B3 and B4 figures in the edge results log (2026-10-03 and 2026-10-20) measured a mirror stream of FlatBuffers bytes wrapped in base64 inside JSON. Its delta-encode p99 missed the 5 ms budget at 5,000 entities (11.7 ms) and at 10,000 (12.9 ms), on a shared sandbox where some of the tail was noise. **That stream no longer exists**: E5a moved the channel to binary frames, and E5c stopped the core pushing it (the B3 push overhead fell from 0.69 to 0.23 ms per tick at 1,000 entities, median of 7). What costs encode time today is the per-sector delta encoding of interest management, which is inside the "core tick" column of the B7 table above (7 to 28 ms at 1,000 to 5,000 entities, with 50 sessions). A separate "fast-path" codec for position and velocity is **16 to 20 times faster to encode and 3 times smaller** than FlatBuffers in its benchmark, but only covers position and linear velocity; any other change in a tick falls back to the full encoder ([`PERFORMANCE-SAB.md`](PERFORMANCE-SAB.md), 2026-10-20).
 
 **Transport.** uWebSockets.js is the production transport and `ws` is a pure-JavaScript fallback. In the transport benchmark both kept up at 1,000 clients, and at 2,000 clients uWS delivered about 1.8 times the messages `ws` did ([`transport-bench-results.json`](transport-bench-results.json), 2026-10-27). uWS fans out one published message natively: for 1,000 subscribers a `publish` took 0.5 ms against 6.0 ms for a send loop, 12 times faster, and `ws` shows no gain ([`PERFORMANCE-SAB.md`](PERFORMANCE-SAB.md)). **If uWS has no prebuilt binary for your Node and OS you silently get the slower path** (`ws`, with JavaScript fan-out). Check the server's `listening` line and `gateway.fanoutStatus`; [`NATIVE-FANOUT.md`](NATIVE-FANOUT.md) lists which condition gives which path.
 
@@ -171,8 +171,8 @@ Instanced props draw one call per model, and a model with level-of-detail meshes
 - Multi-hour soak tests. The edge soak ran 10 minutes (2026-10-03).
 - The world server on its own box with regions spread across hosts.
 - Player-client frame rates on real GPUs.
-- Cloud cost per player. A "per CCU" cost figure appears in [the business analysis](business-analysis/README.md); it is not derived from a measurement in this repository.
-- Comparisons with other engines. The comparison matrix in [`ENGINE-COMPARISON-AND-PERFORMANCE.md`](ENGINE-COMPARISON-AND-PERFORMANCE.md) is a positioning document, not a benchmark, and parts of its bottleneck section predate fixes described above.
+- Cloud cost per player. This repository holds no measurement of it, so this page does not estimate one.
+- Comparisons with other engines. This page is about Nexus only; nothing here was benchmarked against another engine.
 
 ## Reproduce it
 

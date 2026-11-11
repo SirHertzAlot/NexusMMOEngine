@@ -98,7 +98,7 @@ The licensed art lives in `/assets/`, which is never committed.
 | `npm run valgrind:memcheck [-- <addon> ...]` | Every addon's tests under valgrind memcheck. Fails on our memory errors and leaks |
 | `npm run valgrind:perf [-- --check \| --update]` | Instruction counts for the headless workloads against `perf/callgrind-baseline.json` |
 | `npm run valgrind:check [-- --threshold 3]` | A gate over the results already in `valgrind-out/` (it runs nothing): fails on new engine errors or a workload slower than the baseline |
-| `npm run valgrind:record [-- --promote]` | Snapshots the current valgrind results into the local history; `--promote` writes them to `perf/history.json` |
+| `npm run valgrind:record [-- --promote]` | Snapshots the current valgrind results into the local history; `--promote` writes them to `perf/history.json`, which does not exist until someone promotes a run |
 | `npm run valgrind:dashboard` | A local dashboard (loopback only) for memcheck, callgrind and history results |
 | `npm run valgrind:build-debug` | Debug builds of the addons so valgrind reports file and line |
 | `npm run valgrind:helgrind` | The threaded addons under Helgrind (data races) |
