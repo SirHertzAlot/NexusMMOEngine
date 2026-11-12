@@ -16,6 +16,19 @@ state and is never the source of truth.
 start with [`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md). Full
 engineering rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
+**Performance:** what the engine costs today, measured, and what that means for
+the game you would build on it, are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+In short: the 30 Hz tick holds with 16 regions on a 4-core box (500 entities and 100
+players each), and one region (the core serving players directly) held it at 200 players with
+3,000 NPCs in the last end-to-end run but finished only 43% of its ticks at 1,000. Those are repository
+benchmarks on shared hardware; re-measure before you plan around them.
+
+**Website and docs site:** `site/` holds the landing page, a 30-second tour, a 3D
+architecture explorer and a docs site built from `docs/`. Build the docs with
+`cd site/build && npm install && npm run build`, then serve `site/` over http
+(for example `python3 -m http.server -d site`). `docs/*.md` stays the single source
+of truth; the generated pages are not committed.
+
 **Roadmap:** what's built, in progress and next, with a running update
 log, is in [`docs/ROADMAP.md`](docs/ROADMAP.md). Pick an item there to
 help.
@@ -74,17 +87,24 @@ packages/engine-core/   # authoritative server: tick loop, world, net, combat,
 packages/rules/         # game rules as data: schemas, defaults, content/rules loader, hooks
 packages/addons/        # C++ N-API addons: physics (Jolt), navigation (Recast/Detour),
                         # procgen (FastNoise2), picg (PICG cook, meshoptimizer),
-                        # geometry (manifold + Clipper2), scatter, perf-probe,
-                        # integrate (bench), template
+                        # geometry (manifold + Clipper2), terrain-kernel (tectonics,
+                        # erosion), fanout (per-tick delta assembly), scatter,
+                        # perf-probe, integrate (movement kernel, bench), template
 packages/wfc/ placement/ scatter/ picg/   # procedural generation (bake time)
 packages/dungeon/ species/ compose/ crafting/ settlement/   # dungeons, creatures, settlements, ranks and
                         # loot, materials and recipes (bake time)
+packages/fortify/ synthesis/   # settlement fortification and model synthesis (bake time)
+packages/logging/       # SAB logging layer: lock-free rings and the log worker
+packages/channel/       # the framed edge<->core channel
+packages/build/ playtest/   # build and deploy profiles; automated playtests
+packages/animal-rig/    # procedural animal skeletons and gaits (presentation only)
 packages/art/           # art asset pipeline: manifests, packs, three.js provider
 packages/world-server/  # world server: region registry, SurrealDB system of record
 packages/bench/         # tick-budget validation benchmark (slice 1.5)
 apps/client/            # the player's three.js + React client
 apps/editor/            # the editor: inspectors, play mode, rules and tables, art
 apps/edge/              # edge process: client WebSocket + packet router (edge/core split)
+site/                   # the public website and docs site (static; see below)
 content/                # rules, edge routes and other data the server loads
 docs/                   # roadmap, design docs, message catalog, decision log
 scripts/                # codegen (flatc vendored), dev launcher, valgrind

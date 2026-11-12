@@ -9,7 +9,7 @@
 
 ## 1. Transport bench — `bench:transport` at 250 / 500 / 1,000 / 2,000 clients
 
-The transport benchmark (`packages/engine-core/test/bench/transport-bench.ts`) measures what the port costs the server under game load: uWebSockets.js against `ws`. For each client count, a separate process opens that many WebSocket clients; every tick (30 Hz) the server sends each client a 1.2 KB delta and each client sends a 48-byte intent. After warm-up it measures server CPU (% of one core), broadcast loop p50/p99 per tick, resident memory, and messages delivered.
+The transport benchmark (`packages/engine-core/src/net/transport-bench.ts`) measures what the port costs the server under game load: uWebSockets.js against `ws`. For each client count, a separate process opens that many WebSocket clients; every tick (30 Hz) the server sends each client a 1.2 KB delta and each client sends a 48-byte intent. After warm-up it measures server CPU (% of one core), broadcast loop p50/p99 per tick, resident memory, and messages delivered.
 
 ### Method
 

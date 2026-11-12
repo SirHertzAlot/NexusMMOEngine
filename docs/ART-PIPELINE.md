@@ -123,7 +123,7 @@ npm run import:glb -w @mmo-engine/art -- <dir>... [--assets <dir>]
 
 Per model it copies the GLB to `models/glb/<slug>/<Category>/`, **rescales it to
 a natural size** (the packs' units are arbitrary: the same pack holds a rabbit
-2 units long and a sheep 766; `natural-size.ts` maps whole name words to metres)
+2 units long and a sheep 766; `packages/art/src/convert/natural-size.ts` maps whole name words to metres)
 with the base centre at the origin, and adds `catalog.json` / `manifest.json`
 entries carrying `license` (author, licence name, page), `animations` and
 `skinned`. Re-running a pack replaces its entries; `convert:packs` keeps them.
@@ -135,8 +135,9 @@ gitignored `content/ecology/wildlife.local.ecology.json` (the wilds plan plus
 name-pattern layers: sea floor with `habitat: "water"` and depths, shore birds,
 woodland fauna, critters, farm animals; static, skinned models excluded; run
 with `MMO_ECOLOGY`). `DEFAULT_DRESSING_PATTERNS` (settlement `art.ts`) names
-farm produce, crops, tools and yard pieces for farmsteads. A creature that
-moves needs a simulated agent, which is not built.
+farm produce, crops, tools and yard pieces for farmsteads. The wildlife table
+becomes real creatures with `MMO_WILDLIFE=1` (roadmap WL2: one data-driven
+brain per species), so a creature that moves is a simulated agent.
 
 ## The character rig
 
@@ -222,8 +223,8 @@ with an index manifest for `RE.Model.fetch()`.
 ## Animals: procedural movement for static meshes
 
 The imported animals (woodland fauna, farm animals) are static meshes with no
-skeleton and no clips. They move through `apps/client/src/render/animal/`:
-the client cuts the mesh into parts, adds an eleven-bone skeleton (body, head,
+skeleton and no clips. They move through the animal rig:
+the shared rig (`packages/animal-rig`, `@mmo-engine/animal-rig`; the client calls it from `EntityLayer`) cuts the mesh into parts, adds an eleven-bone skeleton (body, head,
 tail and four two-segment legs) to a copy of its geometry and poses it from the server's velocity. No clip files are made
 or needed, so every static quadruped moves the day it is imported.
 
@@ -292,8 +293,7 @@ rules an entity with that model's `AssetRef`; it rigs itself. If the head is
 picked wrong or the belly height is off, pass `SegmentHints`
 (`headSign`, `legTop`) where the template is built. Megafauna (giant
 predators) rig the same way; their stride scales with leg length (Froude).
-Sea giants, birds and snakes need their own cut (fin and tail wave, wings,
-spine wave): not built.
+Birds, snakes and fish take their own rig type (WL2, #600): the client routes by model name to wing, spine-wave and fin-and-tail motion (`avianFlightCurve`, `serpentineWave`, `aquaticWave` in `gait.ts`), and arachnids and plants have their own (`arachnidGait`, `floraSway`). The rig type chosen is shown in the editor's rig view.
 
 **Known artifacts.** Legs are two rigid pieces blended over the belly and
 across the knee, so there is some skin stretch at the hip and a visible kink
@@ -305,8 +305,7 @@ test animal (body twist and pitch), and more at gallop where the hip swing is
 capped. Wide antlers or
 tusks clip the ground when the body lies down. Only a dozen models were tried;
 the head and belly heuristics may need a hint for others. A far animal is posed at
-rest, not drawn from the instanced prop batch. Developer views of the rig
-(bone layout, weights) belong in the editor and are not built.
+rest, not drawn from the instanced prop batch. The editor's asset view has a rig view (bones over the mesh and a speed slider that drives the gait; `RigPreview`), and the game client never shows it.
 
 ## Licensing and attribution
 
