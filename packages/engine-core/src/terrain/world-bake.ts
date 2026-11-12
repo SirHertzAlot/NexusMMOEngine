@@ -18,6 +18,7 @@
  */
 
 import * as crypto from "node:crypto";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 import type { TerrainTile } from "@mmo-engine/protocol";
@@ -27,8 +28,8 @@ import { surrealkvUrl, writeWorldCatalog, type CatalogChunk } from "../persist/w
 import { LAND, surveyWorld, type Survey } from "./survey.js";
 import { WorldHeights } from "./world-heights.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
-import { bakeWorldMasks } from "./mask-bake.js";
-import { DEFAULT_TERRAIN_MASK_SPEC, TERRAIN_MASK_CHANNELS, type TerrainMaskSpec } from "@mmo-engine/art/browser";
+import { bakeWorldMasksParallel, maskSourceOf } from "./mask-bake.js";
+import { DEFAULT_TERRAIN_MASK_SPEC, TERRAIN_MASK_CHANNELS, encodeTerrainMaskAsset, type TerrainMaskSpec } from "@mmo-engine/art/browser";
 
 export interface TerrainBakeReport {
   chunks: number;
@@ -85,6 +86,8 @@ export interface TerrainBakeOptions {
   /** Terrain material masks (after the survey, before scatter): the spec to
    *  bake with, or false to skip them. Default: DEFAULT_TERRAIN_MASK_SPEC. */
   masks?: TerrainMaskSpec | false;
+  /** Write the masks as a binary asset the client loads (encodeTerrainMaskAsset). */
+  maskAssetPath?: string;
 }
 
 const TILE_BATCH = 2500;
@@ -531,10 +534,20 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     // Terrain material masks: derived from the survey, stored per channel.
     if (opts.masks !== false) {
       const t = performance.now();
-      const masks = bakeWorldMasks(survey, opts.masks ?? DEFAULT_TERRAIN_MASK_SPEC, { minChunk, maxChunk });
+      const masks = await bakeWorldMasksParallel(maskSourceOf(survey), opts.masks ?? DEFAULT_TERRAIN_MASK_SPEC, { minChunk, maxChunk }, workers);
       maskMs = performance.now() - t;
       for (const c of TERRAIN_MASK_CHANNELS) {
         store.putMap(`mask_${c}`, { width: masks.width, depth: masks.depth, cell: masks.cell, originX: masks.originX, originZ: masks.originZ, data: masks.channels[c] });
+      }
+      if (opts.maskAssetPath) {
+        const rgba = new Uint8Array(masks.width * masks.depth * 4);
+        for (let i = 0, n = masks.width * masks.depth; i < n; i++) {
+          rgba[i * 4] = masks.channels.base[i];
+          rgba[i * 4 + 1] = masks.channels.rock[i];
+          rgba[i * 4 + 2] = masks.channels.wet[i];
+          rgba[i * 4 + 3] = masks.channels.path[i];
+        }
+        fs.writeFileSync(opts.maskAssetPath, encodeTerrainMaskAsset({ width: masks.width, depth: masks.depth, cell: masks.cell, originX: masks.originX, originZ: masks.originZ, rgba }));
       }
       log(`[bake] terrain masks ${masks.width}x${masks.depth} samples (${masks.cell} m) in ${maskMs.toFixed(0)} ms`);
     }

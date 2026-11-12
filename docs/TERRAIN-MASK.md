@@ -33,33 +33,38 @@
 
 ## Measured (default world, 250×250 chunks = 62 500 chunks, 4 cores, no catalog)
 
-| run | survey | tiles (includes mask bake and map writes) | mask bake | total | peak RSS |
+Mask compute runs across worker threads (one slab of chunk rows per worker).
+
+| run | survey | tiles (includes mask compute and map writes) | mask compute | total | peak RSS |
 | --- | --- | --- | --- | --- | --- |
-| without masks (2 runs) | 16.8 s, 14.7 s | 8.1 s, 8.0 s | - | 24.9 s, 22.8 s | 387, 385 MB |
-| with masks (2 runs) | 17.2 s, 17.3 s | 14.3 s, 12.7 s | 5.7 s, 4.8 s | 31.6 s, 30.1 s | 462, 459 MB |
+| without masks (2 runs) | 14.5 s, 14.6 s | 6.1 s, 7.2 s | - | 20.6 s, 21.8 s | 383, 373 MB |
+| with masks, 1 thread (earlier, 2 runs) | 16.8 s, 14.7 s (no mask) | 14.3 s, 12.7 s | 5.7 s, 4.8 s | 31.6 s, 30.1 s | 462, 459 MB |
+| with masks, workers (2 runs) | 14.7 s, 15.1 s | 9.2 s, 9.4 s | 2.1 s, 2.1 s | 24.0 s, 24.5 s | 597, 613 MB |
 
-- The mask adds about 7 to 9 s to the total (about 30 to 35%). About 5 s is
-  the mask compute, and the rest is writing four 16 MB channel maps, which sit
-  inside `tilesMs`.
-- Resolution 16 is the default for this reason. At 64 the compute is about 4×
-  that. Mask compute is single-threaded here; moving it into the tile workers
-  would bring it under the tile time.
-- The existing envelope recorded in `docs/OPEN-WORLD-PLAN.md` (2026-09-28)
-  includes the catalog step, which this measurement skips. So this run is not
-  a direct envelope pass or fail. The honest read is that the mask adds about a
-  third to the bake, and that is over the envelope unless the compute is
-  parallelised or resolution is lowered.
+- With the masks in workers, the bake is about 3 s slower (about 13 to 16%).
+  The compute is 2.1 s; the rest is writing four channel maps to region.db.
+- Peak memory rises by about 230 MB. Each worker gets its own copy of the
+  source arrays, and the slabs are held until assembly. Sharing those arrays
+  without copies would fix this.
+- The recorded envelope (docs/OPEN-WORLD-PLAN.md, 2026-09-28) includes the
+  catalog step, which these runs skip. This is not a direct envelope check.
 
-## Gaps (stated plainly)
+## Client delivery
 
-1. **Path channel is empty.** The survey has no road field. `bakeWorldMasks`
-   takes an optional `road` array and uses it when given, but nothing passes one.
-2. **Biome is not an input.** The spec lists biome among the inputs. The current
-   channels are not biome-dependent. A biome-driven channel is open.
-3. **Client delivery is not wired.** The client gets terrain tiles over the
-   protocol. The mask has no protocol channel yet. Adding one is a networking
-   change, which is a non-goal for this build, so it needs a decision.
-   Until then `setTerrainMask` has no caller.
-4. **The envelope is not verified** (see above). Parallelising the mask compute
-   inside the tile workers, or lowering resolution, is the next step.
-5. Visual check of the blend is owed to a human on a GPU.
+No protocol change. The bake can write `terrain-mask.bin` (option
+`maskAssetPath`): the `TMSK` format in `packages/art` (`encodeTerrainMaskAsset`
+/ `decodeTerrainMaskAsset`), RGBA rows in world order. The client decodes it and
+hands the RGBA to `packTerrainMask` / `setTerrainMask`. Fetching the file in the
+app (the dev server serving it next to the assets) is not wired yet.
+
+## Inputs and gaps
+
+- **Inputs:** survey height (slope = gradient), moisture, log-normalised flow,
+  and biome. The base channel is half noise, half the biome's ground type. The
+  golden hashes were repinned for this; rock, wet and path bytes did not change.
+- **Path channel is empty.** The terrain bake routes no roads. Roads come from
+  the settlement stage (`onSurvey` hook), which runs after the terrain bake, so
+  there is no road data at mask time. Fixing it means either running road routing
+  before the masks, or a second mask pass after settlements. That is an
+  ordering decision, recorded here rather than made.
+- **Visual check** of the blend is owed to a human on a GPU.

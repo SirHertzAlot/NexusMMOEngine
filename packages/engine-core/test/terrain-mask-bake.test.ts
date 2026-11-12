@@ -110,7 +110,7 @@ describe("terrain masks through the world bake", () => {
 // FNV-1a of each channel's bytes for the tiny world, default mask spec. Changing
 // these is changing the mask data: say why in the PR.
 const GOLDEN: Record<string, string> = {
-  base: "91fc6984",
+  base: "0fb28e9b", // repinned: base takes the biome input (rock, wet, path unchanged)
   rock: "abdbd432",
   wet: "5495cfa9",
   path: "38699dc5", // no road field in the survey yet: this channel is empty

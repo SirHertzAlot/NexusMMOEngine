@@ -70,3 +70,50 @@ export const DEFAULT_TERRAIN_MASK_SPEC: TerrainMaskSpec = {
   wet: { moisture: { from: 0.55, to: 0.85, noiseAmplitude: 0.05 }, flowBoost: 0.25 },
   path: { featherCells: 1 },
 };
+
+/**
+ * The baked mask as a binary asset the client loads (no protocol change).
+ * Layout, little-endian: magic "TMSK" (4 bytes), version u32 (=1), width u32,
+ * depth u32, cell f32, originX f32, originZ f32, then width × depth × 4 bytes
+ * of RGBA (R base, G rock, B wet, A path), rows in world order (z, then x).
+ */
+const MASK_ASSET_MAGIC = "TMSK";
+const MASK_ASSET_HEADER = 4 + 4 + 4 + 4 + 4 + 4 + 4;
+
+export interface TerrainMaskAsset {
+  width: number;
+  depth: number;
+  cell: number;
+  originX: number;
+  originZ: number;
+  /** width × depth × 4 bytes, RGBA. */
+  rgba: Uint8Array;
+}
+
+export function encodeTerrainMaskAsset(asset: TerrainMaskAsset): Uint8Array {
+  if (asset.rgba.length !== asset.width * asset.depth * 4) throw new Error("terrain mask asset: rgba must be width × depth × 4 bytes");
+  const out = new Uint8Array(MASK_ASSET_HEADER + asset.rgba.length);
+  const view = new DataView(out.buffer);
+  for (let i = 0; i < 4; i++) out[i] = MASK_ASSET_MAGIC.charCodeAt(i);
+  view.setUint32(4, 1, true);
+  view.setUint32(8, asset.width, true);
+  view.setUint32(12, asset.depth, true);
+  view.setFloat32(16, asset.cell, true);
+  view.setFloat32(20, asset.originX, true);
+  view.setFloat32(24, asset.originZ, true);
+  out.set(asset.rgba, MASK_ASSET_HEADER);
+  return out;
+}
+
+export function decodeTerrainMaskAsset(bytes: Uint8Array): TerrainMaskAsset {
+  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  if (magic !== MASK_ASSET_MAGIC) throw new Error(`terrain mask asset: bad magic "${magic}"`);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const version = view.getUint32(4, true);
+  if (version !== 1) throw new Error(`terrain mask asset: version ${version} is not supported`);
+  const width = view.getUint32(8, true);
+  const depth = view.getUint32(12, true);
+  const rgba = bytes.subarray(MASK_ASSET_HEADER, MASK_ASSET_HEADER + width * depth * 4);
+  if (rgba.length !== width * depth * 4) throw new Error("terrain mask asset: truncated");
+  return { width, depth, cell: view.getFloat32(16, true), originX: view.getFloat32(20, true), originZ: view.getFloat32(24, true), rgba };
+}

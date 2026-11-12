@@ -19,6 +19,8 @@ export interface TerrainMaskInputs {
   flow: Float32Array;
   /** 1 on a road sample, 0 elsewhere. */
   road: Uint8Array;
+  /** Biome per sample, normalised 0..1 (its index over the biome count). Optional: 0 without it. */
+  biome?: Float32Array;
 }
 
 export interface TerrainMaskChunk {
@@ -30,7 +32,7 @@ export interface TerrainMaskChunk {
 }
 
 /** Integer hash to [0, 1). */
-function hash01(ix: number, iz: number, seed: number): number {
+export function hash01(ix: number, iz: number, seed: number): number {
   let h = Math.imul(ix, 374761393) ^ Math.imul(iz, 668265263) ^ Math.imul(seed, 2246822519);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   h ^= h >>> 16;
@@ -93,7 +95,7 @@ export function bakeTerrainMask(specValue: TerrainMaskSpec, chunk: TerrainMaskCh
   const spec = parseTerrainMaskSpec(specValue);
   const n = spec.resolution;
   const count = n * n;
-  for (const [name, arr] of Object.entries({ slope: inputs.slope, moisture: inputs.moisture, flow: inputs.flow, road: inputs.road })) {
+  for (const [name, arr] of Object.entries({ slope: inputs.slope, moisture: inputs.moisture, flow: inputs.flow, road: inputs.road, ...(inputs.biome ? { biome: inputs.biome } : {}) })) {
     if (arr.length !== count) throw new Error(`terrain mask: input ${name} has ${arr.length} samples, expected ${count}`);
   }
   const out = new Uint8Array(count * 4);
@@ -111,8 +113,10 @@ export function bakeTerrainMask(specValue: TerrainMaskSpec, chunk: TerrainMaskCh
       const o = i * 4;
 
       // R base: ground variation, independent of every threshold.
+      // Half the ground variation is noise, half is the biome's ground type.
       const base = valueNoise(spec.seed ^ SALT.base, wx, wz, spec.noiseScaleMetres);
-      out[o] = Math.round(base * 255);
+      const biome = inputs.biome ? inputs.biome[i] : 0;
+      out[o] = Math.round((0.5 * base + 0.5 * Math.min(1, Math.max(0, biome))) * 255);
 
       // G rock: steep slopes, thinned where the ground is wet.
       const rockNoise = (valueNoise(spec.seed ^ SALT.rock, wx, wz, spec.noiseScaleMetres) - 0.5) * 2;

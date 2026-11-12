@@ -107,6 +107,6 @@ describe("terrain mask bake", () => {
   });
 });
 
-// FNV-1a of the fixture's bake. A change here is a change to the mask's bytes:
-// bump it only with a reason in the PR (the bake's output is part of the data).
-const GOLDEN = "53f76bb5";
+// FNV-1a of the fixture's bake. Repinned when the base channel took a biome input
+// (half the base is now the biome's ground type; rock, wet and path bytes did not change).
+const GOLDEN = "09445747";
