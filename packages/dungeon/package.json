@@ -22,7 +22,8 @@
     "@mmo-engine/species": "0.1.0",
     "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/addon-geometry": "0.1.0",
-    "@mmo-engine/synthesis": "0.1.0"
+    "@mmo-engine/synthesis": "0.1.0",
+    "@mmo-engine/art": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

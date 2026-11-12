@@ -10,6 +10,9 @@
  * - Each room's own cells are extruded again to its taller ceiling, by
  *   size (small, medium, large).
  * - Pool cells sink below the floor as basins.
+ * - Levels: a cell on level L has its floor at L × levelStep metres. Level
+ *   −1 is a pit, level +1 a dais; where two levels meet, the step's face is
+ *   a wall of the shell.
  * - A room a laid interior walls (`laidRooms`) has no wall of its own on its
  *   closed edges: the interior's walls stand there.
  * - Everything is subtracted from a block of rock around the dungeon, and
@@ -29,25 +32,39 @@ export const DUNGEON_CELL = 2;
 export interface ShellOptions {
   /** Metres per cell (default DUNGEON_CELL). */
   cell?: number;
-  /** Corridor ceiling, metres. */
+  /** Corridor ceiling, metres above the floor it stands on. */
   corridorHeight?: number;
-  /** Room ceilings by size, metres. */
+  /** Room ceilings by size, metres above the floor they stand on. */
   roomHeight?: { s: number; m: number; l: number };
   /** How far pool basins sink below the floor, metres. */
   poolDepth?: number;
   /**
    * Rooms a laid interior walls (interiors.ts). Their closed edges get no shell wall, since the interior's walls stand
-   * there. Absent or empty: the shell walls every room.
+   * there. Absent or empty: the shell walls every room. A room on more than one level is never closed.
    */
   laidRooms?: readonly number[];
+  /** Floor level per cell, row-major (y * width + x): 0 ground, negative a pit, positive a dais. Absent: all ground. */
+  levels?: Int8Array;
+  /** Metres per level (default LEVEL_STEP). */
+  levelStep?: number;
+  /** Wall-line simplification tolerance, cells (0: none). The polygon step's own reduction. */
+  simplifyTolerance?: number;
+  /** flat: a ceiling over every space. open: no ceiling triangles (the space is open to the sky). */
+  ceilingMode?: "flat" | "open";
 }
 
-export const SHELL_DEFAULTS: Required<ShellOptions> = {
+/** Metres between floor levels: one cell's height, a ledge a stair would climb. */
+export const LEVEL_STEP = 2;
+
+export const SHELL_DEFAULTS: Required<Omit<ShellOptions, "levels">> = {
   cell: DUNGEON_CELL,
   corridorHeight: 4,
   roomHeight: { s: 5, m: 6, l: 8 },
   poolDepth: 1.2,
   laidRooms: [],
+  levelStep: LEVEL_STEP,
+  simplifyTolerance: 0,
+  ceilingMode: "flat",
 };
 
 /** What each triangle is. */
@@ -94,6 +111,9 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   const t0 = performance.now();
   const { width: W, height: H, cell } = { width: d.width, height: d.height, cell: o.cell };
   const n = W * H;
+  const step = o.levelStep;
+  if (o.levels && o.levels.length !== n) throw new Error(`dungeonShell: levels has ${o.levels.length} cells, the layout has ${n}`);
+  const levelOf = (i: number): number => (o.levels ? o.levels[i] : 0);
 
   // Walkable space: floor and pool cells (a pool is a basin in the floor).
   const walk = new Uint8Array(n);
@@ -102,42 +122,73 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     walk[i] = d.grid[i] === CELL.floor || d.grid[i] === CELL.pool ? 1 : 0;
     pool[i] = d.grid[i] === CELL.pool ? 1 : 0;
   }
-  // The laid rooms, and the height their interior walls stand. Their cells tell closesLaidRoom which faces to leave out.
+  // The levels the walkable space stands on, lowest first.
+  const levelSet = new Set<number>();
+  for (let i = 0; i < n; i++) if (walk[i]) levelSet.add(levelOf(i));
+  const levelList = [...levelSet].sort((a, b) => a - b);
+  const levelMask = (level: number, keep: (i: number) => boolean): Uint8Array => {
+    const m = new Uint8Array(n);
+    for (let i = 0; i < n; i++) if (levelOf(i) === level && keep(i)) m[i] = 1;
+    return m;
+  };
+
+  // The laid rooms, the height their interior walls stand, and the floor they stand on. Their cells tell closesLaidRoom which
+  // faces to leave out. A room on more than one level has no single floor, so it is never closed.
   const laidRooms = new Set(o.laidRooms);
   const laidHeight = new Map<number, number>();
-  for (const r of d.rooms) if (laidRooms.has(r.id)) laidHeight.set(r.id, o.roomHeight[r.size]);
+  const laidBase = new Map<number, number>();
+  for (const r of d.rooms) {
+    if (!laidRooms.has(r.id)) continue;
+    let level: number | null = null;
+    let mixed = false;
+    for (let i = 0; i < n; i++) {
+      if (!walk[i] || d.roomId[i] !== r.id) continue;
+      if (level === null) level = levelOf(i);
+      else if (levelOf(i) !== level) mixed = true;
+    }
+    if (level === null || mixed) continue;
+    laidHeight.set(r.id, o.roomHeight[r.size]);
+    laidBase.set(r.id, level * step);
+  }
   const laid = new Int32Array(n).fill(-1);
   for (let i = 0; i < n; i++) if (walk[i] && laidHeight.has(d.roomId[i])) laid[i] = d.roomId[i];
-  const floor = geo.cellsToPolygons(walk, W, H, { cell });
+  const polyOpts = { cell, ...(o.simplifyTolerance > 0 ? { simplify: o.simplifyTolerance } : {}) };
+  const floor = geo.cellsToPolygons(walk, W, H, polyOpts);
   if (floor.rings.length === 0) throw new Error("dungeonShell: the layout has no floor");
 
-  const space: unknown[] = [{ op: "extrude", polygons: floor, y0: 0, height: o.corridorHeight, tag: TAG.space }];
-  let top = o.corridorHeight;
+  // Each level's floor, extruded to corridor height above its own floor.
+  const space: unknown[] = [];
+  let top = -Infinity;
+  for (const L of levelList) {
+    space.push({ op: "extrude", polygons: geo.cellsToPolygons(levelMask(L, (i) => walk[i] === 1), W, H, polyOpts), y0: L * step, height: o.corridorHeight, tag: TAG.space });
+    top = Math.max(top, L * step + o.corridorHeight);
+  }
   let rooms = 0;
   for (const r of d.rooms) {
     const h = o.roomHeight[r.size];
     if (h <= o.corridorHeight) continue;
-    const mask = new Uint8Array(n);
     let any = false;
-    for (let i = 0; i < n; i++) {
-      if (d.roomId[i] === r.id && walk[i]) {
-        mask[i] = 1;
-        any = true;
-      }
+    for (const L of levelList) {
+      const mask = levelMask(L, (i) => walk[i] === 1 && d.roomId[i] === r.id);
+      if (!mask.includes(1)) continue;
+      any = true;
+      space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step, height: h, tag: TAG.space });
+      top = Math.max(top, L * step + h);
     }
-    if (!any) continue;
-    space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, { cell }), y0: 0, height: h, tag: TAG.space });
-    top = Math.max(top, h);
-    rooms++;
+    if (any) rooms++;
   }
   let pools = 0;
   for (let i = 0; i < n; i++) pools += pool[i];
   if (pools > 0) {
-    space.push({ op: "extrude", polygons: geo.cellsToPolygons(pool, W, H, { cell }), y0: -o.poolDepth, height: o.poolDepth, tag: TAG.basin });
+    for (const L of levelList) {
+      const mask = levelMask(L, (i) => pool[i] === 1);
+      if (!mask.includes(1)) continue;
+      space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step - o.poolDepth, height: o.poolDepth, tag: TAG.basin });
+    }
   }
 
-  // Rock a cell thick round everything, a metre under the basins and over the tallest ceiling.
-  const bottom = -(pools > 0 ? o.poolDepth : 0) - 1;
+  // Rock a cell thick round everything, a metre under the basins, the lowest floor and the tallest ceiling.
+  const bottom = levelList[0] * step - (pools > 0 ? o.poolDepth : 0) - 1;
   const solid = geo.solid({
     op: "difference",
     of: [
@@ -149,7 +200,8 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   // Keep the inside surface; name each triangle by its origin and its facing.
   const src = solid.positions;
   // A wall face on a grid line closes a laid room when, along its whole length, a laid cell of that room is on one side and
-  // rock or void is on the other, and it stays under the room's height. The face is left out: the interior's wall stands there.
+  // rock or void is on the other, and it stays under the room's height above its floor. The face is left out: the interior's
+  // wall stands there.
   const ON_LINE = 1e-4;
   const cellOf = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= H ? -1 : y * W + x);
   const laidAt = (i: number): number => (i >= 0 ? laid[i] : -1);
@@ -173,7 +225,9 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
       if (r < 0 || (room >= 0 && r !== room)) return false;
       room = r;
     }
-    return room >= 0 && Math.min(...ys) >= -ON_LINE && Math.max(...ys) <= (laidHeight.get(room) ?? 0) + ON_LINE;
+    if (room < 0) return false;
+    const base = laidBase.get(room) ?? 0;
+    return Math.min(...ys) >= base - ON_LINE && Math.max(...ys) <= base + (laidHeight.get(room) ?? 0) + ON_LINE;
   };
   const keep: number[] = [];
   const parts: number[] = [];
@@ -191,6 +245,7 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     else if (up > 0.7) part = "floor";
     else if (up < -0.7) part = "ceiling";
     else part = "wall";
+    if (part === "ceiling" && o.ceilingMode === "open") continue;
     if (part === "wall" && laidHeight.size > 0 && closesLaidRoom(a, b, c)) continue;
     keep.push(t);
     parts.push(SHELL_PARTS.indexOf(part));

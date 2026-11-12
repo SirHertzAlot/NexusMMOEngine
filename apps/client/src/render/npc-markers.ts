@@ -14,6 +14,7 @@
 
 import * as THREE from "three";
 import type { NpcView } from "@mmo-engine/protocol";
+import { shadedMaterial } from "./shading/shading.js";
 
 /** Talk prompt range (metres); a little inside the server's default talk range (6). */
 export const NPC_TALK_RANGE = 5;
@@ -60,8 +61,8 @@ export class NpcMarkers {
   readonly group = new THREE.Group();
   private readonly figures = new Map<string, Figure>();
   private readonly glyphs = new Map<string, THREE.CanvasTexture>();
-  private readonly robe = new THREE.MeshStandardMaterial({ color: 0x3f5a7a, roughness: 0.85 });
-  private readonly skin = new THREE.MeshStandardMaterial({ color: 0xd9b38c, roughness: 0.7 });
+  private readonly robe = shadedMaterial(new THREE.MeshStandardMaterial({ color: 0x3f5a7a, roughness: 0.85 }), "figure");
+  private readonly skin = shadedMaterial(new THREE.MeshStandardMaterial({ color: 0xd9b38c, roughness: 0.7 }), "figure");
   private readonly bodyGeo = new THREE.CylinderGeometry(0.28, 0.42, 1.5, 10);
   private readonly headGeo = new THREE.SphereGeometry(0.2, 12, 10);
   private nearestId: string | null = null;
