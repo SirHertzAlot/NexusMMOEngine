@@ -9,6 +9,7 @@
 
 import * as THREE from "three";
 import type { DungeonEntranceView } from "@mmo-engine/protocol";
+import { shadedMaterial } from "./shading/shading.js";
 
 const NAME_HEIGHT = 3.6;
 const NAME_TEXT = 0.5;
@@ -42,7 +43,7 @@ export class DungeonEntrances {
   readonly group = new THREE.Group();
   private readonly gates = new Map<string, Gate>();
   private readonly ringMat = new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
-  private readonly stoneMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.95 });
+  private readonly stoneMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.95 }), "structure");
   private readonly voidMat = new THREE.MeshBasicMaterial({ color: 0x0b0716 });
   private readonly pillarGeo = new THREE.BoxGeometry(0.6, 3, 0.6);
   private readonly lintelGeo = new THREE.BoxGeometry(3.2, 0.5, 0.7);
