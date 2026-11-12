@@ -20,6 +20,9 @@ export interface CatalogModel {
  */
 export const FORTIFICATION_KINDS = ["town_wall", "wall_tower", "town_gate"] as const;
 
+/** Kinds whose pieces must meet end to end: scale-fit sizes them to their footprint, not their height. */
+export const END_TO_END_KINDS = [...FORTIFICATION_KINDS, "fence"] as const;
+
 /** A model name that is part of a wall or a gate, whatever pattern it also matches. */
 export const FORTIFICATION_NAME = /(Wall|Gate|Gatehouse|Arch(way)?|Tower|Portcullis|Palisade|Rampart|Battlement)(_|$)/i;
 
@@ -114,6 +117,8 @@ export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
   tree_stand: ["(^|_)(tree|trees|tree_?cluster|pine|oak|birch)(_[a-z]+)?(_[0-9]+)?$"],
   ore_vein: ["(^|_)(ore|ore_?vein|ore_?rock|rock_?ore|mineral_?rock|crystal_?rock)(_[a-z]+)?(_[0-9]+)?$"],
   fishing_spot: ["(^|_)(fishing_?spot|fish_?school|ripple|water_?ripple)(_[0-9]+)?$"],
+  // A property line's fence piece (rules.props.fences); scale-fit fits it to its piece's length like a wall (END_TO_END_KINDS).
+  fence: ["^SM_Prop_Fence_0[1-4]$"],
   guild_banner: ["(^|_)(banner|flag|pennant)(_?(pole|stand))?(_[0-9]+)?$"],
   grain_sacks: ["(^|_)(grain_?sacks?|sacks?(_grain|_flour)?|flour_?sacks?)(_[0-9]+)?$"],
 };

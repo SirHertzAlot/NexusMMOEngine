@@ -2,7 +2,7 @@
  * `settlement:scale-fit`: the per-model factor that brings each mapped model to
  * its kind's real height (`buildingHeightM`), held back where its footprint would
  * no longer fit its room (`kindRoom`: the parcel minus the margin): the smaller of
- * the two. A wall piece (wall, tower, gate) is fitted to its footprint alone: the
+ * the two. A wall piece (wall, tower, gate) and a property fence are fitted to its footprint alone: the
  * pieces must meet end to end, and a tower fitted to a height it is too narrow for
  * left a gap beside it at every joint (about 0.75 m, up to 3 m at corners).
  * The result is a ScaleDoc whose `assets` entries ride on the doc's own building
@@ -10,7 +10,7 @@
  */
 
 import { resolveScale, SCALE_MAX, SCALE_MIN, type ScaleDoc } from "@mmo-engine/scene";
-import { buildArtMap, FORTIFICATION_KINDS, type CatalogModel } from "./art.js";
+import { buildArtMap, END_TO_END_KINDS, type CatalogModel } from "./art.js";
 import { kindRoom } from "./report.js";
 import type { SettlementRules } from "./rules.js";
 
@@ -18,7 +18,7 @@ import type { SettlementRules } from "./rules.js";
 export function fitScale(models: readonly CatalogModel[], patterns: Record<string, string[]>, rules: SettlementRules, base: ScaleDoc = { version: 1, global: 1, categories: {}, assets: {} }): ScaleDoc {
   const byId = new Map(models.map((m) => [m.id, m]));
   const bf = resolveScale(base, "building");
-  const walls = new Set<string>(FORTIFICATION_KINDS);
+  const walls = new Set<string>(END_TO_END_KINDS);
   const assets: Record<string, number> = {};
   for (const [kind, ids] of Object.entries(buildArtMap(models, patterns))) {
     const fit = kindRoom(kind, rules, bf);
