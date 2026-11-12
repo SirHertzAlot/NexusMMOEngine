@@ -101,11 +101,19 @@ export const PRIMITIVES: Readonly<Record<string, Primitive>> = {
       axisAdd(out, s.axis, num(s, "amount", 6) * Math.sin(p * Math.PI));
     },
   },
-  /** Endless sine drift: amp, freq (Hz), phase (radians), axis. */
+  /** Endless sine drift: amp, freq (Hz), phase (radians), axis; seedPhase adds seed x it, so a list does not move in step. */
   sineIdle: {
     ms: 0,
-    apply(out, t, _p, s) {
-      axisAdd(out, s.axis, num(s, "amp", 2) * Math.sin(Math.PI * 2 * num(s, "freq", 0.8) * (t / 1000) + num(s, "phase", 0)));
+    apply(out, t, _p, s, seed) {
+      axisAdd(out, s.axis, num(s, "amp", 2) * Math.sin(Math.PI * 2 * num(s, "freq", 0.8) * (t / 1000) + num(s, "phase", 0) + seed * num(s, "seedPhase", 0)));
+    },
+  },
+  /** Opacity in from `from` (default 0) to 1. */
+  fade: {
+    ms: 150,
+    hold: true,
+    apply(out, _t, p, s) {
+      out.alpha *= lerp(num(s, "from", 0), 1, smooth01(p));
     },
   },
   /** Scale burst decaying to 1, with an optional shake. */
