@@ -19,6 +19,7 @@ import * as THREE from "three";
 import { combatMove, Move } from "@mmo-engine/protocol";
 import type { FirstPersonMotionSample } from "./first-person-camera.js";
 import { fnv1a32, type SyntyProps } from "./synty-props.js";
+import { smooth01 } from "../motion/primitives.js";
 
 export type WeaponVisualKind =
   | "unarmed"
@@ -331,7 +332,7 @@ export function evaluateFirstPersonPose(
       case Move.Guard: {
         // High defensive guard: shield raised front-and-center, or blade held diagonally across face
         const g = Math.min(1, moveElapsed / 0.12);
-        const ease = g * g * (3 - 2 * g);
+        const ease = smooth01(g);
         if (hasShield) {
           L.px += 0.15 * ease;
           L.py += 0.14 * ease;
