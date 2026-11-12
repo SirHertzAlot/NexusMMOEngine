@@ -18,3 +18,4 @@ export { parseLayoutMask, dungeonFromLayout, layoutPortals, LayoutMask, LayoutPo
 export { CRYPT_THEMES, bakeCrypt, type CryptTheme, type CryptBake, type LayerBake } from "./crypt-bake.js";
 export { shellCollision, type ShellCollision } from "./shell-collision.js";
 export { stackedDungeon, LayoutStack, type StackedDungeon } from "./stacked-layout.js";
+export { ShellTheme, parseShellTheme, shellOptionsOf, type ShellTheme as ShellThemeSpec } from "./shell-theme.js";

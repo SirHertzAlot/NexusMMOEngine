@@ -47,6 +47,10 @@ export interface ShellOptions {
   levels?: Int8Array;
   /** Metres per level (default LEVEL_STEP). */
   levelStep?: number;
+  /** Wall-line simplification tolerance, cells (0: none). The polygon step's own reduction. */
+  simplifyTolerance?: number;
+  /** flat: a ceiling over every space. open: no ceiling triangles (the space is open to the sky). */
+  ceilingMode?: "flat" | "open";
 }
 
 /** Metres between floor levels: one cell's height, a ledge a stair would climb. */
@@ -59,6 +63,8 @@ export const SHELL_DEFAULTS: Required<Omit<ShellOptions, "levels">> = {
   poolDepth: 1.2,
   laidRooms: [],
   levelStep: LEVEL_STEP,
+  simplifyTolerance: 0,
+  ceilingMode: "flat",
 };
 
 /** What each triangle is. */
@@ -146,14 +152,15 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   }
   const laid = new Int32Array(n).fill(-1);
   for (let i = 0; i < n; i++) if (walk[i] && laidHeight.has(d.roomId[i])) laid[i] = d.roomId[i];
-  const floor = geo.cellsToPolygons(walk, W, H, { cell });
+  const polyOpts = { cell, ...(o.simplifyTolerance > 0 ? { simplify: o.simplifyTolerance } : {}) };
+  const floor = geo.cellsToPolygons(walk, W, H, polyOpts);
   if (floor.rings.length === 0) throw new Error("dungeonShell: the layout has no floor");
 
   // Each level's floor, extruded to corridor height above its own floor.
   const space: unknown[] = [];
   let top = -Infinity;
   for (const L of levelList) {
-    space.push({ op: "extrude", polygons: geo.cellsToPolygons(levelMask(L, (i) => walk[i] === 1), W, H, { cell }), y0: L * step, height: o.corridorHeight, tag: TAG.space });
+    space.push({ op: "extrude", polygons: geo.cellsToPolygons(levelMask(L, (i) => walk[i] === 1), W, H, polyOpts), y0: L * step, height: o.corridorHeight, tag: TAG.space });
     top = Math.max(top, L * step + o.corridorHeight);
   }
   let rooms = 0;
@@ -165,7 +172,7 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
       const mask = levelMask(L, (i) => walk[i] === 1 && d.roomId[i] === r.id);
       if (!mask.includes(1)) continue;
       any = true;
-      space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, { cell }), y0: L * step, height: h, tag: TAG.space });
+      space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step, height: h, tag: TAG.space });
       top = Math.max(top, L * step + h);
     }
     if (any) rooms++;
@@ -176,7 +183,7 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     for (const L of levelList) {
       const mask = levelMask(L, (i) => pool[i] === 1);
       if (!mask.includes(1)) continue;
-      space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, { cell }), y0: L * step - o.poolDepth, height: o.poolDepth, tag: TAG.basin });
+      space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step - o.poolDepth, height: o.poolDepth, tag: TAG.basin });
     }
   }
 
@@ -238,6 +245,7 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     else if (up > 0.7) part = "floor";
     else if (up < -0.7) part = "ceiling";
     else part = "wall";
+    if (part === "ceiling" && o.ceilingMode === "open") continue;
     if (part === "wall" && laidHeight.size > 0 && closesLaidRoom(a, b, c)) continue;
     keep.push(t);
     parts.push(SHELL_PARTS.indexOf(part));

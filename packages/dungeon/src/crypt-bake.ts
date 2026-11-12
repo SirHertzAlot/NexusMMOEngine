@@ -12,11 +12,14 @@ import { buildDetailGeometry, placeDetail, wallBandSamples, type DetailGeometry,
 import { dungeonFromLayout, parseLayoutMask, type LayoutMask } from "./mask-layout.js";
 import { DUNGEON_CELL, dungeonShell, type DungeonShell, type GeometryOps, type ShellOptions } from "./shell.js";
 import { CELL, type Dungeon } from "./generate.js";
+import { parseShellTheme, shellOptionsOf } from "./shell-theme.js";
 
 export interface CryptTheme {
   id: string;
   label: string;
   shell: ShellOptions;
+  /** The material names the bake reports for the floor and wall parts. */
+  styles: { floor: string; wall: string };
   /** Ordered: later layers are placed after (and may not overlap) earlier ones only by the budget. */
   layers: DetailLayer[];
 }
@@ -27,7 +30,8 @@ export const CRYPT_THEMES: Record<string, CryptTheme> = {
   "dry-crypt": {
     id: "dry-crypt",
     label: "Dry crypt",
-    shell: { corridorHeight: 4 },
+    shell: shellOptionsOf(parseShellTheme({ corridorHeight: 4 })),
+    styles: { floor: "packed-earth", wall: "rough-stone" },
     layers: [
       layer({ id: "rubble", assetSet: "crypt-rubble", surface: "floor", density: 0.35, noise: { scale: 3, threshold: 0.2 }, band: { min: 0, max: 1.2 }, affinity: { weight: 0, preference: 1 }, cluster: { size: 0, falloff: 0 }, seed: 101, budget: 400 }),
       layer({ id: "torch", assetSet: "crypt-torch", surface: "wall", density: 0.04, noise: { scale: 8, threshold: 0 }, band: { min: 0, max: 0.5 }, affinity: { weight: 1, preference: 1 }, cluster: { size: 0, falloff: 0 }, seed: 102, budget: 12 }),
@@ -36,7 +40,8 @@ export const CRYPT_THEMES: Record<string, CryptTheme> = {
   "damp-crypt": {
     id: "damp-crypt",
     label: "Damp crypt",
-    shell: { corridorHeight: 4 },
+    shell: shellOptionsOf(parseShellTheme({ corridorHeight: 4 })),
+    styles: { floor: "wet-flagstone", wall: "mossed-stone" },
     layers: [
       layer({ id: "moss", assetSet: "crypt-moss", surface: "wall", density: 0.6, noise: { scale: 3, threshold: 0.25 }, band: { min: 0, max: 3 }, affinity: { weight: 0, preference: 1 }, cluster: { size: 4, falloff: 0.2 }, seed: 201, budget: 900 }),
       layer({ id: "mushroom", assetSet: "crypt-mushroom", surface: "floor", density: 0.5, noise: { scale: 4, threshold: 0.3 }, band: { min: 0, max: 1 }, affinity: { weight: 1, preference: 1 }, cluster: { size: 0, falloff: 0 }, seed: 202, budget: 200 }),
@@ -53,6 +58,8 @@ export interface LayerBake {
 
 export interface CryptBake {
   theme: string;
+  /** The material names of the floor and wall parts, from the theme. */
+  styles: { floor: string; wall: string };
   shell: DungeonShell;
   details: LayerBake[];
   /** The portal entities the shell cut open (the same cells). */
@@ -80,6 +87,7 @@ export function bakeCrypt(layoutValue: LayoutMask, theme: CryptTheme, geo: Geome
   });
   return {
     theme: theme.id,
+    styles: theme.styles,
     shell,
     details,
     portals: layout.portals.map((p) => ({ id: p.id, x: p.x, y: p.y, side: p.side })),
