@@ -34,4 +34,14 @@ export const NOISE_GLSL = /* glsl */ `
     float n = fxFbm(p);
     return 1.0 - abs(2.0 * n - 1.0);
   }
+
+  // FX domain-warp + fresnel primitives (spec section 6; PR1).
+  // Shared with packages/render-fx/src/primitives-glsl.ts FX_WARP_GLSL: keep in sync.
+  float fxWarp2(vec2 p, float t, float scale, float speed) {
+    vec2 q = vec2(fxFbm(p * scale + t * speed), fxFbm(p * scale + vec2(3.7, 2.1) + t * speed * 0.7));
+    return fxFbm(p * scale + 2.0 * q + t * speed * 0.5);
+  }
+  float prim_fresnel(vec3 viewNormal) {
+    return 1.0 - abs(dot(normalize(viewNormal), vec3(0.0, 0.0, 1.0)));
+  }
 `;
