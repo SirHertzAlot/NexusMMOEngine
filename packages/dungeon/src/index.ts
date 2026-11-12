@@ -14,6 +14,6 @@ export { layBefore, layFlank, layGrid, layHead, layLine, layOver, layRing, layRo
 export { DUNGEON_ART_PATTERNS, matchProps, nameWords, writeArtOverlay, type ArtMatch, type CatalogModel } from "./art.js";
 export { propagateDungeonModules, type Dungeon3DModules, type DungeonModuleOptions } from "./modules.js";
 export { roomInteriors, roomPlan, loadInteriorContent, type RoomInterior } from "./interiors.js";
-export { parseLayoutMask, dungeonFromLayout, layoutPortals, LayoutMask, LayoutPortal } from "./mask-layout.js";
+export { parseLayoutMask, dungeonFromLayout, layoutPortals, LayoutMask, LayoutPortal, PORTAL_KINDS, type PortalKind } from "./mask-layout.js";
 export { CRYPT_THEMES, bakeCrypt, type CryptTheme, type CryptBake, type LayerBake } from "./crypt-bake.js";
 export { shellCollision, type ShellCollision } from "./shell-collision.js";

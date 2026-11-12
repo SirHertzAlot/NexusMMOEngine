@@ -30,7 +30,7 @@ describe("layout mask adapter", () => {
     const layout = parseLayoutMask({ version: 1, rows, entrance: { x: 1, y: 1 }, portals: [{ id: "door-1", x: 2, y: 2, side: "y" }] });
     const d = dungeonFromLayout(layout);
     assert.equal(d.grid[2 * 5 + 2], CELL.floor, "the portal cell is open");
-    assert.deepEqual(layoutPortals(layout), [{ id: "door-1", x: 2, y: 2, side: "y" }]);
+    assert.deepEqual(layoutPortals(layout), [{ id: "door-1", x: 2, y: 2, side: "y", kind: "door" }]);
     // The shell's walkable cells are exactly the floor cells the grid now has, portal included.
     const walkable = [...d.grid].filter((g) => g === CELL.floor || g === CELL.pool).length;
     assert.equal(d.stats.floorTiles, walkable);

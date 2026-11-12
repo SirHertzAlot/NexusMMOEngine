@@ -13,12 +13,17 @@ import { z } from "zod";
 import { CELL, type Dungeon, type DungeonParams } from "./generate.js";
 import { DUNGEON_CELL } from "./shell.js";
 
+export const PORTAL_KINDS = ["door", "arc", "corridor", "stair"] as const;
+export type PortalKind = (typeof PORTAL_KINDS)[number];
+
 export const LayoutPortal = z.strictObject({
   id: z.string().min(1),
   x: z.number().int().min(0),
   y: z.number().int().min(0),
   /** The axis the opening runs along: 'x' (east–west) or 'y' (north–south). */
   side: z.enum(["x", "y"]),
+  /** What the opening is: a door, an arch, a corridor mouth, or a stair up or down. */
+  kind: z.enum(PORTAL_KINDS).default("door"),
 });
 export type LayoutPortal = z.infer<typeof LayoutPortal>;
 
@@ -125,8 +130,8 @@ export function dungeonFromLayout(layout: LayoutMask, name = "layout"): Dungeon 
 }
 
 /** The portal entities for a mask: the same cells the adapter cut open. */
-export function layoutPortals(layout: LayoutMask): Array<{ id: string; x: number; y: number; side: "x" | "y" }> {
-  return parseLayoutMask(layout).portals.map((p) => ({ id: p.id, x: p.x, y: p.y, side: p.side }));
+export function layoutPortals(layout: LayoutMask): Array<{ id: string; x: number; y: number; side: "x" | "y"; kind: PortalKind }> {
+  return parseLayoutMask(layout).portals.map((p) => ({ id: p.id, x: p.x, y: p.y, side: p.side, kind: p.kind }));
 }
 
 export { DUNGEON_CELL };
