@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { dungeonShell, stackedDungeon, SHELL_PARTS, type GeometryOps } from "../src/index.js";
+import { bakeCrypt, CRYPT_THEMES, dungeonShell, stackedDungeon, SHELL_PARTS, type GeometryOps } from "../src/index.js";
 import { yRanges } from "./shell-support.js";
 
 const require = createRequire(import.meta.url);
@@ -47,6 +47,14 @@ describe("stacked layouts", () => {
     const s = dungeonShell(st.dungeon, geo, { levels: st.levels });
     const WALL = SHELL_PARTS.indexOf("wall");
     assert.ok(yRanges(s, WALL).some(([lo, hi]) => Math.abs(lo) < 1e-4 && Math.abs(hi - 2) < 1e-4), "a wall from ground to the upper level");
+  });
+
+  it("bakes through the crypt bake: the shell and the layers come from the merged stack", () => {
+    const st = stackedDungeon(stack());
+    const bake = bakeCrypt(st.layout, CRYPT_THEMES["dry-crypt"], geo, { dungeon: st.dungeon, levels: st.levels });
+    const WALL = SHELL_PARTS.indexOf("wall");
+    assert.ok(yRanges(bake.shell, WALL).some(([lo, hi]) => Math.abs(lo) < 1e-4 && Math.abs(hi - 2) < 1e-4), "the stair's step is in the baked shell");
+    assert.equal(bake.details.length, CRYPT_THEMES["dry-crypt"].layers.length);
   });
 
   it("refuses a column on two levels", () => {

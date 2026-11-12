@@ -40,6 +40,8 @@ const FLOOR = ".";
 const POOL = "p";
 
 export interface StackedDungeon {
+  /** The merged mask (rows of '#', '.', 'p') with the stack's entrance. */
+  layout: LayoutMask;
   /** The Dungeon the shell takes (the footprints merged; the adapter's walking distances). */
   dungeon: Dungeon;
   /** Floor level per cell, row-major: what dungeonShell's `levels` takes. */
@@ -119,5 +121,5 @@ export function stackedDungeon(value: unknown, name = "stacked-layout"): Stacked
   const merged: LayoutMask = { version: 1, rows, entrance: s.entrance, portals: [] };
   parseLayoutMask(merged); // the entrance must be floor, and the rows well-formed
   if (levels[s.entrance.y * W + s.entrance.x] !== 0) throw new Error("stack: the entrance must be on level 0");
-  return { dungeon: dungeonFromLayout(merged, name), levels, stairs };
+  return { layout: merged, dungeon: dungeonFromLayout(merged, name), levels, stairs };
 }

@@ -11,7 +11,7 @@ import { parseDetailLayer, type DetailLayer } from "@mmo-engine/art/browser";
 import { buildDetailGeometry, placeDetail, wallBandSamples, type DetailGeometry, type Placement } from "@mmo-engine/placement";
 import { dungeonFromLayout, parseLayoutMask, type LayoutMask } from "./mask-layout.js";
 import { DUNGEON_CELL, dungeonShell, type DungeonShell, type GeometryOps, type ShellOptions } from "./shell.js";
-import { CELL } from "./generate.js";
+import { CELL, type Dungeon } from "./generate.js";
 
 export interface CryptTheme {
   id: string;
@@ -60,10 +60,14 @@ export interface CryptBake {
 }
 
 /** Bake one mask under one theme: the shell, then each layer in order. */
-export function bakeCrypt(layoutValue: LayoutMask, theme: CryptTheme, geo: GeometryOps): CryptBake {
+/**
+ * Bake one mask under one theme. A stacked layout passes its merged dungeon and
+ * level map (stacked-layout.ts) as `stacked`; the mask is then the merged one.
+ */
+export function bakeCrypt(layoutValue: LayoutMask, theme: CryptTheme, geo: GeometryOps, stacked?: { dungeon: Dungeon; levels: Int8Array }): CryptBake {
   const layout = parseLayoutMask(layoutValue);
-  const d = dungeonFromLayout(layout, theme.id);
-  const shell = dungeonShell(d, geo, { ...theme.shell, cell: DUNGEON_CELL });
+  const d = stacked ? stacked.dungeon : dungeonFromLayout(layout, theme.id);
+  const shell = dungeonShell(d, geo, { ...theme.shell, cell: DUNGEON_CELL, levels: stacked?.levels });
 
   // Solid = anything that isn't walkable floor or pool (the wall-band context).
   const solid = new Uint8Array(d.width * d.height);
