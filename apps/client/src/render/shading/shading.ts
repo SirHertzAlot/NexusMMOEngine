@@ -24,8 +24,9 @@
  */
 
 import * as THREE from "three";
-import type { ShadingComponentId, ShadingDoc, ShadingKind, ToonRowName } from "@mmo-engine/art/browser";
+import type { ShadingComponentId, ShadingDoc, ShadingKind, ToonRowName, ShadingOutlineOptOutId } from "@mmo-engine/art/browser";
 import { applyToon, toonBand, type ToonRow } from "../toon/toon-material.js";
+import { addOutline, OutlineMaterial } from "../toon/outline.js";
 
 /** What a kind carries when the content says nothing: the cel look. */
 const DEFAULT_KINDS: Record<ShadingKind, readonly ShadingComponentId[]> = {
@@ -117,4 +118,41 @@ export function applyShading(object: THREE.Object3D, kind: ShadingKind): void {
 export function shadedMaterial<M extends THREE.Material>(material: M, kind: ShadingKind): M {
   applyShadingToMaterial(material, kind);
   return material;
+}
+
+/** Whether the quality tier draws cel outlines on world geometry (quality.ts `outlines`). */
+let outlinesOn = false;
+
+/** Set by the world canvas with the tier: outlines cost a second draw per mesh. */
+export function setCelOutlines(on: boolean): void {
+  outlinesOn = on;
+}
+
+let worldOutline: OutlineMaterial | null = null;
+
+/** One outline material for every world mesh (its width and colour are the look's). */
+function sharedWorldOutline(): OutlineMaterial {
+  worldOutline ??= new OutlineMaterial({ width: 2 });
+  return worldOutline;
+}
+
+/**
+ * Shade a world object as its kind says, and draw its cel outline when the
+ * tier allows. Instanced meshes and terrain are outline opt-outs
+ * (art SHADING_OUTLINE_OPT_OUTS): they get the material shading only.
+ */
+export function shadeWorldObject(object: THREE.Object3D, kind: ShadingKind, outline: ShadingOutlineOptOutId | null = null): void {
+  applyShading(object, kind);
+  if (!outlinesOn || outline !== null || kind === "terrain") return;
+  const meshes: THREE.Mesh[] = [];
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.isMesh && !(mesh as THREE.InstancedMesh).isInstancedMesh && !mesh.name.endsWith(":outline")) meshes.push(mesh);
+  });
+  for (const mesh of meshes) addOutline(mesh, sharedWorldOutline());
+}
+
+/** Test seam: whether the world outline material exists yet. */
+export function worldOutlineMaterialForTests(): OutlineMaterial | null {
+  return worldOutline;
 }

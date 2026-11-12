@@ -161,3 +161,46 @@ Not done in this pass (gaps, stated plainly):
 
 Tests: client 468 tests, 467 pass, 0 fail (1 skip, same as baseline).
 Art 147 pass, 0 fail. `npm run build` in apps/client exits 0.
+
+## 9. Re-issued coverage table (after Phase 1 close-out)
+
+Section 4 is the audit as found. This table is the state after the Phase 1
+close-out: every row is on the unified cel path, or names its opt-out.
+"Outline" is the cel outline (inverted hull), tier-gated by `outlines` in
+quality.ts (low: none).
+
+| Object class | Shading path now | Cel? | Outline |
+| --- | --- | --- | --- |
+| Terrain | `terrain` kind via `createTerrainMaterial` (`terrain-material.ts`) | Yes | Opt-out: `terrain` (too large to hull) |
+| Dungeon stone | `structure` kind (`dungeon-look.ts`, material only) | Yes | Not outlined yet (gap) |
+| Portal stone | `structure` kind (`dungeon-entrances.ts`, material only) | Yes | Not outlined yet (gap) |
+| Props (single models) | `model` kind (`entity-layer.ts`) | Yes | Outlined |
+| Props (instanced batches) | `model` kind (`instanced-props.ts`, material only) | Yes | Opt-out: `instanced` |
+| Synty props | `model` kind (`synty-props.ts`, material only) | Yes | Not outlined yet (gap) |
+| Creatures / NPC models | `model` kind (`entity-layer.ts`) | Yes | Outlined |
+| Placeholders | `placeholder` kind (`entity-layer.ts`) | Yes | Outlined |
+| Prefab entities | `prefab` kind (`prefab/gallery.ts`) | Yes | Not outlined yet (gap) |
+| NPC markers | `figure` kind (`npc-markers.ts`) | Yes | Not outlined yet (gap) |
+| Corpse proxy | `figure` kind (`corpse-proxy.ts`) | Yes | Not outlined yet (gap) |
+| First-person arms | `figure` kind (`first-person-rig.ts`) | Yes | Not outlined yet (gap) |
+| First-person weapon (steel, guard, grip, accent) | `figure` kind (`first-person-rig.ts`) | Yes | Not outlined yet (gap) |
+| Asset fallbacks / fallback terrain | `fallback` and `terrain` kinds (`assets.ts`) | Yes | Fallback: not outlined yet (gap); terrain: opt-out |
+| Characters (modular) | Character kit's own toon patch (`character-kit.ts`) | Yes | Outlined (its own outline material) |
+| Water | Opt-out `water` (custom ShaderMaterial) | No, by record | n/a |
+| Sky, stars | Opt-out `sky`, `stars` | No, by record | n/a |
+| VFX particles, sword trail, portal ring | Opt-outs `vfx`, `swing-trail`, `portal-ring` | No, by record | n/a |
+| Labels | Opt-out `label` | No, by record | n/a |
+| Impostors | No impostor class exists anywhere in apps/ or packages/ (checked with `git grep`) | n/a | n/a |
+
+Gaps still open (stated, not hidden):
+- The "not outlined yet" rows are real. Their materials are cel, but the
+  outline is only added where the entity layer calls `shadeWorldObject`.
+  Routing them through it is a one-line change per call site, and it needs
+  a GPU check of draw cost first.
+- The ramp is the authored asset in `content/materials/materials.json`
+  (validated: row names, colour shape, and shadow not lighter than its
+  edge). `DEFAULT_RAMP` in `toon-material.ts` is only the fallback before
+  content applies; a test checks it matches the content, so the two can't
+  drift.
+- Still needs a GPU: noon, dusk and night stills, and the outline cost
+  check at medium and high tiers.

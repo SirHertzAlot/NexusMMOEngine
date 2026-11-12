@@ -455,28 +455,28 @@ export function buildProceduralWeaponMesh(kind: WeaponVisualKind, rankColor = "#
   group.name = `fps-weapon-${kind}`;
   if (kind === "unarmed") return group;
 
-  const steelMat = new THREE.MeshStandardMaterial({
+  const steelMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: "#d4dce6",
     roughness: 0.28,
     metalness: 0.82,
-  });
-  const guardMat = new THREE.MeshStandardMaterial({
+  }), "figure");
+  const guardMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: "#b89648",
     roughness: 0.38,
     metalness: 0.68,
-  });
-  const gripMat = new THREE.MeshStandardMaterial({
+  }), "figure");
+  const gripMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: "#4a3020",
     roughness: 0.78,
     metalness: 0.1,
-  });
-  const accentMat = new THREE.MeshStandardMaterial({
+  }), "figure");
+  const accentMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: rankColor || "#7aa2f7",
     roughness: 0.35,
     metalness: 0.5,
     emissive: new THREE.Color(rankColor || "#3b5998"),
     emissiveIntensity: 0.15,
-  });
+  }), "figure");
 
   if (kind === "shield") {
     // Heater / round-boss shield held in the left hand

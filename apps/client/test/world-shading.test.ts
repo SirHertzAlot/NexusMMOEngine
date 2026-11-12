@@ -7,16 +7,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { SHADING_KINDS, SHADING_OPT_OUTS } from "@mmo-engine/art/browser";
-import { toonOf } from "../src/render/toon/toon-material.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { SHADING_KINDS, SHADING_OPT_OUTS, SHADING_OUTLINE_OPT_OUTS } from "@mmo-engine/art/browser";
+import { defaultToonRampRows, toonOf } from "../src/render/toon/toon-material.js";
 import {
   applyShadingToMaterial,
   celBand,
   setCelFeather,
+  setCelOutlines,
   setShadingContent,
+  shadeWorldObject,
   shadingFor,
 } from "../src/render/shading/shading.js";
-import { WORLD_CLASSES, optOutOf } from "../src/render/shading/world-classes.js";
+import { WORLD_CLASSES, optOutOf, outlineOptOutOf } from "../src/render/shading/world-classes.js";
 import { QUALITY_PRESETS, QUALITY_TIERS } from "../src/render/quality.js";
 
 describe("world shading registry", () => {
@@ -70,5 +74,54 @@ describe("cel band feather", () => {
   it("the low tier is hard, the others feathered", () => {
     assert.equal(QUALITY_PRESETS.low.celFeather, 0);
     for (const t of QUALITY_TIERS.filter((t) => t !== "low")) assert.ok(QUALITY_PRESETS[t].celFeather > 0, t);
+  });
+});
+
+describe("cel outlines on world geometry", () => {
+  const mesh = (): THREE.Mesh => new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
+  const outlines = (o: THREE.Object3D): number => o.children.filter((c) => c.name.endsWith(":outline")).length;
+
+  it("draws an outline on a cel model when the tier allows", () => {
+    setShadingContent(undefined);
+    setCelOutlines(true);
+    const m = mesh();
+    shadeWorldObject(m, "model");
+    assert.equal(outlines(m), 1);
+    setCelOutlines(false);
+  });
+
+  it("draws none on a low tier", () => {
+    setCelOutlines(false);
+    const m = mesh();
+    shadeWorldObject(m, "model");
+    assert.equal(outlines(m), 0);
+  });
+
+  it("never outlines terrain or an instanced batch (their recorded opt-outs)", () => {
+    setCelOutlines(true);
+    const t = mesh();
+    shadeWorldObject(t, "terrain");
+    assert.equal(outlines(t), 0, "terrain has an opt-out");
+    const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial(), 2);
+    shadeWorldObject(inst, "model", "instanced");
+    assert.equal(outlines(inst), 0, "instanced batch has an opt-out");
+    setCelOutlines(false);
+  });
+
+  it("every outlined cel class is outlined by default, every opt-out carries a reason", () => {
+    for (const c of WORLD_CLASSES) {
+      if (!("kind" in c.path)) continue;
+      const reason = outlineOptOutOf(c);
+      if (reason === null) continue;
+      assert.ok(reason.length > 0, `${c.id}: outline opt-out has a reason`);
+    }
+    for (const [id, reason] of Object.entries(SHADING_OUTLINE_OPT_OUTS)) assert.ok(reason.length > 0, id);
+  });
+});
+
+describe("the authored cel ramp", () => {
+  it("the client's fallback ramp matches the content's toon.ramp (no drift)", () => {
+    const doc = JSON.parse(readFileSync(fileURLToPath(new URL("../../../../content/materials/materials.json", import.meta.url)), "utf8"));
+    assert.deepEqual(defaultToonRampRows(), doc.toon.ramp);
   });
 });

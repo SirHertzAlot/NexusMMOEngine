@@ -71,6 +71,22 @@ export const SHADING_OPT_OUTS = {
 export type ShadingOptOutId = keyof typeof SHADING_OPT_OUTS;
 
 /**
+ * Where the cel outline (the inverted hull) stays off on purpose, with the
+ * reason. Outlines are on by default for every shaded kind, tier-gated by
+ * cost (quality.ts `outlines`): low tiers draw none.
+ */
+export const SHADING_OUTLINE_OPT_OUTS = {
+  terrain: "a ground chunk is too large to hull: the inverted hull would read as a dark sheet across the land",
+  instanced: "instanced prop batches have no per-instance hull yet; a cost check and an instanced hull are owed",
+} as const;
+export type ShadingOutlineOptOutId = keyof typeof SHADING_OUTLINE_OPT_OUTS;
+
+/** Relative luminance of a linear RGB triple (used to check ramp order). */
+export function luminance(c: Rgb): number {
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
+/**
  * Which shading components each kind of thing carries. Adding `toon` to a
  * kind is what makes it cell-shaded; `standard` leaves three's own PBR.
  * A kind named nowhere keeps the engine's default (toon).
@@ -124,6 +140,8 @@ export function validateMaterials(doc: unknown): MediaIssue[] {
         for (const when of ["day", "night"]) {
           const pair = r[when];
           if (!Array.isArray(pair) || pair.length !== 2 || !pair.every((x) => rgb(x, 1))) c.add(`toon.ramp.${row}.${when}`, "must be two [r, g, b] colours in 0..1");
+          // The shadow's darkest stop must not be lighter than its edge (a band inversion).
+          else if (luminance(pair[0] as Rgb) > luminance(pair[1] as Rgb)) c.add(`toon.ramp.${row}.${when}`, "the darkest shadow must not be lighter than the shadow's edge");
         }
       }
     }
