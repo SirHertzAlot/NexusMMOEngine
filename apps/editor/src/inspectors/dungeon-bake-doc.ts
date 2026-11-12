@@ -10,6 +10,8 @@
  * baked object says what made it.
  */
 import { parseDetailLayer, type DetailLayer } from "@mmo-engine/art/browser";
+import type { DocOp, DungeonBakeDoc } from "./dungeon-bake-types.js";
+export { emptyDoc, type DocOp, type DungeonBakeDoc, type LayerEdit, type PaintCell, type PortalSpec } from "./dungeon-bake-types.js";
 import {
   bakeCrypt,
   CRYPT_THEMES,
@@ -18,34 +20,8 @@ import {
   SHELL_PARTS,
   type CryptBake,
   type GeometryOps,
-  type LayoutPortal,
   type PortalKind,
 } from "@mmo-engine/dungeon";
-
-export type PaintCell = "#" | "." | "p";
-
-export interface LayerEdit {
-  density?: number;
-  budget?: number;
-}
-
-export interface DungeonBakeDoc {
-  /** The layout's name: where the bake's provenance points. */
-  id: string;
-  theme: string;
-  rows: string[];
-  entrance: { x: number; y: number };
-  portals: LayoutPortal[];
-  /** Edits to a theme's layers, by layer id. */
-  layerEdits: Record<string, LayerEdit>;
-}
-
-export type DocOp =
-  | { op: "paint"; x: number; y: number; cell: PaintCell }
-  | { op: "placePortal"; portal: { id: string; x: number; y: number; side: "x" | "y"; kind?: PortalKind } }
-  | { op: "removePortal"; id: string }
-  | { op: "setTheme"; theme: string }
-  | { op: "editLayer"; layer: string; field: keyof LayerEdit; value: number };
 
 /** Apply one op. Returns a new document; throws with the reason when the op is not allowed. */
 export function applyOp(doc: DungeonBakeDoc, op: DocOp): DungeonBakeDoc {
@@ -143,17 +119,5 @@ export function bakeDoc(doc: DungeonBakeDoc, geo: GeometryOps, ctx: { who: strin
       why: ctx.why,
       how: { theme: checked.theme, layers: theme.layers.map((l) => l.id) },
     },
-  };
-}
-
-/** A starting document: a room, a door, the default theme. */
-export function emptyDoc(id: string): DungeonBakeDoc {
-  return {
-    id,
-    theme: "dry-crypt",
-    rows: ["#########", "#.......#", "#.......#", "#.......#", "#########"],
-    entrance: { x: 1, y: 1 },
-    portals: [],
-    layerEdits: {},
   };
 }
