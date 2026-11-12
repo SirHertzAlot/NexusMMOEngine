@@ -50,6 +50,7 @@ import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import type { CombatFeedback } from "./combat-feedback.js";
 import { drawNumbers } from "./combat-numbers-layer.js";
+import { FollowChainLayer } from "./follow-chain-layer.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
 import {
   EYE_HEIGHT,
@@ -384,6 +385,8 @@ interface Runtime {
   drops: DropLabels;
   resources: ResourceNodes;
   emitters: EmitterFxLayer;
+  /** CF4: hair, capes and tails bound to bones; nothing is bound by default. */
+  chains: FollowChainLayer;
   npcs: NpcMarkers;
   entrances: DungeonEntrances;
   telegraphs: Telegraphs;
@@ -535,6 +538,8 @@ function MirrorWorld({
     const resources = new ResourceNodes();
     // VfxEmitter rows (shrines): particles drawn by the entity layer's QuarksFx.
     const emitters = new EmitterFxLayer(layer.vfx, EMITTER_REGISTRY);
+    const chains = new FollowChainLayer();
+    scene.add(chains.group);
     const npcs = new NpcMarkers();
     const entrances = new DungeonEntrances();
     const telegraphs = new Telegraphs();
@@ -642,7 +647,7 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     const observerLayers = new Map<MirrorClient, EntityLayer>();
-    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, emitters, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, emitters, chains, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client, capture).
@@ -669,6 +674,8 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       emitters.dispose();
+      scene.remove(chains.group);
+      chains.dispose();
       scene.remove(emitters.group);
       layer.dispose();
       for (const ol of observerLayers.values()) ol.dispose();
@@ -826,6 +833,7 @@ function MirrorWorld({
     }, client.names);
     // VfxEmitter rows (shrines): spawn/update/despawn their particle effects.
     r.emitters.sync(client.state);
+    r.chains.update(camera, delta);
     // Neighbouring regions near the border (IM8): each in its own layer, so their wire ids never mix
     // with this region's; their terrain chunks go to a renderer that is never drawn (ours covers it).
     const seen = new Set<MirrorClient>();
