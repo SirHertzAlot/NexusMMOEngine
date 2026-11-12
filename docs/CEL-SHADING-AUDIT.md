@@ -29,19 +29,36 @@ smooth PBR. The art package's `SHADING_COMPONENTS` union (`toon`,
 that a material the art package authors as cel is actually shaded cel at
 runtime.
 
-## 2. Second cel system: D1 ramp work (`arlo/shader-library-seed`)
+## 2. The D1 shader: design in the repo, implementation not on main
 
-- Checked: `git branch -a` and `git ls-remote` against
-  `SirHertzAlot/NexusMMOEngine` at `origin/main` (d5b506bf). No
-  `arlo/shader-library-seed` ref exists locally or on the remote. The
-  `libD1Diffuse` / ramp-as-asset work is not in this clone and cannot be
+Searched the whole repo (`git grep`) for `libD1`, `D1Diffuse`, `D1`, `ramp`,
+and `shader library`.
+
+- **The design exists.** `docs/library/mmo-engine-shader-rnd/STYLIZED-RENDERING-DNA.md`
+  section "D1 — Banded diffuse via 1D ramp lookup (the cel core)" defines it:
+  `diffuse = ramp(saturate(NdotL * 0.5 + 0.5))`, shadow colour taken from
+  the ramp rather than multiplied to black, ramps as versioned assets with
+  a `shadowRamp` slot and `rampFeather`, a bake-time generator from a
+  palette triple, and a validator (≤ 8 bands, luminance monotonic). Other
+  docs (`NEXT-ROADMAP-2026-10-26.md`, `ANIMATION-PIPELINE-AUDIT.md`) refer
+  to a "D1 shader bench" still owed on real GPU hardware.
+- **The implementation is not on main.** `libD1Diffuse`, the ramp-as-asset
+  loader, and the `arlo/shader-library-seed` branch have no ref in this
+  clone of `origin/main` (d5b506bf) or on the remote. Those files can't be
   read here.
-- **Status: OUT OF SCOPE for this build.** It is not the convergence
-  target, because its contents are unknown from this environment. Phase 1
-  converges on the existing `toon-material.ts` ramp (already a content-
-  driven row table, see `DEFAULT_RAMP` and `toonRowFor`). If the D1 branch
-  is pushed later, it must be compared against this model in a separate
-  decision, not layered in silently.
+- **Main already implements the D1 idea** in `toon/toon-material.ts`: a
+  shadow ramp texture with 10 rows (5 materials × day/night), shadow colour
+  from the ramp, a half-Lambert band, and per-kind row selection through
+  `shading.rows` in content. It does not yet have the D1 spec's bake-time
+  generator, its validator, or per-material `shadowRamp` / `rampFeather`
+  slots. `vfx/materials/ColorRampMaterial.ts` is a scalar-to-gradient VFX
+  material and is not the cel diffuse.
+- **Decision for Phase 1: the D1 design is the convergence target, and the
+  main-branch ramp is its implementation.** Phase 1 adds the D1 pieces
+  (authored ramp asset with validator, feather policy from `quality.ts`) on
+  top of `toon-material.ts`. It does not import the unseen branch code. If
+  that branch is pushed later, it gets compared against this in a separate
+  decision.
 
 ## 3. Shading paths by material
 
