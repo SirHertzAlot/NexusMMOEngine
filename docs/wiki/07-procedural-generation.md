@@ -1,17 +1,7 @@
 # 07. Procedural Generation & Spatial Synthesis
 
-
----
-
-## 5. Architectural Synthesis: Staircase Handrail & Balustrade Alignment
-
-Procedural dungeon synthesis (`@mmo-engine/synthesis`) incorporates continuous circulation geometry:
-- **Incline Pitch Rotation**: Handrails align to exact slope pitch $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.
-- **Flank Alignment**: Rails flank stairwells at $X = \pm 2.00\text{m}$, centered at $Z = -2.50\text{m}, Y = \text{lowerY} + 2.20\text{m}$.
-- **Flush Balcony Thresholds**: Loft balcony railings connect flush with stair handrail tops, eliminating horizontal traversal obstructions.
-- **Architectural Balustrades**: Built via `createStairHandrailGeometry` featuring top rails, bottom runners, and vertical balusters.
-
 [← Previous: Multi-Region World Coordination](06-multi-region-world.md) | [Back to Wiki Index](README.md) | [Next: Client & Viewport Mirror →](08-client-and-rendering.md)
+
 
 ---
 
@@ -22,7 +12,7 @@ The procedural generation toolchain creates vast, coherent game spaces ranging f
 
 ## 2. Continuous Model Synthesis (`@mmo-engine/synthesis`)
 
-Traditional procedural generation relies on discrete grid blocks (voxels or cubic tiles), which can create repetitive tiling artifacts and rigid layouts. The Continuous Model Synthesis engine ([`packages/synthesis`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/synthesis)) synthesizes tileless 3D spaces using continuous transforms:
+Traditional procedural generation relies on discrete grid blocks (voxels or cubic tiles), which can create repetitive tiling artifacts and rigid layouts. The Continuous Model Synthesis engine ([`packages/synthesis`](../../packages/synthesis)) synthesizes tileless 3D spaces using continuous transforms:
 
 ```
 3D Source Scene (FBX)
@@ -44,7 +34,7 @@ Coherent Procedural Level (Multi-level halls, boss arenas, lofts)
 
 ## 3. Universal Measurement System (UMS) & SI Standards
 
-To ensure spaces feel authentic and physically functional for human avatars, the Universal Measurement System ([`packages/scene`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/scene)) defines authoritative scale standards:
+To ensure spaces feel authentic and physically functional for human avatars, the Universal Measurement System ([`packages/scene`](../../packages/scene)) defines authoritative scale standards:
 
 | Dimension / Metric | Standard Value | Rationale |
 | :--- | :--- | :--- |
@@ -97,6 +87,16 @@ Procedural spaces enforce physical architecture rules to prevent unnatural or di
 For macro-level dungeon topologies:
 - The 3D WFC solver resolves room connectivity across 6-face socket constraints.
 - Macro module layouts are then handed off to continuous synthesis to populate architectural dressings, torches, and clutter.
+
+---
+
+## 6. Architectural Synthesis: Staircase Handrail & Balustrade Alignment
+
+Procedural dungeon synthesis (`@mmo-engine/synthesis`) incorporates continuous circulation geometry:
+- **Incline Pitch Rotation**: Handrails align to exact slope pitch $\theta = \arctan(3.5\text{m} / 5.0\text{m}) \approx 34.99^\circ$ ($0.6109\text{ rad}$) and hypotenuse length $L = \sqrt{3.5^2 + 5.0^2} \approx 6.103\text{m}$.
+- **Flank Alignment**: Rails flank stairwells at $X = \pm 2.00\text{m}$, centered at $Z = -2.50\text{m}, Y = \text{lowerY} + 2.20\text{m}$.
+- **Flush Balcony Thresholds**: Loft balcony railings connect flush with stair handrail tops, eliminating horizontal traversal obstructions.
+- **Architectural Balustrades**: Built via `createStairHandrailGeometry` featuring top rails, bottom runners, and vertical balusters.
 
 ---
 

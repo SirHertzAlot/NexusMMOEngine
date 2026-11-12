@@ -1,6 +1,6 @@
 # World Server Spec — region↔world control plane
 
-Status: **spec** (not yet built). Companion to `docs/DECISIONS.md`
+Status: **built** (2026-11-11), kept as the design record. The registry, leases, migration hand-offs and the stress harness are done, and the world server embeds SurrealDB (roadmap §6, PL1 to PL8); the measured limits are in [WORLD-STRESS-RESULTS.md](WORLD-STRESS-RESULTS.md). The stress results found the spec's direct region-to-region transfer (slice B+) unnecessary, so it was not built. Companion to `docs/DECISIONS.md`
 ("Region/world split" entry) and `docs/MESSAGE-CATALOG.md` (client↔region
 protocol, unchanged by this spec).
 
