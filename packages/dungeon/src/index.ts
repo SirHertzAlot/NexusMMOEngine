@@ -17,3 +17,4 @@ export { roomInteriors, roomPlan, loadInteriorContent, type RoomInterior } from 
 export { parseLayoutMask, dungeonFromLayout, layoutPortals, LayoutMask, LayoutPortal, PORTAL_KINDS, type PortalKind } from "./mask-layout.js";
 export { CRYPT_THEMES, bakeCrypt, type CryptTheme, type CryptBake, type LayerBake } from "./crypt-bake.js";
 export { shellCollision, type ShellCollision } from "./shell-collision.js";
+export { stackedDungeon, LayoutStack, type StackedDungeon } from "./stacked-layout.js";
