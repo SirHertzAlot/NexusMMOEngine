@@ -4,7 +4,7 @@ This document details the architectural standing of the **Nexus MMO Engine** rel
 
 > [!NOTE]
 > **Complete Business Analysis Suite:**
-> For the comprehensive executive intelligence package, including Cloud Infrastructure Economics (.06/CCU vs .15/CCU), Strategic SWOT positioning, full empirical benchmarks, and deep subsystem breakdowns, see the dedicated **[Business Analysis & Competitive Intelligence Suite](business-analysis/README.md)**.
+> For the comprehensive executive intelligence package, including Cloud Infrastructure Economics (.06/CCU vs .15/CCU), Strategic SWOT positioning, full empirical benchmarks, and deep subsystem breakdowns, see the dedicated **[Business Analysis & Competitive Intelligence Suite](README.md)**.
 
 ---
 
@@ -17,12 +17,12 @@ The engine operates across three decoupled tiers:
 
 1. **Native C++ Kernel Tier (`packages/addons`)**:
    - C++20 N-API compiled binaries executing heavy numerical operations directly in-process.
-   - **Physics & Collisions**: Jolt Physics ([`packages/addons/physics`](../packages/addons/physics)).
-   - **Pathfinding & Navmesh**: Recast & Detour ([`packages/addons/navigation`](../packages/addons/navigation)).
-   - **Procedural Noise & SIMD**: FastNoise2 and FastSIMD ([`packages/addons/procgen`](../packages/addons/procgen)).
-   - **Constructive Solid Geometry (CSG)**: Manifold 3D & Clipper2 ([`packages/addons/geometry`](../packages/addons/geometry)).
-   - **Spatial Poisson Distribution**: SIMD Poisson-disc sampling ([`packages/addons/scatter`](../packages/addons/scatter)).
-   - **Particle Integration Kernel**: Vectorized Euler/Verlet integration ([`packages/addons/integrate`](../packages/addons/integrate)).
+   - **Physics & Collisions**: Jolt Physics ([`packages/addons/physics`](../../packages/addons/physics)).
+   - **Pathfinding & Navmesh**: Recast & Detour ([`packages/addons/navigation`](../../packages/addons/navigation)).
+   - **Procedural Noise & SIMD**: FastNoise2 and FastSIMD ([`packages/addons/procgen`](../../packages/addons/procgen)).
+   - **Constructive Solid Geometry (CSG)**: Manifold 3D & Clipper2 ([`packages/addons/geometry`](../../packages/addons/geometry)).
+   - **Spatial Poisson Distribution**: SIMD Poisson-disc sampling ([`packages/addons/scatter`](../../packages/addons/scatter)).
+   - **Particle Integration Kernel**: Vectorized Euler/Verlet integration ([`packages/addons/integrate`](../../packages/addons/integrate)).
 
 2. **Authoritative Core Engine (`packages/engine-core`)**:
    - Node.js runtime executing a fixed 30Hz lock-free simulation loop.
@@ -91,7 +91,7 @@ To modernize both browser client rendering and native desktop/server pipelines, 
 
 ## 4. Performance Deep Dive: Current Bottlenecks & Audit Findings
 
-> **Status (2026-11-11): this section is a snapshot from 2026-10-27 and is partly out of date.** Since then the base64 mirror stream measured in 4.1 was removed (E5a binary frames, E5c), interest management is built and on by default, and the interest-management leak and allocation work in 4.2 has landed (PF1 and later commits). 4.3 still describes the stress results accurately. The draw-call ceiling in 4.4 is a general WebGL figure; nothing in this repository measures it. [PERFORMANCE.md](PERFORMANCE.md) is the current, sourced account.
+> **Status (2026-11-11): this section is a snapshot from 2026-10-27 and is partly out of date.** Since then the base64 mirror stream measured in 4.1 was removed (E5a binary frames, E5c), interest management is built and on by default, and the interest-management leak and allocation work in 4.2 has landed (PF1 and later commits). 4.3 still describes the stress results accurately. The draw-call ceiling in 4.4 is a general WebGL figure; nothing in this repository measures it. [PERFORMANCE.md](../PERFORMANCE.md) is the current, sourced account.
 
 Despite top-tier performance in ECS integration and edge ingress, our audits revealed several key bottlenecks:
 
@@ -141,7 +141,7 @@ To eliminate serialization tails, memory churn, and single-threaded main loop co
 - **Expected Outcome**: Eliminates all temporary string keys and `Set<string>` allocations, removing the primary source of tick-loop garbage collection pauses.
 
 ### P3: Jolt Physics Multi-Threaded Job System
-- **Action**: Configure `JPH::JobSystemThreadPool` in [`packages/addons/physics`](../packages/addons/physics).
+- **Action**: Configure `JPH::JobSystemThreadPool` in [`packages/addons/physics`](../../packages/addons/physics).
 - **Mechanism**: While the Node.js event loop runs on one thread, Jolt spawns native OS worker threads across available CPU cores to execute broadphase and narrowphase collision solving in parallel before returning control to Node.js.
 - **Expected Outcome**: Increases physics simulation capacity from hundreds of dynamic bodies to tens of thousands of active ragdolls, projectiles, and destruction pieces without consuming main-loop CPU budget.
 
