@@ -19,6 +19,21 @@ const TierBudget = z.object({
 });
 export type TierBudget = z.infer<typeof TierBudget>;
 
+/**
+ * Per-effect slot caps: how many instances of one fx may be live at a tier
+ * (0 disables it on that tier). Keys are fx ids (`fx.charged-shot`); a tier
+ * left out is uncapped here. The fx package (render-fx) reads the same caps.
+ */
+const SlotCap = z.number().int().min(0).max(1024);
+const FxSlotCaps = z
+  .object({
+    low: SlotCap.optional(),
+    medium: SlotCap.optional(),
+    high: SlotCap.optional(),
+    ultra: SlotCap.optional(),
+  })
+  .strict();
+
 export const ParticleBudgets = z
   .object({
     version: z.literal(1),
@@ -30,6 +45,7 @@ export const ParticleBudgets = z
         ultra: TierBudget,
       })
       .strict(),
+    fxSlots: z.record(z.string().regex(/^fx\.[a-z0-9-]+$/, "fx ids are fx.<name>"), FxSlotCaps).optional(),
   })
   .strict()
   .refine(
@@ -63,5 +79,9 @@ export const DEFAULT_PARTICLE_BUDGETS: ParticleBudgets = loadParticleBudgets({
     medium: { maxParticles: 2500, maxEmitters: 16 },
     high: { maxParticles: 5000, maxEmitters: 32 },
     ultra: { maxParticles: 8000, maxEmitters: 48 },
+  },
+  fxSlots: {
+    "fx.charged-shot": { medium: 8, high: 16, ultra: 24 },
+    "fx.force-shield": { low: 0, medium: 4, high: 8, ultra: 8 },
   },
 });

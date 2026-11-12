@@ -7,7 +7,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { loadParticleBudgets, budgetForTier } from "../src/particle-budgets.js";
+import { loadParticleBudgets, budgetForTier, ParticleBudgets } from "../src/particle-budgets.js";
 
 const VALID = {
   version: 1,
@@ -68,5 +68,30 @@ describe("budgetForTier", () => {
     const json = JSON.parse(readFileSync(join(root, "content", "vfx", "budgets.json"), "utf8"));
     const { DEFAULT_PARTICLE_BUDGETS } = await import("../src/particle-budgets.js");
     assert.deepEqual(DEFAULT_PARTICLE_BUDGETS, loadParticleBudgets(json));
+  });
+});
+
+describe("per-effect slot caps (fxSlots)", () => {
+  const base = { version: 1, tiers: { low: { maxParticles: 1000, maxEmitters: 8 }, medium: { maxParticles: 2500, maxEmitters: 16 }, high: { maxParticles: 5000, maxEmitters: 32 }, ultra: { maxParticles: 8000, maxEmitters: 48 } } };
+
+  it("accepts the budgets file as it ships (main's content/vfx/budgets.json)", () => {
+    const shipped = {
+      ...base,
+      fxSlots: {
+        "fx.charged-shot": { medium: 8, high: 16, ultra: 24 },
+        "fx.force-shield": { low: 0, medium: 4, high: 8, ultra: 8 },
+      },
+    };
+    assert.doesNotThrow(() => ParticleBudgets.parse(shipped));
+  });
+
+  it("leaves fxSlots optional", () => {
+    assert.doesNotThrow(() => ParticleBudgets.parse(base));
+  });
+
+  it("refuses a cap outside 0..1024, an unknown tier, and a non-fx id", () => {
+    assert.throws(() => ParticleBudgets.parse({ ...base, fxSlots: { "fx.a": { low: 2000 } } }));
+    assert.throws(() => ParticleBudgets.parse({ ...base, fxSlots: { "fx.a": { extreme: 3 } } }));
+    assert.throws(() => ParticleBudgets.parse({ ...base, fxSlots: { "charged-shot": { low: 3 } } }));
   });
 });
