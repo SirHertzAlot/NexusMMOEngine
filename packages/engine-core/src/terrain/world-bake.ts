@@ -27,6 +27,8 @@ import { surrealkvUrl, writeWorldCatalog, type CatalogChunk } from "../persist/w
 import { LAND, surveyWorld, type Survey } from "./survey.js";
 import { WorldHeights } from "./world-heights.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
+import { bakeWorldMasks } from "./mask-bake.js";
+import { DEFAULT_TERRAIN_MASK_SPEC, TERRAIN_MASK_CHANNELS, type TerrainMaskSpec } from "@mmo-engine/art/browser";
 
 export interface TerrainBakeReport {
   chunks: number;
@@ -55,6 +57,8 @@ export interface TerrainBakeReport {
   tilesSkipped: number;
   /** Number of tiles regenerated. */
   tilesGenerated: number;
+  /** Time to bake the terrain material masks (null when skipped). */
+  maskMs: number | null;
 }
 
 export interface TerrainBakeOptions {
@@ -78,6 +82,9 @@ export interface TerrainBakeOptions {
   /** Called with the survey as soon as it exists (settlement stages and
    *  other survey consumers hook in here instead of re-surveying). */
   onSurvey?: (survey: Survey) => void;
+  /** Terrain material masks (after the survey, before scatter): the spec to
+   *  bake with, or false to skip them. Default: DEFAULT_TERRAIN_MASK_SPEC. */
+  masks?: TerrainMaskSpec | false;
 }
 
 const TILE_BATCH = 2500;
@@ -415,6 +422,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
   // Filter out unchanged tiles.
   let tilesSkipped = 0;
   let tilesGenerated = 0;
+  let maskMs: number | null = null;
   const toGenerate: Array<[number, number]> = [];
   if (skipUnchanged && !opts.surveyOnly) {
     for (const [cx, cz] of chunks) {
@@ -519,6 +527,17 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     store.putMap("flow", map(survey.flow));
     store.putMap("river", map(survey.river));
     store.putMap("roughness", map(survey.roughness));
+
+    // Terrain material masks: derived from the survey, stored per channel.
+    if (opts.masks !== false) {
+      const t = performance.now();
+      const masks = bakeWorldMasks(survey, opts.masks ?? DEFAULT_TERRAIN_MASK_SPEC, { minChunk, maxChunk });
+      maskMs = performance.now() - t;
+      for (const c of TERRAIN_MASK_CHANNELS) {
+        store.putMap(`mask_${c}`, { width: masks.width, depth: masks.depth, cell: masks.cell, originX: masks.originX, originZ: masks.originZ, data: masks.channels[c] });
+      }
+      log(`[bake] terrain masks ${masks.width}x${masks.depth} samples (${masks.cell} m) in ${maskMs.toFixed(0)} ms`);
+    }
   }
 
   // Invalidate the tile cache for a new survey hash (survey-only mode).
@@ -659,6 +678,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     surveySkipped,
     tilesSkipped,
     tilesGenerated,
+    maskMs,
   };
 }
 

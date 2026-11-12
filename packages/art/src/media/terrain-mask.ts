@@ -62,7 +62,9 @@ export function parseTerrainMaskSpec(value: unknown): TerrainMaskSpec {
 export const DEFAULT_TERRAIN_MASK_SPEC: TerrainMaskSpec = {
   version: 1,
   seed: 1,
-  resolution: 64,
+  // 16 samples per 16 m chunk: 1 m spacing, which keeps the whole-world bake
+  // inside the terrain bake's envelope (docs/TERRAIN-MASK.md has the numbers).
+  resolution: 16,
   noiseScaleMetres: 24,
   rock: { slope: { from: 28, to: 48, noiseAmplitude: 3 }, moistureDamping: 0.5 },
   wet: { moisture: { from: 0.55, to: 0.85, noiseAmplitude: 0.05 }, flowBoost: 0.25 },

@@ -125,3 +125,24 @@ describe("the authored cel ramp", () => {
     assert.deepEqual(defaultToonRampRows(), doc.toon.ramp);
   });
 });
+
+describe("terrain mask on the cel terrain", () => {
+  it("the terrain material samples the mask and stays cel", async () => {
+    const { createTerrainMaterial, createTerrainUniforms, packTerrainMask } = await import("../src/render/terrain/terrain-material.js");
+    const uniforms = createTerrainUniforms();
+    const material = createTerrainMaterial(uniforms, false);
+    applyShadingToMaterial(material, "terrain");
+    const shader = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      vertexShader: "#include <common>\n#include <begin_vertex>",
+      fragmentShader: "#include <common>\n#include <color_fragment>\n#include <lights_physical_pars_fragment>\n#include <map_fragment>\n#include <opaque_fragment>",
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    material.onBeforeCompile(shader, undefined as unknown as THREE.WebGLRenderer);
+    assert.match(shader.fragmentShader, /texture2D\(uMask,/, "mask sampled");
+    assert.match(shader.fragmentShader, /RE_Direct_Toon/, "still cel");
+    const channels = { base: new Uint8Array(4), rock: new Uint8Array([0, 255, 0, 0]), wet: new Uint8Array(4), path: new Uint8Array(4) };
+    const tex = packTerrainMask(channels, 2, 2);
+    assert.equal((tex.image.data as Uint8Array)[1 * 4 + 1], 255, "rock packed into G of sample 1");
+    tex.dispose();
+  });
+});

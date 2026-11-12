@@ -95,6 +95,22 @@ export class TerrainRenderer {
   private layerMap: THREE.DataTexture | null = null;
 
   /** `workers`: build block meshes off the main thread; without, update() builds them inline. */
+  /**
+   * Blend the baked terrain mask (packTerrainMask) over the ground. The
+   * texture covers the world rect (originX, originZ, width × cell, depth × cell).
+   */
+  setTerrainMask(texture: THREE.Texture, originX: number, originZ: number, width: number, depth: number, cell: number): void {
+    this.uniforms.uMask.value = texture;
+    this.uniforms.uMaskRect.value.set(originX, originZ, width * cell, depth * cell);
+    this.uniforms.uHasMask.value = 1;
+  }
+
+  /** Stop blending the mask (the ground colour and cel shading are unchanged). */
+  clearTerrainMask(): void {
+    this.uniforms.uMask.value = null;
+    this.uniforms.uHasMask.value = 0;
+  }
+
   constructor(private readonly chunkWorldSize: number, private readonly workers?: WorkerRequester) {
     this.spacing = chunkWorldSize / (SIDE - 1);
     this.group.name = "terrain";
