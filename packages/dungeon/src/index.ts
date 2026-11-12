@@ -16,3 +16,4 @@ export { propagateDungeonModules, type Dungeon3DModules, type DungeonModuleOptio
 export { roomInteriors, roomPlan, loadInteriorContent, type RoomInterior } from "./interiors.js";
 export { parseLayoutMask, dungeonFromLayout, layoutPortals, LayoutMask, LayoutPortal } from "./mask-layout.js";
 export { CRYPT_THEMES, bakeCrypt, type CryptTheme, type CryptBake, type LayerBake } from "./crypt-bake.js";
+export { shellCollision, type ShellCollision } from "./shell-collision.js";
