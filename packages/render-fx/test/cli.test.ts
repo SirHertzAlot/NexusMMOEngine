@@ -68,7 +68,7 @@ test("CLI missing-build output exits 1 with an actionable error", () => {
   // and the exact rebuild command. (Destructive dist/ removal is covered
   // manually; this pins the contract without deleting build output.)
   const distFile = path.join(repoRoot, "packages/render-fx/dist/src/asset-schema.js");
-  assert.ok(distFile.endsWith("packages/render-fx/dist/src/asset-schema.js"));
+  assert.ok(distFile.replaceAll("\\", "/").endsWith("packages/render-fx/dist/src/asset-schema.js"));
   const expectedHint = "npm run build --workspace=@mmo-engine/render-fx";
   assert.ok(expectedHint.length > 0);
 });
