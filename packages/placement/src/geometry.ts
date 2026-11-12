@@ -4,7 +4,7 @@
  * detail: moss, lichen, ground plants). No full models, no runtime cost: the
  * runtime only draws the baked buffers.
  */
-import type { Placement } from "./detail-layer.js";
+import type { Placement } from "./detail.js";
 
 export interface DetailGeometry {
   /** x, y, z per vertex. */

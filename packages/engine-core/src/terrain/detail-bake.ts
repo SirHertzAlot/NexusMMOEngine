@@ -4,8 +4,8 @@
  * draws the buffers it returns.
  */
 import type { DetailLayer } from "@mmo-engine/art/browser";
-import { placeDetail, type DetailSample } from "./detail-layer.js";
-import { buildDetailGeometry, type DetailGeometry } from "./detail-geometry.js";
+import { placeDetail, type DetailSample } from "@mmo-engine/placement";
+import { buildDetailGeometry, type DetailGeometry } from "@mmo-engine/placement";
 
 export interface DetailBake {
   layer: string;

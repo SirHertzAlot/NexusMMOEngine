@@ -37,6 +37,11 @@ export const DetailLayer = z
     seed: z.number().int().min(0).max(0xffffffff),
     /** Hard cap on placements per bake unit (a room or a chunk). */
     budget: z.number().int().min(0),
+    /**
+     * Outdoor layers only: which terrain mask channel the band reads
+     * (terrain-mask.ts). The moisture affinity reads the wet channel.
+     */
+    channel: z.enum(["base", "rock", "wet", "path"]).optional(),
   })
   .strict();
 export type DetailLayer = z.infer<typeof DetailLayer>;

@@ -115,3 +115,21 @@ const GOLDEN: Record<string, string> = {
   wet: "5495cfa9",
   path: "38699dc5", // no road field in the survey yet: this channel is empty
 };
+
+describe("overworld detail layers through the world bake", () => {
+  it("stores a detail map per overworld layer, placed only on the chosen wet channel", async () => {
+    const { parseDetailLayer } = await import("@mmo-engine/art/browser");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-detail-bake-"));
+    const dbPath = path.join(dir, "region.db");
+    const moss = parseDetailLayer({ id: "moss", assetSet: "moss", surface: "terrain", channel: "wet", density: 0.8, noise: { scale: 6, threshold: 0.2 }, band: { min: 0.3, max: 1 }, affinity: { weight: 0, preference: 1 }, cluster: { size: 0, falloff: 0 }, seed: 9, budget: 100000 });
+    const report = await bakeWorldTerrain(TINY, { dbPath, catalogDir: null, log: () => {}, terrainVersion: 1, workers: 1, detailLayers: [moss] });
+    assert.ok((report.detailPlaced.moss ?? 0) > 0, "moss placed");
+    const store = new TerrainTileStore(dbPath);
+    const map = store.getMap("detail_moss");
+    assert.ok(map, "detail_moss stored");
+    const wet = store.getMap("mask_wet")!;
+    const grid = new Uint8Array(map!.data as Uint8Array);
+    const wetBytes = new Uint8Array(wet.data as Uint8Array);
+    for (let i = 0; i < grid.length; i++) if (grid[i]) assert.ok(wetBytes[i] / 255 >= 0.3, "placed only where the wet channel passes the band");
+  });
+});

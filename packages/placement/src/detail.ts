@@ -9,8 +9,24 @@
  * slope match outdoors). Two adapters build the contexts: `wallBandSamples`
  * for dungeon interiors, and `terrainSamples` for a chunk's masks.
  */
-import { type DetailLayer, parseDetailLayer } from "@mmo-engine/art/browser";
-import { hash01, valueNoise } from "./terrain-mask.js";
+import { hash01, valueNoise } from "./noise.js";
+
+/**
+ * The detail layer as placement needs it. Structurally the same as the art
+ * package's DetailLayer; callers parse their layer with the art schema first.
+ */
+export interface DetailLayerSpec {
+  id: string;
+  assetSet: string;
+  surface: string;
+  density: number;
+  noise: { scale: number; threshold: number };
+  band: { min: number; max: number };
+  affinity: { weight: number; preference: number };
+  cluster: { size: number; falloff: number };
+  seed: number;
+  budget: number;
+}
 
 export interface DetailSample {
   x: number;
@@ -42,8 +58,7 @@ function smoothstep(v: number, a: number, b: number): number {
  * The budget caps placements; when more are eligible, the ones with the
  * lowest roll are kept, so the cut is deterministic.
  */
-export function placeDetail(layerValue: DetailLayer, samples: readonly DetailSample[], tierScale = 1): Placement[] {
-  const layer = parseDetailLayer(layerValue);
+export function placeDetail(layer: DetailLayerSpec, samples: readonly DetailSample[], tierScale = 1): Placement[] {
   const scale = Math.min(1, Math.max(0, tierScale));
   const candidates: Array<{ x: number; z: number; roll: number; variant: number }> = [];
   for (const s of samples) {

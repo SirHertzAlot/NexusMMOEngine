@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import type { DetailLayer, TerrainMaskSpec } from "@mmo-engine/art/browser";
 import { DEFAULT_TERRAIN_MASK_SPEC } from "@mmo-engine/art/browser";
 import { bakeDetailLayer } from "../src/terrain/detail-bake.js";
-import { terrainSamples, wallBandSamples } from "../src/terrain/detail-layer.js";
+import { terrainSamples, wallBandSamples } from "@mmo-engine/placement";
 import { surveyWorld } from "../src/terrain/survey.js";
 import { maskSourceOf, bakeWorldMasks } from "../src/terrain/mask-bake.js";
 import { parseWorldSpec, worldBounds, type WorldSpec } from "../src/terrain/world-spec.js";

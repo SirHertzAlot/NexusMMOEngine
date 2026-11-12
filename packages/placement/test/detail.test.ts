@@ -5,8 +5,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { DetailLayer } from "@mmo-engine/art/browser";
-import { placeDetail, terrainSamples, wallBandSamples, type DetailSample } from "../src/terrain/detail-layer.js";
+import { placeDetail, terrainSamples, wallBandSamples, type DetailSample, type DetailLayerSpec as DetailLayer } from "../src/detail.js";
 
 const BASE: DetailLayer = {
   id: "test",

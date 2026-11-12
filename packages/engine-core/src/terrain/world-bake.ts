@@ -29,7 +29,8 @@ import { LAND, surveyWorld, type Survey } from "./survey.js";
 import { WorldHeights } from "./world-heights.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
 import { bakeWorldMasksParallel, maskSourceOf } from "./mask-bake.js";
-import { DEFAULT_TERRAIN_MASK_SPEC, TERRAIN_MASK_CHANNELS, encodeTerrainMaskAsset, type TerrainMaskSpec } from "@mmo-engine/art/browser";
+import { DEFAULT_TERRAIN_MASK_SPEC, TERRAIN_MASK_CHANNELS, encodeTerrainMaskAsset, type DetailLayer, type TerrainMaskSpec } from "@mmo-engine/art/browser";
+import { placeDetail, terrainSamples } from "@mmo-engine/placement";
 
 export interface TerrainBakeReport {
   chunks: number;
@@ -60,6 +61,8 @@ export interface TerrainBakeReport {
   tilesGenerated: number;
   /** Time to bake the terrain material masks (null when skipped). */
   maskMs: number | null;
+  /** Placements per overworld detail layer id (empty when none). */
+  detailPlaced: Record<string, number>;
 }
 
 export interface TerrainBakeOptions {
@@ -88,6 +91,8 @@ export interface TerrainBakeOptions {
   masks?: TerrainMaskSpec | false;
   /** Write the masks as a binary asset the client loads (encodeTerrainMaskAsset). */
   maskAssetPath?: string;
+  /** Overworld detail layers (surface "terrain", each naming a mask channel). Placed after the masks; stored as detail_<id> maps. */
+  detailLayers?: DetailLayer[];
 }
 
 const TILE_BATCH = 2500;
@@ -426,6 +431,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
   let tilesSkipped = 0;
   let tilesGenerated = 0;
   let maskMs: number | null = null;
+  const detailPlaced: Record<string, number> = {};
   const toGenerate: Array<[number, number]> = [];
   if (skipUnchanged && !opts.surveyOnly) {
     for (const [cx, cz] of chunks) {
@@ -550,6 +556,30 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
         fs.writeFileSync(opts.maskAssetPath, encodeTerrainMaskAsset({ width: masks.width, depth: masks.depth, cell: masks.cell, originX: masks.originX, originZ: masks.originZ, rgba }));
       }
       log(`[bake] terrain masks ${masks.width}x${masks.depth} samples (${masks.cell} m) in ${maskMs.toFixed(0)} ms`);
+
+      // Overworld detail layers: each places on the masks' samples; a placed sample is 1 in its detail_<id> map.
+      for (const l of opts.detailLayers ?? []) {
+        if (l.surface !== "terrain") continue;
+        const channel = l.channel ?? "base";
+        const samples = terrainSamples({
+          width: masks.width,
+          depth: masks.depth,
+          cell: masks.cell,
+          originX: masks.originX,
+          originZ: masks.originZ,
+          channel: masks.channels[channel],
+          moisture: masks.channels.wet,
+        });
+        const placed = placeDetail(l, samples);
+        const grid = new Uint8Array(masks.width * masks.depth);
+        for (const p of placed) {
+          const x = Math.floor((p.x - masks.originX) / masks.cell);
+          const z = Math.floor((p.z - masks.originZ) / masks.cell);
+          grid[z * masks.width + x] = 1;
+        }
+        store.putMap(`detail_${l.id}`, { width: masks.width, depth: masks.depth, cell: masks.cell, originX: masks.originX, originZ: masks.originZ, data: grid });
+        detailPlaced[l.id] = placed.length;
+      }
     }
   }
 
@@ -692,6 +722,7 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     tilesSkipped,
     tilesGenerated,
     maskMs,
+    detailPlaced,
   };
 }
 

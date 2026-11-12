@@ -9,6 +9,7 @@
  * only that channel's bytes.
  */
 import { type TerrainMaskSpec, parseTerrainMaskSpec } from "@mmo-engine/art/browser";
+import { hash01, valueNoise } from "@mmo-engine/placement";
 
 export interface TerrainMaskInputs {
   /** Slope in degrees per mask sample (resolution² values). */
@@ -29,31 +30,6 @@ export interface TerrainMaskChunk {
   originZ: number;
   /** Metres between mask samples. */
   cellMetres: number;
-}
-
-/** Integer hash to [0, 1). */
-export function hash01(ix: number, iz: number, seed: number): number {
-  let h = Math.imul(ix, 374761393) ^ Math.imul(iz, 668265263) ^ Math.imul(seed, 2246822519);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  h ^= h >>> 16;
-  return (h >>> 0) / 4294967296;
-}
-
-/** Smooth value noise in [0, 1) at a world position, feature size `scale` metres. */
-export function valueNoise(seed: number, x: number, z: number, scale: number): number {
-  const fx = x / scale;
-  const fz = z / scale;
-  const ix = Math.floor(fx);
-  const iz = Math.floor(fz);
-  const tx = fx - ix;
-  const tz = fz - iz;
-  const sx = tx * tx * (3 - 2 * tx);
-  const sz = tz * tz * (3 - 2 * tz);
-  const a = hash01(ix, iz, seed);
-  const b = hash01(ix + 1, iz, seed);
-  const c = hash01(ix, iz + 1, seed);
-  const d = hash01(ix + 1, iz + 1, seed);
-  return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
 }
 
 /** smoothstep between two edges, clamped to 0..1. */
