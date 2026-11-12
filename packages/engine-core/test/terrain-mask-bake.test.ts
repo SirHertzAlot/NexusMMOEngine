@@ -13,8 +13,6 @@ import { bakeWorldTerrain } from "../src/terrain/world-bake.js";
 import { TerrainTileStore } from "../src/persist/terrain-tiles.js";
 import { parseWorldSpec, type WorldSpec } from "../src/terrain/world-spec.js";
 import { maskHash } from "../src/terrain/terrain-mask.js";
-import { surveyWorld } from "../src/terrain/survey.js";
-import { maskSourceOf } from "../src/terrain/mask-bake.js";
 
 const TINY: WorldSpec = parseWorldSpec({
   name: "tiny-mask",
@@ -81,26 +79,6 @@ describe("terrain masks through the world bake", () => {
 
   it("golden hashes for the tiny world (fixed seed, default mask spec)", () => {
     assert.deepEqual(baseline, GOLDEN);
-  });
-
-  // TEMPORARY diagnostic (remove once the CI golden mismatch is explained): environment and per-stage hashes.
-  it("MASK-DIAG: environment and per-stage hashes", () => {
-    const s = surveyWorld(TINY) as unknown as Record<string, ArrayBufferView | undefined>;
-    const h = (a: ArrayBufferView | undefined): string => (a ? maskHash(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)) : "absent");
-    const src = maskSourceOf(surveyWorld(TINY));
-    const diag = {
-      node: process.version,
-      v8: process.versions.v8,
-      platform: os.platform(),
-      arch: os.arch(),
-      endian: os.endianness(),
-      cpuModel: os.cpus()[0]?.model,
-      cpus: os.cpus().length,
-      survey: Object.fromEntries(["height", "roughness", "biome", "moisture", "rain", "temperature", "water", "waterLevel", "ice", "flow"].map((k) => [k, h(s[k])])),
-      maskSource: { slope: h(src.slope), moisture: h(src.moisture), flow: h(src.flow), biome: h(src.biome) },
-      channels: baseline,
-    };
-    console.log("MASK-DIAG " + JSON.stringify(diag));
   });
 
   it("masks:false stores no masks and reports no mask time", async () => {

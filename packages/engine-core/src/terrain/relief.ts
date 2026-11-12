@@ -1,3 +1,4 @@
+import { detPow } from "@mmo-engine/placement";
 /**
  * Relief shaping for mountain ranges: what makes a crest a crest.
  *
@@ -12,7 +13,7 @@
 export function crestProfile(r: number, sharpness: number): number {
   const dome = (1 - r * r) * (1 - r * r);
   if (sharpness === 0) return dome;
-  const ridge = Math.pow(1 - r, 1.6);
+  const ridge = detPow(1 - r, 1.6);
   return dome + sharpness * (ridge - dome);
 }
 

@@ -13,6 +13,7 @@ import type { BiomeRegion, CoarseGrid } from "./survey.js";
 import { boxBlur } from "./grid-ops.js";
 import { LAKE, LAND, SEA } from "./hydrology.js";
 import { windVector, type BiomeCondition, type Bound, type WorldSpec } from "./world-spec.js";
+import { detSin } from "@mmo-engine/placement";
 
 /** What the rules can see of each cell. */
 export interface BiomeInputs {
@@ -263,7 +264,7 @@ export function applySurface(
             break;
           case "dunes":
             // Crests run across the wind.
-            delta[i] += w[i] * s.relief * 0.5 * Math.sin((2 * Math.PI * (x * wind.x + z * wind.z)) / s.scale + 2.5 * n![i]);
+            delta[i] += w[i] * s.relief * 0.5 * detSin((2 * Math.PI * (x * wind.x + z * wind.z)) / s.scale + 2.5 * n![i]);
             break;
           case "flat":
             // Settle toward `relief` metres above the sea.
