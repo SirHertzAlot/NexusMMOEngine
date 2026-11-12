@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * npm run settlement:places -- --world <spec> [--scenes <dir>] [--out <file>] [--seed <n>] [--homesteads <per town>] [--rules <file>]
+ * npm run settlement:places -- --world <spec> [--scenes <dir>] [--out <file>] [--seed <n>] [--homesteads <per town>] [--rules <file>] [--catalog <file>]
  *
  * Plans the routes between the baked towns and the places along them and between them (guard outposts, inns beside
  * the outposts, shacks, camp sites, homesteads), roadmap SG7/SG8. The towns are read from the root node of each
@@ -16,6 +16,7 @@ import { parseArgs } from "node:util";
 import { fromUser, settlementPaths } from "./paths.js";
 import { DEFAULT_PLACE_RULES, planPlaces, type PlaceTown } from "./places.js";
 import { placesScene } from "./places-scene.js";
+import { buildPlaceArtMap, type CatalogModel } from "./art.js";
 import { defaultRules, loadRules } from "./rules.js";
 import type { TerrainFields } from "./sites.js";
 
@@ -32,7 +33,7 @@ export function readTowns(dir: string): PlaceTown[] {
 }
 
 async function main(): Promise<void> {
-  const { values: o } = parseArgs({ options: { world: { type: "string" }, scenes: { type: "string" }, out: { type: "string" }, seed: { type: "string" }, homesteads: { type: "string" }, rules: { type: "string" } } });
+  const { values: o } = parseArgs({ options: { world: { type: "string" }, scenes: { type: "string" }, out: { type: "string" }, seed: { type: "string" }, homesteads: { type: "string" }, rules: { type: "string" }, catalog: { type: "string" } } });
   if (!o.world) throw new Error("--world <file> is required");
   const paths = settlementPaths();
   const scenes = o.scenes ? fromUser(o.scenes) : paths.scenes;
@@ -57,7 +58,10 @@ async function main(): Promise<void> {
   writeFileSync(out, `${JSON.stringify(plan, null, 2)}\n`);
   // The scene the server spawns them from (MMO_SCENE=places), beside the towns' scenes.
   const sceneFile = resolve(scenes, "places.scene.json");
-  writeFileSync(sceneFile, `${JSON.stringify(placesScene(plan), null, 2)}\n`);
+  // With the art catalog the places name their models (a kind with none stays a box); without it they are all boxes.
+  const art = o.catalog ? buildPlaceArtMap((JSON.parse(readFileSync(fromUser(o.catalog), "utf8")) as { models: CatalogModel[] }).models) : undefined;
+  writeFileSync(sceneFile, `${JSON.stringify(placesScene(plan, art), null, 2)}\n`);
+  if (art) console.log(`  [art] ${Object.keys(art).length} place kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
   const c = plan.counts;
   console.log(`[settlement:places] ${towns.length} towns, ${plan.routes.length} routes (${Math.round(plan.routes.reduce((n, r) => n + r.lengthM, 0) / 1000)} km): ${c.guard_outpost} guard outposts, ${c.inn} inns, ${c.shack} shacks, ${c.camp_site} camp sites, ${c.homestead} homesteads -> ${out}, scene ${sceneFile}`);
 }
