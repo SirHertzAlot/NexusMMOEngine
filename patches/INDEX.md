@@ -52,3 +52,15 @@ When **Gemini** receives this handoff, execute the patches in the following orde
 4. **`PATCH-04`**: Upgrade `PersistWorkerRuntime.flushOnce()` in [`packages/engine-core/src/persist-worker.ts`](../packages/engine-core/src/persist-worker.ts) to deduplicate redundant `ENTITY_CHECKPOINT` events via a 320-word dirty bitset and commit them in a single vectorized SurrealQL batch query.
 5. **`PATCH-05`**: Implement `packEntityHandle`, `unpackEntityHandle`, and `GenerationalSlabAllocator` in [`packages/engine-core/src/sab-store.ts`](../packages/engine-core/src/sab-store.ts).
 6. **TDD Verification**: Add comprehensive unit and stress tests in [`packages/addons/integrate/test/integrate.test.js`](../packages/addons/integrate/test/integrate.test.js) and [`packages/engine-core/test/hybrid-data-plane.test.ts`](../packages/engine-core/test/hybrid-data-plane.test.ts) and verify 100% pass rate.
+
+---
+
+## 4. Hand-Authored Implementation Plans (added 2026-11-11, Joey's direction)
+
+The PATCH-01…05 specs above are crawler-generated. The plans below are hand-authored specs created in working sessions and pushed here so they can be picked up and implemented. They follow their own documents' build orders and gates; nothing in this section changes the crawler workflow above.
+
+| Plan | File(s) | What it builds | Status |
+| :--- | :--- | :--- | :--- |
+| **Cutscene Lane — MuJoCo cinematics** | [`CUTSCENE-LANE-SPEC.md`](./CUTSCENE-LANE-SPEC.md) · companion: [`MUJOCO-ENGINE-NOTE.md`](./MUJOCO-ENGINE-NOTE.md) | Baked-physics cutscenes: MuJoCo at author time, pose tracks shipped as clips; server keeps story authority, nothing read back from the sim; live WASM lane last, behind a measured gate. Build order C0–C4; C1 showcase is a props-only market-stall collapse. | Spec'd — not built |
+| **Pixel-Fireball PoC (VFX)** | [`PIXEL-FIREBALL-POC-SPEC.md`](./PIXEL-FIREBALL-POC-SPEC.md) · validated effects: [`pixel-fireball-effects/`](./pixel-fireball-effects/) | 2D pixel fireball as native 3D `VfxEffect`s: 3-effect recipe suite (projectile/impact/smoke, 9 emitters / 382 maxParticles, all JSONs pass `parseVfxEffect`), low-tier reduction defined; literal flipbook route needs the proposed schema-v2 extension (per-emitter texture, flipbook block, blend override). | Spec'd — recipe suite ready to port into `content/vfx/`; v2 extension is a separate decision |
+| **Graphify Harvester** | [`GRAPHIFY-HARVESTER-SPEC.md`](./GRAPHIFY-HARVESTER-SPEC.md) · design note: [`GRAPHIFY-ECS-EXPOSURE.md`](./GRAPHIFY-ECS-EXPOSURE.md) | Node/TS build-time harvester producing one versioned, hash-stamped `ecs-graph.json` (components, systems, content, authoring maps) with confidence-tiered edges, so the editor can answer "what is this object made of, and what touches it?" Phases H1–H4. | Spec'd — not built |

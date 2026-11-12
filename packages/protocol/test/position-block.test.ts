@@ -24,6 +24,7 @@ test("position rows round-trip and cost 20 B per row against 57 B for a full tra
     locomotions: { ...none, mode: px, abilities: px, breath: px },
     appearances: { ...none }, actions: { ...none, move: px, started: px, seq: px, yaw: px },
     animations: { ...none, clipId: px, startTick: px, rate: px, layerMask: px },
+    vfxEmitters: { ...none, template: px, intensity: px },
     spawned: [], despawned: [],
   } as unknown as CollectedStateSoA;
   const bytes = encodeDeltaSoA(state, undefined, true);
@@ -50,6 +51,7 @@ test("a Delta without positions decodes to an empty list", () => {
     characterRefs: { ...none, idHi: [], idLo: [] }, bodies: { ...none }, assets: { ...none, assetHash: [], variant: [] },
     locomotions: { ...none, mode: [], abilities: [], breath: [] }, appearances: { ...none },
     actions: { ...none, move: [], started: [], seq: [], yaw: [] }, animations: { ...none, clipId: [], startTick: [], rate: [], layerMask: [] },
+    vfxEmitters: { ...none, template: [], intensity: [] },
     spawned: [], despawned: [],
   } as unknown as CollectedStateSoA;
   assert.deepEqual(decodeDelta(encodeDeltaSoA(state, undefined, true)).positions, []);

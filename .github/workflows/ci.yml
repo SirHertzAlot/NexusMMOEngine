@@ -53,3 +53,22 @@ jobs:
         run: |
           # The spec reporter prints each failing test's error after its file.
           awk '/failing tests:/{n=80} n&&n--' "$RUNNER_TEMP/test.log" | head -n 400
+
+      - name: Install Valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Valgrind perf
+        run: |
+          npm run valgrind:perf
+          npm run valgrind:record -- --promote
+          npm run valgrind:check
+
+      - name: Upload Valgrind performance reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valgrind-perf-reports
+          path: |
+            valgrind-out/
+            perf/history.json
+          if-no-files-found: ignore

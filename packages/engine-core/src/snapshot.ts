@@ -887,7 +887,10 @@ const EMPTY_POSITIONS_EIDS: readonly number[] = Object.freeze([]);
 const EMPTY_WIRE_IDS: readonly bigint[] = Object.freeze([]);
 
 interface ReusableSoAContext {
-  state: CollectedStateSoA & { positions: NonNullable<CollectedStateSoA["positions"]> };
+  state: CollectedStateSoA & {
+    positions: NonNullable<CollectedStateSoA["positions"]>;
+    vfxEmitters: NonNullable<CollectedStateSoA["vfxEmitters"]>;
+  };
   lastChunkSource: ChunkDataSource | null;
 }
 
@@ -1018,7 +1021,7 @@ export function encodeEidsFromSim(
   s.appearances.eids = eids.appearances;
   s.actions.eids = eids.actions;
   s.animations.eids = eids.animations;
-  s.vfxEmitters.eids = eids.vfxEmitters;
+  if (s.vfxEmitters) s.vfxEmitters.eids = eids.vfxEmitters;
   s.spawned = Array.isArray(ids.spawned) ? ids.spawned : [...ids.spawned];
   s.despawned = Array.isArray(ids.despawned) ? ids.despawned : [...ids.despawned];
   return encodeDeltaSoA(s, sharedBuilder, true);
