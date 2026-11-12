@@ -320,16 +320,18 @@ support either.
 
 ## 6. In the ECS and on the wire
 
-| Component | Fields | Sent to |
-|---|---|---|
-| `Body` (new) | `hp: [f32 × 16]`, `max: [f32 × 16]`, `blood`, `bleed` (one slot per part in the rules, up to 16) | Owner only (in the `self` message) |
-| `Injury` (new) | `u32`: 2 bits of state per part (healthy, harmed, maimed, dismembered), for up to 15 parts, plus a bleeding bit | Everyone: limps, missing parts, blood |
-| `Combat` (new) | `phase` (idle, wind-up, strike, recover, defend), `technique`, `aim`, `timer` | Everyone: animations and reactions |
-| `Held` (new) | Item in each hand | Everyone |
-| `Health` (exists) | `current, max`, now the sum of the parts | Everyone |
+This section is the plan as written. What was built, from `packages/engine-core/src/body.ts` and
+`packages/protocol/src/locomotion.ts`:
 
-- **Intent** gains `technique` and `aim` (u8 each), and two button bits:
-  Attack (0x02) and Defend (0x04). This is a protocol version bump.
+| Component | Fields as built | Seen by |
+|---|---|---|
+| `Body` | `hp` (each part's health as a 0 to 1 share of its own maximum, one slot per part, up to `MAX_BODY_PARTS` = 15), `wound` (a state byte per part), `clot` (seconds until a wound stops bleeding), `blood`, `bloodMax`, `seen`, `lost` (a bit per lost part) | Server only; the owner is sent a body report when it changes |
+| `Injury` | `bits` (2 bits of state per part plus a bleeding bit), `move` (speed multiplier), `stamina` (recovery multiplier), `flags` (no jump) | Everyone: limps, missing parts, blood |
+| `Health` | `current`, `max`, kept as the sum of the parts | Everyone |
+
+The plan's separate `Combat` and `Held` components are not in the code under those names: the attack state and the held items are carried by the combat and inventory systems (see [GAMEPLAY.md](GAMEPLAY.md)).
+
+- **Intent** carries `technique` and `aim`, and the buttons are **Attack** (`0x02`, a press; a press inside a hit's chain window continues the combo), **Block** (`0x04`, held; the plan called it Defend) and **Dodge** (`0x08`, a press). This was a protocol version bump.
 - **Skills** stay server-side and go to the owner in the `self` message
   (see `CHARACTERS-AND-SOCIAL.md` §4.4).
 - A new `CombatSystem` runs after `CharacterSystem`: it moves attacks

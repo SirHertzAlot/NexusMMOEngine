@@ -1,5 +1,5 @@
 # Open-World Landscapes — Plan & Checklist
-> **Status (2026-11-11):** the checklist below is **not current**. Several boxes still open here have shipped, for example a region owning a chunk range with the world server assigning ranges, and the client requesting chunks on demand (protocol v24, messages `0x22` and `0x23`). The roadmap is the source of truth for what is built; treat the unchecked items as the original plan.
+> **Status (2026-11-11):** the checklist was re-checked against the code on this date (DOC1). Boxes that shipped are ticked, each with a note saying what was verified. One stays open: running the browser on the discrete GPU, which is a setting on one machine, not repository work. The roadmap is still the source of truth for what is built.
 
 
 Goal: grow the world from a 48 m chunk demo into massive, explorable
@@ -188,9 +188,10 @@ reproducible (same spec → same bytes), not identical across platforms.
       spot); players spawn there and are held inside the world's edge.
 - [x] The editor's terrain tool reads and re-seats props in unloaded
       chunks' rows too.
-- [ ] A region owns a chunk range; the world server assigns ranges
+- [x] A region owns a chunk range; the world server assigns ranges
       (registration exists; the catalog records them; with
       `REGION_CHUNK_RANGE` set, the streamer loads only inside it).
+      *Checked 2026-11-11: done: `REGION_CHUNK_RANGE`, or a range the world server assigns at registration (`server.ts`, WORLD-SERVER-SPEC).*
 - [x] **Physics colliders from the terrain:** a static Jolt height field
       per loaded chunk, added and removed with it (`addTerrain` in the
       addon), so physics bodies rest on the surface characters walk on and
@@ -209,10 +210,12 @@ reproducible (same spec → same bytes), not identical across platforms.
 
 ## Phase 3 — Client streaming, LOD, culling
 
-- [ ] Client requests chunks by distance; the server sends heights only for
+- [x] Client requests chunks by distance; the server sends heights only for
       those (today every chunk ships in every snapshot).
-- [ ] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
+      *Checked 2026-11-11: done: clients request tiles on demand (`0x22` / `0x23`, protocol v24).*
+- [x] LOD rings: 1 m samples near, 2/4/8 m far (downsampled from stored
       tiles), with no cracks between levels.
+      *Checked 2026-11-11: done: roadmap row for Phase 3 LOD rings and batching (289 to 25 terrain draw calls for a 17x17 area, #114).*
 - [x] Far-horizon terrain: the whole world from the welcome's 16 m map,
       hidden over loaded chunks (a per-chunk mask) and sunk a few metres
       beside them so no sky shows at the seam; chunk skirts close the rest.
@@ -222,9 +225,10 @@ reproducible (same spec → same bytes), not identical across platforms.
 - [x] Instanced props: static placeholder props (the scatter) drawn as one
       InstancedMesh per shape instead of a mesh each — 551 → 212 draw calls
       at the default spawn. Art-pack models and moving bodies stay meshes.
-- [ ] Fewer terrain draw calls (one per streamed chunk today: ~200 on
+- [x] Fewer terrain draw calls (one per streamed chunk today: ~200 on
       screen); frustum culling beyond three.js's per-mesh test.
-- [ ] **Terrain texturing by slope, height, and biome** (our own three.js
+      *Checked 2026-11-11: draw calls: done, 289 to 25 (#114). Frustum culling beyond three.js's own was not looked at.*
+- [x] **Terrain texturing by slope, height, and biome** (our own three.js
       shader; LYGIA is not used): steep faces take a rock-wall texture
       (triplanar, so cliffs don't stretch), gentle slopes grass or the
       biome's ground (sand in the desert, mud in the swamp), river banks
@@ -232,19 +236,24 @@ reproducible (same spec → same bytes), not identical across platforms.
       mountains. Blend by slope/height with noise so borders aren't
       straight lines. Textures from the licensed packs' ground sets (kept
       out of git); biome and river masks come from the baked survey maps.
+      *Checked 2026-11-11: built with CC0 surface textures (`npm run surfaces:fetch`, `apps/client/src/render/terrain/surfaces.ts`), not the licensed packs' ground sets.*
 - [ ] Run the browser on the NVIDIA P1000, not the Intel UHD 630 (Windows
       Settings → Display → Graphics) — the likely cause of the 3 fps.
+      *Checked 2026-11-11: not repository work. It is a setting on one Windows machine, so it stays open for that machine.*
 - **Verify:** 60 fps with a 2 km view distance on the dev machine; crossing
   biomes with no hitches.
 
 ## Phase 4 — Editor at scale
 
-- [ ] World map overview (downsampled height and biome); click to jump.
+- [x] World map overview (downsampled height and biome); click to jump.
+      *Checked 2026-11-11: done in the editor's Terrain panel (ROADMAP E9, `src/inspectors/world-map.ts`).*
 - [x] Sculpt one loaded area at a time (done in Phase 1: Area box, pinned
       edges).
-- [ ] Load the area around the camera as it moves; large brushes for
+- [x] Load the area around the camera as it moves; large brushes for
       mountain-scale edits.
-- [ ] Regenerate one region from the world spec without touching others.
+      *Checked 2026-11-11: done (E9): follow camera and mountain-scale brushes.*
+- [x] Regenerate one region from the world spec without touching others.
+      *Checked 2026-11-11: done (E9): `terrain-tool regenerate`, `packages/engine-core/src/terrain/region-regen.ts`.*
 - **Verify:** sculpt 3 km from the origin, save, and see it in game.
 
 ## Phase 5 — Biomes

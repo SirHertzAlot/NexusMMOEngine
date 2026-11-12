@@ -195,8 +195,7 @@ sequential and never skipped silently.
 
 Systems sit behind one narrow interface — `name` plus
 `step(world, dt)` — and never call each other. They communicate through
-component data and the world's intent queue. The order is declared in
-`server.ts`:
+component data and the world's intent queue. The order is not a list in one file now: **each module declares where its systems go with `after` and `before`, and the server resolves one order at boot** ([MODULES.md](MODULES.md)). The eight systems below are the original core of it, in their original order, and are still the spine:
 
 ```ts
 systems: [
@@ -210,6 +209,8 @@ systems: [
   navigation,                  // 8. Recast/Detour pathfinding
 ]
 ```
+
+Around them, other modules add `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, the creature, residents, settlement, gathering, chest and interaction systems, and more (34 modules ship). `modules/core/module.json` fixes only its own five (`reloader`, `streamer`, `gathering`, `chests`, `breaks`).
 
 Order is load-bearing:
 
@@ -246,6 +247,8 @@ per-entity allocation on the hot path.
 | 9 | `Locomotion` | swim/fly/walk state |
 | 10 | `Appearance` | character look |
 | 11 | `Action` | the current combat action/phase |
+
+The table is the first twelve. The registry in `components.ts` (`COMPONENT_IDS`) goes on: `Stamina` 12, `CharacterRef` 13, `Needs` 14, `God` 15, `Noclip` 16, `Animation` 17, `FlowRef` 18, `VfxEmitter` 19, `AudioEmitter` 20 and `Breakable` 23. Body, injury and many more (items, creatures, residents) are defined by their systems; `components.ts` and the system files are the source.
 
 Field names mirror the FlatBuffers schema so the mapping between SoA rows and
 wire tables is mechanical. Two details worth knowing:
@@ -321,7 +324,7 @@ path never sees them, because `SnapshotStore` collects separately.
 | `0x0d` | CreateCharacter | client → server |
 | `0x0e` | EnterWorld | client → server |
 
-`MESSAGE-CATALOG.md` has the payloads; the envelope and precise fields are in
+These are the first fourteen. The protocol is at version 29 and goes on to `0x27` (chat, combat, inventory, interaction, tile requests, the interest-managed `DeltaSet` and more); [MESSAGE-CATALOG.md](MESSAGE-CATALOG.md) has them all and the payloads; the envelope and precise fields are in
 the `.fbs`.
 
 Session lifecycle:
@@ -352,8 +355,7 @@ are batched into per-tick deltas the gateway fans out. No game logic lives in
 the gateway. It also owns an HTTP surface on the same port for the PCG asset
 service (`/rpc/Pcg`), authenticated by the same session tokens.
 
-**Phase 1 broadcasts the same delta stream to every client**; interest
-management is explicitly deferred until load demands it.
+**Interest management is built and on by default.** The early design broadcast one delta stream to every client; now each client is sent a `DeltaSet` (`0x25`) holding only the sectors it is near (see [Interest management](#interest-management)). `MMO_INTEREST=0` turns it off, and every client then sees everything, as in Phase 1.
 
 ## Persistence
 
@@ -368,6 +370,8 @@ scripts). All of it is gitignored.
 | `characters.db` | SQLite: each account's characters (name and look) |
 | `users.csv` | accounts: username and argon2id hash, written mode `0600` |
 | `surreal/` | the embedded SurrealDB chunk catalog (region, biome, height range, river) |
+
+The table lists the files this chapter covers. The full set (economy, social, parties, guilds, quests, gathering, places, instances and the admin log) is in [OPERATIONS.md](OPERATIONS.md#where-state-lives).
 
 Snapshots are written every 300 ticks and on shutdown, keeping the newest 6,
 and the heavy work runs off the tick thread through a checkpoint worker so

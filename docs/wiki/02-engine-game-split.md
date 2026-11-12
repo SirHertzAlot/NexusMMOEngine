@@ -101,19 +101,17 @@ The [`@mmo-engine/rules`](../../packages/rules) package inspects all rules again
 To build a new game on top of the engine:
 
 1. **Create Custom Modules**: Add a new folder in `modules/my-game/` with a `module.json`.
-2. **Export System Factories**:
-   ```ts
-   import type { SimWorld } from "@mmo-engine/engine-core";
-   
-   export function createSystems(world: SimWorld) {
-     return [
-       {
-         name: "OrbitalSystem",
-         step: (dt: number) => {
-           // Iterate over custom bitECS components
-         }
-       }
-     ];
+2. **Export System Factories.** `createSystems(ctx)` returns **an object keyed by system name**, one system for each name the manifest declares (see [MODULES.md](../MODULES.md) and the working `modules/sample-heartbeat`):
+   ```js
+   export function createSystems(ctx) {
+     return {
+       orbital: {
+         name: "orbital",
+         step() {
+           // runs once per tick; iterate your bitECS components here
+         },
+       },
+     };
    }
    ```
 3. **Register in `content/modules.json`**: Enable your module and disable any unneeded modules.

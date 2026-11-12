@@ -1,5 +1,5 @@
 # Characters — Plan & Checklist
-> **Status (2026-11-11):** this checklist was last updated in late September and is **not current**. Some boxes still open here have shipped, for example damage and hit reactions (roadmap M2a, M3). The roadmap is the source of truth for what is built; treat the unchecked items below as the original plan, not as open work.
+> **Status (2026-11-11):** the checklist was re-checked against the code on this date (DOC1). Boxes that shipped are ticked, each with a note saying what was verified. Four stay open because nothing in the code or the roadmap shows them built: the part thumbnail grid in the creator, single moves cut from the CMU takes, strafing blend spaces, and enemy humans generated from the catalog. The roadmap is still the source of truth for what is built.
 
 
 Goal: players and enemy humans are built from the Modular Fantasy Hero
@@ -132,8 +132,9 @@ free for games but can't be redistributed and needs an Adobe login.
       tells every client which move, from which tick, facing where.
 - [ ] Cut single moves from the CMU takes (kicks, blocks, punches) and
       offer Kevin Iglesias's weapon styles as alternative movesets.
-- [ ] Damage and hit reactions: hits land at a moment of the move, the
+- [x] Damage and hit reactions: hits land at a moment of the move, the
       guard and the roll defend, `Hit_*`, knockback and death play.
+      *Checked 2026-11-11: damage, injury and death are server-side (roadmap M2, M3); the `Hit_Reaction` clip and the creature death fall are in the clip map. Knockback was not looked for.*
 - [ ] Blend spaces for strafing (Kevin Iglesias's 8-way runs), foot
       locking, inertial blending for interruptions.
 
@@ -141,8 +142,9 @@ free for games but can't be redistributed and needs an Adobe login.
 
 - [ ] Enemy humans: the server generates appearances from the same
       catalog (armour sets by faction / tier) and spawns them like players.
-- [ ] Monsters: pack characters spawned as they are, animated with the
+- [x] Monsters: pack characters spawned as they are, animated with the
       same retargeted clips (they share the humanoid skeleton).
+      *Checked 2026-11-11: creature kinds carry an art model (`AssetRef`) and creature moves (`bite`, `claw` and others, `combat.ts`); WL2 added the animal rig for static models.*
 
 **Verify:** create a character in the browser, log out and back in and
 see the same character; a second client sees it too; animations follow

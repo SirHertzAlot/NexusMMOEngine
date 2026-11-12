@@ -393,6 +393,8 @@ export class Registry {
 - `mirror_deltas_fanned_out_total` (counter).
 - `mirror_snapshot_age_ticks` (gauge) — `currentTick - latestSnapshot.tick`.
 
+> **Names.** The metric names below are the design's, written without the prefix their family carries when scraped (`mmo_edge_`, `mmo_channel_`, `mmo_core_`). The names the code registers are in `apps/edge/src/metrics.ts` and `packages/engine-core/src/channel-server.ts`, for example `mmo_edge_router_requests_total`, `mmo_edge_router_latency_ms`, `mmo_edge_ws_connects_total` and `mmo_core_tick_duration_ms`. Check there before building a dashboard.
+
 - Channel (`mmo_channel_`, recorded in `packages/channel`, labeled by `side=edge|core`):
 - `requests_total`, `timeouts_total`, `errors_total` (counters).
 - `request_latency_ms` (histogram).

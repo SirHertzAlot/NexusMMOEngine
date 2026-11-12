@@ -79,6 +79,8 @@ The dev server also hosts the **dev-only** play-mode control API
 These routes exist only under `vite dev`. They are localhost-only
 tooling, never production surface.
 
+> **A note on the sections below.** Sections 1 to 3 were written when the editor was a row of tabs. Those tabs are now **panels** inside the workspaces (for example the ECS inspector in the Scene workspace, Play Mode in the toolbar's play menu and the Debug workspace, and the Art tooling in the Art & audio workspace). The behaviour described is current (every file named below exists); where a section says "tab", read "panel". The dev host has more routes than the list above shows (`GET /api/editor/server/log`, `/api/editor/assets/resolve`, and one set per workspace such as `/api/editor/pcg/`, `/api/editor/dungeons/`, `/api/editor/audio` and `/api/editor/tables`); each is in its `*-host.ts` file under `apps/editor/src/`.
+
 ## 1. ECS Inspector (read-only)
 
 Open the **ECS Inspector** tab, enter the server URL

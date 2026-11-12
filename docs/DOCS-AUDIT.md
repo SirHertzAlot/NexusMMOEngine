@@ -4,7 +4,7 @@ Audited 2026-11-11 against `main` at `f69dae9b`. This is roadmap item DOC1. It r
 
 ## What was checked
 
-`scripts/docs-audit.py` (Python 3, no dependencies) compares 104 Markdown files (everything under `docs/` except `docs/library/` and `docs/superpowers/`, plus the README, CONTRIBUTING and AGENTS) against the code:
+`scripts/docs-audit.py` (Python 3, no dependencies) compares 106 Markdown files (104 at the first pass; `MODULES.md` and `OPERATIONS.md` were added since — everything under `docs/` except `docs/library/` and `docs/superpowers/`, plus the README, CONTRIBUTING and AGENTS) against the code:
 
 | Check | What it compares |
 |---|---|
@@ -25,7 +25,7 @@ Run it again with `python3 scripts/docs-audit.py`. It writes `valgrind-out/docs-
 |---|---:|---:|
 | Broken relative links | 1 | **0** |
 | `file:///c:/Users/user/...` links (dead on GitHub for everyone else) | 65 | **0** |
-| Repo paths named in docs that do not exist | 57 | 57 (none is a broken link; see "Still open" 4: the rest are local-by-design, generated, planned or defaults documented as absent) |
+| Repo paths named in docs that do not exist | 57 | 58 (none is a broken link; see "Still open" 4: the rest are local-by-design, generated, planned or defaults documented as absent — the newest, `perf/history.json` in `CLI.md`, only exists after `valgrind:record --promote`) |
 | Env vars in code and in no doc | 20 | **1** (a prefix, `MMO_DAY_`) |
 | Env vars documented only outside `CONFIGURATION.md` | 41 | **0** |
 | Root scripts not in the CLI docs | 24 | 6 (all `test:addon-<name>`, documented as one pattern: a false positive) |
@@ -59,20 +59,31 @@ Run it again with `python3 scripts/docs-audit.py`. It writes `valgrind-out/docs-
 - `EDITOR.md` opening rewritten with a generated table of the 20 editor modules. The remaining environment variables, content locations and ingress limits are in `CONFIGURATION.md`. More scripts in `CLI.md`.
 - `CLI.md`'s admin console table now lists every command the gateway handles (13 were missing: `god`, `noclip`, `addcomponent`, `removecomponent`, `appearance`, `find`, `interest`, `bots`, `residents`, `loglevel`, `pause`, `resume`, `step`).
 
+**Seventh pass (2026-11-11).** The prose re-read against the code, over most of what "Still open" 1 named:
+- `ARCHITECTURE.md` body: system order is no longer one list in `server.ts` — each module declares `after`/`before` and the server resolves one order at boot; the component table says it is the first twelve and names the rest of `COMPONENT_IDS` (`Stamina` 12 through `Breakable` 23); the message table says the protocol is at version 29 and runs to `0x27`; the gateway section now says interest management is built and on by default (`MMO_INTEREST=0` turns it off); the persistence table points to `OPERATIONS.md` for the full state-file set.
+- `ART-PIPELINE.md`: the "not built" notes are gone — the wildlife table becomes real simulated creatures under `MMO_WILDLIFE=1` (WL2), and the editor has a rig view (`RigPreview`). The animal rig is the shared `@mmo-engine/animal-rig` package; birds, snakes and fish have their own rig types (`gait.ts`).
+- `MASTERY-AND-COMBAT.md` §6 rewritten from the code as built (`body.ts`, `protocol/src/locomotion.ts`): the real `Body`/`Injury`/`Health` fields, and the buttons as shipped — Attack `0x02` (press), Block `0x04` (held; the plan called it Defend), Dodge `0x08` (press).
+- `GAMEPLAY.md`: creature moves exist (ids 20 to 29, bite through cleave), and the needs "not built" note was wrong — the meters are on the wire, provisions carry `nourish`/`quench`, eating is a 1 s cast a move or a blow cancels, and **E** uses the bag panel's hotkey item.
+- `WORLD-BUILDING.md`: the default coast is the WG3 island (`shape` `island`, `islandRadius` 1.04, 6 `satellites`, `wander` 300 m; peninsula stays the schema default, and the shipped spec's `side`/`waterEdge`/`tip`/`taper` only apply to it); `MMO_DATA_DIR`'s default (`./data` from where the process starts) made precise.
+- Wiki chapters 01, 02, 06 and 10: `spiralEvents` (the telemetry field's real name); `createSystems(ctx)` returns an object keyed by system name (per `modules/sample-heartbeat`); border hand-offs as `MigrationCoordinator` actually behaves, with the measured 16-region numbers cited from `WORLD-STRESS-RESULTS.md`; and chapter 10's telemetry story was wrong — there is no WebSocket telemetry stream, the live numbers are the edge's Prometheus scrape (`GET :3000/metrics`) and `/health`, so the applet and plugin sketches were rewritten to poll.
+- `EDITOR.md`: a dated note that the "tabs" of sections 1 to 3 are now panels in the workspaces, and that the dev host serves more routes than the list shows. `EDGE-CORE-SPLIT.md`: a note that the design's metric names carry family prefixes when scraped, and where the registered names live (`apps/edge/src/metrics.ts`, `channel-server.ts`).
+- `CONTRIBUTING.md`: the `NexusMMORepo` remote instructions now also cover a fresh clone (which names it `origin`).
+- `packages/bench/RESULTS.md` re-run on the audit machine (2026-11-10; verdict HOLD, unchanged); `packages/art/dist/test/clip-playback.test.js` rebuilt to match its committed source test (17/17 pass). The audit script re-run: 106 docs, 0 broken links, no new undocumented env vars, one more path documented as absent (58).
+
 ## Still open, in priority order
 
 ### 1. Not re-read in this audit
 
-The machine checks above ran over all of these. **What I did not do is read their prose against the code**, so each can still be wrong in ways the script cannot see:
+The machine checks above ran over all of these. The seventh pass (2026-11-11) read the prose against the code for wiki chapters 01, 02, 06 and 10, `EDITOR.md`, `WORLD-BUILDING.md`, `ART-PIPELINE.md`, `MASTERY-AND-COMBAT.md` §6 and the `ARCHITECTURE.md` sections it changed. What has still **not** been read that way, so each can still be wrong in ways the script cannot see:
 
-- Wiki chapters 02 to 10 (written 2026-10-27), `EDITOR.md`, `WORLD-BUILDING.md`, `ART-PIPELINE.md` (its "not built" notes about moving creatures and rig views), the body of `ARCHITECTURE.md` outside the sections changed here, `GETTING-STARTED.md` sections 1 to 8, and `GAMEPLAY.md`'s Movement, Characters and Bots sections.
+- Wiki chapters 03 to 05 and 07 to 09 (written 2026-10-27), the body of `ARCHITECTURE.md` outside the sections changed so far, `GETTING-STARTED.md` sections 1 to 8, and `GAMEPLAY.md`'s Movement, Characters and Bots sections.
 - The `CONFIGURATION.md` rows that were already there. Only the rows added in this audit were checked against the code.
-- `MASTERY-AND-COMBAT.md` §§2 to 6 (the design itself). Its status, slice table and open questions were corrected; its numbers and mechanics were not re-checked.
+- `MASTERY-AND-COMBAT.md` §§2 to 5 (the design itself). Its status, slice table, open questions and §6 were corrected; its numbers and mechanics were not re-checked.
 - `GAMEPLAY.md`'s residents section rests on the roadmap rows RS3 to RS7 and the system's header, not on a running world. In particular the roadmap says homestead people are baked (RS4) while SG7's row says the families "are next"; I did not check which is current.
 
-### 2. Plan checklists that are stale
+### 2. Plan checklists — closed 2026-11-11
 
-`CHARACTER-PLAN.md` and `OPEN-WORLD-PLAN.md` carry dated notes that their unchecked boxes are not current. The boxes themselves were not re-ticked: each needs checking against the code.
+`CHARACTER-PLAN.md` and `OPEN-WORLD-PLAN.md` were re-checked box by box against the code; shipped boxes are ticked, each with a dated note saying what was verified. Five stay open because nothing in the code or the roadmap shows them built: four in `CHARACTER-PLAN.md` (the part thumbnail grid in the creator, single moves cut from the CMU takes, strafing blend spaces, enemy humans generated from the catalog) and one in `OPEN-WORLD-PLAN.md` that is a setting on one Windows machine, not repository work.
 
 ### 3. Files the docs cite that are not in the repository
 
@@ -104,6 +115,6 @@ The client has no UI for player-to-player trade, the auction house or casting a 
 ## Limits of this audit
 
 - Link and path checks only catch things that are missing. A page can link correctly and still describe the wrong behavior.
-- The environment check finds `MMO_*` names in code by pattern; a prefix such as `MMO_DAY_` shows up as a false positive.
+- The environment check finds `MMO_*` names in code by pattern; a prefix such as `MMO_DAY_` shows up as a false positive, and the `MMO_TERRAIN_*` wildcard row in `CONFIGURATION.md` shows up as a documented-but-unused name (the two real variables are documented as themselves).
 - The feature-coverage check searches for keywords. A feature described under another name would be missed, and a passing mention counts as a mention.
-- Nothing here re-ran the benchmarks. `PERFORMANCE.md` quotes the repository's own logs, plus two fresh runs from this session (callgrind instruction counts and a send-batching comparison), both labeled as such.
+- `PERFORMANCE.md` quotes the repository's own logs, plus two fresh runs from the first session (callgrind instruction counts and a send-batching comparison), both labeled as such. The one benchmark re-run since is the JS-world decision bench, `packages/bench/RESULTS.md` (2026-11-10, audit machine: AMD EPYC 7763, Node v24.21.0); its verdict (HOLD) is unchanged.

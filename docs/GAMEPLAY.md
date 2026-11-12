@@ -128,6 +128,8 @@ own, and a test keeps the two in step. The design behind mastery, damage and inj
 | Roll | 7 | `Roll` | 1.4667 s | — | 4.5 m / 0.05–1.05 s | 0 |
 | Shield bash | 8 | `Shield_OneShot` | 0.8333 s | — | — | 0 |
 
+The table lists the player's moves. Creatures have their own, with ids from 20: bite, claw, pounce, roar, breath, tail whip, stomp, wing buffet, sting and cleave (`packages/protocol/src/combat.ts`).
+
 ### How the combo works
 
 The sword attack is a three-hit chain. An attack pressed during a hit's
@@ -209,7 +211,7 @@ The goblin attacks every 1.5 seconds and carries a dagger, axe or mace.
 
 Every character has a hunger meter and a thirst meter (`content/rules/needs.json`). Both start full at 100 and drain per minute (hunger 2, thirst 3), **1.5 times faster while you run or swim**. A meter at zero costs 1 health per second, for each empty meter. Standing in or at water (feet within 0.5 m of the surface) refills thirst at 10 per second. Respawning refills both, so a starved player does not respawn into the same death.
 
-**What is not built:** food and drink items cannot refill a meter yet (the system has a `restore()` for them, but there is no consumable item or use action). The meters are not saved with the character, and they are not on the wire, so the client shows no meter for them.
+**Eating and drinking.** The meters are on the wire (the stats message) and shown in the player frame. Provisions (bread, dried meat, a waterskin) carry `nourish` and `quench` stats; using one restores the meter and uses the item up. Eating is a cast (`eatSeconds`, 1 s in `needs.json`) that a move or a blow cancels. The bag panel sets the hotkey item, and **E** with nothing in reach uses it. The provisions are in the baked loot pool, so a pool made before they were added needs a rebake (`npm run loot:bake`). The meters are not saved with the character (roadmap U3).
 
 ## Loot and drops
 

@@ -90,7 +90,7 @@ flowchart TD
 The loop in [`packages/engine-core/src/tick-loop.ts`](../../packages/engine-core/src/tick-loop.ts) and [`packages/engine-core/src/sim-worker.ts`](../../packages/engine-core/src/sim-worker.ts) decouples simulation time from wall-clock variance:
 
 - **Accumulator**: Wall time is accumulated ($dt = 1/30\text{s} = 33.33\text{ms}$). Frame gaps exceeding $250\text{ms}$ are clamped to absorb pathological pauses (tab switches, debugger stops).
-- **Spiral Guard**: At most 5 catch-up steps (`MAX_STEPS_PER_FRAME = 5`) run per frame. Excess backlog is dropped and atomically counted as a `spiralEvent` in telemetry, preventing frame death cascades.
+- **Spiral Guard**: At most 5 catch-up steps (`MAX_STEPS_PER_FRAME = 5`) run per frame. Excess backlog is dropped and atomically counted as a `spiralEvents` in telemetry, preventing frame death cascades.
 - **Measured Contention Performance (B3 Soak)**: In 51,000-entity stress benchmarks with 1,000 active client streams under injected network latency (45ms) and jitter (±15ms), $p99$ tick duration measures **$0.562\text{ms}$** (only $1.7\%$ of the $33.33\text{ms}$ budget), with **0 dropped steps**. This is the **sim worker's step** on the data plane (movement, intents and the native kernels). It does not include fanning state out to 1,000 sockets, which is the larger cost: one region finished only 43% of its ticks at 1,000 players in the last end-to-end run. See [PERFORMANCE.md](../PERFORMANCE.md).
 
 ---
