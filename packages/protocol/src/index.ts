@@ -128,4 +128,16 @@ export type { DungeonEntranceView, DungeonLook, DungeonMessage, DungeonOp } from
 export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";
 export { ClipId, CLIP_NAMES } from "./animation.js";
 export { decodeDeltaSet, DeltaSetKind, encodeDeltaSet, GLOBAL_SECTOR } from "./deltaset.js";
+export { compareFxOrder, FxDedupe, fxSpawnAgeSeconds, isFxMessage } from "./fx.js";
+export type {
+  FxBinding,
+  FxBindingKind,
+  FxKill,
+  FxMessage,
+  FxParamValue,
+  FxPhase,
+  FxSpawn,
+  FxState,
+  FxUpdate,
+} from "./fx.js";
 export type { DeltaSet, DeltaSetEntry } from "./deltaset.js";
