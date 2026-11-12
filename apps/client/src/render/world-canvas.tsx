@@ -49,6 +49,7 @@ import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
 import { EntityLayer } from "./entity-layer.js";
 import type { CombatFeedback } from "./combat-feedback.js";
+import { drawNumbers } from "./combat-numbers-layer.js";
 import { clampCamDistance, DEFAULT_CAM_DISTANCE, followCamera } from "./follow-camera.js";
 import {
   EYE_HEIGHT,
@@ -267,6 +268,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
   const { onGpu, onQuality, quality } = props;
   const screen = useRef<ScreenState>({ underwater: 0 });
   const physicalSky = useRef<PhysicalSky | null>(null);
+  const numbersCanvas = useRef<HTMLCanvasElement | null>(null);
   const [skyEffects, setSkyEffects] = useState<Effect[]>([]);
   // The GPU's preset (null until detected), the preset running, and the resolution.
   const [detected, setDetected] = useState<QualityTier | null>(null);
@@ -296,6 +298,7 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
   };
 
   return (
+    <div className="relative h-full w-full">
     <Canvas
       className="block h-full w-full"
       // Plain three.js colour output (no tone mapping), as before R3F.
@@ -314,13 +317,15 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
       <PerformanceMonitor onDecline={decline} onIncline={incline} flipflops={4} />
       <fog attach="fog" args={[SKY, FOG_NEAR, FOG_FAR]} />
       <PhysicalSkyHost settings={settings} skyRef={physicalSky} onEffects={setSkyEffects} />
-      <MirrorWorld {...props} quality={quality} settings={settings} screen={screen} physicalSky={physicalSky} />
+      <MirrorWorld {...props} quality={quality} settings={settings} screen={screen} physicalSky={physicalSky} numbersCanvas={numbersCanvas} />
       <PostFx quality={settings} screen={screen}>
         {skyEffects.map((e) => (
           <primitive key={e.name} object={e} />
         ))}
       </PostFx>
     </Canvas>
+    <canvas ref={numbersCanvas} className="pointer-events-none absolute inset-0 h-full w-full" />
+    </div>
   );
 }
 
@@ -431,9 +436,10 @@ function MirrorWorld({
   settings,
   screen,
   physicalSky,
+  numbersCanvas,
   streamingRef,
   audio,
-}: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null } }): null {
+}: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null }; numbersCanvas: { current: HTMLCanvasElement | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -788,6 +794,14 @@ function MirrorWorld({
     const combat = latest.current.combat;
     if (combat) {
       combat.prune(hasEntity, now / 1000);
+      combat.numbers.update(delta);
+      const nc = numbersCanvas.current;
+      if (nc) drawNumbers(nc, combat.numbers, camera, (wid, out) => {
+        const tr = client.state.get(wid)?.transform;
+        if (!tr) return false;
+        out.set(tr.px, tr.py, tr.pz);
+        return true;
+      });
       r.layer.setFlashes(combat.flashUntil);
       // Attack telegraphs (M5): new warnings in, fills and fades advanced.
       for (const tg of combat.telegraphs) r.telegraphs.apply(tg, client.tickHz, (x, z) => r.terrain.heightAt(x, z), now / 1000);
