@@ -25,13 +25,17 @@
 
 import * as THREE from "three";
 import type { ShadingComponentId, ShadingDoc, ShadingKind, ToonRowName } from "@mmo-engine/art/browser";
-import { applyToon, type ToonRow } from "../toon/toon-material.js";
+import { applyToon, toonBand, type ToonRow } from "../toon/toon-material.js";
 
 /** What a kind carries when the content says nothing: the cel look. */
 const DEFAULT_KINDS: Record<ShadingKind, readonly ShadingComponentId[]> = {
   model: ["toon"],
   placeholder: ["toon"],
   prefab: ["toon"],
+  terrain: ["toon"],
+  structure: ["toon"],
+  figure: ["toon"],
+  fallback: ["toon"],
 };
 
 /** The ramp row a kind uses when the content names none. */
@@ -39,12 +43,32 @@ const DEFAULT_ROWS: Record<ShadingKind, ToonRowName> = {
   model: "leather",
   placeholder: "leather",
   prefab: "cloth",
+  terrain: "leather",
+  structure: "leather",
+  figure: "cloth",
+  fallback: "cloth",
 };
+
+/** Feathered-edge width of the cel band (0: hard); set per quality tier. */
+let celFeather = 0;
+
+/** Set the cel band's feathered-edge width: the quality tier's `celFeather`. */
+export function setCelFeather(width: number): void {
+  celFeather = Math.max(0, width);
+}
+
+/** The cel band the patch starts from: the content's band, feathered by the tier, centred. */
+export function celBand(): [number, number] {
+  const [lo, hi] = toonBand();
+  const mid = (lo + hi) / 2;
+  const half = Math.max(hi - lo, celFeather) / 2;
+  return celFeather > 0 ? [mid - half, mid + half] : [mid, mid];
+}
 
 /** How each component shades a surface. */
 const COMPONENTS: Record<ShadingComponentId, (material: THREE.MeshStandardMaterial, kind: ShadingKind) => void> = {
   toon: (material, kind) => {
-    applyToon(material, { row: toonRowFor(kind) });
+    applyToon(material, { row: toonRowFor(kind), band: celBand() });
   },
   standard: () => {
     // three's own PBR: nothing to add.
@@ -87,4 +111,10 @@ export function applyShading(object: THREE.Object3D, kind: ShadingKind): void {
     if (Array.isArray(material)) material.forEach((m) => applyShadingToMaterial(m, kind));
     else if (material) applyShadingToMaterial(material, kind);
   });
+}
+
+/** Shade a material as its kind says and hand it back (for field initialisers). */
+export function shadedMaterial<M extends THREE.Material>(material: M, kind: ShadingKind): M {
+  applyShadingToMaterial(material, kind);
+  return material;
 }

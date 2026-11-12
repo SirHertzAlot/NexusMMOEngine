@@ -42,9 +42,33 @@ export interface SurfaceMaterial {
 export const SHADING_COMPONENTS = ["toon", "standard"] as const;
 export type ShadingComponentId = (typeof SHADING_COMPONENTS)[number];
 
-/** The things the client draws that carry shading components. */
-export const SHADING_KINDS = ["model", "placeholder", "prefab"] as const;
+/**
+ * The things the client draws that carry shading components. Every world
+ * kind is cel by default; a kind that must stay smooth says so with
+ * `standard` in content (shading.kinds), never by skipping the registry.
+ * - terrain: ground chunks (terrain/terrain-material.ts)
+ * - structure: dungeon stone, portal stone and other built geometry
+ * - figure: stand-in bodies and markers (NPC markers, corpses, first-person arms)
+ * - fallback: asset placeholders drawn when a model is missing
+ */
+export const SHADING_KINDS = ["model", "placeholder", "prefab", "terrain", "structure", "figure", "fallback"] as const;
 export type ShadingKind = (typeof SHADING_KINDS)[number];
+
+/**
+ * The world things that stay off the cel path on purpose, each with the
+ * reason. A world class that is neither a shading kind nor listed here is
+ * a bug (client test: render/shading/world-classes.ts).
+ */
+export const SHADING_OPT_OUTS = {
+  water: "custom ShaderMaterial with its own lighting and reflection",
+  sky: "sky dome, unlit by design",
+  stars: "sky points, unlit by design",
+  vfx: "transparent particle effects, unlit additive or alpha blending",
+  "swing-trail": "transparent weapon trail, unlit",
+  "portal-ring": "transparent additive ring, unlit",
+  label: "screen-space label and editor helper, unlit",
+} as const;
+export type ShadingOptOutId = keyof typeof SHADING_OPT_OUTS;
 
 /**
  * Which shading components each kind of thing carries. Adding `toon` to a

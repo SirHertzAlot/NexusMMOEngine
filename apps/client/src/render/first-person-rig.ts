@@ -19,6 +19,7 @@ import * as THREE from "three";
 import { combatMove, Move } from "@mmo-engine/protocol";
 import type { FirstPersonMotionSample } from "./first-person-camera.js";
 import { fnv1a32, type SyntyProps } from "./synty-props.js";
+import { shadedMaterial } from "./shading/shading.js";
 
 export type WeaponVisualKind =
   | "unarmed"
@@ -402,9 +403,9 @@ function buildHandGroup(side: "left" | "right", colors: FirstPersonHandColors): 
   const root = new THREE.Group();
   root.name = `fps-hand-${side}`;
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.65, metalness: 0.05 });
-  const sleeveMat = new THREE.MeshStandardMaterial({ color: colors.sleeve, roughness: 0.8, metalness: 0.1 });
-  const cuffMat = new THREE.MeshStandardMaterial({ color: colors.cuff, roughness: 0.55, metalness: 0.25 });
+  const skinMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.65, metalness: 0.05 }), "figure");
+  const sleeveMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: colors.sleeve, roughness: 0.8, metalness: 0.1 }), "figure");
+  const cuffMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: colors.cuff, roughness: 0.55, metalness: 0.25 }), "figure");
 
   // Forearm sleeve extending back toward the shoulder (+Z in camera space)
   const forearmGeo = new THREE.BoxGeometry(0.082, 0.078, 0.28);

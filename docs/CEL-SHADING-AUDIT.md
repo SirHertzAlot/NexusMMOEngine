@@ -127,3 +127,37 @@ non-cel choice that Phase 1 must record with a reason.
 - [ ] Test: walks the material registry and fails on any world material
       that resolves to smooth PBR without an opt-out record.
 - [ ] Stills checklist for noon, dusk and night, left for human GPU check.
+
+## 8. Phase 1 status (what landed)
+
+Landed:
+- `packages/art` `SHADING_KINDS` now has `terrain`, `structure`, `figure`,
+  `fallback`. `SHADING_OPT_OUTS` records each world class that stays smooth
+  or unlit on purpose, with its reason: water, sky, stars, vfx,
+  swing-trail, portal-ring, label.
+- Terrain (`terrain/terrain-material.ts`), dungeon stone (`dungeon-look.ts`,
+  `dungeon-entrances.ts`), NPC markers, corpse proxy, first-person arms,
+  asset fallbacks and the fallback terrain mesh now take the cel patch
+  through `shading.ts`. They were smooth PBR before.
+- Cel band feather per quality tier: `QualitySettings.celFeather` (low 0,
+  hard step; medium, high, ultra 0.03, the content band). The world canvas
+  pushes it with `setCelFeather` when the tier changes. Materials built
+  before a tier change keep their old band.
+- `render/shading/world-classes.ts` lists every world class. The client
+  test walks it: each class is cel by default, or has a non-empty opt-out
+  reason.
+
+Not done in this pass (gaps, stated plainly):
+- Outlines remain character-only. Extending the inverted hull to world
+  geometry adds draw cost on every prop and tile. That needs a GPU
+  measurement before it's turned on.
+- The first-person weapon meshes (steel, guard, grip, accent) stay smooth.
+  The arms are cel.
+- The D1 ramp is still a constant table in `toon-material.ts`. The spec's
+  authored ramp asset with its validator is not built yet.
+- The impostor class from section 4 is still unlocated.
+- Nothing here is verified on a GPU. The stills checklist (noon, dusk,
+  night) is still owed.
+
+Tests: client 468 tests, 467 pass, 0 fail (1 skip, same as baseline).
+Art 147 pass, 0 fail. `npm run build` in apps/client exits 0.

@@ -30,6 +30,9 @@ const row = (cx: number, cz: number, heights: Float32Array | null): ChunkRow => 
   heights,
 });
 
+/** The standard chunks the cel patch (applied on top of the terrain patch) needs. */
+const STD_FRAGMENT = "#include <common>\n#include <color_fragment>\n#include <lights_physical_pars_fragment>\n#include <map_fragment>\n#include <opaque_fragment>";
+
 describe("chunk geometry", () => {
   it("splits cells along (i+1, j)-(i, j+1) and faces up", () => {
     const g = buildChunkGeometry(tile(0, 0), SIZE);
@@ -151,7 +154,7 @@ describe("TerrainRenderer", () => {
     assert.deepEqual([pos.getX(k), pos.getY(k), pos.getZ(k)], [-160 + 5 * 16, 5 * 12, -160 + 3 * 16]);
     // Beside loaded chunks it sinks (in the vertex shader) up to FAR_SINK metres, never below the sea.
     const far = createTerrainMaterial(createTerrainUniforms(), true);
-    const shader = { uniforms: {}, vertexShader: "#include <common>\n#include <begin_vertex>", fragmentShader: "#include <common>\n#include <color_fragment>" } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    const shader = { uniforms: {}, vertexShader: "#include <common>\n#include <begin_vertex>", fragmentShader: STD_FRAGMENT } as unknown as THREE.WebGLProgramParametersWithUniforms;
     far.onBeforeCompile(shader, undefined as unknown as THREE.WebGLRenderer);
     assert.match(shader.vertexShader, new RegExp(`clamp\\(transformed\\.y - uSeaLevel - 0\\.5, 0\\.0, ${FAR_SINK}\\.0\\)`));
     assert.ok("uSeaLevel" in shader.uniforms && "uFarCell" in shader.uniforms);
@@ -180,7 +183,8 @@ describe("ground colours and material", () => {
       const shader = {
         uniforms: {} as Record<string, THREE.IUniform>,
         vertexShader: "#include <common>\n#include <begin_vertex>",
-        fragmentShader: "#include <common>\n#include <color_fragment>",
+        // The standard chunks the cel patch (applied on top) needs.
+        fragmentShader: STD_FRAGMENT,
       } as unknown as THREE.WebGLProgramParametersWithUniforms;
       material.onBeforeCompile(shader, undefined as unknown as THREE.WebGLRenderer);
       assert.match(shader.fragmentShader, /tTriplanar/);

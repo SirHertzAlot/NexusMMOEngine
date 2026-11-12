@@ -134,6 +134,11 @@ function fillRamp(data: Uint8Array, W: number, H: number): void {
 /** The toon look in force: the options a material starts from (content/materials/materials.json). */
 const TOON_DEFAULTS = { band: [0.42, 0.45] as [number, number], specular: 0.15, rim: 0.35, rimPower: 6 };
 
+/** The half-Lambert band the content set (the default the patch starts from). */
+export function toonBand(): [number, number] {
+  return [TOON_DEFAULTS.band[0], TOON_DEFAULTS.band[1]];
+}
+
 /**
  * Set the toon look from content: the band, highlight and rim defaults, and
  * the ramp's shadow colours. The shared ramp is repainted in place, so

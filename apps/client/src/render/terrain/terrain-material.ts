@@ -30,6 +30,7 @@
 
 import * as THREE from "three";
 import { MAX_SURFACE_LAYERS } from "./surfaces.js";
+import { applyShadingToMaterial } from "../shading/shading.js";
 
 export interface TerrainUniforms {
   uGround: THREE.IUniform<THREE.Texture | null>;
@@ -310,5 +311,6 @@ export function createTerrainMaterial(uniforms: TerrainUniforms, far = false): T
   };
   material.customProgramCacheKey = () =>
     (far ? "mmo-terrain-far" : "mmo-terrain") + (material.defines?.TERRAIN_SURFACES !== undefined ? "+surfaces" : "");
+  applyShadingToMaterial(material, "terrain");
   return material;
 }
