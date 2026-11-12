@@ -305,6 +305,23 @@ describe("AnimalRig", () => {
     assert.ok(Math.abs(sum / n) < 0.3 * (hi - lo));
   });
 
+  it("articulates hips with 3-axis rotation: yaw and roll coordinate with spine undulation", () => {
+    const r = rig();
+    let maxFrontYaw = 0, maxHindYaw = 0, maxFrontRoll = 0, maxHindRoll = 0;
+    for (let i = 0; i < 120 * 6; i++) {
+      r.update(1 / 120, { ...idle, speed: 1.2 });
+      if (i < 120) continue;
+      maxFrontYaw = Math.max(maxFrontYaw, Math.abs(leg(r, BONE_FL).rotation.y));
+      maxHindYaw = Math.max(maxHindYaw, Math.abs(leg(r, BONE_HL).rotation.y));
+      maxFrontRoll = Math.max(maxFrontRoll, Math.abs(leg(r, BONE_FL).rotation.z));
+      maxHindRoll = Math.max(maxHindRoll, Math.abs(leg(r, BONE_HL).rotation.z));
+    }
+    assert.ok(maxFrontYaw > 0.03, `front hip yaws to track ground (${maxFrontYaw.toFixed(3)} rad)`);
+    assert.ok(maxHindYaw > 0.05, `hind hip yaws to coordinate with loin (${maxHindYaw.toFixed(3)} rad)`);
+    assert.ok(maxFrontRoll > 0.02, `front shoulder rolls with weight bearing (${maxFrontRoll.toFixed(3)} rad)`);
+    assert.ok(maxHindRoll > 0.02, `hind hip rolls with pelvic sway (${maxHindRoll.toFixed(3)} rad)`);
+  });
+
   it("bends the hind hock the opposite way to the front knee", () => {
     const r = rig();
     let front = 0, hind = 0;
@@ -390,6 +407,49 @@ describe("AnimalRig", () => {
     g.addEventListener("dispose", () => (disposed = true));
     r.dispose();
     assert.equal(disposed, false);
+  });
+
+  it("applies species-specific trademark kinematics for bears, boars, canines and caprines", () => {
+    const mat = new THREE.MeshBasicMaterial();
+    const geom = turned(quadruped(), Math.PI / 2);
+
+    // 1. Bear: rears up tall on hind legs during windup, swipes paw during strike
+    const bearT = AnimalTemplate.from(geom, undefined, "Bear_0PXWfxfb0Hu")!;
+    assert.ok(bearT);
+    const bear = bearT.create(mat);
+    assert.equal(bear.species, "bear");
+    bear.update(1 / 60, { ...idle, attackT: 0.35, hitAt: 0.5, attackDuration: 1 });
+    assert.ok(bear.skeleton.bones[BONE_BODY].position.y > 0.1, "bear chest lifts when rearing tall");
+    assert.ok(bear.skeleton.bones[BONE_BODY].rotation.x < -0.2, "bear chest pitches up as it rears");
+    // In strike (attackT > hitAt): horizontal paw swipe
+    bear.update(1 / 60, { ...idle, attackT: 0.65, hitAt: 0.5, attackDuration: 1 });
+    assert.ok(Math.abs(bear.skeleton.bones[BONE_FR].rotation.y) > 0.2, "bear paw executes horizontal swipe");
+
+    // 2. Boar: low rooting posture, upward tusk goring head toss in strike
+    const boarT = AnimalTemplate.from(geom, undefined, "Boar_57fSWum6F1P")!;
+    assert.ok(boarT);
+    const boar = boarT.create(mat);
+    assert.equal(boar.species, "boar");
+    boar.update(1 / 60, idle);
+    assert.ok(boar.skeleton.bones[BONE_NECK].rotation.x > 0.2, "boar head pitched low for soil rooting");
+    boar.update(1 / 60, { ...idle, attackT: 0.65, hitAt: 0.5, attackDuration: 1 });
+    assert.ok(boar.skeleton.bones[BONE_NECK].rotation.x < 0.1, "boar thrusts head violently upward in tusk goring strike");
+
+    // 3. Canine: sleek prowl posture
+    const wolfT = AnimalTemplate.from(geom, undefined, "Wolf_Stalker")!;
+    assert.ok(wolfT);
+    const wolf = wolfT.create(mat);
+    assert.equal(wolf.species, "canine");
+    wolf.update(1 / 60, { ...idle, speed: 0.8 });
+    assert.ok(wolf.skeleton.bones[BONE_NECK].rotation.x > 0.1, "canine lowers neck into predatory prowl stalk");
+
+    // 4. Caprine: spurring and head-down horn ramming
+    const goatT = AnimalTemplate.from(geom, undefined, "Goat_Ram")!;
+    assert.ok(goatT);
+    const goat = goatT.create(mat);
+    assert.equal(goat.species, "caprine");
+    goat.update(1 / 60, { ...idle, attackT: 0.35, hitAt: 0.5, attackDuration: 1 });
+    assert.ok(goat.skeleton.bones[BONE_NECK].rotation.x > 0.2, "caprine tucks horns down before charge");
   });
 });
 

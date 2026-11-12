@@ -44,6 +44,10 @@ export const ClipId = {
   Sleep: 41,
   Threaten: 42,
   DeathFall: 43,
+  Drink: 44,
+  Bathroom: 45,
+  MatingDisplay: 46,
+  SocialPlay: 47,
 } as const;
 
 export type ClipId = (typeof ClipId)[keyof typeof ClipId];
@@ -81,4 +85,8 @@ export const CLIP_NAMES: Record<number, string> = {
   [ClipId.Sleep]: "sleep",
   [ClipId.Threaten]: "threaten",
   [ClipId.DeathFall]: "death-fall",
+  [ClipId.Drink]: "drink",
+  [ClipId.Bathroom]: "bathroom",
+  [ClipId.MatingDisplay]: "mating-display",
+  [ClipId.SocialPlay]: "social-play",
 };

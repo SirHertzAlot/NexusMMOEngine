@@ -33,13 +33,13 @@ interface Row {
 }
 
 /** Lateral-sequence walk, diagonal trot, transverse gallop. */
-export const WALK: Row = { off: [0.25, 0.75, 0, 0.5], duty: 0.65, stride: 1.4, lift: 0.1, bob: 0.015, flexF: 0.7, flexH: 0.55 };
-export const TROT: Row = { off: [0, 0.5, 0.5, 0], duty: 0.5, stride: 2.6, lift: 0.16, bob: 0.03, flexF: 1.1, flexH: 0.9 };
-export const GALLOP: Row = { off: [0.5, 0.6, 0, 0.1], duty: 0.36, stride: 3.6, lift: 0.2, bob: 0.05, flexF: 1.35, flexH: 1.1 };
+export const WALK: Row = { off: [0.25, 0.75, 0, 0.5], duty: 0.75, stride: 1.4, lift: 0.1, bob: 0.018, flexF: 0.7, flexH: 0.55 };
+export const TROT: Row = { off: [0, 0.5, 0.5, 1.0], duty: 0.5, stride: 2.6, lift: 0.16, bob: 0.035, flexF: 1.1, flexH: 0.9 };
+export const GALLOP: Row = { off: [0.5, 0.6, 1.0, 1.1], duty: 0.36, stride: 3.6, lift: 0.2, bob: 0.06, flexF: 1.35, flexH: 1.1 };
 
 /** Froude speeds (v / sqrt(g L)) where walk becomes trot and trot becomes gallop: [from, to]. */
-export const WALK_TO_TROT: readonly [number, number] = [0.45, 0.7];
-export const TROT_TO_GALLOP: readonly [number, number] = [1.1, 1.6];
+export const WALK_TO_TROT: readonly [number, number] = [0.46, 0.9];
+export const TROT_TO_GALLOP: readonly [number, number] = [1.2, 2.0];
 /** Speeds (m/s) below MOVE_FROM are standing still; from MOVE_FULL the legs swing fully. */
 export const MOVE_FROM = 0.05;
 export const MOVE_FULL = 0.4;
@@ -89,7 +89,11 @@ export function gaitAt(speed: number, legLen: number, out: GaitParams = newGait(
   out.moveW = smoothstep(MOVE_FROM, MOVE_FULL, speed);
   out.flexF = mix(WALK.flexF, TROT.flexF, GALLOP.flexF) * out.moveW;
   out.flexH = mix(WALK.flexH, TROT.flexH, GALLOP.flexH) * out.moveW;
-  for (let i = 0; i < 4; i++) out.offsets[i] = mix(WALK.off[i], TROT.off[i], GALLOP.off[i]);
+  for (let i = 0; i < 4; i++) {
+    const raw = mix(WALK.off[i], TROT.off[i], GALLOP.off[i]);
+    const mod = ((raw % 1) + 1) % 1;
+    out.offsets[i] = Math.abs(mod - 1) < 1e-9 ? 0 : mod;
+  }
   out.freq = speed > 1e-3 ? speed / stride : 0;
   // A foot on the ground goes back by speed x stance time = stride x duty; the hip swings it.
   const sweep = Math.asin(Math.min(0.95, (stride * out.duty) / (2 * L)));
@@ -191,17 +195,17 @@ export function spineCurve(
   out: SpineParams
 ): void {
   const w = 2 * Math.PI * phase;
-  // Lateral undulation: strongest below a trot, fading as the gallop takes over.
+  // Lateral undulation: moderate, stable traveling wave from pelvis to withers.
   const lateral = moveW * Math.max(0, 1 - Math.max(0, gait - 0.8) * 0.55);
-  out.loinYaw = Math.sin(w - 1.9) * 0.11 * lateral;
-  out.chestYaw = Math.sin(w - 1.2) * 0.05 * lateral;
-  out.chestRoll = Math.sin(w - 1.55) * 0.03 * lateral;
-  // Dorsoventral: the loin rounds down at landing (phase 0) and arches up in suspension.
+  out.loinYaw = Math.sin(w - 1.9) * 0.125 * lateral;
+  out.chestYaw = Math.sin(w - 1.2) * 0.06 * lateral;
+  out.chestRoll = Math.sin(w - 1.55) * 0.035 * lateral;
+  // Dorsoventral: controlled lumbar arching during gallop suspension and landing.
   const bound = moveW * Math.min(1, Math.max(0, gait - 0.4) * 0.9);
-  out.loinPitch = Math.sin(w) * 0.04 * moveW + Math.sin(w - 0.6) * 0.13 * bound;
-  // The neck keeps the head level: it answers the chest pitch and loin arch.
-  out.neckPitch = -out.loinPitch * 0.55 + Math.sin(w - Math.PI) * 0.04 * moveW;
-  out.neckYaw = -out.chestYaw * 1.3;
+  out.loinPitch = Math.sin(w) * 0.035 * moveW + Math.sin(w - 0.6) * 0.14 * bound;
+  // The neck holds the head steady and firm against spine pitch and yaw.
+  out.neckPitch = -out.loinPitch * 0.45 + Math.sin(w - Math.PI) * 0.03 * moveW;
+  out.neckYaw = -out.chestYaw * 0.7;
 }
 
 /**

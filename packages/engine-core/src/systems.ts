@@ -457,12 +457,16 @@ export function attachDefaultCollider(sim: SimWorld, eid: number): void {
   const B = BodyConfig;
   const half = (s: number): number => (s !== 0 ? Math.max(Math.abs(s) * 0.5, 0.05) : 0.5);
   if (hasComponent(ecs, PlayerIntent, eid) || hasComponent(ecs, Locomotion, eid)) {
+    const scale = hasComponent(ecs, Transform, eid) && Transform.sx[eid] > 0 ? Transform.sx[eid] : 1;
+    const r = CHARACTER_CAPSULE.radius * scale;
+    const hh = CHARACTER_CAPSULE.halfHeight * scale;
+    const m = CHARACTER_CAPSULE.mass * scale * scale * scale;
     B.shapeKind[eid] = ShapeKind.Capsule;
-    B.halfX[eid] = CHARACTER_CAPSULE.radius;
-    B.halfY[eid] = CHARACTER_CAPSULE.halfHeight;
-    B.halfZ[eid] = CHARACTER_CAPSULE.radius;
-    B.radius[eid] = CHARACTER_CAPSULE.radius;
-    B.mass[eid] = CHARACTER_CAPSULE.mass;
+    B.halfX[eid] = r;
+    B.halfY[eid] = hh;
+    B.halfZ[eid] = r;
+    B.radius[eid] = r;
+    B.mass[eid] = m;
     B.motionType[eid] = MotionType.Kinematic;
     B.layer[eid] = 1;
     B.friction[eid] = 0.5;

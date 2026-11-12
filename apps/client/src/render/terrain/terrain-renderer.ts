@@ -222,8 +222,13 @@ export class TerrainRenderer {
    * Once per frame: move chunks to the LOD ring the camera (world x, z) puts
    * them in, rebuild the blocks that changed, and upload the loaded-chunk
    * mask if it changed. Without a camera every chunk stays full detail.
+   *
+   * @param camera Camera position in world coordinates (optional).
+   * @param maxRebuilds Max dirty blocks to rebuild this frame (default: Infinity).
+   *                    Passing 2 in the animation loop amortizes rebuilds over multiple frames,
+   *                    eliminating frame hitching when crossing chunk boundaries.
    */
-  update(camera?: { x: number; z: number }): void {
+  update(camera?: { x: number; z: number }, maxRebuilds = Infinity): void {
     if (camera) {
       const cx = Math.floor(camera.x / this.chunkWorldSize);
       const cz = Math.floor(camera.z / this.chunkWorldSize);
@@ -238,11 +243,40 @@ export class TerrainRenderer {
         }
       }
     }
-    for (const [bk, b] of this.blocks) if (b.dirty) this.rebuildBlock(bk, b);
+    if (!Number.isFinite(maxRebuilds)) {
+      for (const [bk, b] of this.blocks) if (b.dirty) this.rebuildBlock(bk, b);
+    } else {
+      const dirty: Array<{ bk: string; b: Block; priority: number; distSq: number }> = [];
+      const camCx = this.camChunk?.cx ?? 0;
+      const camCz = this.camChunk?.cz ?? 0;
+      for (const [bk, b] of this.blocks) {
+        if (!b.dirty) continue;
+        const [bx, bz] = bk.split(",").map(Number);
+        const centerCx = bx * BLOCK + BLOCK / 2;
+        const centerCz = bz * BLOCK + BLOCK / 2;
+        const distSq = (centerCx - camCx) ** 2 + (centerCz - camCz) ** 2;
+        const priority = b.mesh === null ? 0 : 1;
+        dirty.push({ bk, b, priority, distSq });
+      }
+      if (dirty.length > 0) {
+        dirty.sort((a, b) => a.priority - b.priority || a.distSq - b.distSq);
+        const limit = dirty[0].priority === 0 ? Math.max(maxRebuilds, 4) : maxRebuilds;
+        let count = 0;
+        for (const item of dirty) {
+          this.rebuildBlock(item.bk, item.b);
+          if (++count >= limit) break;
+        }
+      }
+    }
     if (this.maskDirty && this.mask) {
       this.mask.texture.needsUpdate = true;
       this.maskDirty = false;
     }
+  }
+
+  /** Immediately rebuild all dirty blocks without frame budgeting (teleports, tools, tests). */
+  flush(): void {
+    for (const [bk, b] of this.blocks) if (b.dirty) this.rebuildBlock(bk, b);
   }
 
   /** Near-terrain cost (perf HUD, tests); current as of the last update(). */

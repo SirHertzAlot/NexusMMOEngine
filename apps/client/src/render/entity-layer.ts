@@ -31,7 +31,7 @@
 
 import * as THREE from "three";
 import { labelSprite } from "./element-fx.js";
-import { BROKEN_VARIANT, combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
+import { BROKEN_VARIANT, ClipId, combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
 import { parseLook, heldOf, lostOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
 import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
@@ -51,6 +51,20 @@ import { AnimationLibrary, CharacterAnimator } from "./character/character-anima
 import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate, animalIsFar } from "@mmo-engine/animal-rig";
+import { AnimalKit } from "./animal/animal-kit.js";
+import { AnimalAnimator, type AnimalMotionState } from "./animal/animal-animator.js";
+
+function clipToLivingAction(clipId?: number): AnimalMotionState["livingAction"] {
+  switch (clipId) {
+    case ClipId.Sleep: return "sleeping";
+    case ClipId.Graze: return "foraging";
+    case ClipId.Drink: return "drinking";
+    case ClipId.Bathroom: return "bathroom";
+    case ClipId.MatingDisplay: return "mating_display";
+    case ClipId.SocialPlay: return "social_play";
+    default: return undefined;
+  }
+}
 import { CorpseProxy } from "./animal/corpse-proxy.js";
 import { applyShading } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
@@ -83,6 +97,8 @@ interface TrackedMesh {
   actionKey?: string;
   /** A static animal model given a procedural skeleton and gait (see animal/animal-rig.ts). */
   animal?: AnimalRig;
+  /** Plays skeletal animations for rigged animals (quaternius-animals). */
+  animalAnimator?: AnimalAnimator;
   /** Far from the camera: the animal is one stand-in in the instanced batch, and its own mesh is hidden. */
   far?: boolean;
   /** The animal rig was tried (a model without a quadruped shape stays as it is). */
@@ -212,6 +228,7 @@ export class EntityLayer {
   private readonly props: InstancedProps;
   private readonly pcgMeshes: PcgMeshes | null;
   readonly syntyProps: SyntyProps;
+  readonly animalKit: AnimalKit;
   /** Rig data per art model (null: the model is not a quadruped); disposed with the layer. */
   private readonly animalTemplates = new Map<number, AnimalTemplate | null>();
   /** The modular character kit; null until loaded (or when the art isn't served). */
@@ -283,6 +300,7 @@ export class EntityLayer {
     this.pcgMeshes = opts.pcg ? new PcgMeshes(opts.pcg, () => this.props.modelsChanged(), undefined, opts.workers, opts.materialFor) : null;
     // Scenery shows the art packs' models when the art is served, else PICG meshes.
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
+    this.animalKit = new AnimalKit(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
     this.group.add(this.props.group);
     this.fx = new EntityFxSystem(scene, camera);
@@ -563,6 +581,11 @@ export class EntityLayer {
     for (const wid of this.props.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.props.remove(wid);
 
+    let animalsDressedThisFrame = 0;
+    let charactersDressedThisFrame = 0;
+    const MAX_ANIMALS_DRESSED_PER_FRAME = 2;
+    const MAX_CHARACTERS_DRESSED_PER_FRAME = 2;
+
     this.player = null;
     this.lastPlayerWireId = playerWireId;
     this.applyPlayerHidden();
@@ -627,11 +650,18 @@ export class EntityLayer {
       }
 
       // A moving entity whose AssetRef is a static animal model: give it a procedural skeleton once the model is in.
-      if (!tracked.animalTried && !tracked.character && !e.appearance && e.asset) this.dressAsAnimal(wid, tracked, e.asset);
+      if (!tracked.animalTried && !tracked.character && !e.appearance && e.asset) {
+        if (animalsDressedThisFrame < MAX_ANIMALS_DRESSED_PER_FRAME) {
+          animalsDressedThisFrame += this.dressAsAnimal(wid, tracked, e.asset);
+        }
+      }
 
       // Appearance: show (or restyle) the entity as its modular character.
       if (e.appearance && this.kit && tracked.look !== e.appearance.look) {
-        this.dressAsCharacter(wid, tracked, e.appearance.look);
+        if (charactersDressedThisFrame < MAX_CHARACTERS_DRESSED_PER_FRAME) {
+          this.dressAsCharacter(wid, tracked, e.appearance.look);
+          charactersDressedThisFrame++;
+        }
       }
       // Held weapons ride in the appearance JSON next to the look.
       // Held weapons ride in the appearance JSON next to the look.
@@ -665,6 +695,18 @@ export class EntityLayer {
           },
           plan,
         );
+      } else if (tracked.animalAnimator) {
+        const acting = e.action && e.action.move !== 0 ? e.action : null;
+        turnToward(tracked, e.velocity, dt, acting?.yaw);
+        tracked.object.scale.set(t.sx, t.sy, t.sz);
+        const dead = e.health !== undefined && e.health.current <= 0;
+        if (!this.syncCorpse(wid, tracked, dead)) {
+          const speed = e.velocity ? Math.hypot(e.velocity.lx, e.velocity.lz) : 0;
+          const attackT = acting ? Math.max(0, (clock.tick - acting.started) / clock.tickHz) : -1;
+          const hit = (this.flashes.get(wid) ?? 0) > now;
+          const livingAction = clipToLivingAction(e.animation?.clipId);
+          tracked.animalAnimator.update(dt, { speed, dead, attackT, hit, livingAction });
+        }
       } else if (tracked.animal) {
         const acting = e.action && e.action.move !== 0 ? e.action : null;
         turnToward(tracked, e.velocity, dt, acting?.yaw);
@@ -726,7 +768,7 @@ export class EntityLayer {
         highlight(tracked.object, "hit");
       } else if (tracked.character) {
         highlight(tracked.object, wid === this.hoveredWireId && !isPlayer ? "hover" : "none");
-      } else if (tracked.animal) {
+      } else if (tracked.animal || tracked.animalAnimator) {
         // Shares the model's material with the scenery: no per-entity tint.
       } else {
         highlight(tracked.object, isPlayer ? "player" : wid === this.hoveredWireId ? "hover" : "none");
@@ -840,6 +882,7 @@ export class EntityLayer {
     this.animalTemplates.clear();
     this.pcgMeshes?.dispose();
     this.syntyProps.dispose();
+    this.animalKit.dispose();
     this.kit?.dispose();
     this.kit = null;
     this.group.removeFromParent();
@@ -905,18 +948,36 @@ export class EntityLayer {
   /**
    * Swap the stand-in for the animal's art model on a procedural skeleton, once the model has loaded.
    * Retried each frame until the model is in; a model that is not a quadruped is left as it is.
+   * Returns cost spent (1 for cached template, 2 for new template generation).
    */
-  private dressAsAnimal(wid: bigint, tracked: TrackedMesh, asset: AssetRefRow): void {
+  private dressAsAnimal(wid: bigint, tracked: TrackedMesh, asset: AssetRefRow): number {
+    if (this.animalKit.isAnimalModel(asset.assetHash)) {
+      const instance = this.animalKit.createInstance(asset.assetHash);
+      if (!instance) return 0;
+      tracked.animalTried = true;
+      this.group.remove(tracked.object);
+      this.pickMap.delete(tracked.object);
+      detachPlate(tracked);
+      disposeObject(tracked.object);
+      tracked.object = instance.root;
+      tracked.animalAnimator = instance.animator;
+      tracked.shaped = true;
+      this.group.add(instance.root);
+      this.pickMap.set(instance.root, wid);
+      return 1;
+    }
     const ready = this.syntyProps.model(asset.assetHash, asset.variant);
-    if (!ready) return;
+    if (!ready) return 0;
     tracked.animalTried = true;
     let template = this.animalTemplates.get(asset.assetHash);
+    let cost = 1;
     if (template === undefined) {
       // The model's key is "synty:<catalog id>": the id's name picks the rig (a bird, a snake, a fish).
       template = AnimalTemplate.from(ready.geometry, undefined, ready.key.replace(/^synty:/, ""));
       this.animalTemplates.set(asset.assetHash, template);
+      cost = 2;
     }
-    if (!template) return;
+    if (!template) return 0;
     const rig = template.create(ready.material);
     this.group.remove(tracked.object);
     this.pickMap.delete(tracked.object);
@@ -927,6 +988,7 @@ export class EntityLayer {
     tracked.shaped = true;
     this.group.add(rig.root);
     this.pickMap.set(rig.root, wid);
+    return cost;
   }
 
   private dressAsCharacter(wid: bigint, tracked: TrackedMesh, lookJson: string): void {
@@ -1084,6 +1146,7 @@ function disposeTracked(t: TrackedMesh): void {
   detachPlate(t);
   detachWeapons(t);
   t.animator?.dispose();
+  t.animalAnimator?.dispose();
   if (t.character) t.character.dispose();
   else if (t.animal) t.animal.dispose(); // geometry and material belong to the model cache
   else disposeObject(t.object);

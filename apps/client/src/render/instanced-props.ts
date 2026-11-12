@@ -259,16 +259,21 @@ export class InstancedProps {
   updateLod(eye: THREE.Vector3): void {
     if (eye.distanceToSquared(this.lastEye) < 1) return;
     this.lastEye.copy(eye);
+    const touched = new Set<Level>();
     for (const [wid, slot] of this.slots) {
       if (slot.batch.levels.length < 2) continue;
       const level = this.levelAt(slot.batch, slot.transform, slot.level);
       if (level === slot.level) continue;
+      const oldLevel = slot.batch.levels[slot.level];
       this.unplace(slot);
       slot.level = level;
       this.place(wid, slot);
       this.writeMatrix(slot);
       this.writeColor(slot);
+      touched.add(oldLevel);
+      touched.add(slot.batch.levels[level]);
     }
+    for (const lvl of touched) this.touch(lvl);
   }
 
   remove(wireId: bigint): void {
@@ -324,12 +329,15 @@ export class InstancedProps {
   private levelAt(batch: Batch, t: TransformRow, current: number): number {
     const levels = batch.levels;
     if (levels.length < 2 || !Number.isFinite(this.lastEye.x)) return 0;
-    const d = Math.hypot(t.px - this.lastEye.x, t.py - this.lastEye.y, t.pz - this.lastEye.z);
+    const dx = t.px - this.lastEye.x;
+    const dy = t.py - this.lastEye.y;
+    const dz = t.pz - this.lastEye.z;
+    const dSq = dx * dx + dy * dy + dz * dz;
     let level = 0;
     for (let i = 1; i < levels.length; i++) {
       // Leaving a level takes going LOD_SLACK past its boundary; coming back, LOD_SLACK inside it.
       const edge = levels[i].distance * (i <= current ? 1 - LOD_SLACK : 1 + LOD_SLACK);
-      if (d >= edge) level = i;
+      if (dSq >= edge * edge) level = i;
     }
     return level;
   }
@@ -372,11 +380,12 @@ export class InstancedProps {
       ];
       // Levels further out than the one before them only.
       for (const l of lods) if (l.distance > geometries[geometries.length - 1].distance) geometries.push(l);
+      const capacity = model ? 512 : INITIAL_CAPACITY;
       const levels = geometries.map((g, i) => ({
         geometry: g.geometry,
         distance: g.distance,
-        mesh: this.makeMesh(levelName(name, i), g.geometry, material, INITIAL_CAPACITY),
-        capacity: INITIAL_CAPACITY,
+        mesh: this.makeMesh(levelName(name, i), g.geometry, material, capacity),
+        capacity,
         owners: [] as bigint[],
       }));
       batch = { key, name, material, cooked: model !== null, levels };

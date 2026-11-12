@@ -46,7 +46,11 @@ export interface AnimalFrameInput {
 export class AnimalTemplate {
   readonly geometry: THREE.BufferGeometry;
 
-  private constructor(geometry: THREE.BufferGeometry, readonly seg: Segmentation) {
+  private constructor(
+    geometry: THREE.BufferGeometry,
+    readonly seg: Segmentation,
+    readonly modelName?: string,
+  ) {
     this.geometry = geometry;
   }
 
@@ -74,7 +78,7 @@ export class AnimalTemplate {
     g.computeBoundingSphere();
     // Room for the lunge and the death roll.
     if (g.boundingSphere) g.boundingSphere.radius *= 1.4;
-    return new AnimalTemplate(g, seg);
+    return new AnimalTemplate(g, seg, modelName);
   }
 
   create(material: THREE.Material | THREE.Material[]): AnimalRig {
@@ -101,6 +105,7 @@ export class AnimalRig {
   readonly root = new THREE.Group();
   readonly mesh: THREE.SkinnedMesh;
   readonly skeleton: THREE.Skeleton;
+  readonly species: "canine" | "caprine" | "bear" | "boar" | "quadruped";
   private readonly lie = new THREE.Group();
   private readonly bones: THREE.Bone[] = [];
   /** Rest position of each bone relative to its parent. */
@@ -116,6 +121,19 @@ export class AnimalRig {
   private clock = 0;
 
   constructor(readonly template: AnimalTemplate, material: THREE.Material | THREE.Material[]) {
+    const name = (template.modelName ?? "").toLowerCase();
+    if (name.includes("bear")) {
+      this.species = "bear";
+    } else if (name.includes("boar") || name.includes("pig")) {
+      this.species = "boar";
+    } else if (name.includes("wolf") || name.includes("fox") || name.includes("coyote") || name.includes("dog")) {
+      this.species = "canine";
+    } else if (name.includes("goat") || name.includes("ram") || name.includes("bighorn") || name.includes("sheep")) {
+      this.species = "caprine";
+    } else {
+      this.species = "quadruped";
+    }
+
     const { pivots, boneNames, parentIndices } = template.seg;
     const names = boneNames ?? BONE_NAMES;
     for (const name of names) {
@@ -239,31 +257,78 @@ export class AnimalRig {
     spineCurve(this.phase, g.moveW, g.gait, scratchSpine);
     const sp = scratchSpine;
 
+    const isBear = this.species === "bear";
+    const isBoar = this.species === "boar";
+    const isCanine = this.species === "canine";
+    const isCaprine = this.species === "caprine";
+
     const body = this.bones[BONE_BODY];
     const loin = this.bones[BONE_LOIN];
     const neck = this.bones[BONE_NECK];
     const bob = g.bob * Math.cos(4 * Math.PI * this.phase) * g.moveW;
     const breathe = Math.sin(this.clock * 2.1) * 0.004 * seg.height;
-    const bodyLift = (bob + breathe - windup * 0.1 * L) * alive;
+    let bodyLift = (bob + breathe - windup * 0.1 * L) * alive;
+
+    // Bear rearing up on hind legs during threat/attack windup
+    if (isBear && windup > 0) {
+      bodyLift += 0.55 * L * windup * alive;
+    }
+
     body.position.set(
       this.rest[BONE_BODY][0],
       this.rest[BONE_BODY][1] + bodyLift,
       this.rest[BONE_BODY][2] + (strike * 0.35 * L - windup * 0.12 * L) * alive,
     );
-    const pitch = Math.sin(2 * Math.PI * this.phase) * 0.05 * g.moveW * Math.min(1, g.gait) + windup * 0.12 - strike * 0.08;
-    const pc = pitch * alive, qc = sp.chestYaw * alive, sc = sp.chestRoll * alive;
-    body.rotation.set(pc, qc, sc);
-    const pl = (sp.loinPitch + windup * 0.1) * alive, ql = sp.loinYaw * alive, sl = -0.6 * sp.chestRoll * alive;
-    loin.rotation.set(pl, ql, sl);
-    // Neck: holds the head level against the chest's pitch and the loin's arch;
-    // lowered in the windup, thrown out in the strike.
-    neck.rotation.set((sp.neckPitch + windup * 0.2 - strike * 0.25) * alive + d * 0.25, sp.neckYaw * alive, 0);
 
-    // Legs: the femur/humerus swings from the hip/shoulder, the knee (carpus) and hock flex only in
-    // swing, and the upper segment counter-rotates against the lower's flexion (the femur sits back
-    // as the hock folds forward, the humerus reaches as the carpus folds back): the way a real
-    // animal folds a leg. The spine's rotation would drag the hips (and any planted foot) with it,
-    // so a first-order inverse rotation is folded into the hip position: the stance foot stays put.
+    let pitch = Math.sin(2 * Math.PI * this.phase) * 0.04 * g.moveW * Math.min(1, g.gait) + windup * 0.12 - strike * 0.08;
+    if (isBear && windup > 0) {
+      pitch -= 0.85 * windup; // Pitch up as bear rears tall
+    }
+
+    let pc = pitch * alive;
+    let qc = sp.chestYaw * alive;
+    let sc = sp.chestRoll * alive;
+
+    if (isBear) {
+      // Lumbering rolling gait: wider stance roll
+      sc *= 1.7;
+      if (strike > 0) {
+        // Heavy horizontal paw swipe torso rotation
+        qc += 0.65 * strike * alive;
+        sc += 0.45 * strike * alive;
+      }
+    }
+
+    body.rotation.set(pc, qc, sc);
+
+    let pl = (sp.loinPitch + windup * 0.1) * alive;
+    let ql = sp.loinYaw * alive;
+    let sl = -0.5 * sp.chestRoll * alive;
+    if (isBear && windup > 0) {
+      pl -= 0.45 * windup * alive; // Pelvis rears with torso
+    }
+    loin.rotation.set(pl, ql, sl);
+
+    // Neck: holds head level, modified by species posture:
+    let neckPitch = sp.neckPitch + windup * 0.15 - strike * 0.2;
+    if (isBoar) {
+      // Downward rooting posture, plus violent upward head thrust on strike
+      neckPitch += 0.35 * (1 - strike);
+      if (g.moveW < 0.1) neckPitch += Math.sin(this.clock * 4.0) * 0.08;
+      neckPitch -= 0.65 * strike;
+    } else if (isCanine) {
+      // Prowling low-stalk posture
+      neckPitch += 0.18;
+    } else if (isCaprine) {
+      // Lowered horns charge and impact clash
+      neckPitch += 0.45 * windup - 0.25 * strike;
+    }
+    neck.rotation.set(neckPitch * alive + d * 0.25, sp.neckYaw * alive, 0);
+
+    // Legs: ball-and-socket hip/shoulder articulation (pitch, yaw, roll).
+    // The femur/humerus swings from the hip/shoulder with 3-axis organic articulation:
+    // pitch drives forward extension and stance push-off; yaw counter-rotates against spine
+    // undulation during stance so feet track the ground; roll coordinates with pelvic sway.
     const loinRest = this.rest[BONE_LOIN];
     for (let k = 0; k < 4; k++) {
       const upper = this.bones[BONE_FL + k];
@@ -271,50 +336,107 @@ export class AnimalRig {
       legCurve(this.phase + g.offsets[k], g.duty, scratchPose);
       const side = k % 2 === 0 ? 1 : -1;
       const front = k < 2;
-      // The foot's reach is L sin(angle): sin(angle) runs linearly through stance (constant ground
-      // speed, no sliding), and the hip drops by L (1 - cos) so a straight stance leg keeps its foot down.
+
+      // Primary swing angle and knee/hock flexion
       const ang = Math.asin(Math.sin(g.sweep) * scratchPose.angle) * alive;
       const flexPeak = (front ? g.flexF : g.flexH) * scratchPose.flex * alive;
       const flex = flexPeak + d * 0.5;
       const bend = front ? flex : -flex;
       const contra = front ? -0.25 * flexPeak : 0.35 * flexPeak;
-      upper.rotation.set(-ang + contra, 0, side * d * 0.5);
+
+      const stanceW = (1 - scratchPose.lift) * g.moveW * alive;
+
+      // 1. Hip Pitch (X): Primary stride swing + stance pitch counter-balance
+      const parentPitch = front ? pc : pl;
+      let rotPitch = -ang + contra - parentPitch * stanceW * 0.7;
+
+      // 2. Hip Yaw (Y): Ball-and-socket hip rotation tracking forward motion
+      const parentYaw = front ? qc : ql;
+      const stanceYaw = -parentYaw;
+      const swingYaw = -parentYaw * 0.4 + side * 0.04 * scratchPose.lift;
+      let rotYaw = (stanceYaw * stanceW + swingYaw * (1 - stanceW)) * alive;
+
+      // 3. Hip Roll (Z): Pelvic sway, lateral weight-bearing stance, and limp splay when dead
+      const parentRoll = front ? sc : sl;
+      const stanceRoll = -parentRoll * 0.7;
+      const sway = side * 0.03 * Math.sin(2 * Math.PI * (this.phase + g.offsets[k])) * g.moveW;
+      let rotRoll = (side * d * 0.5 + stanceRoll * stanceW + sway) * alive;
+
+      // Species-specific leg kinematics:
+      if (isBear) {
+        if (front && windup > 0) {
+          // Rearing up: front paws lift off ground
+          rotPitch -= 0.8 * windup * alive;
+          rotRoll += side * 0.3 * windup * alive;
+        }
+        if (k === 1 && strike > 0) {
+          // Heavy horizontal paw swipe (right front paw swings in a wide arc)
+          rotYaw += 0.9 * strike * alive;
+          rotRoll += 0.6 * strike * alive;
+        }
+      } else if (isCaprine && windup > 0) {
+        // Spurring: front left hoof stamps the ground in windup
+        if (k === 0) rotPitch += Math.sin(this.clock * 22) * 0.4 * windup * alive;
+      }
+
+      upper.rotation.set(rotPitch, rotYaw, rotRoll);
       lower.rotation.set(bend, 0, 0);
-      // Where the flexed foot would be relative to the straight leg at this angle: the knee lifts it,
-      // but a leg reaching forward with a straightening lower leg would dip it below the ground, so
-      // the hip rises just enough to keep a small swing clearance.
+
+      // Foot ground clearance and stance drop:
       const cosA = Math.cos(ang);
       const rise = seg.kneeHeight * (cosA - Math.cos(ang - bend));
       const clearance = Math.max(rise, 0.5 * g.lift * scratchPose.lift * g.moveW * alive);
       const restU = this.rest[BONE_FL + k];
       const ikY = -bodyLift - L * (1 - cosA) + (clearance - rise);
-      // The wanted hip, in the chest's unrotated space (through the loin for a hind leg)...
+
+      // Anchored socket: hip remains attached to its anatomical joint in X and Z,
+      // with subtle small-angle damping to eliminate mesh tearing during stance:
       const vx = front ? restU[0] : loinRest[0] + restU[0];
       const vy = (front ? restU[1] : loinRest[1] + restU[1]) + ikY;
       const vz = front ? restU[2] : loinRest[2] + restU[2];
-      // ...minus what the chest's rotation would do to it (delta = angle x offset, small angles)...
       const dcx = qc * vz - sc * vy, dcy = sc * vx - pc * vz, dcz = pc * vy - qc * vx;
-      let ax = restU[0] - dcx, ay = restU[1] + ikY - dcy, az = restU[2] - dcz;
-      if (!front) {
-        // ...and the loin's: a hind hip hangs one rotation deeper.
+      let ax = restU[0] - dcx * stanceW * 0.6;
+      let ay = restU[1] + ikY - dcy * stanceW * 0.6;
+      let az = restU[2] - dcz * stanceW * 0.6;
+      if (front) {
+        // Scapular glide along ribcage (canine synsarcosis):
+        // Protraction carries the shoulder point forward with the reach,
+        // while retraction glides it backward smoothly during stance propulsion.
+        const scapulaReach = Math.sin(ang) * 0.08 * L * g.moveW * alive;
+        const scapulaGlideY = (scratchPose.lift * 0.02 - (1 - scratchPose.lift) * 0.01) * L * g.moveW * alive;
+        az += scapulaReach;
+        ay += scapulaGlideY;
+      } else {
         const dlx = ql * az - sl * ay, dly = sl * ax - pl * az, dlz = pl * ay - ql * ax;
-        ax -= dlx; ay -= dly; az -= dlz;
+        ax -= dlx * stanceW * 0.6;
+        ay -= dly * stanceW * 0.6;
+        az -= dlz * stanceW * 0.6;
       }
       upper.position.set(ax, ay, az);
     }
 
-    // Head: steadied against what is left of the chest's pitch, nodding with the stride;
-    // lowered in the windup, thrown out in the strike; watching around when idle.
+    // Head: steadied firmly against what is left of the chest's pitch, nodding slightly with the stride;
+    // lowered in the windup, thrown out in the strike; watchful when idle.
     const head = this.bones[BONE_HEAD];
+    let headPitch = -pitch * 0.35 + Math.sin(4 * Math.PI * this.phase) * 0.03 * g.moveW + windup * 0.3 - strike * 0.4 + Math.sin(this.clock * 0.7) * 0.02;
+    if (isBoar && strike > 0) {
+      headPitch -= 0.55 * strike; // Violent upward tusk goring toss
+    } else if (isCaprine) {
+      headPitch += 0.4 * windup - 0.25 * strike; // Head tucked for ramming
+    } else if (isCanine && strike > 0) {
+      headPitch += 0.3 * strike; // Snapping bite lunge
+    }
     head.rotation.set(
-      (-pitch * 0.5 + Math.sin(4 * Math.PI * this.phase) * 0.05 * g.moveW + windup * 0.35 - strike * 0.5 + Math.sin(this.clock * 0.7) * 0.03) * alive + d * 0.4,
-      (Math.sin(this.clock * 0.4) * 0.15 * (1 - g.moveW)) * alive,
+      headPitch * alive + d * 0.4,
+      (Math.sin(this.clock * 0.4) * 0.1 * (1 - g.moveW)) * alive,
       0,
     );
     // Tail: a lagged chain, the root following the stride and the tip flicking on; limp when dead.
     tailChain(this.phase, this.clock, g.moveW, 3, scratchTail);
+    let tailPitch = (0.08 * Math.sin(4 * Math.PI * this.phase - 0.9) * g.moveW - windup * 0.2);
+    if (isCanine) tailPitch += 0.15; // Low tail carriage for canine stalk
     this.bones[BONE_TAIL].rotation.set(
-      (0.08 * Math.sin(4 * Math.PI * this.phase - 0.9) * g.moveW - windup * 0.2) * alive + d * 0.35,
+      tailPitch * alive + d * 0.35,
       scratchTail[0] * alive,
       0,
     );

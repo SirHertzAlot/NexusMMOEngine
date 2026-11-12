@@ -21,7 +21,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -181,7 +181,15 @@ export interface QuestContent {
   dialogs: Record<string, DialogDef>;
 }
 
-export const DEFAULT_QUEST_DIR = fileURLToPath(new URL("../../../../../content/quests", import.meta.url));
+function resolveQuestDir(): string {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const candidate5 = resolve(here, "../../../../../content/quests");
+  if (existsSync(candidate5)) return candidate5;
+  const candidate4 = resolve(here, "../../../../content/quests");
+  if (existsSync(candidate4)) return candidate4;
+  return resolve(process.cwd(), "content/quests");
+}
+export const DEFAULT_QUEST_DIR = resolveQuestDir();
 
 /** Valid empty quest content: no stages, steps, templates, quests, npcs or dialogs. */
 export const EMPTY_QUEST_CONTENT: QuestContent = {

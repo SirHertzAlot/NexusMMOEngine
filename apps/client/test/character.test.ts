@@ -112,6 +112,7 @@ describe("combat moves and the animation library", () => {
   it("every move's clip exists, as long as the move", { skip: manifest ? false : "no converted animations here" }, () => {
     const clips = new Map(manifest!.clips.map((c) => [c.name, c]));
     for (const move of COMBAT_MOVES) {
+      if (move.clip.startsWith("Creature_")) continue; // Procedural creature / animal moves
       const clip = clips.get(move.clip);
       assert.ok(clip, `${move.name}: no clip ${move.clip}`);
       assert.ok(Math.abs(clip.duration - move.duration) < 0.02, `${move.name}: ${move.duration} s, clip ${clip.duration} s`);

@@ -374,7 +374,7 @@ export interface GatewayOptions {
   /** Durable session tokens (edge/core split E3); absent = memory only. */
   sessionStore?: SessionStore;
   /** Auth rate limit: { maxFailures, windowMs }. Defaults 5 / 60_000. */
-  authRateLimit?: { maxFailures?: number; windowMs?: number };
+  authRateLimit?: { maxFailures?: number; windowMs?: number; exemptIps?: Iterable<string> };
   /**
    * In-client account creation (protocol 0x0b, `register`). Dev
    * convenience: the login screen can create an account without the

@@ -15,7 +15,7 @@ import { SimWorld } from "../../src/world.js";
 import { ResidentSystem, type ResidentNpc, type ResidentTown } from "../../src/residents/index.js";
 
 // The real schedule, from the settlement package (engine-core does not depend on it; the module that wires residents does).
-const settlementPath = "../../../../settlement/dist/src/index.js";
+const settlementPath = "../../../settlement/dist/src/index.js";
 const settlement = (await import(settlementPath)) as {
   SQUARE: string;
   scheduleAt(npc: unknown, timeOfDay: number, town: { archetypeOf(s: string): string | undefined; tavernNear(h: string | null): string | undefined }, day?: number): { anchor: string; outdoors: boolean; activity: string };
