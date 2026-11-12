@@ -208,7 +208,7 @@ Entity IDs are protected against ABA recycling bugs through the [`GenerationalSl
 
 ## 4. Native C++ Kernel Ecosystem (`packages/addons`)
 
-The engine offloads heavy mathematical and spatial operations to compiled C++20 N-API addons inside [`packages/addons/`](../packages/addons).
+The engine offloads heavy mathematical and spatial operations to compiled C++17 N-API addons inside [`packages/addons/`](../packages/addons).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐

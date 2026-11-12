@@ -5,7 +5,7 @@ fifteen minutes, most of it spent compiling the native addons once.
 
 By the end you will have:
 
-- the authoritative game server running a baked open world on `ws://localhost:7777`;
+- the authoritative game server running a baked open world, which players reach through the edge on `ws://localhost:7777`;
 - the browser client on `http://localhost:5173`, with an account, a character, and a world to explore;
 - optionally, the editor companion on `http://localhost:5174` and the world server on `http://localhost:7780`.
 
@@ -51,7 +51,7 @@ npm run bake:world
 Optional but worthwhile: prove the install with the test suite.
 
 ```bash
-npm test           # builds everything, runs all 16 suites (a few minutes)
+npm test           # builds everything, then runs every workspace's test suite (a few minutes)
 ```
 
 ## 3. Bake a world
@@ -64,9 +64,10 @@ npm run bake:world
 ```
 
 This reads [`packages/engine-core/worlds/default.world.json`](../packages/engine-core/worlds/default.world.json)
-and, in under a minute, produces a **4 × 4 km peninsula**: a mountain spine
+and, in under a minute, produces a **4 × 4 km island** with 6 smaller
+satellite islands offshore: a mountain spine
 with a volcano, glaciers in the frozen north, a rain-shadow desert, rivers,
-lakes and 12 biomes. It lands in `packages/engine-core/data/region.db`
+lakes and 13 biomes. It lands in `packages/engine-core/data/region.db`
 (about 92 MB, git-ignored).
 
 Want to see what you are about to bake? `npm run preview:world` draws the
@@ -92,14 +93,16 @@ npm start
 ```
 
 That runs the missing setup (codegen, bakes), then starts the region
-server (ws://localhost:7777), the edge (ws://localhost:3001,
-http://localhost:3000) and the browser client (http://localhost:5173)
-together. Ctrl+C stops them all. For separate processes, see
+server, the edge and the browser client (http://localhost:5173)
+together. The edge holds the players' port — ws://localhost:7777, relayed
+to the region, which binds no player port of its own (the client cutover,
+E3b, is done; a core started alone still serves players directly) — and
+serves http://localhost:3000 (health and metrics). Ctrl+C stops them all.
+For separate processes, see
 [CONFIGURATION.md](CONFIGURATION.md): `npm start -- --server` runs only the
 game server, `npm run editor` the editor, `npm run world` the world server,
 `npm run edge` the edge. The full split topology (world, region, edge)
-is in [CLI.md](CLI.md#other-servers); players connect to the region until
-the client cutover (E3b).
+is in [CLI.md](CLI.md#other-servers).
 
 Some settings worth trying (full list in [CONFIGURATION.md](CONFIGURATION.md)):
 
@@ -147,6 +150,7 @@ With `npm start` running, open **http://localhost:5173**, then:
 | Left click | Attack; click again in rhythm to chain the 3-hit combo |
 | Hold right click | Guard |
 | Q | Dodge roll |
+| E | Interact: open a chest or a shop, gather, pick up an item, talk |
 
 The buttons at the top right switch wireframe terrain, screen effects and
 the FX showcase (six elemental orbs around you), and reconnect or
@@ -170,8 +174,9 @@ works the same.
 npm run editor           # http://localhost:5174
 ```
 
-The editor is a docking workspace with a tab per area: **World** (terrain at
-world scale), **Scene** (the read-only ECS inspector), **Characters** (a
+The editor is a docking workspace, one per area: **World** (terrain at
+world scale), **Scene** (the scene viewport, with the ECS inspector as a
+panel), **Scenes** (the scene-document browser), **Characters** (a
 read-only record view), **Gameplay** (rules and gameplay tables), **Dungeons &
 PCG** (baked-pool browser, 3D view, patches, graph editor), **Live ops**
 (tick and activity telemetry), **Debug** (play mode with the client's world

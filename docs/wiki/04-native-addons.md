@@ -5,7 +5,7 @@
 ---
 
 ## 1. Overview
-Numerics-bound, geometric, and physics operations live in compiled C++20 N-API addons inside [`packages/addons/`](../../packages/addons). These modules run directly inside the host process with no IPC or network boundaries.
+Numerics-bound, geometric, and physics operations live in compiled C++17 N-API addons inside [`packages/addons/`](../../packages/addons). These modules run directly inside the host process with no IPC or network boundaries.
 
 ---
 

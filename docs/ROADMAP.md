@@ -502,6 +502,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-12**: DOC1 passes eight and nine (🚧, `feat/docs-audit`): every "Still open" audit item closed — the remaining prose re-read against the code (wiki ch03–09, the `ARCHITECTURE.md` body, `GETTING-STARTED.md`, `GAMEPLAY.md`, the pre-existing `CONFIGURATION.md` rows, `MASTERY-AND-COMBAT.md` §§2–5); stale island/biome, test-suite, E3b edge-port, editor-workspace and C++20→C++17 statements fixed; a `DECISIONS.md` clarification appended for the 0.562 ms figure; the IX1a and SG7 roadmap notes corrected; `ENGINE-COMPARISON-AND-PERFORMANCE.md` moved into `docs/business-analysis/` per AGENTS.md §1.
 - **2026-11-11**: DOC1 and DOC2 (🚧, `feat/docs-audit`): full documentation audit with a report, the first-read docs reworked, and a dedicated performance-and-constraints page.
 - **2026-11-11**: WEB5 docs site (🚧, `feat/site-docs`): the curated docs rendered from `docs/` with markdown-it, over a 3D terrain backdrop. Also resolved the roadmap's leftover merge-conflict markers.
 - **2026-11-11**: WEB4 architecture explorer (#666, ✅): `site/architecture.html`, the architecture diagram as an interactive 3D model with a guided tour of one player input.

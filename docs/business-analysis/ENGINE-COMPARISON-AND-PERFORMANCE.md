@@ -16,7 +16,7 @@ The Nexus MMO Engine is a **100% custom, hybrid native engine runtime** built fr
 The engine operates across three decoupled tiers:
 
 1. **Native C++ Kernel Tier (`packages/addons`)**:
-   - C++20 N-API compiled binaries executing heavy numerical operations directly in-process.
+   - C++17 N-API compiled binaries executing heavy numerical operations directly in-process.
    - **Physics & Collisions**: Jolt Physics ([`packages/addons/physics`](../../packages/addons/physics)).
    - **Pathfinding & Navmesh**: Recast & Detour ([`packages/addons/navigation`](../../packages/addons/navigation)).
    - **Procedural Noise & SIMD**: FastNoise2 and FastSIMD ([`packages/addons/procgen`](../../packages/addons/procgen)).
@@ -47,7 +47,7 @@ A core design requirement is that the engine must remain an **unopinionated game
 
 | Capability / Dimension | **Nexus MMO Engine** | **Unreal Engine 5 (Lyra / EOS)** | **Unity (DOTS / Netcode)** | **Bevy / Rust** | **SpatialOS (Improbable)** | **Legacy / Bespoke MMOs (WoW, EVE)** |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Runtime Architecture** | Hybrid: Node.js + C++20 N-API + SharedArrayBuffer | C++20 + Blueprint VM | C# (Burst, Jobs, Unsafe memory) | Native compiled Rust | Heterogeneous workers (C++, C#, Java) | C++ (WoW) / Stackless Python (EVE) |
+| **Runtime Architecture** | Hybrid: Node.js + C++17 N-API + SharedArrayBuffer | C++20 + Blueprint VM | C# (Burst, Jobs, Unsafe memory) | Native compiled Rust | Heterogeneous workers (C++, C#, Java) | C++ (WoW) / Stackless Python (EVE) |
 | **Data Plane & Wire Format** | Zero-copy FlatBuffers (`.fbs`), byte-aligned structs, zero GC allocation | Bit-packed `NetSerialize`, heavy `UObject` reflection | Binary Netcode buffers, `NativeArray<T>` | Bitcode / bincode / postcard | Protobuf / gRPC schema bridge | Bespoke binary bit-stream protocols |
 | **ECS & Simulation Density** | bitECS + C++ SIMD kernels (**100k entities in 0.20ms**, $2.02\text{ns}$/entity) | Mass Gameplay Framework (experimental) / `AActor` (~0.5–2ms for 5k) | Unity Entities + Burst (~0.15–0.3ms for 100k simple entities) | Archetypal Bevy ECS (~0.12–0.25ms for 100k entities) | Entity component registry across worker nodes | Spatial cell array (WoW) / Solar system queues (EVE) |
 | **Server Topology & Scaling** | **Edge/Core Split**: Edge I/O nodes ($< 1\text{ms}$ ping, 64k req/s) + Core 30Hz lock-free sim | Monolithic dedicated server (typically 50–150 players/instance) | Client-hosted or dedicated headless servers (100–500 players) | Standalone servers (requires custom clustering) | Distributed spatial worker mesh (high operational complexity) | Cell-based border zoning (WoW) / Time Dilation node (EVE) |
