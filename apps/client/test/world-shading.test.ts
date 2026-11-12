@@ -146,3 +146,18 @@ describe("terrain mask on the cel terrain", () => {
     tex.dispose();
   });
 });
+
+describe("terrain mask fetch", () => {
+  it("loads the baked asset, blends it, and clears on a missing file", async () => {
+    const { TerrainRenderer } = await import("../src/render/terrain/terrain-renderer.js");
+    const { encodeTerrainMaskAsset } = await import("@mmo-engine/art/browser");
+    const rgba = new Uint8Array(2 * 2 * 4).fill(128);
+    const bytes = encodeTerrainMaskAsset({ width: 2, depth: 2, cell: 8, originX: -16, originZ: -16, rgba });
+    const t = new TerrainRenderer(16);
+    const ok = await t.loadTerrainMask("/terrain-mask.bin", (async () => new Response(bytes.slice().buffer as ArrayBuffer, { status: 200 })) as unknown as typeof fetch);
+    assert.equal(ok, true);
+    const missing = await t.loadTerrainMask("/terrain-mask.bin", (async () => new Response("", { status: 404 })) as unknown as typeof fetch);
+    assert.equal(missing, false, "404 is a clean no-mask");
+    t.dispose();
+  });
+});
