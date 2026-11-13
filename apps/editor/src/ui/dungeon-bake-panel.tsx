@@ -108,10 +108,16 @@ export function DungeonBakePanel(): React.JSX.Element {
             </Select>
           ) : null}
           {tool === "portal" ? (
-            <>
-              <Input aria-label="Portal width in cells" type="number" min={1} max={8} step={1} value={portalWidth} onChange={(e) => setPortalWidth(Math.max(1, Math.round(Number(e.target.value) || 1)))} />
-              <Input aria-label="Portal target level" type="number" step={1} placeholder="level" value={portalLevel} onChange={(e) => setPortalLevel(e.target.value)} />
-            </>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs">
+                width in cells
+                <Input aria-label="Portal width in cells" type="number" min={1} max={8} step={1} value={portalWidth} onChange={(e) => setPortalWidth(Math.max(1, Math.round(Number(e.target.value) || 1)))} />
+              </label>
+              <label className="text-xs">
+                target level
+                <Input aria-label="Portal target level" type="number" step={1} placeholder="none" value={portalLevel} onChange={(e) => setPortalLevel(e.target.value)} />
+              </label>
+            </div>
           ) : null}
           <div
             role="grid"
