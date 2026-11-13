@@ -58,6 +58,8 @@ import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 import { DamageWatch, stageBrightness } from "./damage-stage.js";
 import { DustPuffs } from "./dust-puffs.js";
 import { puffsFor } from "./dust-sim.js";
+import { DebrisPieces } from "./debris-pieces.js";
+import { piecesFor } from "./debris-sim.js";
 import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
 import { CORPSE_SHOT_OPTIONS, CorpseRagdolls, corpseShotRequested } from "../physics/corpse-ragdolls.js";
 import { SharedBodyTracks, type BodyPose } from "./shared-body-tracks.js";
@@ -186,6 +188,8 @@ const FACE_MOVING_SPEED = 0.2;
 const TURN_RATE = 12;
 
 const tmpColor = new THREE.Color();
+/** How soon after a blow a prop vanishing counts as its break, not the world streaming it out, seconds. */
+const BREAK_WINDOW_S = 0.75;
 const tmpEye = new THREE.Vector3();
 const tmpAnimal = new THREE.Vector3();
 const tmpSpawn = new THREE.Vector3();
@@ -276,6 +280,10 @@ export class EntityLayer {
   /** Wear on breakable props (DE1): health changes become a darker look and a dust puff. */
   private readonly damage = new DamageWatch();
   private readonly dust: DustPuffs;
+  /** Break pieces (DE2): thrown when a prop that was just hit breaks or vanishes. */
+  private readonly debris: DebrisPieces;
+  /** The props hit lately: where and how big they are, so a break can throw pieces after the entity is gone. */
+  private readonly lastHit = new Map<bigint, { x: number; y: number; z: number; hx: number; hy: number; hz: number; color: number; at: number; burst: boolean }>();
   private readonly corpsePose = new Float32Array(RAGDOLL_PARTS * 7);
   /** Shared bodies drawn from snapshots, a little behind the clock (see shared-body-tracks). */
   private readonly shared = new SharedBodyTracks({ delaySeconds: SHARED_DELAY_SECONDS });
@@ -297,6 +305,7 @@ export class EntityLayer {
     this.group.add(this.roads.group);
     this.fx = new EntityFxSystem(scene, camera);
     this.dust = new DustPuffs(scene);
+    this.debris = new DebrisPieces(scene);
     this.group.add(this.vfx.renderer);
     const ground = (x: number, z: number): number | null => this.terrain.heightAt(x, z);
     this.vfx.setGround(ground);
@@ -534,11 +543,44 @@ export class EntityLayer {
 
   /** A prop with health: a blow puffs dust where it stands, and its wear darkens it (batched props only). */
   private watchDamage(wid: bigint, e: EntityMirror): void {
+    const hit = this.lastHit.get(wid);
+    // A prop that stays broken loses its health row: the lowered variant is the break.
+    if (hit && !hit.burst && e.asset?.variant === BROKEN_VARIANT) this.throwPieces(hit);
     if (!e.health || !e.transform || !isStaticProp(e.body, e.asset)) return;
     const change = this.damage.observe(wid, e.health.current, e.health.max);
     if (!change) return;
     this.props.setBrightness(wid, stageBrightness(change.stage));
-    if (change.lost > 0) this.dust.emit(e.transform.px, e.transform.py + 0.4, e.transform.pz, puffsFor(change.lost));
+    if (change.lost <= 0) {
+      if (change.stage === 0) this.lastHit.delete(wid); // mended
+      return;
+    }
+    const t = e.transform;
+    this.dust.emit(t.px, t.py + 0.4, t.pz, puffsFor(change.lost));
+    const b = e.body;
+    const r = b && b.radius > 0 ? b.radius : 0;
+    const hx = Math.max(0.15, (b && b.halfX > 0 ? b.halfX : r) * t.sx);
+    const hy = Math.max(0.15, (b && b.halfY > 0 ? b.halfY : r) * t.sy);
+    const hz = Math.max(0.15, (b && b.halfZ > 0 ? b.halfZ : r) * t.sz);
+    const rec = { x: t.px, y: t.py - hy, z: t.pz, hx, hy, hz, color: placeholderColor(wid).getHex(), at: performance.now() / 1000, burst: false };
+    this.lastHit.set(wid, rec);
+    if (e.health.current <= 0) this.throwPieces(rec);
+  }
+
+  /** Throw a prop's pieces, once. */
+  private throwPieces(h: { x: number; y: number; z: number; hx: number; hy: number; hz: number; color: number; burst: boolean }): void {
+    h.burst = true;
+    this.debris.burst(h.x, h.y, h.z, h.hx, h.hy, h.hz, piecesFor(h.hx, h.hy, h.hz), h.color);
+  }
+
+  /** A hit prop that vanished within a moment of the blow broke (a removed prop): throw its pieces; forget old hits. */
+  private settleHits(state: MirrorState, now: number): void {
+    for (const [wid, h] of this.lastHit) {
+      const age = now - h.at;
+      if (!state.entities.has(wid)) {
+        if (!h.burst && age < BREAK_WINDOW_S) this.throwPieces(h);
+        this.lastHit.delete(wid);
+      } else if (age > BREAK_WINDOW_S * 4) this.lastHit.delete(wid);
+    }
   }
 
   private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null, asset?: AssetRefRow): [TransformRow, BodyConfigRow | null] {
@@ -589,6 +631,7 @@ export class EntityLayer {
     for (const wid of gone) this.props.remove(wid);
     gone.length = 0;
     this.damage.prune((wid) => state.entities.has(wid));
+    this.settleHits(state, performance.now() / 1000);
     for (const wid of this.roads.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.roads.remove(wid);
 
@@ -777,6 +820,7 @@ export class EntityLayer {
 
     this.fx.update(dt, now);
     this.dust.update(dt);
+    this.debris.update(dt, (x, z) => this.terrain.heightAt(x, z) ?? 0);
     this.showcase.update(now, dt);
     this.vfx.update(dt);
   }
@@ -863,6 +907,7 @@ export class EntityLayer {
     this.corpses = null;
     this.fx.dispose();
     this.dust.dispose(this.group.parent ?? this.group);
+    this.debris.dispose(this.group.parent ?? this.group);
     this.showcase.dispose();
     this.vfx.dispose();
     for (const tex of this.plateTextures.values()) tex.dispose();
