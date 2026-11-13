@@ -19,3 +19,4 @@ export * from "./building-synthesizer.js";
 export * from "./structure-checks.js";
 export * from "./scene-check.js";
 export * from "./garden-dresser.js";
+export * from "./support-graph.js";
