@@ -42,9 +42,49 @@ export interface SurfaceMaterial {
 export const SHADING_COMPONENTS = ["toon", "standard"] as const;
 export type ShadingComponentId = (typeof SHADING_COMPONENTS)[number];
 
-/** The things the client draws that carry shading components. */
-export const SHADING_KINDS = ["model", "placeholder", "prefab"] as const;
+/**
+ * The things the client draws that carry shading components. Every world
+ * kind is cel by default; a kind that must stay smooth says so with
+ * `standard` in content (shading.kinds), never by skipping the registry.
+ * - terrain: ground chunks (terrain/terrain-material.ts)
+ * - structure: dungeon stone, portal stone and other built geometry
+ * - figure: stand-in bodies and markers (NPC markers, corpses, first-person arms)
+ * - fallback: asset placeholders drawn when a model is missing
+ */
+export const SHADING_KINDS = ["model", "placeholder", "prefab", "terrain", "structure", "figure", "fallback"] as const;
 export type ShadingKind = (typeof SHADING_KINDS)[number];
+
+/**
+ * The world things that stay off the cel path on purpose, each with the
+ * reason. A world class that is neither a shading kind nor listed here is
+ * a bug (client test: render/shading/world-classes.ts).
+ */
+export const SHADING_OPT_OUTS = {
+  water: "custom ShaderMaterial with its own lighting and reflection",
+  sky: "sky dome, unlit by design",
+  stars: "sky points, unlit by design",
+  vfx: "transparent particle effects, unlit additive or alpha blending",
+  "swing-trail": "transparent weapon trail, unlit",
+  "portal-ring": "transparent additive ring, unlit",
+  label: "screen-space label and editor helper, unlit",
+} as const;
+export type ShadingOptOutId = keyof typeof SHADING_OPT_OUTS;
+
+/**
+ * Where the cel outline (the inverted hull) stays off on purpose, with the
+ * reason. Outlines are on by default for every shaded kind, tier-gated by
+ * cost (quality.ts `outlines`): low tiers draw none.
+ */
+export const SHADING_OUTLINE_OPT_OUTS = {
+  terrain: "a ground chunk is too large to hull: the inverted hull would read as a dark sheet across the land",
+  instanced: "instanced prop batches have no per-instance hull yet; a cost check and an instanced hull are owed",
+} as const;
+export type ShadingOutlineOptOutId = keyof typeof SHADING_OUTLINE_OPT_OUTS;
+
+/** Relative luminance of a linear RGB triple (used to check ramp order). */
+export function luminance(c: Rgb): number {
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
 
 /**
  * Which shading components each kind of thing carries. Adding `toon` to a
@@ -100,6 +140,8 @@ export function validateMaterials(doc: unknown): MediaIssue[] {
         for (const when of ["day", "night"]) {
           const pair = r[when];
           if (!Array.isArray(pair) || pair.length !== 2 || !pair.every((x) => rgb(x, 1))) c.add(`toon.ramp.${row}.${when}`, "must be two [r, g, b] colours in 0..1");
+          // The shadow's darkest stop must not be lighter than its edge (a band inversion).
+          else if (luminance(pair[0] as Rgb) > luminance(pair[1] as Rgb)) c.add(`toon.ramp.${row}.${when}`, "the darkest shadow must not be lighter than the shadow's edge");
         }
       }
     }

@@ -153,6 +153,7 @@ import { handleDatabase, openDatabaseCore, portOpen, type DatabaseCore } from ".
 import { isEditableTable, readRulesTables, saveRulesTable } from "./rules-store.js";
 import { listPcgDocuments, readPcgDocument, readPcgLibrary, savePcgDocument } from "./pcg-host.js";
 import { ARCHETYPES, listPool, mapPng, readDungeon, runBake, savePatch } from "./dungeon-host.js";
+import { bakeRoute, docOpRoute, loadGeometry } from "./bake-doc-host.js";
 import { createPlaySnapshot } from "./play-snapshot.js";
 import { createClientServer, handlePlaySetupsRoute, startEdge } from "./play-host.js";
 import { createBuildHost, createLocalDeployer, loadProfiles } from "./build-host.js";
@@ -1279,6 +1280,27 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url === "/api/editor/dungeons" && req.method === "GET") {
             sendJson(res, 200, { ok: true, dungeons: listPool(dataDir), archetypes: ARCHETYPES });
+            return;
+          }
+          // Dungeon bake document (bake-doc-host.ts): one edit op, or a bake, from the editor's panel.
+          if (url === "/api/editor/bake-doc/op" && req.method === "POST") {
+            const body = await readJsonOr400(req, res, null);
+            if (body === undefined) return;
+            try {
+              sendJson(res, 200, { ok: true, ...docOpRoute(body) });
+            } catch (err) {
+              sendJson(res, 400, { ok: false, error: (err as Error).message });
+            }
+            return;
+          }
+          if (url === "/api/editor/bake-doc/bake" && req.method === "POST") {
+            const body = await readJsonOr400(req, res, null);
+            if (body === undefined) return;
+            try {
+              sendJson(res, 200, { ok: true, ...bakeRoute(body, loadGeometry(), new Date()) });
+            } catch (err) {
+              sendJson(res, 400, { ok: false, error: (err as Error).message });
+            }
             return;
           }
           if (url === "/api/editor/dungeons/bake" && req.method === "POST") {
