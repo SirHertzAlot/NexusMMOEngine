@@ -19,6 +19,10 @@ export interface PortalSpec {
   y: number;
   side: "x" | "y";
   kind?: PortalKind;
+  /** Wall cells the opening takes, along the wall (default 1). */
+  width?: number;
+  /** The floor level the portal leads to (absent: the level it stands on). */
+  targetLevel?: number;
 }
 
 export interface DungeonBakeDoc {
@@ -27,7 +31,7 @@ export interface DungeonBakeDoc {
   theme: string;
   rows: string[];
   entrance: { x: number; y: number };
-  portals: Array<PortalSpec & { kind: PortalKind }>;
+  portals: Array<PortalSpec & { kind: PortalKind; width: number }>;
   /** Edits to a theme's layers, by layer id. */
   layerEdits: Record<string, LayerEdit>;
 }

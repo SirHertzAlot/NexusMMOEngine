@@ -32,7 +32,8 @@ import { OwnedFiles } from "./owned-files.js";
 import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
 import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPanel, revertActive, screenshotViewport } from "./shell-actions.js";
-import { currentShellComposition } from "./shell-presentation.js";
+import { SHELL } from "./shell-composition.js";
+import { useShellComposition } from "./use-shell.js";
 import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import { requestNewScene } from "../open-scene.js";
 import { loadLastSetup, saveLastSetup, setupSummary, type PlaySetup } from "./play-setup.js";
@@ -257,9 +258,9 @@ export function App(): React.JSX.Element {
   const playing = pmState === "running" || pmState === "starting";
 
   // T2: which shell surfaces mount comes from the shell slot's pinned
-  // template, resolved once per session — the layout state below only
+  // template and follows the pin live — the layout state below only
   // shows/hides and sizes the docks the composition includes.
-  const shell = React.useMemo(() => currentShellComposition(), []);
+  const shell = useShellComposition();
 
   // Dock layout: visibility + sizes persist locally; named layouts snapshot all of it.
   const [docks, setDocks] = useLocalStorage("mmo-editor.docks", { left: true, right: true, bottom: true });
@@ -619,7 +620,7 @@ export function App(): React.JSX.Element {
         ...(playing ? { outline: "2px solid var(--m3-tertiary)", outlineOffset: -2 } : {}),
       }}
     >
-      {shell.has("shell-menu-bar") && (
+      {shell.has(SHELL.menuBar) && (
         <MenuBar
         workspace={workspace}
         onPick={pickWorkspace}
@@ -629,10 +630,10 @@ export function App(): React.JSX.Element {
         onResetLayout={() => applyLayout(defaultLayout())}
         onGo={go}
         onDialog={setDialog}
-        showWorkspaces={shell.has("shell-workspace-nav")}
+        showWorkspaces={shell.has(SHELL.workspaceNav)}
         />
       )}
-      {shell.has("shell-tool-bar") && (
+      {shell.has(SHELL.toolBar) && (
         <Toolbar
         playMenu={playMenu}
         onTogglePlayMenu={() => setPlayMenu((v) => !v)}
@@ -724,7 +725,7 @@ export function App(): React.JSX.Element {
         
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           
-        {shell.has("shell-view-tabs") && (
+        {shell.has(SHELL.viewTabs) && (
         <div
             className="flex h-9 flex-none items-center gap-0.5 rounded-xl px-1.5"
             role="tablist"
@@ -761,7 +762,7 @@ export function App(): React.JSX.Element {
         )}
 
           
-        {shell.has("workspace-stage") && (
+        {shell.has(SHELL.stage) && (
         <div
             className="m3-scroll relative min-h-0 flex-1 overflow-auto rounded-xl p-3"
             style={{
@@ -866,7 +867,7 @@ export function App(): React.JSX.Element {
         )}
       </div>
 
-      {shell.has("shell-status-bar") && (
+      {shell.has(SHELL.statusBar) && (
         <StatusBar problems={problemTotal} onOpenProblems={() => { setBottomTab("problems"); setDocks((d) => ({ ...d, bottom: true })); }} />
       )}
       {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}

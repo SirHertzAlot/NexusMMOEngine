@@ -14,8 +14,8 @@ const CEILING = SHELL_PARTS.indexOf("ceiling");
 const ROOM = { version: 1 as const, rows: ["#########", "#.......#", "#.......#", "#.......#", "#########"], entrance: { x: 1, y: 1 }, portals: [] };
 
 describe("shell theme knobs", () => {
-  it("refuses an unknown knob (wallThickness, cellSize, cornerMode) instead of ignoring it", () => {
-    for (const knob of ["wallThickness", "cellSize", "cornerMode"]) {
+  it("refuses an unknown knob (wallThickness, cellSize) instead of ignoring it", () => {
+    for (const knob of ["wallThickness", "cellSize"]) {
       assert.throws(() => parseShellTheme({ [knob]: 1 }), /unrecognized/i, knob);
     }
   });

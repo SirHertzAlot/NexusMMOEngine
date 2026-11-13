@@ -22,7 +22,7 @@ interface BakeReply {
     triangles: number;
     partCounts: Record<string, number>;
     floorArea: number;
-    portals: Array<{ id: string; kind: PortalKind; x: number; y: number }>;
+    portals: Array<{ id: string; kind: PortalKind; x: number; y: number; width: number; targetLevel?: number }>;
     layers: Array<{ layer: string; placed: number }>;
   };
   provenance: { who: string; what: string; when: string; where: string; why: string; how: { theme: string; layers: string[] } };
@@ -39,6 +39,8 @@ export function DungeonBakePanel(): React.JSX.Element {
   const [doc, setDoc] = React.useState<DungeonBakeDoc>(() => emptyDoc("crypt"));
   const [tool, setTool] = React.useState<Tool>("floor");
   const [portalKind, setPortalKind] = React.useState<PortalKind>("door");
+  const [portalWidth, setPortalWidth] = React.useState(1);
+  const [portalLevel, setPortalLevel] = React.useState("");
   const [reply, setReply] = React.useState<BakeReply | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -56,7 +58,11 @@ export function DungeonBakePanel(): React.JSX.Element {
   const onCell = (x: number, y: number): void => {
     if (tool === "portal") {
       const id = `${portalKind}-${x}-${y}`;
-      void send({ op: "placePortal", portal: { id, x, y, side: "x", kind: portalKind } });
+      // The passage runs through the wall towards floor: east-west when floor is left or right of the cell.
+      const row = doc.rows[y] ?? "";
+      const side = row[x - 1] === "." || row[x + 1] === "." ? "x" : "y";
+      const level = portalLevel.trim() === "" ? {} : { targetLevel: Number(portalLevel) };
+      void send({ op: "placePortal", portal: { id, x, y, side, kind: portalKind, width: portalWidth, ...level } });
       return;
     }
     void send({ op: "paint", x, y, cell: TOOL_CELL[tool] });
@@ -74,7 +80,8 @@ export function DungeonBakePanel(): React.JSX.Element {
     }
   };
 
-  const portalAt = (x: number, y: number): string | undefined => doc.portals.find((p) => p.x === x && p.y === y)?.id;
+  const portalAt = (x: number, y: number): string | undefined =>
+    doc.portals.find((p) => (p.side === "x" ? p.x === x && y >= p.y && y < p.y + p.width : p.y === y && x >= p.x && x < p.x + p.width))?.id;
   const layers = BAKE_LAYERS[doc.theme] ?? [];
 
   return (
@@ -99,6 +106,18 @@ export function DungeonBakePanel(): React.JSX.Element {
                 </option>
               ))}
             </Select>
+          ) : null}
+          {tool === "portal" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs">
+                width in cells
+                <Input aria-label="Portal width in cells" type="number" min={1} max={8} step={1} value={portalWidth} onChange={(e) => setPortalWidth(Math.max(1, Math.round(Number(e.target.value) || 1)))} />
+              </label>
+              <label className="text-xs">
+                target level
+                <Input aria-label="Portal target level" type="number" step={1} placeholder="none" value={portalLevel} onChange={(e) => setPortalLevel(e.target.value)} />
+              </label>
+            </div>
           ) : null}
           <div
             role="grid"
@@ -203,7 +222,7 @@ export function DungeonBakePanel(): React.JSX.Element {
                 </div>
                 <div>
                   Portals:{" "}
-                  {reply.view.portals.length === 0 ? "none" : reply.view.portals.map((p) => `${p.id} (${p.kind})`).join(", ")}
+                  {reply.view.portals.length === 0 ? "none" : reply.view.portals.map((p) => `${p.id} (${p.kind}, ${p.width} wide${p.targetLevel === undefined ? "" : `, to level ${p.targetLevel}`})`).join(", ")}
                 </div>
                 <div>Layers: {reply.view.layers.map((l) => `${l.layer} ${l.placed}`).join(", ")}</div>
                 <div className="text-xs text-zinc-400">

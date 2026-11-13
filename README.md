@@ -205,6 +205,7 @@ never reads `users.csv`.
 | `MMO_CONTENT_DIR` | `--content-dir` | `content` | where bakes write scenes, settlements, scale, wildlife files |
 | `MMO_ASSETS_DIR` | `--assets-dir` | `assets` | the licensed art folder, read only |
 | `MMO_CATALOG` | `--catalog` | `<assets>/catalog.json` | the art catalog |
+| `MMO_SYNTHESIS` | `--synthesis` | `<content>/synthesis/fantasy-kingdom.local.json` | optional Unity building/interior synthesis library |
 | `MMO_WORLD_SPEC` | `--world-spec` | `packages/engine-core/worlds/default.world.json` | the world to bake and to site towns in |
 | `MMO_SETTLEMENT_OUT` | `--settlement-out` | `<content>/settlements` | settlement manifests |
 | `MMO_SCENES_DIR` | `--scenes-dir` | `<content>/scenes` | town scenes (the server's `MMO_SCENES` is an alias) |
