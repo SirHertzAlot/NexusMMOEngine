@@ -52,6 +52,9 @@ flowchart TD
 5. **[05. Business Case & Cloud Infrastructure Economics](05-business-case-and-cloud-economics.md)**
    Financial model and server operating expenditure (OpEx) analysis. Compares traditional dedicated server hosting costs ($0.80–$1.50 per concurrent user/month) against Nexus MMO's high-density Edge/Core substrate ($0.03–$0.07 per CCU/month), demonstrating a **15x–20x hosting cost reduction** and web-first frictionless conversion economics.
 
+6. **[Engine Standing, Comparative Analysis & Performance Deep Dive](ENGINE-COMPARISON-AND-PERFORMANCE.md)**
+   The engine's architectural standing relative to industry-standard engines, its design philosophy (unconstrained engine substrate), the graphics modernization pathway (OpenGL vs. WebGL vs. WebGPU), and a performance audit with the native C++ optimization roadmap. Moved here from the public `docs/` folder on 2026-11-12 so the public manuals cover the engine alone (AGENTS.md §1).
+
 ---
 
 ## 💻 Interactive Documentation & Tooling Integration
