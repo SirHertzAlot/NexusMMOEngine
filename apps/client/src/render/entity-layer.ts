@@ -651,6 +651,10 @@ export class EntityLayer {
         this.roads.set(wid, e.transform);
         continue;
       }
+      // Invisible physics-only collider volumes (split doorways, stepped stairs, pivot-compensated bounds).
+      if (e.asset?.assetHash === COLLIDER_ASSET_HASH) {
+        continue;
+      }
       this.watchDamage(wid, e);
       // A far animal is one stand-in in the instanced batch (WL2 far LOD): see gateFarAnimal.
       const animalMesh = this.meshes.get(wid);
@@ -1076,6 +1080,8 @@ export class EntityLayer {
  */
 /** The AssetRef hash of the paved street slab (`structure:paved_road`, as the server's scene spawner names it). */
 const PAVED_ROAD_HASH = fnv1a32("structure:paved_road");
+/** Invisible physics-only colliders emitted by modular scene export (`prefab: "collider"`). */
+const COLLIDER_ASSET_HASH = fnv1a32("collider");
 
 function isStaticProp(body: BodyConfigRow | undefined, asset: AssetRefRow | undefined): boolean {
   return body !== undefined ? body.motionType === MotionType.Static : asset !== undefined;

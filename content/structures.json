@@ -35,6 +35,13 @@
     "library": {"health":800,"into":"variant","minStrength":20,"repair":{"material":"yew-log","count":12,"castSeconds":8}},
     "school": {"health":800,"into":"variant","minStrength":20,"repair":{"material":"yew-log","count":12,"castSeconds":8}},
     "rectory": {"health":800,"into":"variant","minStrength":20,"repair":{"material":"yew-log","count":12,"castSeconds":8}},
-    "bathhouse": {"health":800,"into":"variant","minStrength":20,"repair":{"material":"yew-log","count":12,"castSeconds":8}}
+    "bathhouse": {"health":800,"into":"variant","minStrength":20,"repair":{"material":"yew-log","count":12,"castSeconds":8}},
+    "wall": {"health":200,"into":"remove","minStrength":14},
+    "pillar": {"health":250,"into":"remove","minStrength":14},
+    "floor": {"health":150,"into":"remove","minStrength":14},
+    "ceiling": {"health":120,"into":"remove","minStrength":14},
+    "stairs": {"health":200,"into":"remove","minStrength":14},
+    "railing": {"health":40,"into":"remove","minStrength":14},
+    "structure": {"health":150,"into":"remove","minStrength":14}
   }
 }

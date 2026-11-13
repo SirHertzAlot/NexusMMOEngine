@@ -16,7 +16,7 @@ const MODULES = join(REPO, "modules");
  * that own them (combat, creatures, physics, ...), each building its own
  * systems; core only holds what server.ts still builds for the whole host.
  */
-const CORE_ORDER = ["reloader", "streamer", "gathering", "chests", "breaks"];
+const CORE_ORDER = ["reloader", "streamer", "gathering", "chests", "breaks", "collapse"];
 
 const fake = (name: string): SimSystem => ({ name, step() {} });
 const coreProvided = (skip: string[] = []): Record<string, SimSystem | undefined> =>
