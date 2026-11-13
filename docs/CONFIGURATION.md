@@ -199,6 +199,7 @@ These apply to `npm run bake:all`, the settlement tools and the test runner. A f
 | `MMO_CONTENT_DIR` | `<repo>/content` | Where authored content lives. Settlement rules stay with the repo even if this moves. |
 | `MMO_ASSETS_DIR` | `<repo>/assets` | The art folder (present only where the licensed art is). |
 | `MMO_CATALOG` | `<assets>/catalog.json` | The art catalog. |
+| `MMO_SYNTHESIS` | `<content>/synthesis/fantasy-kingdom.local.json` | Optional Unity building/interior synthesis library (`--synthesis` in `settlement:bake` / `bake:all`). |
 | `MMO_SETTLEMENT_OUT` | `<content>/settlements` | Where baked settlements are written and read. |
 | `MMO_SETTLEMENT_RULES` | `content/settlements/rules.json` | The town generator's rules file (the editor's Towns screen edits it). |
 | `MMO_SCALE_OUT` | `<content>/scale.local.json` | Where `scale-fit` writes the fitted model scales (gitignored). |

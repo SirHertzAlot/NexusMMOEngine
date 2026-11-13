@@ -13,8 +13,6 @@ import { bakeWorldTerrain } from "../src/terrain/world-bake.js";
 import { TerrainTileStore } from "../src/persist/terrain-tiles.js";
 import { parseWorldSpec, type WorldSpec } from "../src/terrain/world-spec.js";
 import { maskHash } from "../src/terrain/terrain-mask.js";
-import { coarseGrid, fieldSeed, noiseField, surveyWorld } from "../src/terrain/survey.js";
-import { maskSourceOf } from "../src/terrain/mask-bake.js";
 
 const TINY: WorldSpec = parseWorldSpec({
   name: "tiny-mask",
@@ -83,37 +81,6 @@ describe("terrain masks through the world bake", () => {
     assert.deepEqual(baseline, GOLDEN);
   });
 
-  // TEMPORARY diagnostic (remove once the CI golden mismatch is explained): environment and per-stage hashes.
-  it("MASK-DIAG: environment and per-stage hashes", () => {
-    const s = surveyWorld(TINY) as unknown as Record<string, ArrayBufferView | undefined>;
-    const h = (a: ArrayBufferView | undefined): string => (a ? maskHash(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)) : "absent");
-    const src = maskSourceOf(surveyWorld(TINY));
-    const swellNoise = noiseField(coarseGrid(TINY), fieldSeed(TINY.seed, 1), TINY.land.reliefScale);
-    const diag = {
-      node: process.version,
-      v8: process.versions.v8,
-      platform: os.platform(),
-      arch: os.arch(),
-      endian: os.endianness(),
-      cpuModel: os.cpus()[0]?.model,
-      cpus: os.cpus().length,
-      survey: Object.fromEntries(["height", "roughness", "biome", "moisture", "rain", "temperature", "water", "waterLevel", "ice", "flow"].map((k) => [k, h(s[k])])),
-      maskSource: { slope: h(src.slope), moisture: h(src.moisture), flow: h(src.flow), biome: h(src.biome) },
-      channels: baseline,
-      procgenSwell: h(swellNoise),
-      inputs: {
-        spec: maskHash(new TextEncoder().encode(JSON.stringify(TINY))),
-        maskSpec: maskHash(new TextEncoder().encode(JSON.stringify(DEFAULT_TERRAIN_MASK_SPEC))),
-        lang: process.env.LANG ?? null,
-        lcAll: process.env.LC_ALL ?? null,
-        tz: process.env.TZ ?? null,
-        icu: process.versions.icu ?? null,
-        parallelism: typeof os.availableParallelism === "function" ? os.availableParallelism() : null,
-      },
-    };
-    console.log("MASK-DIAG " + JSON.stringify(diag));
-  });
-
   it("masks:false stores no masks and reports no mask time", async () => {
     const off = await bakeHashes(false);
     assert.equal(off.maskMs, null);
@@ -143,10 +110,13 @@ describe("terrain masks through the world bake", () => {
 // FNV-1a of each channel's bytes for the tiny world, default mask spec. Changing
 // these is changing the mask data: say why in the PR.
 const GOLDEN: Record<string, string> = {
-  base: "0fb28e9b", // repinned: base takes the biome input (rock, wet, path unchanged)
-  rock: "abdbd432",
-  wet: "5495cfa9",
-  path: "38699dc5", // no road field in the survey yet: this channel is empty
+  // Re-pinned when procgen moved to a strict-IEEE build (no fast-math, no -march, FMA off): the
+  // procgen swell noise is now the same bits on every runner (local 1d2cac87; the old fast-math build
+  // gave c85212f1 locally and 2c0db823 on the AMD runner). Base, rock and wet move with it; path is unchanged.
+  base: "cd45512a",
+  rock: "6eade513",
+  wet: "4e365432",
+  path: "38699dc5",
 };
 
 describe("overworld detail layers through the world bake", () => {

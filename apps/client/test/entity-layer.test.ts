@@ -12,6 +12,7 @@ import type { BodyConfigRow, TransformRow } from "@mmo-engine/protocol";
 import { Interpolator, MirrorState } from "@mmo-engine/mirror";
 import { PlaceholderAssets } from "../src/render/assets.js";
 import { classifyAimedBodyPart, EntityLayer } from "../src/render/entity-layer.js";
+import { fnv1a32 } from "../src/render/synty-props.js";
 import { clampCamDistance, followCamera, MAX_CAM_DISTANCE, MIN_CAM_DISTANCE } from "../src/render/follow-camera.js";
 import { TerrainRenderer } from "../src/render/terrain/terrain-renderer.js";
 
@@ -92,6 +93,17 @@ describe("EntityLayer", () => {
     layer.sync(state, interp, 1, null);
     assert.equal(ownMeshes(layer).length, 0);
     assert.equal(batchedCount(layer), 50);
+    layer.dispose();
+  });
+
+  it("hides invisible collider assets (prefab collider) from both meshes and static prop batches", () => {
+    const { layer, state, interp } = setup();
+    const colHash = fnv1a32("collider");
+    state.entities.set(1n, { wireId: 1n, transform: transform(1n, 2, 2), body: body(1n, STATIC), asset: { wireId: 1n, assetHash: colHash, variant: 0 } });
+    state.entities.set(2n, { wireId: 2n, transform: transform(2n, 5, 5), body: body(2n, STATIC) });
+    layer.sync(state, interp, 1, null);
+    assert.equal(ownMeshes(layer).length, 0);
+    assert.equal(batchedCount(layer), 1, "only non-collider static prop is batched");
     layer.dispose();
   });
 
