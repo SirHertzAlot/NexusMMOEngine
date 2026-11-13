@@ -3,3 +3,4 @@ export { loadVendors, loadVendorTemplates, type VendorTemplate } from "./vendors
 export { loadStructureBreakables } from "./structures.js";
 export { BreakSystem, breakDefsOf, type BreakEvent, type BreakSystemOptions } from "./breaks.js";
 export { ChestSystem, InteractActionSchema, type ChestCheck, type ChestResult, type ChestSpec, type ChestSystemOptions } from "./chests.js";
+export { CollapseSystem, type CollapseOptions, type CollapsePartSpec } from "./collapse.js";

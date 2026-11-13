@@ -238,7 +238,7 @@ import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { loadLessons } from "./residents/lessons.js";
-import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem, CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import {
@@ -1097,12 +1097,15 @@ async function main(): Promise<void> {
     return vs.attach(eid, template) ? null : "could not attach";
   };
   const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
+  // Buildings that fall when their parts break (DE4): parts stay static until one breaks.
+  const collapse = new CollapseSystem();
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
     store: placesStore,
     // Mending a building spends the pouch (gathered materials).
     materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
     killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
     onBreak: (s, ev) => {
+      collapse.partBroken(s, ev.eid);
       if (ev.loot === undefined) return;
       const killer = ev.killer;
       const owner = killer !== undefined && hasComponent(s.ecs, CharacterRef, killer) ? CharacterRef.idHi[killer] * 4294967296 + CharacterRef.idLo[killer] : 0;
@@ -1163,6 +1166,7 @@ async function main(): Promise<void> {
             }
           : undefined,
         breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
+        collapse: { registerBuilding: (s, key, parts) => collapse.registerBuilding(s, key, parts) },
         structureBreakable: (kind) => structureKinds.get(kind),
         vendors: { attach: attachVendor },
         quests: {
@@ -1314,6 +1318,7 @@ async function main(): Promise<void> {
         gathering,
         chests,
         breaks,
+        collapse,
       },
     },
     ctx: moduleCtx,
