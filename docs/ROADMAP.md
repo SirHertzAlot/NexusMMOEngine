@@ -280,7 +280,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | CF3 | **Interface choreography**: menu definitions, theme tokens, focus state machine, rarity sheen | proposed | generic 4; CF1 |
 | CF4 | **Follow-chains**: spring-damper secondary motion (hair, capes, tails) with LOD tiers and a global chain budget | proposed | generic 5; CF1; the LOD block is required at 50,000 entities |
 | CF5 | **Text performance**: dialogue typewriter, per-glyph effects, glossary auto-colouring | proposed | generic 3; CF1; when the dialogue lane is scheduled |
-| CF6 | **Spatial inventory**: footprint, rotation and stack rules as data, server-validated moves | proposed | generic 6; extends U10a; when inventory UI is scheduled |
+| CF6 | **Spatial inventory**: footprint, rotation and stack rules as data, server-validated moves | in progress | Server side done: `protocol/spatial-grid.ts` (shared placement checks, first fit, packing), item base `footprint` and loot `bagColumns` in the rules, `ItemStore` grid bag (cells, anchor and turn persisted in the ledger slot, legacy slots restore, footprint-aware room checks), validated `move` op, inventory `grid` and `at`, protocol v31. Content: 48 cells, 8 across, footprints for weapons and armour. Plain slot bags are unchanged. **Not built: the client grid UI (drag, snap, rotate, validity highlight) and stack/combine rules.** Generic 6 |
 
 ## 3. Characters, combat and social
 

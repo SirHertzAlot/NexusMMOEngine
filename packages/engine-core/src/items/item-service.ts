@@ -89,7 +89,7 @@ export class ItemService implements SimSystem {
     this.loot = o.loot;
     this.tickHz = o.tickHz;
     this.groundHeightAt = o.groundHeightAt ?? (() => 0);
-    this.store = new ItemStore(o.loot.bagSlots);
+    this.store = new ItemStore(o.loot.bagSlots, undefined, { columns: o.loot.bagColumns, footprintOf: (def) => this.defs.footprint[def] ?? [1, 1] });
     this.rankOrder = o.rankOrder ?? [];
     this.starterBase = o.starterBase ?? null;
     this.atomicGrant = o.atomicGrant ?? null;
@@ -164,8 +164,8 @@ export class ItemService implements SimSystem {
     if (owner !== 0 && owner !== character && sim.currentTick < WorldItem.ownedUntil[eid]) {
       return { ok: false, error: "that belongs to someone else for now" };
     }
-    if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
     const item = WorldItem.item[eid];
+    if (!this.store.canFit(character, [this.store.defs[this.store.slot(item)]!])) return { ok: false, error: "your bag is full" };
     this.removeGroundEntity(sim, item, eid);
     this.store.putInBag(character, item);
     return { ok: true, message: `picked up ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
@@ -203,7 +203,7 @@ export class ItemService implements SimSystem {
     const at = (ARMOUR_SLOTS as readonly string[]).indexOf(slot);
     if (at < 0) return { ok: false, error: "you can't wear that" };
     const out = this.store.worn(character)[at];
-    if (out !== 0 && this.store.emptySlots(character) < 1) return { ok: false, error: "your bag is too full to swap" };
+    if (out !== 0 && !this.store.canFit(character, [this.store.defs[this.store.slot(out)]!], [item])) return { ok: false, error: "your bag is too full to swap" };
     this.store.wear(character, item, at);
     if (out !== 0) this.store.putInBag(character, out);
     return { ok: true, message: `wearing ${this.defs.names[def]}` };
@@ -236,8 +236,8 @@ export class ItemService implements SimSystem {
       if (main) out.push(main);
       if (off) out.push(off);
     }
-    // The item leaves the bag, so its slot is free for one of them.
-    if (out.length > this.store.emptySlots(character) + 1) return { ok: false, error: "your bag is too full to swap" };
+    // The item leaves the bag, so its cells are free for what comes back.
+    if (!this.store.canFit(character, out.map((o) => this.store.defs[this.store.slot(o)]!), [item])) return { ok: false, error: "your bag is too full to swap" };
     this.store.hold(character, item, hand === HAND_CODE.off ? HandSlot.Off : HandSlot.Main);
     for (const o of out) this.store.putInBag(character, o);
     return { ok: true, message: `holding ${this.defs.names[def]}` };
@@ -255,14 +255,14 @@ export class ItemService implements SimSystem {
     if (slot === "main" || slot === "off") {
       const item = this.store.hands(character)[slot === "main" ? HandSlot.Main : HandSlot.Off];
       if (!item) return { ok: false, error: "that hand is empty" };
-      if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
+      if (!this.store.canFit(character, [this.store.defs[this.store.slot(item)]!])) return { ok: false, error: "your bag is full" };
       this.store.putInBag(character, item);
       return { ok: true, message: `put away ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
     }
     const at = (ARMOUR_SLOTS as readonly string[]).indexOf(slot);
     const item = this.store.worn(character)[at];
     if (!item) return { ok: false, error: "that slot is empty" };
-    if (!this.store.hasRoom(character)) return { ok: false, error: "your bag is full" };
+    if (!this.store.canFit(character, [this.store.defs[this.store.slot(item)]!])) return { ok: false, error: "your bag is full" };
     this.store.putInBag(character, item);
     return { ok: true, message: `took off ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
   }
@@ -319,7 +319,7 @@ export class ItemService implements SimSystem {
   /** Give a new item straight into a bag (admin `give`). */
   give(character: number, def: number): ItemResult {
     if (def < 0 || def >= this.defs.count) return { ok: false, error: "no such item" };
-    if (!this.store.hasRoom(character)) return { ok: false, error: "the bag is full" };
+    if (!this.store.canFit(character, [def])) return { ok: false, error: "the bag is full" };
     const item = this.store.create(def, this.defs.durability[def]);
     this.store.putInBag(character, item);
     return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
@@ -338,7 +338,7 @@ export class ItemService implements SimSystem {
   async giveGranted(character: number, def: number): Promise<ItemResult> {
     if (!this.atomicGrant) return this.give(character, def);
     if (def < 0 || def >= this.defs.count) return { ok: false, error: "no such item" };
-    if (!this.store.hasRoom(character)) return { ok: false, error: "the bag is full" };
+    if (!this.store.canFit(character, [def])) return { ok: false, error: "the bag is full" };
     // Allocate the item's identity locally first (it exists nowhere
     // yet: created in the Free state, in no bag) so the world grant
     // and the local item share one instance id.
@@ -521,11 +521,32 @@ export class ItemService implements SimSystem {
     return rows.length > 0 ? { kind: "drops", drops: rows } : null;
   }
 
+  /** Move an item within a grid bag (CF6): the store checks the placement, so a client cannot put anything anywhere. */
+  move(character: number, item: number, to: { x: number; y: number; rot: boolean }): ItemResult {
+    if (!this.store.spatial) return { ok: false, error: "this bag is not a grid" };
+    const refusal = this.store.moveInBag(character, item, to);
+    if (refusal === null) return { ok: true, message: "moved" };
+    return { ok: false, error: refusal === "not-yours" ? "you don't have that" : refusal === "outside" ? "that does not fit there" : refusal === "occupied" ? "something is in the way" : "that can't be turned" };
+  }
+
   /** What a character's bag holds, for the inventory message. */
   inventoryOf(character: number): InventoryMessage {
     const bag = this.store.bag(character);
     const out: InventoryMessage["bag"] = [];
-    for (let i = 0; i < bag.length; i++) out.push(bag[i] === 0 ? null : this.view(bag[i]));
+    const spatial = this.store.spatial;
+    for (let i = 0; i < bag.length; i++) {
+      if (bag[i] === 0) {
+        out.push(null);
+        continue;
+      }
+      const view = this.view(bag[i]);
+      if (spatial) {
+        const at = this.store.placementOf(character, bag[i])!;
+        const f = this.store.footprint(this.store.defs[this.store.slot(bag[i])]);
+        view.at = { x: at.x, y: at.y, rot: at.rot, w: at.rot ? f[1] : f[0], h: at.rot ? f[0] : f[1] };
+      }
+      out.push(view);
+    }
     const hands = this.store.hands(character);
     const wornItems = this.store.worn(character);
     const worn: NonNullable<InventoryMessage["worn"]> = {};
@@ -534,6 +555,7 @@ export class ItemService implements SimSystem {
     });
     return {
       kind: "inventory",
+      ...(spatial ? { grid: { columns: this.store.grid.columns, rows: this.store.grid.rows, slots: this.store.bagSlots } } : {}),
       bag: out,
       main: hands[HandSlot.Main] ? this.view(hands[HandSlot.Main]) : null,
       off: hands[HandSlot.Off] ? this.view(hands[HandSlot.Off]) : null,
