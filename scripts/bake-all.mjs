@@ -39,7 +39,7 @@ const HELP = `npm run bake:all -- [options]
   --population N         people per town (default 600); --auto-size falls back to 300 then 100 when no site fits
   --seed N  --settlement-id ID   town seed (default 1234; +1 per extra town) and first id (default 0001; 0002, ...)
 paths (flag, or the variable; flags win): ${PATH_FLAGS.map((f) => `--${f}`).join(" ")}
-  MMO_REPO MMO_DATA_DIR MMO_CONTENT_DIR MMO_ASSETS_DIR MMO_CATALOG MMO_WORLD_SPEC MMO_SETTLEMENT_OUT MMO_SCENES_DIR MMO_SCALE_OUT`;
+  MMO_REPO MMO_DATA_DIR MMO_CONTENT_DIR MMO_ASSETS_DIR MMO_CATALOG MMO_SYNTHESIS MMO_WORLD_SPEC MMO_SETTLEMENT_OUT MMO_SCENES_DIR MMO_SCALE_OUT`;
 
 // ---- running commands
 
@@ -96,7 +96,7 @@ const node = (ctx, rel, args) => ({ cmd: process.execPath, args: [join(ctx.paths
 
 const IMPL = {
   build: {
-    cmds: () => [{ cmd: "npm", args: ["run", "build", "-w", "@mmo-engine/engine-core", "-w", "@mmo-engine/settlement", "-w", "@mmo-engine/dungeon"], shown: "npm run build -w engine-core -w settlement -w dungeon" }],
+    cmds: () => [{ cmd: "npm", args: ["run", "build", "-w", "@mmo-engine/engine-core", "-w", "@mmo-engine/synthesis", "-w", "@mmo-engine/settlement", "-w", "@mmo-engine/dungeon"], shown: "npm run build -w engine-core -w synthesis -w settlement -w dungeon" }],
   },
   world: {
     cmds: (c) => [node(c, "packages/engine-core/dist/src/bake-world.js", c.opts.force ? ["--force"] : [])],
@@ -181,6 +181,7 @@ function townCommand(c, k, population) {
     "--world", c.paths.worldSpec, "--site", String(k + 1), "--id", id, "--seed", String((c.opts.seed + k) >>> 0), "--population", String(population),
     "--scene", "--scale", c.paths.scaleBase, "--out", c.paths.settlementOut, "--scenes", c.paths.scenesDir,
     ...(c.paths.hasCatalog ? ["--catalog", c.paths.catalog] : []),
+    ...(c.paths.hasSynthesis ? ["--synthesis", c.paths.synthesis] : []),
   ];
   return node(c, "packages/settlement/dist/src/cli.js", args);
 }
@@ -226,11 +227,12 @@ async function main() {
     ...process.env,
     MMO_REPO: paths.repo, MMO_DATA_DIR: paths.dataDir, MMO_CONTENT_DIR: paths.contentDir, MMO_ASSETS_DIR: paths.assetsDir, MMO_CATALOG: paths.catalog,
     MMO_WORLD_SPEC: paths.worldSpec, MMO_SETTLEMENT_OUT: paths.settlementOut, MMO_SCENES_DIR: paths.scenesDir, MMO_SCALE_OUT: paths.scaleOut,
+    ...(paths.hasSynthesis ? { MMO_SYNTHESIS: paths.synthesis } : {}),
   };
   const ctx = { opts, paths, env };
 
   log(`[bake:all] ${opts.dryRun ? "plan (dry run)" : "paths"}:`);
-  for (const k of ["repo", "dataDir", "contentDir", "assetsDir", "catalog", "worldSpec", "settlementOut", "scenesDir", "scaleOut"]) log(`  ${k.padEnd(14)} ${paths[k]}   (${paths.sources[k]})`);
+  for (const k of ["repo", "dataDir", "contentDir", "assetsDir", "catalog", "synthesis", "worldSpec", "settlementOut", "scenesDir", "scaleOut"]) log(`  ${k.padEnd(14)} ${paths[k]}   (${k === "synthesis" && !paths.hasSynthesis ? "absent; fallback boxes" : paths.sources[k]})`);
   if (!paths.hasCatalog) log(`  WARNING: no art catalog: scale-fit and wildlife steps are skipped, towns are stand-in boxes`);
   log(opts.sites === "max"
     ? `  towns: as many as the world supports (counted when the settlement step runs) x ${opts.population} people${opts.autoSize ? " (auto-size)" : ""}, first id ${opts.settlementId}, seed ${opts.seed}`

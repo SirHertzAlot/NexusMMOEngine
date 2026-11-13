@@ -130,15 +130,23 @@ describe("buildings", () => {
 });
 
 describe("content/structures.json", () => {
-  it("parses, and every kind is a building that stays broken until mended", () => {
+  // The parts a modular building is made of (DE4): they break away for good, and the building falls round the gap.
+  const PARTS = new Set(["wall", "pillar", "floor", "ceiling", "stairs", "railing", "structure"]);
+  it("parses, and every building kind stays broken until mended, every part kind breaks away", () => {
     const kinds = loadStructureBreakables(fileURLToPath(new URL("../../../../../content/structures.json", import.meta.url)));
     assert.ok(kinds.size > 20);
     for (const [kind, def] of kinds) {
-      assert.equal(def.into, "variant", kind);
       assert.equal(def.respawnS, null, kind);
-      assert.ok(def.repair && def.minStrength, kind);
+      assert.ok(def.minStrength, kind);
+      if (PARTS.has(kind)) {
+        assert.equal(def.into, "remove", kind);
+      } else {
+        assert.equal(def.into, "variant", kind);
+        assert.ok(def.repair, kind);
+      }
     }
     assert.ok(kinds.has("farmhouse"));
+    for (const p of PARTS) assert.ok(kinds.has(p), p);
   });
 });
 
