@@ -136,6 +136,20 @@ export class CollapseSystem implements SimSystem {
     return this.falling.find((f) => f.visual === visual)?.carrier;
   }
 
+  /**
+   * Where a building part really is, for hitting it (DE4c): the model's middle (its pivot position plus the offset,
+   * turned with it, so a part that has fallen is followed), and how far its box reaches. Undefined for anything that
+   * is not a registered part. The pivot (the top of a wall) is not where a blow lands.
+   */
+  hitBody(sim: SimWorld, eid: number): { x: number; y: number; z: number; rx: number; ry: number } | undefined {
+    const at = this.of.get(sim.wireId(eid));
+    if (!at) return undefined;
+    const part = at.building.parts[at.index]!;
+    const T = Transform;
+    const o = rotate(part.offset, T.qx[eid]!, T.qy[eid]!, T.qz[eid]!, T.qw[eid]!);
+    return { x: T.px[eid]! + o[0], y: T.py[eid]! + o[1], z: T.pz[eid]! + o[2], rx: Math.min(3, Math.max(part.size[0], part.size[2]) / 2), ry: part.size[1] / 2 };
+  }
+
   /** Register a building: its parts' entities and boxes. Builds its support graph once. */
   registerBuilding(sim: SimWorld, key: string, specs: readonly CollapsePartSpec[], o: SupportOptions = {}): SupportGraph {
     const graph = buildSupportGraph(specs.map((s) => s.part), o);

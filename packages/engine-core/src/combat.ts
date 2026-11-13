@@ -125,6 +125,17 @@ export interface CombatSkills {
 /** How hard a fight is taken to be for training, by default (combat.json `resolution.fightDifficulty`). */
 export const FIGHT_DIFFICULTY = DEFAULT_COMBAT_TUNING.resolution.fightDifficulty;
 
+/** A target's body for hitting: its middle, and how far its box reaches from it. */
+export interface HitBody {
+  x: number;
+  y: number;
+  z: number;
+  /** Half its width/depth, metres: the reach is measured to its edge, not its middle. */
+  rx: number;
+  /** Half its height, metres. */
+  ry: number;
+}
+
 export interface CombatDamage {
   hooks: RuleHooks;
   /** The weapon an entity holds; null or absent means fists. */
@@ -149,6 +160,13 @@ export interface CombatDamage {
   damageScale?: (source: number, target: number) => number;
   /** What the kind of a blow does to its target (a breakable prop weak or proof against it). Absent means 1. */
   kindScale?: (target: number, kind: string) => number;
+  /**
+   * Where a target really is, when its `Transform` is not it (DE4c): a modular building part is placed at its model's
+   * pivot (the top of a wall, 2.5 m up), so reach, cone and height are measured to its middle, and a long wall is
+   * reached anywhere along it (`rx`: its horizontal half-size; `ry`: its vertical half-size). Absent or undefined for
+   * a target: its Transform, as a point.
+   */
+  hitBody?: (target: number) => HitBody | undefined;
   /** The rules a blow is resolved by, read each strike (a reload applies at once); absent: the engine defaults. */
   tuning?: () => CombatTuning;
 }
@@ -360,10 +378,11 @@ export class CombatSystem implements SimSystem {
       const t = ids[i] as number;
       if (t === e || Health.current[t] <= 0) continue;
       if (dmg.canHit && !dmg.canHit(e, t)) continue; // PvP gate: duels and hostile pairs only
-      const dx = Transform.px[t] - Transform.px[e];
-      const dz = Transform.pz[t] - Transform.pz[e];
+      const hb = dmg.hitBody?.(t);
+      const dx = (hb ? hb.x : Transform.px[t]) - Transform.px[e];
+      const dz = (hb ? hb.z : Transform.pz[t]) - Transform.pz[e];
       const d = Math.hypot(dx, dz);
-      if (d > reach || Math.abs(Transform.py[t] - Transform.py[e]) > res.maxHeightDifferenceM) continue;
+      if (d - (hb?.rx ?? 0) > reach || Math.abs((hb ? hb.y : Transform.py[t]) - Transform.py[e]) - (hb?.ry ?? 0) > res.maxHeightDifferenceM) continue;
       if (d > 1e-4 && (dx * fx + dz * fz) / d < coneCos) continue;
       let outcome: HitEvent["outcome"] = "hit";
       let amount = 0;

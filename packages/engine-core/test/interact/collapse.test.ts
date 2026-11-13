@@ -213,6 +213,24 @@ describe("CollapseSystem", () => {
     assert.equal(sys.stats.queued, 1, "the door, once");
   });
 
+  it("says where a part really is for hitting it: its middle, and how far its box reaches", () => {
+    const { sim, sys, visuals, run, carrier } = build({ waveDelayS: 0.01 });
+    const north = sys.hitBody(sim, visuals[1]!)!;
+    assert.ok(Math.abs(north.x - HOUSE[1]!.pos[0]) < 1e-4 && Math.abs(north.y - HOUSE[1]!.pos[1]) < 1e-4 && Math.abs(north.z - HOUSE[1]!.pos[2]) < 1e-4, "the middle, not the pivot");
+    assert.equal(north.rx, 3, "a 6 m wall reaches 3 m either side (capped at 3)");
+    assert.ok(Math.abs(north.ry - 1.5) < 1e-6);
+    assert.equal(sys.hitBody(sim, 9999), undefined);
+    // After it falls, the middle follows the carrier.
+    sys.partBroken(sim, visuals[2]!);
+    run(0.2);
+    const door = visuals[6]!;
+    const c = carrier(door);
+    Transform.py[c] = Transform.py[c]! - 1;
+    sys.step(sim, DT);
+    const fell = sys.hitBody(sim, door)!;
+    assert.ok(Math.abs(fell.y - Transform.py[c]!) < 1e-4, "the falling door is hit where its body is");
+  });
+
   it("works a building out once however many of its parts broke in the tick", () => {
     const { sim, sys, visuals } = build({ waveDelayS: 0.001 });
     // The floor and both side walls at once: one pass, and every part that lost its support is queued exactly once.
