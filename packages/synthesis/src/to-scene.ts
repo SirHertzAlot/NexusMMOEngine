@@ -195,6 +195,7 @@ export function buildingToSceneNodes(
     const [sx, sy, sz] = p.transform.scale;
     const nonUnitScale = Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01 || Math.abs(sz - 1) > 0.01;
     const resolvedAsset = opts.assets?.[p.assetRef] ?? p.assetRef;
+    const lb = localScaledBounds(p);
 
     children.push({
       id: `${opts.id}-vis-${i}`,
@@ -211,6 +212,11 @@ export function buildingToSceneNodes(
           width: Math.max(0.1, mm(Math.abs(w))),
           depth: Math.max(0.1, mm(Math.abs(d))),
           height: Math.max(0.1, mm(Math.abs(h))),
+          // A part's position is its model's pivot, which is not the middle of the model (a wall's pivot is at its top
+          // and one end): `centre*` is where the middle lies from the pivot, in the part's own axes, before its yaw.
+          centreX: mm((lb.minX + lb.maxX) / 2),
+          centreY: mm((lb.minY + lb.maxY) / 2),
+          centreZ: mm((lb.minZ + lb.maxZ) / 2),
         },
         Collider: { shape: "none" },
         ...(p.interaction?.kind === "vendor"

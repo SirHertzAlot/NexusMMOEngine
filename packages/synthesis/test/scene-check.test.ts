@@ -68,3 +68,26 @@ describe("checkSettlementScene", () => {
     assert.equal(scene.nodes[0]!.children![0]!.children!.length, 12);
   });
 });
+
+describe("part pivots", () => {
+  // Three parts whose nodes sit far apart but whose models (centre offsets from the pivot) make one connected block.
+  const withCentre = (id: string, x: number, cx: number): SceneNode => ({
+    id,
+    name: "p",
+    transform: { position: [x, 0, 0], rotation: [0, 0, 0] },
+    components: { Structure: { kind: "wall", asset: "p/SM_Bld_Wall_01", width: 2, depth: 2, height: 2, centreX: cx, centreY: 1, centreZ: 0 } },
+  });
+  it("judges parts by where their models are, not where their pivots are", () => {
+    // Pivots at x 0, 10, 20; the models' middles are 5 m, 0 m and -5 m from them: 5, 10, 15 are 5 apart (detached),
+    // so use offsets 5 / 0 / -5 on pivots 3 / 8 / 13 -> middles at 8 each: one stack.
+    const g = group("g", "house", [withCentre("g-vis-0", 3, 5), withCentre("g-vis-1", 8, 0), withCentre("g-vis-2", 13, -5)]);
+    const r = checkSettlementScene(doc(g));
+    assert.equal(r.report.buildings[0]!.removed.isolated + r.report.buildings[0]!.removed.smallGroup, 0);
+    assert.equal(r.scene.nodes[0]!.children![0]!.children!.length, 3);
+  });
+  it("without the offsets the same pivots are three detached parts", () => {
+    const g = group("g", "house", [withCentre("g-vis-0", 3, 0), withCentre("g-vis-1", 8, 0), withCentre("g-vis-2", 13, 0)]);
+    const r = checkSettlementScene(doc(g));
+    assert.ok(r.report.buildings[0]!.removed.isolated > 0);
+  });
+});

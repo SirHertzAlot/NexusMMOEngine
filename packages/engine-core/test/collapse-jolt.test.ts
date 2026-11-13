@@ -8,9 +8,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { addComponent, hasComponent } from "bitecs";
-import type { SupportPart } from "@mmo-engine/placement";
 import { BodyConfig, MotionType, PhysicsSystem, ShapeKind, SimWorld, STEP_MS, Transform, Velocity, createJoltBackend } from "../src/index.js";
-import { CollapseSystem } from "../src/interact/collapse.js";
+import { CollapseSystem, type CollapsePartSpec } from "../src/interact/collapse.js";
 
 const require = createRequire(import.meta.url);
 const dt = STEP_MS / 1000;
@@ -42,50 +41,58 @@ function box(sim: SimWorld, y: number, size: [number, number, number]): number {
   return e;
 }
 
-const part = (e: number, category: string, y: number, size: [number, number, number]): { eid: number; colliders: number[]; part: SupportPart } => ({
-  eid: e,
-  colliders: [],
-  part: { pos: [0, y, 0], size, yawDeg: 0, category },
-});
+/** The model entity of a part (no body) and its collider (a static box at the middle). */
+function partOf(sim: SimWorld, category: string, y: number, size: [number, number, number]) {
+  const model = sim.spawn();
+  addComponent(sim.ecs, Transform, model);
+  Transform.py[model] = y;
+  Transform.qw[model] = 1;
+  const col = box(sim, y, size);
+  const spec: CollapsePartSpec = { eid: model, colliders: [col], part: { pos: [0, y, 0], size, yawDeg: 0, category } };
+  return { model, col, spec };
+}
 
-test("a part that loses its support falls onto what is below and freezes there", (t) => {
+test("a part that loses its support falls onto what is below, its model follows, and it freezes there", (t) => {
   if (!addonBuilt()) {
     t.skip("native physics addon not built");
     return;
   }
   const sim = new SimWorld();
   // A floor slab, a wall block resting on it, and another block resting on the wall.
-  const floor = box(sim, 0, [10, 1, 10]);
-  const lower = box(sim, 1, [2, 1, 2]);
-  const upper = box(sim, 2, [2, 1, 2]);
+  const floor = partOf(sim, "floor", 0, [10, 1, 10]);
+  const lower = partOf(sim, "wall", 1, [2, 1, 2]);
+  const upper = partOf(sim, "wall", 2, [2, 1, 2]);
   const collapse = new CollapseSystem({ waveDelayS: 0.05, settleS: 0.5 });
-  collapse.registerBuilding(sim, "tower", [
-    part(floor, "floor", 0, [10, 1, 10]),
-    part(lower, "wall", 1, [2, 1, 2]),
-    part(upper, "wall", 2, [2, 1, 2]),
-  ]);
+  collapse.registerBuilding(sim, "tower", [floor.spec, lower.spec, upper.spec]);
   const physics = new PhysicsSystem(createJoltBackend());
   try {
-    // Settle the static scene a few ticks, then break the lower block (the break system would despawn it).
+    // Let the static scene settle a few ticks, then break the lower block (the break system would despawn it).
     for (let i = 0; i < 5; i++) {
       collapse.step(sim, dt);
       physics.step(sim, dt);
     }
-    assert.equal(Transform.py[upper], 2, "static parts do not move");
-    sim.despawn(lower);
-    assert.equal(collapse.partBroken(sim, lower), 1);
-    let sawDynamic = false;
+    assert.equal(Transform.py[upper.model], 2, "static parts do not move");
+    sim.despawn(lower.model);
+    assert.equal(collapse.partBroken(sim, lower.model), true);
+    assert.equal(sim.resolveWireId(sim.wireId(lower.col)), -1, "its collider went with it");
+    let fell = false;
     for (let i = 0; i < 240; i++) {
       collapse.step(sim, dt);
       physics.step(sim, dt);
-      if (hasComponent(sim.ecs, BodyConfig, upper) && BodyConfig.motionType[upper] === MotionType.Dynamic) sawDynamic = true;
+      if (collapse.carrierOf(sim.wireId(upper.model)) !== undefined) fell = true;
     }
-    assert.ok(sawDynamic, "it went dynamic");
-    // It rests on the floor top (y 0.5) by its half height (0.5).
-    assert.ok(Math.abs(Transform.py[upper]! - 1.0) < 0.06, `rest y=${Transform.py[upper]}`);
-    assert.equal(BodyConfig.motionType[upper], MotionType.Static, "and froze again");
-    assert.equal(collapse.stats.active, 0);
-    assert.equal(BodyConfig.motionType[floor], MotionType.Static);
+    assert.ok(fell, "it got a dynamic carrier");
+    assert.equal(sim.resolveWireId(sim.wireId(upper.col)), -1, "and lost its collider");
+    // It rests on the floor top (y 0.5) by its half height (0.5); its model rests with it.
+    assert.ok(Math.abs(Transform.py[upper.model]! - 1.0) < 0.06, `model rest y=${Transform.py[upper.model]}`);
+    assert.equal(collapse.stats.active, 0, "and froze");
+    // Something static now stands where it lies (the carrier), and the floor is untouched.
+    let rubble = 0;
+    for (let e = 0; e <= sim.maxSlotSeen; e++) {
+      if (hasComponent(sim.ecs, BodyConfig, e) && BodyConfig.motionType[e] === MotionType.Static && Math.abs(Transform.py[e]! - Transform.py[upper.model]!) < 0.01 && e !== floor.col) rubble++;
+    }
+    assert.ok(rubble >= 1);
+    assert.equal(BodyConfig.motionType[floor.col], MotionType.Static);
   } finally {
     physics.close();
   }
