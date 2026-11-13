@@ -23,6 +23,8 @@ function pick(id: string, n: number): number {
 
 /** Space left between a building and its parcel's edge, each side, metres. */
 const MARGIN_M = BUILDING_MARGIN_MM / 1000;
+/** The scene format's smallest footprint, metres: a thin prop (a fence) at a large building scale is authored no thinner. */
+const MIN_SIZE_M = 0.1;
 /** A paved street's paving, metres thick. */
 const PAVING_M = 0.1;
 /** The town square's paving, metres thick. */
@@ -143,7 +145,7 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       }
       continue;
     }
-    children.push({ id: p.id, name: p.kind, transform: { position: pos(p.center.x, p.center.z, (p.yMm ?? 0) / 1000), rotation: [0, p.yawDeg, 0] }, components: { Structure: { kind: p.kind, asset: asset(p.id, p.kind), width: p.sizeMm[0] / 1000 / f, depth: p.sizeMm[1] / 1000 / f, height: p.heightMm / 1000 } } });
+    children.push({ id: p.id, name: p.kind, transform: { position: pos(p.center.x, p.center.z, (p.yMm ?? 0) / 1000), rotation: [0, p.yawDeg, 0] }, components: { Structure: { kind: p.kind, asset: asset(p.id, p.kind), width: Math.max(MIN_SIZE_M, p.sizeMm[0] / 1000 / f), depth: Math.max(MIN_SIZE_M, p.sizeMm[1] / 1000 / f), height: p.heightMm / 1000 } } });
   }
   // What players gather round the town: each node a Structure for its look (a fishing spot is walked over, on the
   // water) and a ResourceNode for what it gives.
