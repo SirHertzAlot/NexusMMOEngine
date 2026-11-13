@@ -25,7 +25,10 @@ export function kindRoom(kind: string, rules: SettlementRules, bf: number): { he
     return { heightM: buildingHeightM(a, rules.architecture), roomM: [pw / 1000 - 2 * MARGIN_M, pd / 1000 - 2 * MARGIN_M] };
   }
   const w = fortificationSizesM(rules)[kind as WallPieceKind];
-  return w ? { heightM: w.heightM, roomM: [w.lengthM * bf, w.thicknessM * bf] } : null;
+  if (w) return { heightM: w.heightM, roomM: [w.lengthM * bf, w.thicknessM * bf] };
+  // A prop: its authored size, which is world-final (not scaled with the parcels).
+  const prop = rules.props?.sizesMm[kind as keyof NonNullable<typeof rules.props>["sizesMm"]];
+  return prop ? { heightM: prop[2] / 1000, roomM: [prop[0] / 1000, prop[1] / 1000] } : null;
 }
 
 export interface ScaleReportRow {

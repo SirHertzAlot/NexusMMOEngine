@@ -83,6 +83,36 @@ export function placeProps(settlement: string, layout: Layout, structures: reado
     put("street_lamp", p.center.x - pw / 2, z, p.facing);
   }
 
+  // Property lines: a fence along each line two neighbouring plots share, back to front less the setback, so the
+  // frontage stays open. Seen once per pair: from the plot on the left, looking out at the street.
+  const fences = r.fences;
+  if (fences.enabled) {
+    const kinds = new Set(fences.between);
+    const key = (x: number, z: number): string => `${Math.round(x)},${Math.round(z)}`;
+    const plots = new Map(layout.parcels.filter((p) => kinds.has(p.kind)).map((p) => [key(p.center.x, p.center.z), p]));
+    // A home on either side makes it a property line; two open plots (gardens, parks, lots) do not.
+    const open = new Set([rules.openGround?.park, rules.openGround?.lot, "garden"]);
+    const lived = (p: Parcel): boolean => !open.has(built.get(p.id) ?? "");
+    const piece = fences.pieceMm;
+    const setback = fences.frontSetbackMm * scale;
+    const run = pd - setback;
+    const n = Math.floor(run / piece);
+    if (n > 0) {
+      for (const p of layout.parcels) {
+        if (!kinds.has(p.kind)) continue;
+        const { out: o, along } = axes(p.facing);
+        const q = plots.get(key(p.center.x + along[0] * pw, p.center.z + along[1] * pw));
+        if (!q || q.facing !== p.facing || (!lived(p) && !lived(q))) continue;
+        // The line sits on the boundary, half a plot along the street; it runs back to front, along the street's normal.
+        const yaw = ((p.facing + 90) % 360) as Facing;
+        for (let i = 0; i < n; i++) {
+          const s0 = -pd / 2 + piece * (i + 0.5);
+          put("fence", p.center.x + along[0] * (pw / 2) + o[0] * s0, p.center.z + along[1] * (pw / 2) + o[1] * s0, yaw, { parcel: p.id });
+        }
+      }
+    }
+  }
+
   // The square: a lamp at each corner, benches round its edge facing in, a fountain and statues about the well.
   const sq = layout.square;
   if (sq) {
