@@ -30,6 +30,16 @@ export const ParticleBudgets = z
         ultra: TierBudget,
       })
       .strict(),
+    /** Per-effect concurrent-instance caps by tier (FX blueprint PR1: `fxSlots`); a tier left out is uncapped. */
+    fxSlots: z
+      .record(
+        z.string(),
+        z
+          .object({ low: z.number().int().min(0), medium: z.number().int().min(0), high: z.number().int().min(0), ultra: z.number().int().min(0) })
+          .partial()
+          .strict(),
+      )
+      .optional(),
   })
   .strict()
   .refine(
@@ -63,5 +73,9 @@ export const DEFAULT_PARTICLE_BUDGETS: ParticleBudgets = loadParticleBudgets({
     medium: { maxParticles: 2500, maxEmitters: 16 },
     high: { maxParticles: 5000, maxEmitters: 32 },
     ultra: { maxParticles: 8000, maxEmitters: 48 },
+  },
+  fxSlots: {
+    "fx.charged-shot": { medium: 8, high: 16, ultra: 24 },
+    "fx.force-shield": { low: 0, medium: 4, high: 8, ultra: 8 },
   },
 });
