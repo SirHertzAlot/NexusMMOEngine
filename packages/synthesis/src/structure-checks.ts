@@ -134,7 +134,7 @@ export function pruneDetached(placements: readonly SynthesizedPlacement[], o: Pr
 export interface EnvelopeOptions {
   isWall?: (p: SynthesizedPlacement) => boolean;
   isRoof?: (p: SynthesizedPlacement) => boolean;
-  /** Share of a side's length its walls must cover (default 0.85). */
+  /** Share of a side's length its walls must cover (default 0.55: real footprints are L-shaped and offset, so a box-wide wall is too strict; measured on the village preview). */
   coverage?: number;
   /** How far a wall may stand from the footprint's edge and still count as that side's, metres (default 1). */
   reach?: number;
@@ -156,12 +156,14 @@ const ROOF = /roof|ceiling|vault|thatch/i;
 export function envelopeReport(parts: readonly SynthesizedPlacement[], o: EnvelopeOptions = {}): EnvelopeReport {
   const isWall = o.isWall ?? ((p: SynthesizedPlacement) => WALL.test(p.category) || WALL.test(p.partId));
   const isRoof = o.isRoof ?? ((p: SynthesizedPlacement) => ROOF.test(p.category) || ROOF.test(p.partId));
-  const coverage = o.coverage ?? 0.85;
+  const coverage = o.coverage ?? 0.55;
   const reach = o.reach ?? 1;
   const boxes = parts.map(placementBox);
   const min = [Infinity, Infinity];
   const max = [-Infinity, -Infinity];
-  for (const b of boxes) {
+  // The footprint is what the walls enclose (stairs, porches and props around it do not move the walls).
+  const walls = boxes.filter((_, i) => isWall(parts[i]!));
+  for (const b of walls.length > 0 ? walls : boxes) {
     min[0] = Math.min(min[0]!, b.min[0]);
     min[1] = Math.min(min[1]!, b.min[2]);
     max[0] = Math.max(max[0]!, b.max[0]);

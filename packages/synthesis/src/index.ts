@@ -13,3 +13,4 @@ export * from "./wfc-bridge.js";
 export * from "./to-scene.js";
 export * from "./grammar.js";
 export * from "./structure-checks.js";
+export * from "./scene-check.js";
