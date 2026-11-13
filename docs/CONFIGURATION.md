@@ -191,7 +191,7 @@ These were documented only in the server's source header and the bake script. De
 
 ### Bakes and paths
 
-These apply to `npm run bake:all` and the settlement tools. A flag on the command wins over the variable; relative values resolve from where you ran npm.
+These apply to `npm run bake:all`, the settlement tools and the test runner. A flag on the command wins over the variable; relative values resolve from where you ran npm.
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -206,6 +206,7 @@ These apply to `npm run bake:all` and the settlement tools. A flag on the comman
 | `MMO_BAKE_SHAPE` | the bake default | The landmass shape: `island`, `peninsula`, `continents` or `pangaea` (same as `--shape`). |
 | `MMO_BAKE_SIZE_CHUNKS` | the bake default | The world's side in chunks (same as `--size-chunks`). |
 | `MMO_ORDERED_BUILD` | unset | Set by the build orchestrator when it builds in dependency order, so each package's own dependency build does nothing. Not something you set by hand. |
+| `MMO_SKIP_BUILD` | unset | `1` makes the fast test runner (`scripts/test-runner.mjs`, `npm test`) skip its prebuild step — the same as passing `--no-build`. |
 
 ## World bake
 
