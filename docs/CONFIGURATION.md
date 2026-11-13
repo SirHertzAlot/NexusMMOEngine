@@ -92,6 +92,122 @@ runs standalone, which is the normal development setup.
 
 ---
 
+## Performance, transport and logging switches
+
+Most of these are opt-in speed or safety switches. The defaults are the safe path; see [Performance and constraints](PERFORMANCE.md) for what each one buys and costs.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_DATA_PLANE` | off | `1` or `true` runs the three-thread data plane: gateway, then a lock-free input ring, then the 30 Hz sim worker, then a persistence worker. Unset runs the simulation in-process (the rollback path). |
+| `MMO_DATA_PLANE_STORE` | the SurrealMX server | The data plane's ledger. `rocksdb` restores embedded RocksDB. Boot refuses to start if the default server is unreachable (start it with `npm run db -w @mmo-engine/world-server`). |
+| `MMO_DATA_PLANE_DB` | `ws://127.0.0.1:8000/rpc` | The ledger's URL. `mem://` is a volatile in-memory store for benchmarks. An explicit value beats `MMO_DATA_PLANE_STORE`. |
+| `MMO_DATA_PLANE_USER`, `MMO_DATA_PLANE_PASS` | `root` / `root` for a remote server | Credentials for the ledger server. Override them in anything but local development. |
+| `MMO_TRANSPORT` | `auto` | `uws` forces uWebSockets.js, `ws` forces the pure-JavaScript fallback, `auto` uses uWS when its binary loads. |
+| `MMO_EDGE` | off for a core started alone; `npm start` sets it | `1` runs the core's gateway on the edge channel, so a separate edge process serves the players. Native fan-out only runs on the core's own gateway, so it is off behind the edge ([NATIVE-FANOUT.md](NATIVE-FANOUT.md)). |
+| `MMO_INTEREST` | on | `0` turns interest management off: every client gets the whole region's delta. Dungeon instances always see everything. |
+| `MMO_NATIVE_FANOUT` | on | `0` keeps per-session delta assembly in JavaScript. The native path also falls back to JavaScript on its own if the addon is missing or a call throws. |
+| `MMO_FANOUT_SHARE` | `assembly` | Sessions with byte-identical envelopes share one. `off` is the rollback; `publish` is experimental. |
+| `MMO_UWS_CORK` | off | `1` batches each session's messages for a tick into one write on uWS. Not the default: its gate has not been run. |
+| `MMO_SEND_CAP_BYTES` | off | A number of bytes. A session whose envelopes are smaller than that per tick covered is sent every second tick. |
+| `MMO_SLOW_SOFT_BYTES` | `2097152` (2 MiB) | A client whose send queue passes this stops being sent to, and gets a fresh baseline once it catches up (slow-consumer policy). `0` turns the policy off. uWebSockets.js would otherwise buffer up to 64 MiB per socket and then drop sends silently. |
+| `MMO_SLOW_LOW_BYTES` | `262144` (256 KiB) | A held client resumes, with a baseline, once its queue falls to this. |
+| `MMO_SLOW_HOLD_MS` | `15000` | A client held longer than this is closed ("slow consumer"). |
+| `MMO_POSITION_ROWS` | on | `0` stops splitting out position-only transform rows (protocol v29). |
+| `MMO_LOG` | on | `0` starts no log worker; events are only counted as ring drops. Boot banners and fatal errors always go to the console. |
+| `MMO_LOG_DIR` | `<data dir>/logs` | Where the log worker writes. |
+| `MMO_HOST_ID` | the hostname | This host's id when the world assigns regions (assignment mode). |
+| `MMO_RESIDENTS_MAX` | `800` | The most resident entities (people living in the towns) at once. |
+| `MMO_RESIDENTS_FULL` | `300` | How many of them are simulated in full (`maxFull` in the residents system; see [SETTLEMENTS.md](SETTLEMENTS.md)). |
+
+## Content file locations
+
+Each of these points a content file or folder somewhere other than its default under `content/`.
+
+| Variable | Default | What it points at |
+|---|---|---|
+| `MMO_CHARACTER_RULES` | `content/settlements/character.json` | The settlement character rules. |
+| `MMO_LESSONS` | `content/lessons.json` | Lessons a pupil can take. |
+| `MMO_SETTLEMENTS` | `content/settlements` | Settlement manifests. |
+| `MMO_SPECIES_DIR` | `content/species` | Species definitions. |
+| `MMO_STRUCTURES` | `content/structures.json` | Breakable structure kinds. |
+| `MMO_VENDORS` | `content/vendors.json` | Shop templates placed in scenes. |
+
+## More world-bake switches
+
+| Variable | What it does |
+|---|---|
+| `MMO_BAKE_REGION=rx,rz` | Re-bake only one region's tiles (incremental). |
+| `MMO_BAKE_SURVEY_ONLY=1` | Re-run the survey and invalidate the tile cache without regenerating tiles. |
+
+The editor's play mode runs the built server directly. `MMO_EDITOR_REBUILD=1` (or no build yet) takes the slower `npm run server` path, which rebuilds every workspace first.
+
+## Input limits: `content/rules/ingress.json`
+
+How much a client may send before the server stops listening. This is the first line of defense against floods and forged input (the full boundary is in [the networking wiki chapter](wiki/05-networking-and-edge.md)).
+
+| Setting | Value | Meaning |
+|---|---:|---|
+| `maxClientPayloadBytes` | 65536 | The largest message the server accepts from a client |
+| `intentsPerSecond`, `intentBurst` | 40, 60 | A token bucket for player intents: refilled at this rate, holding at most the burst |
+| `pickupsPerSecond`, `pickupBurst` | 5, 10 | The same for the "pickup" bucket, which also covers duels, trades, treatment and stance changes |
+| `abuseWindowSeconds`, `maxViolations` | 10, 100 | A client that is rate-limited or malformed this many times inside the window is **disconnected** ("too many requests"), once per window |
+
+## More server and tool variables
+
+These were documented only in the server's source header and the bake script. Defaults are paths relative to the repo.
+
+### Accounts and admin
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_USERS_CSV` | `$MMO_DATA_DIR/users.csv` | The accounts file. The editor points play sessions at a scratch file. |
+| `MMO_ADMINS` | empty (nobody) | Comma-separated usernames allowed to use the admin console (message `0x10`). |
+| `MMO_DEV_SERVER` | off | `1` makes **every account an admin**. Development servers only; never on a public deployment. |
+| `MMO_SPAWN_OVERRIDE` | the world's stored spawn point | `x,z` for the player spawn point. The editor's Play menu "Start from" uses it. |
+
+### Content a server loads at boot
+
+| Variable | Default | What it points at |
+|---|---|---|
+| `MMO_COMBAT` | `content/combat/moves.json` | The combat moves. |
+| `MMO_CRAFTING` | `content/crafting/recipes.json` | Crafting rules. A missing file means no crafting; a bad file stops the boot. |
+| `MMO_QUESTS` | `content/quests` | Quest and dialog content. A missing folder means no quests, not a boot failure. |
+| `MMO_DUNGEONS` | `content/dungeons` | Dungeon instance rules and entrances. A missing folder means no dungeons. |
+| `MMO_MODULES` | `content/modules.json` | The enabled module set. The `core` module is always on; a bad set stops the server and names every problem. |
+| `MMO_BIOMES` | `content/biomes.json` (not in a fresh checkout) | The biome registry: per-biome scatter multipliers and creature tables. |
+| `MMO_SPECIES` | `content/species/species.json` | The species overlay, merged over the built-in roster. A bad file stops the boot. |
+| `MMO_SCENE` | none | A scene (`content/scenes/<name>.scene.json`) whose nodes spawn at boot as creatures, props, items and quest posts. A comma-separated list spawns each; `world` spawns every baked town plus places. |
+| `MMO_SCENES`, `MMO_SCENES_DIR` | `content/scenes` | The scenes folder (the two names are aliases; `bake:all` uses the second). |
+| `MMO_PREFABS` | `content/prefabs` (absent unless you create it) | The prefab files scenes expand. |
+| `MMO_INSTANCE_HOST` | `localhost` | The host clients use to reach dungeon instances. Each instance listens on its own free port. |
+
+### Wildlife
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_WILD_CREATURES` | off | `1` spawns the biome registry's packs as chunks load (on a baked world with biomes). Only kinds with creature rules spawn. |
+| `MMO_WILDLIFE` | off | With `MMO_WILD_CREATURES=1`: `1` plans the wildlife table (`content/wildlife/wildlife.json`) or give a file. See [WILDLIFE.md](WILDLIFE.md). |
+| `MMO_WILDLIFE_LOG` | off | `1` logs each pack spawned. |
+
+### Bakes and paths
+
+These apply to `npm run bake:all`, the settlement tools and the test runner. A flag on the command wins over the variable; relative values resolve from where you ran npm.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MMO_REPO` | the repo root | The checkout the other paths are relative to. |
+| `MMO_CONTENT_DIR` | `<repo>/content` | Where authored content lives. Settlement rules stay with the repo even if this moves. |
+| `MMO_ASSETS_DIR` | `<repo>/assets` | The art folder (present only where the licensed art is). |
+| `MMO_CATALOG` | `<assets>/catalog.json` | The art catalog. |
+| `MMO_SETTLEMENT_OUT` | `<content>/settlements` | Where baked settlements are written and read. |
+| `MMO_SETTLEMENT_RULES` | `content/settlements/rules.json` | The town generator's rules file (the editor's Towns screen edits it). |
+| `MMO_SCALE_OUT` | `<content>/scale.local.json` | Where `scale-fit` writes the fitted model scales (gitignored). |
+| `MMO_SCALE` | none | Run the server with this file (`content/scale.local.json`) to apply the fitted model scales. |
+| `MMO_BAKE_SHAPE` | the bake default | The landmass shape: `island`, `peninsula`, `continents` or `pangaea` (same as `--shape`). |
+| `MMO_BAKE_SIZE_CHUNKS` | the bake default | The world's side in chunks (same as `--size-chunks`). |
+| `MMO_ORDERED_BUILD` | unset | Set by the build orchestrator when it builds in dependency order, so each package's own dependency build does nothing. Not something you set by hand. |
+| `MMO_SKIP_BUILD` | unset | `1` makes the fast test runner (`scripts/test-runner.mjs`, `npm test`) skip its prebuild step — the same as passing `--no-build`. |
+
 ## World bake
 
 `npm run bake:world` (refuses to overwrite) or `npm run bake:world:force`
@@ -126,12 +242,20 @@ never printed; only its argon2id hash is stored. 8–128 characters.
 | Variable | Default | What it does |
 |---|---|---|
 | `WORLD_PORT` | `7780` | HTTP listen port. |
-| `WORLD_DB_URL` | `surrealkv:<WORLD_DATA_DIR>/surreal` | Unset = embedded SurrealKV (durable). `mem:` = plain JS in-memory store (development, not durable). `mem://…` = embedded SurrealMX (in memory only, not durable). `ws://…` = a SurrealDB server, e.g. the SurrealMX server from `npm run db` (durable via AOL + snapshots), `ws://127.0.0.1:8000/rpc`. |
+| `WORLD_DB_URL` | `surrealkv:<WORLD_DATA_DIR>/surreal` | Unset = embedded SurrealKV (durable). `mem:` = plain JS in-memory store (development, not durable). `mem://…` = embedded SurrealMX (in memory only, not durable). `ws://…` = a SurrealDB server, e.g. the SurrealMX server from `npm run db -w @mmo-engine/world-server` (durable via AOL + snapshots), `ws://127.0.0.1:8000/rpc`. |
 | `WORLD_DB_NS` / `WORLD_DB_DB` | `mmo` / `world` | SurrealDB namespace and database. |
 | `WORLD_DB_USER` / `WORLD_DB_PASS` | — | SurrealDB credentials (`root` / `root` with `npm run world:db`). |
 | `WORLD_API_KEY` | unset | The bootstrap key regions register with. Unset = registration disabled. |
 | `WORLD_HEARTBEAT_INTERVAL_MS` | `5000` | Region lease heartbeat interval. |
 | `WORLD_HEARTBEAT_TIMEOUT_MS` | `15000` | A region silent this long is reaped. |
+| `WORLD_DB_CONNECT_TIMEOUT_MS` | `10000` | Bound on the SurrealDB connect handshake. Unset or not a positive number means the default. |
+| `WORLD_MIGRATION_TIMEOUT_MS` | `10000` | A hand-off not committed within this expires, and the source region keeps the entity. |
+| `WORLD_TOTAL_CHUNK_SPACE` | `0,0,4096,4096` | `x0,z0,x1,z1`: the total world chunk space the assignment policy carves region ranges from. |
+| `WORLD_HOST_REPORT_TIMEOUT_MS` | the heartbeat timeout | How long a host's resource report stays fresh for assigning ranges. |
+| `HOST_REPORT_INTERVAL_MS` | `5000` | How often the host sidecar reports its resources to the world server. |
+| `WORLD_DEDUP_RETENTION_MS` | 7 days | How long the world server remembers operation ids so a retried write is applied once. |
+| `WORLD_LOG` | on | `0` starts no log worker. Boot banners and fatal errors stay on the console. |
+| `WORLD_LOG_DIR` | `data/logs` | Where the world server's log worker writes. |
 
 ---
 
@@ -164,6 +288,29 @@ the other two, run `npm run build -w @mmo-engine/art` first.
 See [ART-PIPELINE.md](ART-PIPELINE.md).
 
 ---
+
+## Tools, benchmarks and smoke tests
+
+Variables read by the repo's scripts and helper tools, not by a running game.
+
+| Variable | Default | Used by |
+|---|---|---|
+| `BOT_WS_URL` | `ws://localhost:7777` | The admin bot launcher: the server the bots connect to. |
+| `BOT_USERNAME_PREFIX`, `BOT_PASSWORD` | `bot`, `bot-password` | The same: the names and password the bot accounts use. |
+| `GLTFPACK_BIN` | `gltfpack` on your PATH | The art pipeline's mesh compression. |
+| `GLTF_TRANSFORM_BIN` | `gltf-transform` on your PATH | The art pipeline's glTF transforms. |
+| `LOG_CODEGEN_OUT` | the source folder | `dist` makes the logging code generator write to `dist` instead. |
+| `OUT_DIR` | the generated folder | `npm run codegen`: write the generated bindings elsewhere, for a reproducibility check. |
+| `SURREAL_BIN` | `surreal` on your PATH | The fleet boot smoke test. |
+| `BOOT_SMOKE_PORT`, `BOOT_SMOKE_KEEP` | `7917`, off | The boot smoke test: its port, and `1` keeps its scratch folder. |
+| `EDITOR_SMOKE_PORT`, `EDITOR_SMOKE_CHROMIUM` | `5176`, a bundled Chromium path | `npm run smoke:editor-load`: the dev server's port and the browser it opens. |
+| `VALGRIND_WATCH_WORKTREE` | a `<repo>-watch` folder beside the repo | The valgrind watcher's separate worktree. |
+| `VALGRIND_WATCH_SKIP_PIPELINE` | off | `1` skips the pipeline step in the watcher's test. |
+| `PERF_JSON` | off | Set by `valgrind:perf` so the workloads print one machine-readable line. |
+| `BENCH_DB_URL`, `BENCH_DB_USER`, `BENCH_DB_PASS` | `mem://` | The data-plane benchmark's ledger: embedded in memory, or a SurrealMX server. |
+| `WORLD_BENCH_URL` | `mem://` | The world server's atomic-operations benchmark: `ws://127.0.0.1:8000/rpc` runs it against a server. |
+| `SYNTHESIS_ARTIFACTS`, `SYNTHESIS_CHROMIUM` | a temp folder, Playwright's | The synthesis package's example and chart renderers. |
+| `PAPERCLIP_API_URL` and the other `PAPERCLIP_*` | unset | The improvement crawler can post its report to a task tracker when these are set. |
 
 ## Data files
 

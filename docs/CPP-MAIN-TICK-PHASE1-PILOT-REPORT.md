@@ -28,7 +28,7 @@ Phase 1 evaluated the transpiler-first workflow (`typescript2cxx` AST generation
 
 ## 2. Benchmark Visualizations
 
-![C++ Main Tick Phase 1 Pilot Benchmark](C:/Users/user/.gemini/antigravity/brain/03e6cfec-d960-47a4-b624-994e499172e8/fast-path-phase1-pilot.png)
+*(Image not preserved: C++ Main Tick Phase 1 Pilot Benchmark.)*
 
 ---
 
