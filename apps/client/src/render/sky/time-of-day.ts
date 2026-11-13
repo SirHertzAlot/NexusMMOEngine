@@ -8,6 +8,7 @@
  */
 
 import * as THREE from "three";
+import { lerp } from "../../motion/primitives.js";
 
 type Rgb = readonly [number, number, number];
 
@@ -42,7 +43,6 @@ const KEYFRAMES: readonly Keyframe[] = [
   { time: 1.0, sunElevation: -25, sunAzimuth: 360, zenith: [0.01, 0.01, 0.03], horizon: [0.03, 0.04, 0.07], sunColor: [0.15, 0.15, 0.25], fogColor: [0.02, 0.03, 0.06], lightIntensity: 0.08, ambientIntensity: 0.15 }, // midnight again
 ];
 
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 const lerpRgb = (a: Rgb, b: Rgb, t: number): Rgb => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 /** The look at a time of day (wrapped into 0..1). */

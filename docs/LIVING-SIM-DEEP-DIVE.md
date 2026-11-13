@@ -1,5 +1,7 @@
 # Living Sim Deep Dive — the "real world sim"
 
+> **Status (2026-11-11):** a design study, and parts of it now exist in the engine: residents with daily schedules, raids and lessons ([GAMEPLAY.md](GAMEPLAY.md#the-people-of-the-towns-residents)), hunger and thirst, and the wildlife table ([WILDLIFE.md](WILDLIFE.md)). The rest (a supply-and-demand economy, factions that remember, rumors, pre-history) does not appear in the roadmap as built. Files this study names under `content/` that do not exist were proposals.
+
 How the MMO engine gets a world that lives whether or not the player is
 watching: NPCs with needs and daily schedules, jobs, a supply-and-demand
 economy, ecology, factions that remember, weather that matters, crime that
