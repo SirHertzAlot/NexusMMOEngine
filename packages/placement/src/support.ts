@@ -129,14 +129,19 @@ export function buildSupportGraph(parts: readonly SupportPart[], o: SupportOptio
       if (fixture[i]) {
         // A fixture hangs from any structural part it touches (never from another fixture).
         if (!fixture[j] && touches(a, b, BOND_GAP_M)) supporters[i]!.push({ to: j, kind: "attached" });
-      } else if (!fixture[j] && Math.abs(b.max[1] - a.min[1]) <= vTol && b.min[1] < a.min[1]) {
-        // Rests on what lies below it, top to underside.
+      } else if (!fixture[j] && b.max[1] >= a.min[1] - vTol && b.min[1] < a.min[1] && b.max[1] < a.max[1]) {
+        // Rests on what lies below it: its top reaches the part's underside (or runs into it: modules interpenetrate).
         const contact = footprintOverlap(a, b, minOverlap);
         if (contact) supporters[i]!.push({ to: j, kind: "rests", contact });
       }
     }
-    // Resting on nothing: bonded to whatever it touches, so a gap under a module does not leave it hanging in the model.
-    if (supporters[i]!.length === 0 && !fixture[i]) {
+    // Resting on nothing, or on contacts that do not explain why it stands (a pitched roof tile, a floor on beams):
+    // bonded to whatever it touches, so a gap or an odd shape does not leave it hanging in the model. The
+    // centre-over-supports rule then only judges parts it holds for at rest.
+    const tol = o.stabilityTol ?? 0.1;
+    const centre: Pt = [(a.min[0] + a.max[0]) / 2, (a.min[2] + a.max[2]) / 2];
+    const explained = supporters[i]!.length > 0 && insideHull(hull(supporters[i]!.flatMap((l) => (l.contact ? corners(l.contact) : []))), centre, tol);
+    if (!fixture[i] && !explained) {
       for (let j = 0; j < n; j++) if (j !== i && !fixture[j] && touches(a, boxes[j]!, BOND_GAP_M)) supporters[i]!.push({ to: j, kind: "bonded" });
     }
   }
@@ -172,6 +177,8 @@ function standing(g: SupportGraph, gone: ReadonlySet<number>): boolean[] {
 }
 
 type Pt = [number, number];
+
+const corners = ([x0, z0, x1, z1]: [number, number, number, number]): Pt[] => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
 
 const cross = (o: Pt, a: Pt, b: Pt): number => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
 
@@ -247,8 +254,7 @@ function holds(g: SupportGraph, i: number, live: (j: number) => boolean): boolea
   if (ups.some((s) => s.kind !== "rests")) return true;
   const points: Pt[] = [];
   for (const s of ups) {
-    const [x0, z0, x1, z1] = s.contact!;
-    points.push([x0, z0], [x1, z0], [x1, z1], [x0, z1]);
+    points.push(...corners(s.contact!));
   }
   return insideHull(hull(points), g.centre[i]!, g.stabilityTol);
 }

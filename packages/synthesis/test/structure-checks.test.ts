@@ -74,3 +74,30 @@ describe("envelopeReport", () => {
     assert.deepEqual(envelopeReport(twoShortOverlapping).missing, ["north wall"], "two parts on the same 3 m do not cover 8 m");
   });
 });
+
+describe("pivots are not middles", () => {
+  // A wall whose pivot is at its top and one end: bounds x 0..2.5, y -2.5..0 (like SM_Bld_House_Base_Wall_02).
+  const wall = (yaw: number): SynthesizedPlacement => ({
+    partId: "wall",
+    assetRef: "p/wall",
+    category: "wall",
+    transform: { pos: [10, 5, 20], rot: [0, Math.sin((yaw * Math.PI) / 360), 0, Math.cos((yaw * Math.PI) / 360)], scale: [1, 1, 1] },
+    size: [2.5, 2.5, 0.7],
+    pivotBounds: { min: [0, -2.5, -0.35], max: [2.5, 0, 0.35], size: [2.5, 2.5, 0.7] },
+  });
+  it("puts the box round the model's middle, not round its pivot", () => {
+    const b = placementBox(wall(0));
+    assert.deepEqual(b.min.map((v) => +v.toFixed(3)), [10, 2.5, 19.65]);
+    assert.deepEqual(b.max.map((v) => +v.toFixed(3)), [12.5, 5, 20.35]);
+  });
+  it("turns the offset with the part's yaw", () => {
+    // Yawed 90 degrees the wall's length runs along z: the middle is 1.25 m away from the pivot on that axis (x -> -z).
+    const b = placementBox(wall(90));
+    assert.ok(Math.abs((b.min[2] + b.max[2]) / 2 - 18.75) < 1e-6, `${b.min[2]}..${b.max[2]}`);
+    assert.ok(Math.abs((b.min[0] + b.max[0]) / 2 - 10) < 1e-6);
+  });
+  it("keeps a part with no bounds centred on its position", () => {
+    const p: SynthesizedPlacement = { partId: "x", assetRef: "x", category: "wall", transform: { pos: [1, 2, 3], rot: [0, 0, 0, 1], scale: [1, 1, 1] }, size: [2, 2, 2] };
+    assert.deepEqual(placementBox(p), { min: [0, 1, 2], max: [2, 3, 4] });
+  });
+});

@@ -32,16 +32,39 @@ export interface Aabb {
   max: [number, number, number];
 }
 
-/** A placement's world box: its size turned by its yaw about the vertical axis, about its centre. */
+/**
+ * Where a part's middle lies from its position (its pivot), in the part's own axes before yaw: the centre of its
+ * model bounds times its scale. A part with no bounds is taken as centred on its position.
+ */
+export function pivotCentre(p: SynthesizedPlacement): [number, number, number] {
+  const b = p.pivotBounds;
+  if (!b) return [0, 0, 0];
+  const [sx, sy, sz] = p.transform.scale;
+  return [((b.min[0] + b.max[0]) / 2) * sx, ((b.min[1] + b.max[1]) / 2) * sy, ((b.min[2] + b.max[2]) / 2) * sz];
+}
+
+/** A point `c` in a part's own axes, in the parent's, for a part turned `yawDeg` about the vertical axis (the scene's convention). */
+export function turnByYaw(c: readonly [number, number, number], yawDeg: number): [number, number, number] {
+  const y = (yawDeg * Math.PI) / 180;
+  const cos = Math.cos(y);
+  const sin = Math.sin(y);
+  return [c[0] * cos + c[2] * sin, c[1], -c[0] * sin + c[2] * cos];
+}
+
+/** A placement's world box: its size turned by its yaw about the vertical axis, about its middle (its position is its pivot, not its middle). */
 export function placementBox(p: SynthesizedPlacement): Aabb {
   const [w, h, d] = p.size;
-  const yaw = (yawDegrees(p.transform.rot) * Math.PI) / 180;
+  const yawDeg = yawDegrees(p.transform.rot);
+  const yaw = (yawDeg * Math.PI) / 180;
   const c = Math.abs(Math.cos(yaw));
   const s = Math.abs(Math.sin(yaw));
   const hx = (Math.abs(w) * c + Math.abs(d) * s) / 2;
   const hz = (Math.abs(w) * s + Math.abs(d) * c) / 2;
   const hy = Math.abs(h) / 2;
-  const [x, y, z] = p.transform.pos;
+  const off = turnByYaw(pivotCentre(p), yawDeg);
+  const x = p.transform.pos[0] + off[0];
+  const y = p.transform.pos[1] + off[1];
+  const z = p.transform.pos[2] + off[2];
   return { min: [x - hx, y - hy, z - hz], max: [x + hx, y + hy, z + hz] };
 }
 

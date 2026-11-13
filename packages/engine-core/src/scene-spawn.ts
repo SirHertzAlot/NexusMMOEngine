@@ -99,7 +99,7 @@ export interface SceneSpawnDeps {
    * Buildings that fall when their parts break (DE4): each synthesized `building:*` group's parts (a Structure node
    * `<id>-vis-N` with its `-pN-col` collider nodes) are handed over with their boxes once the scene has spawned.
    */
-  collapse?: { registerBuilding(sim: SimWorld, key: string, parts: readonly CollapsePartSpec[]): unknown };
+  collapse?: { registerBuilding(sim: SimWorld, key: string, parts: readonly CollapsePartSpec[], o?: { groundY?: number; groundTol?: number }): unknown };
   /** A shop (a node with a Vendor component): `attach` makes the spawned entity a vendor of the named template; returns an error text, or null. */
   vendors?: { attach(eid: number, template: string): string | null };
   /** A region shard's range (REGION_CHUNK_RANGE): nodes outside it are another shard's and are skipped. */
@@ -540,17 +540,21 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
     }
     out.skipped.push({ id: node.id, reason: names.length > 0 ? `nothing spawns "${names[0]}"` : "no prefab or Spawner creature" });
   }
-  if (deps.collapse) registerCollapsibleBuildings(doc.name, ancestorGroup, out, deps, deps.collapse);
+  if (deps.collapse) registerCollapsibleBuildings(doc.name, ancestorGroup, new Map(worlds.map((w) => [w.node.id, w.node])), (g) => footings.get(g)?.floor, out, deps, deps.collapse);
   return out;
 }
 
 /**
- * Hand each modular building's parts to the collapse system: a part is the Structure node `<base>-vis-N`, its
- * colliders the nodes `<base>-pN-col...` of the same group. A part with no body (walk-through) is left out.
+ * Hand each modular building's parts to the collapse system: a part is the Structure node `<base>-vis-N` (the model,
+ * drawn at its pivot, with no body of its own), its colliders the nodes `<base>-pN-col...` of the same group. The
+ * box the support graph sees is round the model's middle: the node's position plus its `centre*` offset turned by
+ * its yaw. Ground is the building's footing.
  */
 function registerCollapsibleBuildings(
   scene: string,
   ancestorGroup: ReadonlyMap<string, string>,
+  nodes: ReadonlyMap<string, { components?: Record<string, Record<string, unknown>> }>,
+  floorOf: (group: string) => number | undefined,
   out: SceneSpawnResult,
   deps: SceneSpawnDeps,
   collapse: NonNullable<SceneSpawnDeps["collapse"]>,
@@ -578,16 +582,24 @@ function registerCollapsibleBuildings(
     const specs: CollapsePartSpec[] = [];
     for (const [key, p] of g) {
       const eid = p.eid;
-      if (!hasComponent(deps.sim.ecs, BodyConfig, eid) || BodyConfig.shapeKind[eid] !== ShapeKind.Box) continue;
+      const st = nodes.get(key.slice(0, key.lastIndexOf("#")) + "-vis-" + key.slice(key.lastIndexOf("#") + 1))?.components?.Structure;
+      if (!st) continue;
+      const size: [number, number, number] = [Number(st.width), Number(st.height), Number(st.depth)];
+      if (!size.every((v) => Number.isFinite(v) && v > 0)) continue;
+      const offset: [number, number, number] = [Number(st.centreX ?? 0), Number(st.centreY ?? 0), Number(st.centreZ ?? 0)];
+      const yaw = 2 * Math.atan2(Transform.qy[eid]!, Transform.qw[eid]!);
+      const cos = Math.cos(yaw);
+      const sin = Math.sin(yaw);
       const part: SupportPart = {
-        pos: [Transform.px[eid]!, Transform.py[eid]!, Transform.pz[eid]!],
-        size: [BodyConfig.halfX[eid]! * 2, BodyConfig.halfY[eid]! * 2, BodyConfig.halfZ[eid]! * 2],
-        yawDeg: (2 * Math.atan2(Transform.qy[eid]!, Transform.qw[eid]!) * 180) / Math.PI,
+        pos: [Transform.px[eid]! + offset[0] * cos + offset[2] * sin, Transform.py[eid]! + offset[1], Transform.pz[eid]! - offset[0] * sin + offset[2] * cos],
+        size,
+        yawDeg: (yaw * 180) / Math.PI,
         category: p.kind,
       };
-      specs.push({ eid, colliders: colliders.get(group)?.get(key) ?? [], part });
+      specs.push({ eid, colliders: colliders.get(group)?.get(key) ?? [], part, offset });
     }
-    if (specs.length >= 3) collapse.registerBuilding(deps.sim, `${scene}/${group}`, specs);
+    const floor = floorOf(group);
+    if (specs.length >= 3) collapse.registerBuilding(deps.sim, `${scene}/${group}`, specs, floor !== undefined ? { groundY: floor, groundTol: 0.3 } : {});
   }
 }
 

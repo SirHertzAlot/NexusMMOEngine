@@ -1166,7 +1166,7 @@ async function main(): Promise<void> {
             }
           : undefined,
         breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
-        collapse: { registerBuilding: (s, key, parts) => collapse.registerBuilding(s, key, parts) },
+        collapse: { registerBuilding: (s, key, parts, o) => collapse.registerBuilding(s, key, parts, o) },
         structureBreakable: (kind) => structureKinds.get(kind),
         vendors: { attach: attachVendor },
         quests: {

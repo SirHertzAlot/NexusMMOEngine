@@ -9,7 +9,7 @@
 
 import type { SceneDoc, SceneNode } from "@mmo-engine/scene";
 import type { SynthesizedPlacement } from "./types.js";
-import { bareKind, envelopeReport, pruneDetached, synthesisRoute } from "./structure-checks.js";
+import { bareKind, envelopeReport, pruneDetached, synthesisRoute, turnByYaw } from "./structure-checks.js";
 
 export interface SceneCheckOptions {
   /** A group smaller than this many touching parts is not a building (default 3). */
@@ -60,11 +60,13 @@ function partsOf(group: SceneNode): Part[] {
   const out: Part[] = [];
   for (const c of group.children ?? []) {
     const m = VIS.exec(c.id);
-    const st = c.components?.Structure as { asset?: string; width?: number; depth?: number; height?: number } | undefined;
+    const st = c.components?.Structure as { asset?: string; width?: number; depth?: number; height?: number; centreX?: number; centreY?: number; centreZ?: number } | undefined;
     if (!m || !st) continue;
     const pos = c.transform?.position ?? [0, 0, 0];
     const yaw = (c.transform?.rotation as number[] | undefined)?.[1] ?? 0;
     const asset = st.asset ?? "";
+    // The node sits at the model's pivot; the box is round the middle (`centre`, in the part's own axes).
+    const mid = turnByYaw([st.centreX ?? 0, st.centreY ?? 0, st.centreZ ?? 0], yaw);
     out.push({
       index: Number(m[1]),
       node: c,
@@ -72,7 +74,7 @@ function partsOf(group: SceneNode): Part[] {
         partId: asset.split("/").pop() ?? asset,
         assetRef: asset,
         category: categoryOf(asset),
-        transform: { pos: [pos[0]!, pos[1]!, pos[2]!], rot: quatOfYaw(yaw), scale: [1, 1, 1] } as unknown as SynthesizedPlacement["transform"],
+        transform: { pos: [pos[0]! + mid[0]!, pos[1]! + mid[1]!, pos[2]! + mid[2]!], rot: quatOfYaw(yaw), scale: [1, 1, 1] } as unknown as SynthesizedPlacement["transform"],
         size: [st.width ?? 1, st.height ?? 1, st.depth ?? 1],
       },
     });
