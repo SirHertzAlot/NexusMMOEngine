@@ -32,3 +32,4 @@ export {
   type RespawnOutcome,
   type RuleHooks,
 } from "./hooks.js";
+export * from "./worldbuilding.js";
