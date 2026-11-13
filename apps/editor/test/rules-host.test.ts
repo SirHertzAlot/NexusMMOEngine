@@ -160,7 +160,9 @@ describe("readRuleFile", () => {
   it("reads the real loot file", () => {
     const { content, missing } = readRuleFile(REPO, "loot");
     assert.equal(missing, false);
-    assert.equal((content as { bagSlots: number }).bagSlots, 24);
+    // The file's own value, so a balance change to the bag size does not break this test.
+    const onDisk = JSON.parse(readFileSync(join(REPO, "content", "rules", "loot.json"), "utf8")) as { bagSlots: number };
+    assert.equal((content as { bagSlots: number }).bagSlots, onDisk.bagSlots);
   });
   it("falls back to engine defaults when the file is missing", () => {
     const root = fakeRepo();
