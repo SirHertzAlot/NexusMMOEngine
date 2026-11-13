@@ -166,7 +166,8 @@ export function pickGardenModels(catalog: ReadonlyArray<{ id: string; name: stri
   const model = (m: (typeof usable)[number]): GardenModel => ({ id: m.id, size: [m.size![0]! * scaleOf(m.id), m.size![1]! * scaleOf(m.id), m.size![2]! * scaleOf(m.id)] });
   const named = (re: RegExp): GardenModel[] => usable.filter((m) => re.test(m.name)).sort((a, b) => a.id.localeCompare(b.id)).map(model);
   const planter = named(/^SM_Prop_PlanterBox_01$/)[0];
-  const plants = named(/^SM_Env_Flowers_(04|07|10|13)$/);
+  // Plants no wider than the bed they stand in.
+  const plants = named(/^SM_Env_Flowers_(07|08|10|13)$/);
   const trees = named(/^SM_Env_Tree_Round_0[1-4]$/);
   const stones = named(/^SM_Prop_Gravestone_0[1-5]$/);
   if (!planter || trees.length === 0 || plants.length === 0) return null;
