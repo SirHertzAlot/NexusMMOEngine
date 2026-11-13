@@ -201,6 +201,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
   dungeons: "dungeon rooms layout",
+  bake: "dungeon bake paint layout rock floor pool portal theme layers shell triangles provenance",
   crafting: "crafting recipes units fittings rune stone reagent craft skill smithing",
   runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
   towns: "towns settlements generator rules industry guilds resources",

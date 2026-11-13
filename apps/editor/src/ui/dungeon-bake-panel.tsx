@@ -85,7 +85,7 @@ export function DungeonBakePanel(): React.JSX.Element {
   const layers = BAKE_LAYERS[doc.theme] ?? [];
 
   return (
-    <div className="grid gap-4 md:grid-cols-[auto_1fr]">
+    <div className="grid h-full content-start gap-4 overflow-y-auto md:grid-cols-[auto_1fr]">
       <Card>
         <CardHeader>
           <CardTitle>Layout</CardTitle>
@@ -122,7 +122,7 @@ export function DungeonBakePanel(): React.JSX.Element {
           <div
             role="grid"
             aria-label="Layout grid"
-            className="inline-grid gap-px bg-zinc-600 p-px"
+            className="inline-grid w-fit gap-px bg-zinc-600 p-px"
             style={{ gridTemplateColumns: `repeat(${doc.rows[0].length}, 1.5rem)` }}
           >
             {doc.rows.flatMap((row, y) =>
