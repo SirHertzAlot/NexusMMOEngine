@@ -134,6 +134,8 @@ export function createSystems(ctx) {
   combatDamage.canHit = (a, b) =>
     (hasComponent(sim.ecs, CharacterRef, a) && hasComponent(sim.ecs, CharacterRef, b) ? duels.canHit(a, b) : true) && (config.canBreak?.(a, b) ?? true);
   combatDamage.kindScale = (t, kind) => config.kindScale?.(t, kind) ?? 1;
+  // Where a target really is when its Transform is not it (a modular building part is placed at its model's pivot).
+  combatDamage.hitBody = (t) => config.hitBody?.(t);
   combatDamage.damageScale = (a, b) => status.modifier(a, "power").mul * status.modifier(b, "armour").mul;
 
   const combat = new CombatSystem(30, stamina, combatDamage);

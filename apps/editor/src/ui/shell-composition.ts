@@ -17,6 +17,21 @@ import type { InterfaceRegion, ViewTemplateDefinition } from "../authoring/templ
 /** The component type of a shell dock pane; which dock is its config's `side`. */
 export const SHELL_DOCK_COMPONENT = "shell-dock";
 
+/** The shell-chrome component types a shell template may instantiate (INTERFACE_COMPONENTS ids): typed, so a typo cannot silently drop a surface. */
+export const SHELL = {
+  menuBar: "shell-menu-bar",
+  workspaceNav: "shell-workspace-nav",
+  toolBar: "shell-tool-bar",
+  viewTabs: "shell-view-tabs",
+  stage: "workspace-stage",
+  dock: SHELL_DOCK_COMPONENT,
+  statusBar: "shell-status-bar",
+} as const;
+export type ShellComponent = (typeof SHELL)[keyof typeof SHELL];
+
+/** The docks a shell template can place. */
+export type ShellDockSide = "left" | "bottom" | "right";
+
 export interface ShellPanePlacement {
   /** Pane instance id from the template. */
   id: string;
@@ -33,11 +48,11 @@ export interface ShellComposition {
   /** Every pane placement in walk order. */
   readonly panes: readonly ShellPanePlacement[];
   /** True when any pane instantiates this component type. */
-  has(component: string): boolean;
+  has(component: ShellComponent): boolean;
   /** The sides of the shell-dock panes, in walk order ("left", "bottom", "right" for the current shell). */
   dockSides(): readonly string[];
   /** True when a shell-dock pane carries this side. */
-  hasDock(side: string): boolean;
+  hasDock(side: ShellDockSide): boolean;
 }
 
 export function composeShell(definition: ViewTemplateDefinition): ShellComposition {

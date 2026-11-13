@@ -490,6 +490,15 @@ export interface PinHistoryEntry {
 export class PresentationPins {
   private readonly pins = new Map<string, PresentationPin>();
   private readonly history: PinHistoryEntry[] = [];
+  private readonly listeners = new Set<(slot: string) => void>();
+
+  /** Be told, with the slot, after a pin (or a rollback, which is a pin) moves: what lets a running UI follow its pins. Returns the unsubscribe. */
+  subscribe(listener: (slot: string) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   get(slot: string): PresentationPin | undefined {
     return this.pins.get(slot);
@@ -514,6 +523,7 @@ export class PresentationPins {
     const from = this.pins.get(slot);
     this.pins.set(slot, target);
     this.history.push({ slot, ...(from ? { from } : {}), to: target, provenance });
+    for (const l of [...this.listeners]) l(slot);
     return target;
   }
 

@@ -10,6 +10,7 @@
  *   contentDir     --content-dir    MMO_CONTENT_DIR      <repo>/content
  *   assetsDir      --assets-dir     MMO_ASSETS_DIR       <repo>/assets            (read only)
  *   catalog        --catalog        MMO_CATALOG          <assets>/catalog.json
+ *   synthesis      --synthesis      MMO_SYNTHESIS        <content>/synthesis/fantasy-kingdom.local.json
  *   worldSpec      --world-spec     MMO_WORLD_SPEC       <repo>/packages/engine-core/worlds/default.world.json
  *   settlementOut  --settlement-out MMO_SETTLEMENT_OUT   <content>/settlements
  *   scenesDir      --scenes-dir     MMO_SCENES_DIR       <content>/scenes   (alias: the server's MMO_SCENES)
@@ -29,6 +30,7 @@ export const PATH_SETTINGS = {
   contentDir: ["content-dir", ["MMO_CONTENT_DIR"]],
   assetsDir: ["assets-dir", ["MMO_ASSETS_DIR"]],
   catalog: ["catalog", ["MMO_CATALOG"]],
+  synthesis: ["synthesis", ["MMO_SYNTHESIS"]],
   worldSpec: ["world-spec", ["MMO_WORLD_SPEC"]],
   settlementOut: ["settlement-out", ["MMO_SETTLEMENT_OUT"]],
   scenesDir: ["scenes-dir", ["MMO_SCENES_DIR", "MMO_SCENES"]],
@@ -76,11 +78,13 @@ export function resolvePaths({ env = process.env, flags = {}, initCwd = env.INIT
   const contentDir = pick("contentDir", resolve(root, "content"));
   const assetsDir = pick("assetsDir", resolve(root, "assets"));
   const catalog = pick("catalog", resolve(assetsDir, "catalog.json"));
+  const synthesis = pick("synthesis", resolve(contentDir, "synthesis", "fantasy-kingdom.local.json"));
   const worldSpec = pick("worldSpec", resolve(root, "packages", "engine-core", "worlds", "default.world.json"));
   const settlementOut = pick("settlementOut", resolve(contentDir, "settlements"));
   const scenesDir = pick("scenesDir", resolve(contentDir, "scenes"));
   const scaleOut = pick("scaleOut", resolve(contentDir, "scale.local.json"));
 
+  if (sources.synthesis !== "default" && !exists(synthesis)) throw new Error(`${names.synthesis}: ${synthesis} does not exist`);
   if (worldSpec === resolve(initCwd, "none")) throw new Error(`${names.worldSpec}=none is the legacy world, which has no town sites: bake:all needs a world spec`);
   if (!exists(worldSpec)) throw new Error(`${names.worldSpec}: ${worldSpec} does not exist`);
   // The art is licensed and read only: nothing the bake writes may land in it.
@@ -99,6 +103,7 @@ export function resolvePaths({ env = process.env, flags = {}, initCwd = env.INIT
     contentDir,
     assetsDir,
     catalog,
+    synthesis,
     worldSpec,
     settlementOut,
     scenesDir,
@@ -110,6 +115,7 @@ export function resolvePaths({ env = process.env, flags = {}, initCwd = env.INIT
     wildlifeModelsOut: resolve(contentDir, "wildlife", "models.local.json"),
     envFile: resolve(contentDir, "bake-env.local.txt"),
     hasCatalog: exists(catalog),
+    hasSynthesis: exists(synthesis),
     sources,
   };
 }
