@@ -38,6 +38,11 @@ export interface QualitySettings {
   /** Most live particles one effect holds / the weather holds (content/vfx/tiers.json); absent: no cap. */
   effectBudget?: number;
   weatherBudget?: number;
+  /**
+   * Width of the cel band's feathered edge, in half-Lambert units (0: a hard
+   * step). Applied to cel materials built after the tier is set.
+   */
+  celFeather: number;
   /** Toon outlines on characters. */
   outlines: boolean;
   /** "physical": the takram precomputed-scattering sky and aerial perspective; "classic": DaySky's keyframed sky. */
@@ -45,10 +50,10 @@ export interface QualitySettings {
 }
 
 export const QUALITY_PRESETS: Record<QualityTier, QualitySettings> = {
-  low: { tier: "low", dpr: [0.75, 1], effects: false, msaa: 0, bloom: false, ao: false, particles: 0.4, outlines: false, sky: "classic" },
-  medium: { tier: "medium", dpr: [1, 1.5], effects: true, msaa: 2, bloom: true, ao: { quality: "performance", halfRes: true }, particles: 0.7, outlines: true, sky: "classic" },
-  high: { tier: "high", dpr: [1, 2], effects: true, msaa: 4, bloom: true, ao: { quality: "medium", halfRes: true }, particles: 1, outlines: true, sky: "physical" },
-  ultra: { tier: "ultra", dpr: [1, 2], effects: true, msaa: 4, bloom: true, ao: { quality: "high", halfRes: false }, particles: 1.5, outlines: true, sky: "physical" },
+  low: { tier: "low", dpr: [0.75, 1], effects: false, msaa: 0, bloom: false, ao: false, particles: 0.4, celFeather: 0, outlines: false, sky: "classic" },
+  medium: { tier: "medium", dpr: [1, 1.5], effects: true, msaa: 2, bloom: true, ao: { quality: "performance", halfRes: true }, particles: 0.7, celFeather: 0.03, outlines: true, sky: "classic" },
+  high: { tier: "high", dpr: [1, 2], effects: true, msaa: 4, bloom: true, ao: { quality: "medium", halfRes: true }, particles: 1, celFeather: 0.03, outlines: true, sky: "physical" },
+  ultra: { tier: "ultra", dpr: [1, 2], effects: true, msaa: 4, bloom: true, ao: { quality: "high", halfRes: false }, particles: 1.5, celFeather: 0.03, outlines: true, sky: "physical" },
 };
 
 /**
