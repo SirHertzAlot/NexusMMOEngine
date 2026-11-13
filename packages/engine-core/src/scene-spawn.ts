@@ -37,7 +37,10 @@ import { fileURLToPath } from "node:url";
 import { fnv1a32, type Breakable as BreakableDef, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
 import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
 import type { SimWorld } from "./world.js";
-import { BodyConfig, ShapeKind } from "./components.js";
+import { hasComponent } from "bitecs";
+import type { SupportPart } from "@mmo-engine/placement";
+import { BodyConfig, ShapeKind, Transform } from "./components.js";
+import type { CollapsePartSpec } from "./interact/collapse.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
 import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
@@ -92,6 +95,11 @@ export interface SceneSpawnDeps {
   breakables?: { register(eid: number, key: string, def: BreakableDef): void };
   /** What a Structure `kind` breaks like when its node has no Breakable component of its own (content/structures.json): buildings, walls, gates. */
   structureBreakable?: (kind: string) => BreakableDef | undefined;
+  /**
+   * Buildings that fall when their parts break (DE4): each synthesized `building:*` group's parts (a Structure node
+   * `<id>-vis-N` with its `-pN-col` collider nodes) are handed over with their boxes once the scene has spawned.
+   */
+  collapse?: { registerBuilding(sim: SimWorld, key: string, parts: readonly CollapsePartSpec[]): unknown };
   /** A shop (a node with a Vendor component): `attach` makes the spawned entity a vendor of the named template; returns an error text, or null. */
   vendors?: { attach(eid: number, template: string): string | null };
   /** A region shard's range (REGION_CHUNK_RANGE): nodes outside it are another shard's and are skipped. */
@@ -532,7 +540,55 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
     }
     out.skipped.push({ id: node.id, reason: names.length > 0 ? `nothing spawns "${names[0]}"` : "no prefab or Spawner creature" });
   }
+  if (deps.collapse) registerCollapsibleBuildings(doc.name, ancestorGroup, out, deps, deps.collapse);
   return out;
+}
+
+/**
+ * Hand each modular building's parts to the collapse system: a part is the Structure node `<base>-vis-N`, its
+ * colliders the nodes `<base>-pN-col...` of the same group. A part with no body (walk-through) is left out.
+ */
+function registerCollapsibleBuildings(
+  scene: string,
+  ancestorGroup: ReadonlyMap<string, string>,
+  out: SceneSpawnResult,
+  deps: SceneSpawnDeps,
+  collapse: NonNullable<SceneSpawnDeps["collapse"]>,
+): void {
+  const parts = new Map<string, Map<string, { eid: number; kind: string; colliders: number[] }>>();
+  const colliders = new Map<string, Map<string, number[]>>();
+  for (const r of out.spawned) {
+    const group = ancestorGroup.get(r.id);
+    if (!group) continue;
+    const vis = /^(.*)-vis-(\d+)$/.exec(r.id);
+    if (vis && r.what.startsWith("structure ") && r.entities[0] !== undefined) {
+      const g = parts.get(group) ?? new Map();
+      g.set(`${vis[1]}#${vis[2]}`, { eid: r.entities[0], kind: r.what.slice("structure ".length), colliders: [] });
+      parts.set(group, g);
+      continue;
+    }
+    const col = /^(.*)-p(\d+)-col/.exec(r.id);
+    if (col) {
+      const g = colliders.get(group) ?? new Map();
+      g.set(`${col[1]}#${col[2]}`, [...(g.get(`${col[1]}#${col[2]}`) ?? []), ...r.entities]);
+      colliders.set(group, g);
+    }
+  }
+  for (const [group, g] of parts) {
+    const specs: CollapsePartSpec[] = [];
+    for (const [key, p] of g) {
+      const eid = p.eid;
+      if (!hasComponent(deps.sim.ecs, BodyConfig, eid) || BodyConfig.shapeKind[eid] !== ShapeKind.Box) continue;
+      const part: SupportPart = {
+        pos: [Transform.px[eid]!, Transform.py[eid]!, Transform.pz[eid]!],
+        size: [BodyConfig.halfX[eid]! * 2, BodyConfig.halfY[eid]! * 2, BodyConfig.halfZ[eid]! * 2],
+        yawDeg: (2 * Math.atan2(Transform.qy[eid]!, Transform.qw[eid]!) * 180) / Math.PI,
+        category: p.kind,
+      };
+      specs.push({ eid, colliders: colliders.get(group)?.get(key) ?? [], part });
+    }
+    if (specs.length >= 3) collapse.registerBuilding(deps.sim, `${scene}/${group}`, specs);
+  }
 }
 
 /** Remove what the previous boot spawned, spawn the scene(s), remember the new entities (all scenes under one record). */
