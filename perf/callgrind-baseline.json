@@ -24,7 +24,7 @@
       "n": 20
     },
     "procgen-chunk": {
-      "irPerOp": 55001,
+      "irPerOp": 67658,
       "unit": "chunk",
       "n": 200
     },
