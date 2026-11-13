@@ -24,7 +24,7 @@ describe("bake document host routes", () => {
     const geo = loadGeometry();
     const { doc } = docOpRoute({ doc: emptyDoc("crypt-b"), op: { op: "placePortal", portal: { id: "st", x: 8, y: 2, side: "x", kind: "stair" } } });
     const { view } = bakeRoute({ doc, why: "portal" }, geo, NOW);
-    assert.deepEqual(view.portals, [{ id: "st", kind: "stair", x: 8, y: 2 }]);
+    assert.deepEqual(view.portals, [{ id: "st", kind: "stair", x: 8, y: 2, width: 1 }]);
   });
 
   it("the provenance is stamped with the request's time and reason", () => {

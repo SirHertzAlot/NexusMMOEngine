@@ -35,7 +35,7 @@ describe("dungeon bake document", () => {
     it(`a ${kind} portal opens its wall cell and shows in the view with its kind`, () => {
       const doc = applyOp(emptyDoc("room"), { op: "placePortal", portal: { id: `${kind}-1`, x: 8, y: 2, side: "x", kind } });
       const b = bake(doc);
-      assert.deepEqual(b.view.portals, [{ id: `${kind}-1`, kind, x: 8, y: 2 }]);
+      assert.deepEqual(b.view.portals, [{ id: `${kind}-1`, kind, x: 8, y: 2, width: 1 }]);
       assert.deepEqual(b.bake.portals.map((p) => p.id), [`${kind}-1`]);
       const plain = bake(emptyDoc("room"));
       assert.equal(b.view.floorArea - plain.view.floorArea, CELL_AREA, "the portal cell is cut open in the shell");
@@ -47,6 +47,20 @@ describe("dungeon bake document", () => {
     const rubble = bake(doc).view.layers.find((l) => l.layer === "rubble");
     assert.equal(rubble?.placed, 0);
     assert.equal(doc.layerEdits.rubble.budget, 0);
+  });
+
+  it("a wide portal with a target level opens every one of its cells and shows both in the view", () => {
+    const plain = bake(emptyDoc("room"));
+    const doc = applyOp(emptyDoc("room"), { op: "placePortal", portal: { id: "wide", x: 8, y: 1, side: "x", kind: "stair", width: 3, targetLevel: -1 } });
+    const b = bake(doc);
+    assert.deepEqual(b.view.portals, [{ id: "wide", kind: "stair", x: 8, y: 1, width: 3, targetLevel: -1 }]);
+    assert.equal(b.view.floorArea - plain.view.floorArea, 3 * CELL_AREA);
+    assert.throws(() => applyOp(emptyDoc("room"), { op: "placePortal", portal: { id: "long", x: 8, y: 1, side: "x", width: 4 } }), /solid wall|floor on one side/);
+  });
+
+  it("painting rock over any cell of a wide portal drops the portal", () => {
+    const doc = applyOp(emptyDoc("room"), { op: "placePortal", portal: { id: "wide", x: 8, y: 1, side: "x", width: 3 } });
+    assert.equal(applyOp(doc, { op: "paint", x: 8, y: 3, cell: "#" }).portals.length, 0);
   });
 
   it("a paint or portal the bake can't use is refused at the edit", () => {

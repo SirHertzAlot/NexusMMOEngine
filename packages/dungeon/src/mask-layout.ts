@@ -24,8 +24,20 @@ export const LayoutPortal = z.strictObject({
   side: z.enum(["x", "y"]),
   /** What the opening is: a door, an arch, a corridor mouth, or a stair up or down. */
   kind: z.enum(PORTAL_KINDS).default("door"),
+  /**
+   * How many wall cells the opening takes, along the wall (across the passage): for side 'x' they run down from
+   * (x, y), for side 'y' they run right. Every one is cut open.
+   */
+  width: z.number().int().min(1).max(8).default(1),
+  /** The floor level the portal leads to (0 ground, negative below, positive above). Absent: the level it stands on. */
+  targetLevel: z.number().int().min(-16).max(16).optional(),
 });
 export type LayoutPortal = z.infer<typeof LayoutPortal>;
+
+/** The wall cells a portal opens: `width` of them from (x, y), along the wall. */
+export function portalCells(p: Pick<LayoutPortal, "x" | "y" | "side" | "width">): Array<{ x: number; y: number }> {
+  return Array.from({ length: p.width }, (_, k) => (p.side === "x" ? { x: p.x, y: p.y + k } : { x: p.x + k, y: p.y }));
+}
 
 export const LayoutMask = z.strictObject({
   version: z.literal(1),
@@ -49,12 +61,20 @@ export function parseLayoutMask(value: unknown): LayoutMask {
   const at = (x: number, y: number): string | undefined => (y >= 0 && y < m.rows.length && x >= 0 && x < w ? m.rows[y][x] : undefined);
   if (at(m.entrance.x, m.entrance.y) !== FLOOR) throw new Error("layout: the entrance must be on floor");
   const ids = new Set<string>();
+  const taken = new Map<string, string>();
   for (const p of m.portals) {
     if (ids.has(p.id)) throw new Error(`layout: portal id ${p.id} repeats`);
     ids.add(p.id);
-    if (at(p.x, p.y) !== SOLID) throw new Error(`layout: portal ${p.id} must sit on a solid wall cell`);
-    const [a, b] = p.side === "x" ? [at(p.x - 1, p.y), at(p.x + 1, p.y)] : [at(p.x, p.y - 1), at(p.x, p.y + 1)];
-    if (a !== FLOOR && b !== FLOOR) throw new Error(`layout: portal ${p.id} must have floor on one side`);
+    for (const c of portalCells(p)) {
+      const where = p.width > 1 ? ` (cell ${c.x},${c.y})` : "";
+      if (at(c.x, c.y) !== SOLID) throw new Error(`layout: portal ${p.id} must sit on a solid wall cell${where}`);
+      const [a, b] = p.side === "x" ? [at(c.x - 1, c.y), at(c.x + 1, c.y)] : [at(c.x, c.y - 1), at(c.x, c.y + 1)];
+      if (a !== FLOOR && b !== FLOOR) throw new Error(`layout: portal ${p.id} must have floor on one side${where}`);
+      const key = `${c.x},${c.y}`;
+      const other = taken.get(key);
+      if (other !== undefined) throw new Error(`layout: portal ${p.id} shares cell ${key} with portal ${other}`);
+      taken.set(key, p.id);
+    }
   }
   return m;
 }
@@ -77,7 +97,7 @@ export function dungeonFromLayout(layout: LayoutMask, name = "layout"): Dungeon 
       grid[y * W + x] = ch === FLOOR ? CELL.floor : ch === POOL ? CELL.pool : CELL.wall;
     }
   }
-  for (const p of m.portals) grid[p.y * W + p.x] = CELL.floor; // the shell cut
+  for (const p of m.portals) for (const c of portalCells(p)) grid[c.y * W + c.x] = CELL.floor; // the shell cut
 
   const walk = (i: number): boolean => grid[i] === CELL.floor || grid[i] === CELL.pool;
   const distance = new Int16Array(W * H).fill(-1);
@@ -130,8 +150,19 @@ export function dungeonFromLayout(layout: LayoutMask, name = "layout"): Dungeon 
 }
 
 /** The portal entities for a mask: the same cells the adapter cut open. */
-export function layoutPortals(layout: LayoutMask): Array<{ id: string; x: number; y: number; side: "x" | "y"; kind: PortalKind }> {
-  return parseLayoutMask(layout).portals.map((p) => ({ id: p.id, x: p.x, y: p.y, side: p.side, kind: p.kind }));
+export function layoutPortals(
+  layout: LayoutMask,
+): Array<{ id: string; x: number; y: number; side: "x" | "y"; kind: PortalKind; width: number; cells: Array<{ x: number; y: number }>; targetLevel?: number }> {
+  return parseLayoutMask(layout).portals.map((p) => ({
+    id: p.id,
+    x: p.x,
+    y: p.y,
+    side: p.side,
+    kind: p.kind,
+    width: p.width,
+    cells: portalCells(p),
+    ...(p.targetLevel === undefined ? {} : { targetLevel: p.targetLevel }),
+  }));
 }
 
 export { DUNGEON_CELL };

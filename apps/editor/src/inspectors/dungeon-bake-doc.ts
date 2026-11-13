@@ -16,6 +16,7 @@ import {
   bakeCrypt,
   CRYPT_THEMES,
   layoutPortals,
+  portalCells,
   parseLayoutMask,
   SHELL_PARTS,
   type CryptBake,
@@ -32,12 +33,12 @@ export function applyOp(doc: DungeonBakeDoc, op: DocOp): DungeonBakeDoc {
       if (op.x === doc.entrance.x && op.y === doc.entrance.y && op.cell !== ".") throw new Error("paint: the entrance must stay floor");
       const rows = doc.rows.map((r, y) => (y === op.y ? r.slice(0, op.x) + op.cell + r.slice(op.x + 1) : r));
       // Painting rock over a portal would leave the portal beside nothing; drop it with the cell.
-      const portals = op.cell === "#" ? doc.portals.filter((p) => !(p.x === op.x && p.y === op.y)) : doc.portals;
+      const portals = op.cell === "#" ? doc.portals.filter((p) => !portalCells(p).some((c) => c.x === op.x && c.y === op.y)) : doc.portals;
       return parseDoc({ ...doc, rows, portals });
     }
     case "placePortal": {
       if (doc.portals.some((p) => p.id === op.portal.id)) throw new Error(`portal: id ${op.portal.id} is taken`);
-      return parseDoc({ ...doc, portals: [...doc.portals, { kind: "door", ...op.portal }] });
+      return parseDoc({ ...doc, portals: [...doc.portals, { kind: "door", width: 1, ...op.portal }] });
     }
     case "removePortal":
       return { ...doc, portals: doc.portals.filter((p) => p.id !== op.id) };
@@ -74,7 +75,7 @@ export interface BakeView {
   triangles: number;
   partCounts: Record<(typeof SHELL_PARTS)[number], number>;
   floorArea: number;
-  portals: Array<{ id: string; kind: PortalKind; x: number; y: number }>;
+  portals: Array<{ id: string; kind: PortalKind; x: number; y: number; width: number; targetLevel?: number }>;
   layers: Array<{ layer: string; placed: number }>;
 }
 
@@ -105,7 +106,14 @@ export function bakeDoc(doc: DungeonBakeDoc, geo: GeometryOps, ctx: { who: strin
     triangles: bake.shell.stats.triangles,
     partCounts,
     floorArea: bake.shell.stats.floorArea,
-    portals: layoutPortals({ version: 1, rows: checked.rows, entrance: checked.entrance, portals: checked.portals }).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y })),
+    portals: layoutPortals({ version: 1, rows: checked.rows, entrance: checked.entrance, portals: checked.portals }).map((p) => ({
+      id: p.id,
+      kind: p.kind,
+      x: p.x,
+      y: p.y,
+      width: p.width,
+      ...(p.targetLevel === undefined ? {} : { targetLevel: p.targetLevel }),
+    })),
     layers: bake.details.map((d) => ({ layer: d.layer, placed: d.placements.length })),
   };
   return {
