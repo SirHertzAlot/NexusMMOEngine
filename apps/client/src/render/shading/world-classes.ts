@@ -43,6 +43,7 @@ export const WORLD_CLASSES: readonly WorldClass[] = [
   { id: "sky", path: { optOut: "sky" } },
   { id: "stars", path: { optOut: "stars" } },
   { id: "vfx-particles", path: { optOut: "vfx" } },
+  { id: "follow-chain-ribbon", path: { optOut: "vfx" } },
   { id: "swing-trail", path: { optOut: "swing-trail" } },
   { id: "portal-ring", path: { optOut: "portal-ring" } },
   { id: "labels", path: { optOut: "label" } },
