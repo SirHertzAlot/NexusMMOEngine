@@ -1,0 +1,6 @@
+uws  1000 clients: CPU  16.6% | broadcast p50 67.201 ms, p99 225.512 ms | RSS 75 MB | 9134/s sent, 9139/s delivered, 5792/s intents in
+ws   1000 clients: CPU  18.4% | broadcast p50 88.626 ms, p99 212.236 ms | RSS 117 MB | 6468/s sent, 6466/s delivered, 7496/s intents in
+uws   NaN clients: CPU   0.2% | broadcast p50 0.002 ms, p99 0.002 ms | RSS 117 MB | 0/s sent, 0/s delivered, 0/s intents in
+ws    NaN clients: CPU   0.2% | broadcast p50 0.002 ms, p99 0.002 ms | RSS 117 MB | 0/s sent, 0/s delivered, 0/s intents in
+uws     8 clients: CPU   0.9% | broadcast p50 0.121 ms, p99 0.516 ms | RSS 83 MB | 236/s sent, 236/s delivered, 233/s intents in
+ws      8 clients: CPU   1.4% | broadcast p50 0.197 ms, p99 1.689 ms | RSS 84 MB | 232/s sent, 232/s delivered, 232/s intents in

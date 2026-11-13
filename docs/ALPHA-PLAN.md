@@ -4,6 +4,8 @@ What "alpha" means for this engine, the milestones that get there, and the
 decisions still open. The status board stays in [`ROADMAP.md`](ROADMAP.md)
 (section 7); this page is the reasoning behind it.
 
+> **Status (2026-11-11).** Every milestone in the [roadmap](ROADMAP.md) (section 7) is built. Two outcomes differ from the plan: D1's whole-body health was replaced by body parts, and D8's "PvP off" now means peace by default with consensual duels. The "published number" (X2, milestone WD) is in [PERFORMANCE.md](PERFORMANCE.md) and [WORLD-STRESS-RESULTS.md](WORLD-STRESS-RESULTS.md), with a caveat: the stress harness has players wander and cross region borders, not fight creatures as X2 asks, so X2 is not demonstrated as written. This page does not re-verify the other criteria; the evidence for each is in its roadmap row.
+
 ## 1. The alpha in one sentence
 
 A player logs in, walks out, meets goblins carrying weapons, fights them

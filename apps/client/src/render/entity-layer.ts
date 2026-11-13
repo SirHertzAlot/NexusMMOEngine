@@ -421,6 +421,11 @@ export class EntityLayer {
     };
   }
 
+  /** A bone of an entity's modular character (follow-chains anchor to it), or null. */
+  boneOf(wid: bigint, name: string): THREE.Object3D | null {
+    return this.meshes.get(wid)?.character?.bones.get(name) ?? null;
+  }
+
   setFlashes(flashes: ReadonlyMap<bigint, number>): void {
     this.flashes = flashes;
   }
