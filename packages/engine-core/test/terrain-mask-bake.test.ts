@@ -13,7 +13,7 @@ import { bakeWorldTerrain } from "../src/terrain/world-bake.js";
 import { TerrainTileStore } from "../src/persist/terrain-tiles.js";
 import { parseWorldSpec, type WorldSpec } from "../src/terrain/world-spec.js";
 import { maskHash } from "../src/terrain/terrain-mask.js";
-import { surveyWorld } from "../src/terrain/survey.js";
+import { coarseGrid, fieldSeed, noiseField, surveyWorld } from "../src/terrain/survey.js";
 import { maskSourceOf } from "../src/terrain/mask-bake.js";
 
 const TINY: WorldSpec = parseWorldSpec({
@@ -88,6 +88,7 @@ describe("terrain masks through the world bake", () => {
     const s = surveyWorld(TINY) as unknown as Record<string, ArrayBufferView | undefined>;
     const h = (a: ArrayBufferView | undefined): string => (a ? maskHash(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)) : "absent");
     const src = maskSourceOf(surveyWorld(TINY));
+    const swellNoise = noiseField(coarseGrid(TINY), fieldSeed(TINY.seed, 1), TINY.land.reliefScale);
     const diag = {
       node: process.version,
       v8: process.versions.v8,
@@ -99,6 +100,16 @@ describe("terrain masks through the world bake", () => {
       survey: Object.fromEntries(["height", "roughness", "biome", "moisture", "rain", "temperature", "water", "waterLevel", "ice", "flow"].map((k) => [k, h(s[k])])),
       maskSource: { slope: h(src.slope), moisture: h(src.moisture), flow: h(src.flow), biome: h(src.biome) },
       channels: baseline,
+      procgenSwell: h(swellNoise),
+      inputs: {
+        spec: maskHash(new TextEncoder().encode(JSON.stringify(TINY))),
+        maskSpec: maskHash(new TextEncoder().encode(JSON.stringify(DEFAULT_TERRAIN_MASK_SPEC))),
+        lang: process.env.LANG ?? null,
+        lcAll: process.env.LC_ALL ?? null,
+        tz: process.env.TZ ?? null,
+        icu: process.versions.icu ?? null,
+        parallelism: typeof os.availableParallelism === "function" ? os.availableParallelism() : null,
+      },
     };
     console.log("MASK-DIAG " + JSON.stringify(diag));
   });

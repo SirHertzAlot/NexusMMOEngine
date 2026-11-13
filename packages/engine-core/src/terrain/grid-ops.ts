@@ -1,3 +1,4 @@
+import { detAtan } from "@mmo-engine/placement";
 /**
  * Small whole-grid operations shared by the survey stages: connected
  * components, distance fields, blurs, and slope. All work on row-major
@@ -122,7 +123,7 @@ export function slopeDegrees(h: Float32Array, W: number, D: number, cell: number
       const bt = v < D - 1 ? i + W : i;
       const gx = (h[r] - h[l]) / (cell * (r - l));
       const gz = (h[bt] - h[t]) / (cell * ((bt - t) / W));
-      out[i] = (Math.atan(Math.hypot(gx, gz)) * 180) / Math.PI;
+      out[i] = (detAtan(Math.hypot(gx, gz)) * 180) / Math.PI;
     }
   }
   return out;

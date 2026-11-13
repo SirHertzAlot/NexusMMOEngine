@@ -5,3 +5,4 @@ export * from "./place.js";
 export * from "./noise.js";
 export * from "./detail.js";
 export * from "./geometry.js";
+export * from "./det-math.js";

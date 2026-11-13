@@ -16,6 +16,7 @@ import { type TerrainMaskSpec, TERRAIN_MASK_CHANNELS, type TerrainMaskChannel } 
 import { Worker } from "node:worker_threads";
 import type { Survey } from "./survey.js";
 import { bakeTerrainMask, maskHash, type TerrainMaskInputs } from "./terrain-mask.js";
+import { detAtan, detLog1p } from "@mmo-engine/placement";
 
 /** The survey's fields the mask needs, as plain arrays (structured-clone safe). */
 export interface MaskSource {
@@ -55,7 +56,7 @@ const slopeOf = (survey: Survey): Float32Array => {
       const zl = Math.max(0, z - 1), zr = Math.min(d - 1, z + 1);
       const dhdx = (h[z * w + xr] - h[z * w + xl]) / ((xr - xl) * cell || 1);
       const dhdz = (h[zr * w + x] - h[zl * w + x]) / ((zr - zl) * cell || 1);
-      out[z * w + x] = (Math.atan(Math.hypot(dhdx, dhdz)) * 180) / Math.PI;
+      out[z * w + x] = (detAtan(Math.hypot(dhdx, dhdz)) * 180) / Math.PI;
     }
   }
   return out;
@@ -66,9 +67,9 @@ export function maskSourceOf(survey: Survey, road?: Uint8Array): MaskSource {
   const g = survey.grid;
   let maxFlow = 0;
   for (const f of survey.flow) if (f > maxFlow) maxFlow = f;
-  const logMax = Math.log1p(maxFlow) || 1;
+  const logMax = detLog1p(maxFlow) || 1;
   const flow = new Float32Array(survey.flow.length);
-  for (let i = 0; i < flow.length; i++) flow[i] = Math.log1p(survey.flow[i]) / logMax;
+  for (let i = 0; i < flow.length; i++) flow[i] = detLog1p(survey.flow[i]) / logMax;
   const biomeMax = Math.max(1, survey.spec.biomes.length - 1);
   const biome = new Float32Array(survey.biome.length);
   for (let i = 0; i < biome.length; i++) biome[i] = survey.biome[i] / biomeMax;
