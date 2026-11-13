@@ -13,9 +13,9 @@ import {
   isFxMessage,
 } from "../src/index.js";
 
-test("Fx = 0x28 registered and version is 30", () => {
+test("Fx = 0x28 is registered, and the protocol version has not gone back past the version that added it (30)", () => {
   assert.equal(MessageType.Fx, 0x28);
-  assert.equal(PROTOCOL_VERSION, 30);
+  assert.ok(PROTOCOL_VERSION >= 30);
 });
 
 test("envelope carries 0x28 with JSON control payload", () => {

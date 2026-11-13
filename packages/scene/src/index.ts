@@ -99,6 +99,13 @@ export const COMPONENTS: Record<string, ComponentDef> = {
     width: { type: "number", default: 4, min: 0.1 },
     depth: { type: "number", default: 4, min: 0.1 },
     height: { type: "number", default: 4, min: 0.1 },
+    /**
+     * Where the middle of the model lies from the node's position, in the node's own axes before its yaw (a modular part's
+     * position is its pivot, e.g. the top and one end of a wall). 0: the node is at the middle.
+     */
+    centreX: { type: "number", default: 0 },
+    centreY: { type: "number", default: 0 },
+    centreZ: { type: "number", default: 0 },
     /** Doors and openings people use (a market is open on every side, a church has one or two). */
     entrances: { type: "number", default: 1, min: 1 },
     /** People it holds at once. */

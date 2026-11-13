@@ -85,6 +85,8 @@ interface Slot {
   body: BodyConfigRow | null;
   asset: PropAsset | null;
   color: THREE.Color;
+  /** Damage-state brightness (DE1): 1 whole, lower as it wears. */
+  bright: number;
 }
 
 /** Stats for the HUD: what the props cost. */
@@ -220,8 +222,9 @@ export class InstancedProps {
       this.update(wireId, transform, body);
       return;
     }
+    const bright = existing?.bright ?? 1;
     if (existing) this.remove(wireId);
-    const slot: Slot = { batch, level: 0, index: 0, transform, body, asset, color: color.clone() };
+    const slot: Slot = { batch, level: 0, index: 0, transform, body, asset, color: color.clone(), bright };
     slot.level = this.levelAt(batch, transform, 0);
     this.place(wireId, slot);
     this.slots.set(wireId, slot);
@@ -277,6 +280,14 @@ export class InstancedProps {
     this.slots.delete(wireId);
     if (this.hovered === wireId) this.hovered = null;
     this.unplace(slot);
+  }
+
+  /** Darken a prop to its damage stage (DE1); 1 is whole. */
+  setBrightness(wireId: bigint, bright: number): void {
+    const slot = this.slots.get(wireId);
+    if (!slot || slot.bright === bright) return;
+    slot.bright = bright;
+    this.writeColor(slot);
   }
 
   /** Tint the prop under the pointer (null: none). */
@@ -438,7 +449,8 @@ export class InstancedProps {
     const owner = level.owners[slot.index];
     // Cooked models carry their own colours: the instance colour only tints.
     const base = slot.batch.cooked ? WHITE : slot.color;
-    const c = owner === this.hovered ? tmpColor.copy(base).lerp(HOVER, HOVER_MIX) : base;
+    const lit = owner === this.hovered ? tmpColor.copy(base).lerp(HOVER, HOVER_MIX) : base;
+    const c = slot.bright === 1 ? lit : tmpColor.copy(lit).multiplyScalar(slot.bright);
     level.mesh.setColorAt(slot.index, c);
     level.mesh.instanceColor!.needsUpdate = true;
   }
