@@ -45,6 +45,7 @@ import { InstancedProps, type PropAsset } from "./instanced-props.js";
 import type { WorkerRequester } from "../workers/pool.js";
 import { PcgMeshes } from "./pcg-meshes.js";
 import { ChainedPropModels, SyntyProps, fnv1a32 } from "./synty-props.js";
+import { RoadLayer } from "./roads/road-layer.js";
 import { CharacterKit, type ModularCharacter } from "./character/character-kit.js";
 import { DEFAULT_CLIP_MAP, indexClipMap, parseClipMap, planClip } from "@mmo-engine/art/browser";
 import { AnimationLibrary, CharacterAnimator } from "./character/character-animator.js";
@@ -210,6 +211,8 @@ export class EntityLayer {
   /** Their lowered rows, made once per row the server sends (the props skip unchanged rows by identity). */
   private readonly lowRows = new Map<bigint, { from: TransformRow; fromBody: BodyConfigRow | null; t: TransformRow; b: BodyConfigRow | null }>();
   private readonly props: InstancedProps;
+  /** Paved street slabs, draped over the terrain instead of drawn as boxes (SG11). */
+  private readonly roads = new RoadLayer();
   private readonly pcgMeshes: PcgMeshes | null;
   readonly syntyProps: SyntyProps;
   /** Rig data per art model (null: the model is not a quadruped); disposed with the layer. */
@@ -285,6 +288,7 @@ export class EntityLayer {
     this.syntyProps = new SyntyProps(() => this.props.modelsChanged());
     this.props = new InstancedProps(new ChainedPropModels(this.pcgMeshes ? [this.syntyProps, this.pcgMeshes] : [this.syntyProps]));
     this.group.add(this.props.group);
+    this.group.add(this.roads.group);
     this.fx = new EntityFxSystem(scene, camera);
     this.group.add(this.vfx.renderer);
     const ground = (x: number, z: number): number | null => this.terrain.heightAt(x, z);
@@ -567,6 +571,9 @@ export class EntityLayer {
     gone.length = 0;
     for (const wid of this.props.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.props.remove(wid);
+    gone.length = 0;
+    for (const wid of this.roads.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
+    for (const wid of gone) this.roads.remove(wid);
 
     this.player = null;
     this.lastPlayerWireId = playerWireId;
@@ -577,6 +584,11 @@ export class EntityLayer {
       // stand-in once, when the chunk's heights arrive).
       if (e.chunk) {
         this.terrain.ensureChunk(wid, e.chunk);
+        continue;
+      }
+      // A paved street leg: the server's flat slab (its size in the scale), draped over the terrain here instead of boxed.
+      if (e.asset?.assetHash === PAVED_ROAD_HASH && e.transform) {
+        this.roads.set(wid, e.transform);
         continue;
       }
       // A far animal is one stand-in in the instanced batch (WL2 far LOD): see gateFarAnimal.
@@ -738,6 +750,7 @@ export class EntityLayer {
       }
     }
 
+    this.roads.update((x, z) => this.terrain.heightAt(x, z), now * 1000);
     this.props.setHovered(this.hoveredWireId);
     // Levels of detail follow the camera.
     this.props.updateLod(this.camera.getWorldPosition(tmpEye));
@@ -996,6 +1009,9 @@ export class EntityLayer {
  * Scenery that never moves, batched per model (see InstancedProps): a
  * static body, or an asset-only entity (scatter without collision).
  */
+/** The AssetRef hash of the paved street slab (`structure:paved_road`, as the server's scene spawner names it). */
+const PAVED_ROAD_HASH = fnv1a32("structure:paved_road");
+
 function isStaticProp(body: BodyConfigRow | undefined, asset: AssetRefRow | undefined): boolean {
   return body !== undefined ? body.motionType === MotionType.Static : asset !== undefined;
 }
