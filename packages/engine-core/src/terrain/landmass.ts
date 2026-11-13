@@ -15,6 +15,7 @@ import { mulberry32, type CoarseGrid } from "./survey.js";
 import { distanceTo, labelComponents, sampleBilinear, smoothstep } from "./grid-ops.js";
 import { crestProfile } from "./relief.js";
 import { windVector, worldBounds, type WorldSpec } from "./world-spec.js";
+import { detAtan2, detCos, detExp, detPow, detSin } from "@mmo-engine/placement";
 
 /** A mountain range's axis (world metres) and its size. */
 export interface RangeAxis {
@@ -60,7 +61,7 @@ function halfWidth(spec: WorldSpec, t: number): number {
   const tEdge = landEdgeT(spec);
   if (t <= tEdge) return 1 + (tEdge - t);
   if (t >= tip) return -2 * (t - tip);
-  return Math.pow((tip - t) / (tip - tEdge), taper);
+  return detPow((tip - t) / (tip - tEdge), taper);
 }
 
 /**
@@ -97,7 +98,7 @@ export function landMask(spec: WorldSpec, grid: CoarseGrid, warpA: Float32Array,
 interface Blob { x: number; z: number; r: number; p: number }
 
 /** Distance from a blob's centre in its own norm: p = 2 is round, higher is squarer (fills a world cell better). */
-const reach = (o: Blob, x: number, z: number): number => Math.pow(Math.pow(Math.abs(x - o.x), o.p) + Math.pow(Math.abs(z - o.z), o.p), 1 / o.p);
+const reach = (o: Blob, x: number, z: number): number => detPow(detPow(Math.abs(x - o.x), o.p) + detPow(Math.abs(z - o.z), o.p), 1 / o.p);
 
 /**
  * Where the main landmasses sit. "island": one at the world's centre.
@@ -258,10 +259,10 @@ export function baseElevation(spec: WorldSpec, grid: CoarseGrid, land: Uint8Arra
       const d = toSea[i];
       // Swells fade in over the first 150 m so the shore stays low; where
       // one dips below the sea it floods into an inlet.
-      h[i] = L.seaLevel + 0.6 + L.rise * (1 - Math.exp(-d / L.riseDistance)) + L.relief * swell[i] * Math.min(1, d / 150);
+      h[i] = L.seaLevel + 0.6 + L.rise * (1 - detExp(-d / L.riseDistance)) + L.relief * swell[i] * Math.min(1, d / 150);
     } else {
       const d = toLand[i];
-      h[i] = L.seaLevel - 0.6 - L.shelfDepth * (1 - Math.exp(-d / L.shelfWidth)) + 2 * swell[i];
+      h[i] = L.seaLevel - 0.6 - L.shelfDepth * (1 - detExp(-d / L.shelfWidth)) + 2 * swell[i];
     }
   }
   return h;
@@ -289,7 +290,7 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
     return toSea[v * W + u];
   };
   const wind = windVector(spec.climate.wind);
-  const across = Math.atan2(wind.x, -wind.z); // perpendicular to the wind
+  const across = detAtan2(wind.x, -wind.z); // perpendicular to the wind
   const segments = 16;
 
   /** A curving polyline of `length` from (x, z) along `heading`. */
@@ -299,8 +300,8 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
     let a = heading;
     for (let s = 0; s < segments; s++) {
       a += (rng() - 0.5) * bend;
-      x += Math.cos(a) * step;
-      z += Math.sin(a) * step;
+      x += detCos(a) * step;
+      z += detSin(a) * step;
       pts.push({ x, z });
     }
     return pts;
@@ -344,7 +345,7 @@ export function placeRanges(spec: WorldSpec, grid: CoarseGrid, land: Uint8Array,
         const parent = ranges[Math.floor(rng() * ranges.length)];
         const p = parent.points;
         const s = Math.max(1, Math.min(p.length - 2, Math.round((0.15 + 0.7 * rng()) * (p.length - 1))));
-        const along = Math.atan2(p[s + 1].z - p[s - 1].z, p[s + 1].x - p[s - 1].x);
+        const along = detAtan2(p[s + 1].z - p[s - 1].z, p[s + 1].x - p[s - 1].x);
         const heading = along + side * ((35 + 45 * rng()) * Math.PI) / 180;
         const points = walk(p[s].x, p[s].z, heading, length, 0.35);
         // Clear of the other spurs (the parent it grows from is fine).
@@ -537,10 +538,10 @@ export function raiseVolcanoes(
           continue;
         }
         const flank = (reachHere - r) / (reachHere - V.craterRadius);
-        let rise = V.height * Math.pow(flank, 1.6);
+        let rise = V.height * detPow(flank, 1.6);
         if (gullyNoise && V.gullies > 0) {
           // Polar noise coordinates: ~50 cells of noise per radian, radius stretched ~3x.
-          const theta = Math.atan2(v - cv, u - cu);
+          const theta = detAtan2(v - cv, u - cu);
           const n = sampleBilinear(gullyNoise, W, D, W / 2 + theta * 50, D / 2 + (r / grid.cell) * 0.3);
           const spur = (1 - Math.abs(n)) ** 2;
           rise *= 1 - V.gullies * (1 - spur) * smoothstep(0.08, 0.45, 1 - flank) * Math.min(1, flank * 4);

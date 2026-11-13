@@ -141,3 +141,5 @@ export type {
   FxUpdate,
 } from "./fx.js";
 export type { DeltaSet, DeltaSetEntry } from "./deltaset.js";
+export { NOT_A_CELL, canRotate, cellOf, checkPlace, firstFit, gridFor, inside, packPlacement, sizeOf, stamp, unpackPlacement } from "./spatial-grid.js";
+export type { Footprint, GridSize, PlaceRefusal, Placement } from "./spatial-grid.js";

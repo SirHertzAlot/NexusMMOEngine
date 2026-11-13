@@ -5535,7 +5535,7 @@ export class Gateway {
         this.sendError(s, 4005, "not enough gold");
         return;
       }
-      if (!this.items || !this.items.store.hasRoom(meChar)) {
+      if (!this.items || !this.items.store.canFit(meChar, [def])) {
         this.sendError(s, 4005, "your bag is full");
         return;
       }
@@ -6146,6 +6146,8 @@ export class Gateway {
       result = hands?.some((h) => this.body!.armFactor(this.world, avatar, h) === 0)
         ? { ok: false as const, error: "that hand can't hold anything" }
         : this.items.equip(holder, a.item);
+    } else if (a.action === "move") {
+      result = this.items.move(holder, a.item, { x: a.x, y: a.y, rot: a.rot === true });
     } else {
       result = this.items.unequip(holder, "hand" in a ? a.hand : a.slot);
     }

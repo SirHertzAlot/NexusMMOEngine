@@ -1,3 +1,4 @@
+import { detTan } from "@mmo-engine/placement";
 /**
  * Walkability: which land can be reached on foot from a start cell. A step
  * between neighbouring cells (8 directions) is walkable when the climb over
@@ -23,7 +24,7 @@ export function reachableLand(
   const { width: W, depth: D, cell } = grid;
   const out = new Uint8Array(W * D);
   if (from < 0 || from >= W * D || blocked?.(from)) return out;
-  const tan = Math.tan((slopeLimitDeg * Math.PI) / 180);
+  const tan = detTan((slopeLimitDeg * Math.PI) / 180);
   const queue = new Int32Array(W * D);
   let head = 0;
   let tail = 0;

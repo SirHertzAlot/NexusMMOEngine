@@ -15,6 +15,7 @@
 
 import type { CoarseGrid } from "./survey.js";
 import { accumulate, drainage, fillDepressions } from "./hydrology.js";
+import { detPow, detTan } from "@mmo-engine/placement";
 
 /** Bare rock holds a steeper angle: from `fromM` it rises to `deg` over `spanM`. */
 export interface RockTalus {
@@ -31,7 +32,7 @@ export interface RockTalus {
 export function thermalErosion(h: Float32Array, grid: CoarseGrid, talusDeg: number, passes: number, rock?: RockTalus): void {
   const W = grid.width;
   const D = grid.depth;
-  const tan = Math.tan((talusDeg * Math.PI) / 180);
+  const tan = detTan((talusDeg * Math.PI) / 180);
   const limit = [tan * grid.cell, tan * grid.cell * Math.SQRT2];
   const delta = new Float32Array(h.length);
   const excess = new Float32Array(8);
@@ -45,7 +46,7 @@ export function thermalErosion(h: Float32Array, grid: CoarseGrid, talusDeg: numb
         let lim1 = limit[1];
         if (rock && h[i] > rock.fromM) {
           const x = Math.min(1, (h[i] - rock.fromM) / rock.spanM);
-          const t = Math.tan(((talusDeg + (rock.deg - talusDeg) * x * x * (3 - 2 * x)) * Math.PI) / 180) * grid.cell;
+          const t = detTan(((talusDeg + (rock.deg - talusDeg) * x * x * (3 - 2 * x)) * Math.PI) / 180) * grid.cell;
           lim0 = t;
           lim1 = t * Math.SQRT2;
         }
@@ -144,7 +145,7 @@ export function streamPowerIncision(
       const i = order[n];
       const r = receiver[i];
       if (r < 0 || h[i] <= floor || h[i] <= h[r]) continue;
-      const f = (k * (m === 0.5 ? Math.sqrt(acc[i]) : Math.pow(acc[i], m))) / distance[i];
+      const f = (k * (m === 0.5 ? Math.sqrt(acc[i]) : detPow(acc[i], m))) / distance[i];
       let next = (h[i] + f * h[r]) / (1 + f);
       next = Math.max(next, before[i] - maxCutM, Math.min(h[i], floor));
       if (next < h[i]) h[i] = next;

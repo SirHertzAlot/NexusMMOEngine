@@ -34,6 +34,7 @@ export const ItemActionSchema = z.union([
   z.object({ kind: z.literal("item"), action: z.literal("drop"), item: z.number().int().positive() }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("equip"), item: z.number().int().positive() }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("use"), item: z.number().int().positive() }).strict(),
+  z.object({ kind: z.literal("item"), action: z.literal("move"), item: z.number().int().positive(), x: z.number().int().min(0).max(63), y: z.number().int().min(0).max(63), rot: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("unequip"), hand: z.enum(["main", "off"]) }).strict(),
   z.object({ kind: z.literal("item"), action: z.literal("unequip"), slot: z.enum(["head", "chest", "hands", "legs", "ring", "amulet"]) }).strict(),
 ]);
