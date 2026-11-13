@@ -73,7 +73,7 @@ test("a part that loses its support falls onto what is below, its model follows,
     }
     assert.equal(Transform.py[upper.model], 2, "static parts do not move");
     sim.despawn(lower.model);
-    assert.equal(collapse.partBroken(sim, lower.model), 1);
+    assert.equal(collapse.partBroken(sim, lower.model), true);
     assert.equal(sim.resolveWireId(sim.wireId(lower.col)), -1, "its collider went with it");
     let fell = false;
     for (let i = 0; i < 240; i++) {

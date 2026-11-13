@@ -93,8 +93,10 @@ describe("CollapseSystem", () => {
   it("breaking the south wall drops only what hung from it, and takes its collider", () => {
     const { sim, sys, visuals, wallCollider, run, carrier } = build();
     const cw = sim.wireId(wallCollider);
-    assert.equal(sys.partBroken(sim, visuals[2]!), 1, "the door");
+    assert.equal(sys.partBroken(sim, visuals[2]!), true);
     assert.equal(sim.resolveWireId(cw), -1, "the broken wall's collider is gone at once");
+    sys.step(sim, 0);
+    assert.equal(sys.stats.queued, 1, "the door lost its support");
     run(1);
     assert.ok(carrier(visuals[6]!) >= 0, "the door has a carrier");
     assert.equal(carrier(visuals[5]!), -1, "the roof still spans the other walls");
@@ -162,6 +164,7 @@ describe("CollapseSystem", () => {
   it("releases at most perTick parts in a tick", () => {
     const { sim, sys, visuals } = build({ perTick: 2, waveDelayS: 0.001 });
     sys.partBroken(sim, visuals[0]!);
+    sys.step(sim, DT); // works out what fell and queues it, a moment from now
     sys.step(sim, DT);
     assert.equal(sys.stats.fallen, 2);
     sys.step(sim, DT);
@@ -203,9 +206,22 @@ describe("CollapseSystem", () => {
 
   it("ignores a part it does not know, and a part reported twice falls once", () => {
     const { sim, sys, visuals } = build();
-    assert.equal(sys.partBroken(sim, 9999), 0);
-    assert.equal(sys.partBroken(sim, visuals[2]!), 1);
-    assert.equal(sys.partBroken(sim, visuals[2]!), 0);
+    assert.equal(sys.partBroken(sim, 9999), false);
+    assert.equal(sys.partBroken(sim, visuals[2]!), true);
+    assert.equal(sys.partBroken(sim, visuals[2]!), true);
+    sys.step(sim, 0);
+    assert.equal(sys.stats.queued, 1, "the door, once");
+  });
+
+  it("works a building out once however many of its parts broke in the tick", () => {
+    const { sim, sys, visuals } = build({ waveDelayS: 0.001 });
+    // The floor and both side walls at once: one pass, and every part that lost its support is queued exactly once.
+    for (const i of [0, 3, 4]) sys.partBroken(sim, visuals[i]!);
+    sys.step(sim, 0);
+    const queued = sys.stats.queued;
+    sys.step(sim, 0);
+    assert.equal(sys.stats.queued, queued, "nothing is queued twice");
+    assert.equal(queued, 4, "north, south, roof and door");
   });
 
   it("skips a part that was despawned meanwhile", () => {

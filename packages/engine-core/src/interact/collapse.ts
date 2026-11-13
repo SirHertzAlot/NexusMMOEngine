@@ -104,6 +104,8 @@ export class CollapseSystem implements SimSystem {
   private readonly buildings = new Map<string, Building>();
   private readonly of = new Map<bigint, { building: Building; index: number }>();
   private queue: Queued[] = [];
+  /** Buildings with parts broken since the last tick: each is worked out once per tick, however many parts broke in it. */
+  private readonly dirty = new Set<Building>();
   private falling: Falling[] = [];
   private now = 0;
   /** Parts that have been let fall so far. */
@@ -155,28 +157,38 @@ export class CollapseSystem implements SimSystem {
   }
 
   /**
-   * A part broke (or was taken out): its colliders go with it, and everything that lost its support is queued.
-   * Returns how many other parts will fall.
+   * A part broke (or was taken out): its colliders go with it now, and what lost its support is worked out at the
+   * next step (once per building however many of its parts broke: a demolition breaks dozens in one tick, and
+   * working the graph out per part cost ~4 ms each on a 380-part building). Returns whether the part is known.
    */
-  partBroken(sim: SimWorld, eid: number): number {
+  partBroken(sim: SimWorld, eid: number): boolean {
     const at = this.of.get(sim.wireId(eid));
-    if (!at) return 0;
+    if (!at) return false;
     const { building, index } = at;
+    if (building.gone.has(index)) return true;
     for (const c of building.parts[index]!.colliders) {
       const ce = sim.resolveWireId(c);
       if (ce >= 0) sim.despawn(ce);
     }
     building.gone.add(index);
-    const fell = collapseFrom(building.graph, building.gone);
-    for (const f of fell) {
-      building.gone.add(f.index);
-      this.queue.push({ building, index: f.index, dueAt: this.now + f.wave * this.waveDelayS });
+    this.dirty.add(building);
+    return true;
+  }
+
+  /** Work out what each building with broken parts lost, and queue it wave by wave. */
+  private resolve(): void {
+    for (const building of this.dirty) {
+      for (const f of collapseFrom(building.graph, building.gone)) {
+        building.gone.add(f.index);
+        this.queue.push({ building, index: f.index, dueAt: this.now + f.wave * this.waveDelayS });
+      }
     }
-    return fell.length;
+    this.dirty.clear();
   }
 
   step(sim: SimWorld, dtSeconds: number): void {
     this.now += dtSeconds;
+    this.resolve();
     this.release(sim);
     this.follow(sim);
     this.settle(sim);
