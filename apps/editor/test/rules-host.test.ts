@@ -160,7 +160,9 @@ describe("readRuleFile", () => {
   it("reads the real loot file", () => {
     const { content, missing } = readRuleFile(REPO, "loot");
     assert.equal(missing, false);
-    assert.equal((content as { bagSlots: number }).bagSlots, 24);
+    // The real file is content (a game sets its own bag size); the default of 24 is pinned by the missing-file test.
+    const bag = (content as { bagSlots: number }).bagSlots;
+    assert.ok(Number.isInteger(bag) && bag >= 1);
   });
   it("falls back to engine defaults when the file is missing", () => {
     const root = fakeRepo();
