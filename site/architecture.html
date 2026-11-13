@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Engine | Architecture Explorer</title>
+    <meta name="description" content="Explore the Nexus engine's architecture in 3D: browser, edge, core and world layers, the links between them, and a guided tour of one player input.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbcfe8' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M12 2l8.5 5v10L12 22l-8.5-5V7z'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23fbcfe8'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Galada&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/nexus.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" integrity="sha384-d+vyQ0dYcymoP8ndq2hW7FGC50nqGdXUEgoOUGxbbkAJwZqL7h+jKN0GGgn9hFDS" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
+    <style>
+        html, body { height: 100%; overflow: hidden; }
+
+        #scene { position: fixed; inset: 0; z-index: 0; cursor: grab; touch-action: none; }
+        #scene.dragging { cursor: grabbing; }
+        #scene.hovering { cursor: pointer; }
+        #scene canvas { display: block; width: 100%; height: 100%; }
+
+        /* Floating labels, projected from 3D each frame */
+        #labels { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+        .tag {
+            position: absolute;
+            left: 0; top: 0;
+            transform: translate(-50%, -100%);
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+            padding: 0.28rem 0.7rem;
+            border-radius: 100px;
+            background: rgba(2, 10, 14, 0.62);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            will-change: transform, opacity;
+        }
+        .tag i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 0.45rem; background: var(--c, #fff); box-shadow: 0 0 8px var(--c, #fff); }
+        .tag.sel { border-color: var(--accent); color: var(--accent); }
+        .layer-tag {
+            position: absolute; left: 0; top: 0; text-align: left; max-width: 15rem;
+            font-family: var(--font-display);
+            font-stretch: 85%;
+            font-weight: 800;
+            font-size: clamp(0.95rem, 1.5vw, 1.4rem);
+            letter-spacing: -0.01em;
+            color: rgba(255, 255, 255, 0.9);
+            white-space: normal;
+            text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+            will-change: transform, opacity;
+        }
+        .layer-tag small { display: block; font-family: var(--font-mono); font-size: 0.62rem; font-weight: 400; font-stretch: 100%; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-color); margin-top: 0.15rem; }
+        .edge-tag { transform: translate(-50%, -50%); font-size: 0.64rem; color: var(--accent); background: rgba(2, 10, 14, 0.78); border-color: rgba(251, 207, 232, 0.4); }
+
+        /* ---------- Panels ---------- */
+        .panel {
+            position: fixed;
+            z-index: 50;
+            border-radius: 22px;
+            background: rgba(2, 12, 16, 0.58);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+        }
+
+        .controls { left: 3%; top: 6.4rem; width: 300px; max-height: calc(100vh - 8rem); overflow-y: auto; padding: 1.2rem 1.3rem; display: flex; flex-direction: column; gap: 1.15rem; }
+        .controls h1 { font-size: 2.1rem; }
+        .controls .sub { color: var(--muted-color); font-size: 0.88rem; line-height: 1.5; }
+
+        .group-label { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.5rem; }
+
+        .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; padding: 0.3rem; border-radius: 100px; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.14); }
+        .seg button { font-family: var(--font-display); font-stretch: 92%; font-weight: 700; font-size: 0.8rem; padding: 0.45rem 0.2rem; border: 0; border-radius: 100px; background: transparent; color: var(--muted-color); cursor: pointer; transition: all 0.25s ease; }
+        .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+        .seg button:hover:not([aria-pressed="true"]) { color: #fff; }
+
+        .btn { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; width: 100%; font-family: var(--font-display); font-stretch: 92%; font-weight: 700; font-size: 0.9rem; padding: 0.55rem 0.55rem 0.55rem 1.1rem; border-radius: 100px; border: 0; cursor: pointer; background: rgba(0, 0, 0, 0.5); color: #fff; transition: all 0.25s ease; }
+        .btn:hover { background: rgba(0, 0, 0, 0.72); transform: translateY(-2px); }
+        .btn .plus-icon { width: 30px; height: 30px; font-size: 1rem; }
+
+        .slider { display: flex; flex-direction: column; gap: 0.35rem; }
+        .slider label { font-size: 0.82rem; color: var(--muted-color); display: flex; justify-content: space-between; }
+        input[type="range"] { width: 100%; accent-color: #fbcfe8; }
+
+        .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.8rem; }
+        .legend span { font-family: var(--font-mono); font-size: 0.66rem; color: var(--muted-color); display: flex; align-items: center; gap: 0.45rem; }
+        .legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
+
+        .controls details summary { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); cursor: pointer; }
+        .parts { list-style: none; display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.6rem; }
+        .parts button { width: 100%; text-align: left; font-family: var(--font-body); font-size: 0.84rem; color: var(--muted-color); background: transparent; border: 0; padding: 0.3rem 0.5rem; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 0.55rem; }
+        .parts button:hover, .parts button.sel { background: rgba(255, 255, 255, 0.09); color: #fff; }
+        .parts i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+
+        .hint-line { font-family: var(--font-mono); font-size: 0.66rem; color: var(--muted-color); line-height: 1.5; }
+
+        /* Detail drawer */
+        .detail { right: 3%; top: 6.4rem; width: min(390px, 92vw); max-height: calc(100vh - 8rem); overflow-y: auto; padding: 1.5rem 1.5rem 1.4rem; transform: translateX(calc(100% + 4rem)); opacity: 0; pointer-events: none; transition: transform 0.45s var(--ease-out), opacity 0.3s ease; }
+        .detail.open { transform: none; opacity: 1; pointer-events: auto; }
+        .detail .close { position: absolute; top: 0.9rem; right: 0.9rem; width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); color: #fff; cursor: pointer; font-size: 1rem; }
+        .detail .pill { display: inline-flex; align-items: center; gap: 0.5rem; font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.3rem 0.8rem; border-radius: 100px; border: 1px solid var(--c); color: var(--c); }
+        .detail h2 { font-family: var(--font-display); font-stretch: 88%; font-weight: 800; font-size: 2.2rem; line-height: 1; letter-spacing: -0.02em; margin: 0.7rem 0 0.5rem; padding-right: 2rem; }
+        .detail .summary { font-family: var(--font-display); font-weight: 500; font-stretch: 94%; font-size: 1.1rem; line-height: 1.35; margin-bottom: 1rem; }
+        .detail ul.facts { list-style: none; display: flex; flex-direction: column; gap: 0.55rem; margin-bottom: 1.1rem; }
+        .detail ul.facts li { position: relative; padding-left: 1.1rem; font-size: 0.92rem; line-height: 1.5; color: var(--muted-color); }
+        .detail ul.facts li::before { content: ''; position: absolute; left: 0; top: 0.55em; width: 6px; height: 6px; border-radius: 2px; background: var(--c); }
+        .detail .row-label { font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0.9rem 0 0.45rem; }
+        .detail .links { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+        .detail .links button { font-family: var(--font-mono); font-size: 0.7rem; padding: 0.32rem 0.75rem; border-radius: 100px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.06); color: #fff; cursor: pointer; }
+        .detail .links button:hover { border-color: var(--accent); color: var(--accent); }
+        .detail .repo { font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent); word-break: break-all; }
+        .detail .readmore { display: inline-block; margin-top: 0.4rem; font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.35); }
+
+        /* Tour card */
+        .tour-card { left: 50%; bottom: 1.6rem; width: min(640px, 92vw); transform: translate(-50%, 140%); opacity: 0; pointer-events: none; padding: 1.1rem 1.4rem 1rem; transition: transform 0.5s var(--ease-out), opacity 0.3s ease; }
+        .tour-card.open { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+        .tour-card .step-no { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+        .tour-card h3 { font-family: var(--font-display); font-stretch: 90%; font-weight: 800; font-size: 1.6rem; letter-spacing: -0.015em; line-height: 1.05; margin: 0.25rem 0 0.4rem; }
+        .tour-card p { color: var(--muted-color); font-size: 0.95rem; line-height: 1.55; }
+        .tour-card .nav-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.9rem; }
+        .tour-card .bar { flex: 1; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
+        .tour-card .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.4s ease; }
+        .tour-card button { font-family: var(--font-display); font-stretch: 92%; font-weight: 700; font-size: 0.85rem; padding: 0.5rem 1.1rem; border-radius: 100px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.07); color: #fff; cursor: pointer; }
+        .tour-card button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+        .tour-card button:disabled { opacity: 0.35; cursor: default; }
+
+        .fallback { display: none; position: fixed; inset: 0; z-index: 2; align-items: center; justify-content: center; text-align: center; padding: 2rem; color: var(--muted-color); }
+        .no-webgl .fallback { display: flex; }
+
+        @media (max-width: 1280px) { .layer-tag small { display: none; } }
+
+        @media (max-width: 900px) {
+            .controls { left: 3%; right: 3%; width: auto; top: 5.2rem; max-height: 38vh; padding: 0.9rem 1rem; gap: 0.8rem; }
+            .controls h1 { font-size: 1.5rem; }
+            .controls .sub, .legend, .hint-line { display: none; }
+            .detail { right: 3%; left: 3%; width: auto; top: auto; bottom: 1rem; max-height: 52vh; transform: translateY(120%); }
+            .detail.open { transform: none; }
+            .tour-card { bottom: 0.8rem; }
+        }
+
+        @media (max-width: 900px) { body.touring .controls { display: none; } }
+
+        @media (prefers-reduced-motion: reduce) { .detail, .tour-card { transition: opacity 0.2s ease; } }
+    </style>
+</head>
+<body>
+    <div id="scene" role="img" aria-label="Interactive 3D model of the Nexus engine's architecture. The same parts are listed in the panel on the left."></div>
+    <div id="labels" aria-hidden="true"></div>
+    <div class="fallback"><p>This browser can't draw the 3D model. The full list of parts is in the panel, and each one opens its details.</p></div>
+
+    <header class="header">
+        <a class="logo" href="index.html">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 2L20.5 7V17L12 22L3.5 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+            </svg>
+            <span>Nexus</span>
+        </a>
+        <nav class="nav" aria-label="Primary">
+            <a href="index.html" class="nav-item">Home</a>
+            <a href="pitch.html" class="nav-item">The tour</a>
+            <a href="architecture.html" class="nav-item active" aria-current="page">Architecture</a>
+            <a href="docs/index.html" class="nav-item">Docs</a>
+            <a href="docs/roadmap.html" class="nav-item">Roadmap</a>
+        </nav>
+        <a class="gh-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">View on GitHub</a>
+    </header>
+
+    <aside class="panel controls" aria-label="Explorer controls">
+        <div>
+            <span class="eyebrow">Architecture explorer</span>
+            <h1 class="display">How it <em>fits.</em></h1>
+        </div>
+        <p class="sub">The engine's architecture diagram as a 3D model. Drag to orbit, scroll to zoom, click any part.</p>
+
+        <div>
+            <div class="group-label">Lens</div>
+            <div class="seg" role="group" aria-label="Lens">
+                <button type="button" data-lens="all" aria-pressed="true">Everything</button>
+                <button type="button" data-lens="dev" aria-pressed="false">Developers</button>
+                <button type="button" data-lens="designer" aria-pressed="false">Designers</button>
+            </div>
+        </div>
+
+        <button type="button" class="btn" id="tour-btn">Follow one player input <span class="plus-icon">▶</span></button>
+
+        <div class="slider">
+            <label for="explode">Explode the layers <span id="explode-val">50%</span></label>
+            <input type="range" id="explode" min="0" max="100" value="50">
+        </div>
+
+        <div>
+            <div class="group-label">Legend</div>
+            <div class="legend" id="legend"></div>
+        </div>
+
+        <details>
+            <summary>All parts</summary>
+            <ul class="parts" id="parts"></ul>
+        </details>
+
+        <p class="hint-line">Built from <code class="inline">docs/architecture.html</code>, updated with the edge, shared-memory rings and world server from the wiki.</p>
+    </aside>
+
+    <aside class="panel detail" id="detail" aria-live="polite" aria-label="Part details"></aside>
+
+    <section class="panel tour-card" id="tour-card" aria-label="Guided tour">
+        <div class="step-no" id="tour-no"></div>
+        <h3 id="tour-title"></h3>
+        <p id="tour-text"></p>
+        <div class="nav-row">
+            <button type="button" id="tour-prev">← Back</button>
+            <span class="bar"><i id="tour-bar"></i></span>
+            <button type="button" id="tour-auto" aria-pressed="false">Auto</button>
+            <button type="button" class="primary" id="tour-next">Next →</button>
+            <button type="button" id="tour-exit" aria-label="Exit the tour">✕</button>
+        </div>
+    </section>
+
+    <script>
+    /* =============================================================================
+     * Data: the architecture, as parts and links.
+     * Sources: docs/architecture.html (runtime diagram), docs/wiki/01, 05 and 06,
+     * docs/ARCHITECTURE.md. Where the old diagram and the wiki differ (the diagram
+     * predates the edge split), the wiki's current topology is used.
+     * ========================================================================== */
+    const REPO = 'https://github.com/SirHertzAlot/NexusMMOEngine/';
+    const CATS = {
+        mirror:      { name: 'Mirror / frontend', color: '#fbcfe8' },
+        authority:   { name: 'Authority / sim',   color: '#2dd4bf' },
+        persistence: { name: 'Persistence',       color: '#60a5fa' },
+        security:    { name: 'Auth / security',   color: '#fbbf24' },
+        contract:    { name: 'Contract / tooling', color: '#c4b5fd' },
+        content:     { name: 'Content & tools',   color: '#86efac' }
+    };
+
+    // Layers, top to bottom. y = (index - 1.5) * spacing.
+    const LAYERS = [
+        { id: 'world',   name: 'World & persistence', sub: 'coordinates regions, stores state' },
+        { id: 'core',    name: 'Core',                sub: 'one authoritative process per region' },
+        { id: 'edge',    name: 'Edge',                sub: 'sockets in, deltas out' },
+        { id: 'browser', name: 'Browser',             sub: 'mirrors state, never owns it' }
+    ];
+
+    // layer: index into LAYERS; x,z: position on the layer; w,d: footprint; lens: who it matters to.
+    const PARTS = [
+        { id: 'client', name: 'Game client', cat: 'mirror', layer: 3, x: -5.6, z: -1.8, w: 2.6, d: 1.5, lens: ['dev', 'designer'],
+          summary: 'The player\'s window into the world, and nothing more.',
+          facts: ['React 19 and React Three Fiber. The app shell handles login, characters and the world view.', 'No game logic runs in the browser: that is the load-bearing rule of the whole design.', 'Draws only the player\'s interface. Developer tools live in the editor.'],
+          repo: 'apps/client', doc: 'docs/wiki/08-client-and-rendering.md' },
+        { id: 'hud', name: 'HUD + input', cat: 'mirror', layer: 3, x: -5.6, z: 1.8, w: 2.4, d: 1.3, lens: ['dev'],
+          summary: 'Turns key presses into intents, and state into meters.',
+          facts: ['Input: WASD, jump, fly, dodge; mouse-look. Each becomes an intent sent upstream.', 'The HUD shows tick, entities, position and the player\'s meters.', 'It never moves the player itself: it asks, and the server answers.'],
+          repo: 'apps/client', doc: 'docs/wiki/08-client-and-rendering.md' },
+        { id: 'mirror', name: 'MirrorClient', cat: 'mirror', layer: 3, x: -1.2, z: 0, w: 2.8, d: 1.7, lens: ['dev'],
+          summary: 'Keeps a copy of the world the server sends.',
+          facts: ['Owns the WebSocket and the mirrored state; folds snapshots and deltas into it.', 'An interpolator renders one tick behind, so motion is smooth without client-side prediction.', 'Shared by the game client and the editor.'],
+          repo: 'packages/mirror', doc: 'docs/wiki/08-client-and-rendering.md' },
+        { id: 'scene3d', name: 'R3F scene', cat: 'mirror', layer: 3, x: 2.9, z: -2.0, w: 2.6, d: 1.5, lens: ['designer', 'dev'],
+          summary: 'Draws terrain, water, entities, sky and effects.',
+          facts: ['Terrain, water, entity layer, day sky, particles and effects.', 'Follow camera and raycast hover; no per-frame allocations.', 'Art arrives through the art pipeline; models are drawn instanced.'],
+          repo: 'apps/client/src/render', doc: 'docs/wiki/08-client-and-rendering.md' },
+        { id: 'editor', name: 'Editor', cat: 'content', layer: 3, x: 6.0, z: 1.7, w: 2.6, d: 1.6, lens: ['designer', 'dev'],
+          summary: 'Where designers and developers change the game without code.',
+          facts: ['Read-only ECS inspector and a play mode that runs a server and the game view with a debugger.', 'Rules and gameplay tables, PICG graphs, dungeon tools, world-scale terrain and the art pipeline.', 'A Changes panel with semantic diffs, merge and soft locks over plain git.'],
+          repo: 'apps/editor', doc: 'docs/EDITOR-ARCHITECTURE.md' },
+
+        { id: 'edge', name: 'Edge relay', cat: 'security', layer: 2, x: -1.4, z: 0, w: 3.4, d: 2.0, lens: ['dev'],
+          summary: 'The front door: players\' sockets in, per-player deltas out.',
+          facts: ['Holds the players\' WebSocket and HTTP on the public port and relays them to the core over a framed TCP channel. It serves sockets with the ws library; a core started alone serves players itself with uWebSockets.js.', 'Routes each packet by type through content/edge/routes.json: forward to the core, or handle on the edge (edge modules). While the core is down it refuses new sockets and answers HTTP 503.', 'Assembles each player\'s DeltaSet from the per-sector bytes the core encodes once (interest management), and serves /health and Prometheus metrics.', 'Authentication, rate limits and schema validation are not here: they are in the core\'s gateway.'],
+          repo: 'apps/edge', doc: 'docs/wiki/05-networking-and-edge.md' },
+        { id: 'auth', name: 'Gateway + auth', cat: 'security', layer: 1, x: -4.4, z: 3.3, w: 2.6, d: 1.4, lens: ['dev'],
+          summary: 'Decides who is allowed to send anything at all, and how much.',
+          facts: ['The core\'s gateway answers the hello handshake (argon2-hashed credentials, session tokens).', 'An intent that arrives before hello is rejected with code 4003 and never reaches the ring. Entity ownership is checked: a player can only drive their own entity.', 'Token-bucket rate limits and strict schema validation apply to every message; a client that trips them too often is disconnected.', 'The limits are content/rules/ingress.json.'],
+          repo: 'packages/engine-core/src/net', doc: 'docs/wiki/05-networking-and-edge.md' },
+
+{ id: 'ring', name: 'Shared-memory rings', cat: 'authority', layer: 1, x: -4.6, z: 0.2, w: 2.8, d: 1.7, lens: ['dev'],
+          summary: 'Lock-free lanes between the gateway and the simulation.',
+          facts: ['One page-aligned SharedArrayBuffer holds an input ring, a persistence ring, planar component columns and atomic telemetry.', 'Intents are packed into a single 32-bit command and pushed without locks or copies.', 'If the sim worker crashes, client sockets stay open.'],
+          repo: 'packages/engine-core', doc: 'docs/wiki/01-architecture-overview.md' },
+        { id: 'sim', name: 'Sim · 30 Hz tick', cat: 'authority', layer: 1, x: 0.4, z: 0, w: 3.6, d: 2.2, lens: ['dev', 'designer'],
+          summary: 'The one place the world changes.',
+          facts: ['A fixed 30 Hz loop (33.3 ms). A spiral guard caps catch-up at 5 steps per frame and counts what it drops.', 'bitECS systems over structure-of-arrays components: movement, combat, streaming, terrain, weather.', 'Zero heap allocations in the hot loop; one snapshot and delta per tick.', 'Game rules loaded from data decide what the systems do.'],
+          repo: 'packages/engine-core/src', doc: 'docs/wiki/03-ecs-and-simulation.md' },
+        { id: 'addons', name: 'C++ addons', cat: 'authority', layer: 1, x: 5.4, z: -2.1, w: 2.6, d: 1.5, lens: ['dev'],
+          summary: 'The heavy math, called in-process.',
+          facts: ['Jolt (rigid bodies and terrain), Recast (navigation), FastNoise2 (terrain), PICG (procedural meshes), scatter and fan-out.', 'Loaded through N-API into the same process: no IPC, typed arrays at the boundary.', 'Each addon is checked with Valgrind before it merges.'],
+          repo: 'packages/addons', doc: 'docs/wiki/04-native-addons.md' },
+        { id: 'pcg', name: 'World · PCG', cat: 'authority', layer: 1, x: -1.8, z: -3.4, w: 2.6, d: 1.3, lens: ['designer', 'dev'],
+          summary: 'Builds the world from seeds and graphs.',
+          facts: ['Bakes and streams terrain, formations, dungeons and settlements from seeded, shared generators.', 'The Pcg service serves cooked meshes over webrpc.', 'Designers shape it with graph editors; the output is deterministic.'],
+          repo: 'packages/picg', doc: 'docs/wiki/07-procedural-generation.md' },
+        { id: 'content', name: 'Game content', cat: 'content', layer: 1, x: 5.6, z: 2.6, w: 2.6, d: 1.5, lens: ['designer'],
+          summary: 'Rules, creatures, loot and art, kept as data.',
+          facts: ['Skills, combat, body parts, spawn tables, loot pools, crafting and species are JSON tables validated at boot.', 'A malformed file stops the server and names every problem by file and field.', 'Add an entry and the game uses it: no code change.'],
+          repo: 'content', doc: 'content/rules/README.md' },
+        { id: 'bench', name: 'Benchmarks + Valgrind', cat: 'contract', layer: 1, x: 1.6, z: 3.5, w: 2.8, d: 1.2, lens: ['dev'],
+          summary: 'Keeps the tick inside its budget.',
+          facts: ['A tick-budget harness measures p99, allocations per tick and system cost.', 'Valgrind checks the native addons for leaks and baselines every system\'s instruction count; a gate fails a build that gets slower.'],
+          repo: 'packages/bench', doc: 'docs/wiki/09-developer-guide.md' },
+
+        { id: 'persist', name: 'Persist worker', cat: 'persistence', layer: 0, x: -4.8, z: 0.4, w: 2.6, d: 1.5, lens: ['dev'],
+          summary: 'Saves state without ever stalling the tick.',
+          facts: ['Drains the persistence ring in batches on its own thread into a durable SurrealMX ledger.', 'The sim only enqueues a transaction: a slow disk never slows a tick.'],
+          repo: 'packages/engine-core', doc: 'docs/wiki/01-architecture-overview.md' },
+        { id: 'sqlite', name: 'Region state', cat: 'persistence', layer: 0, x: -4.8, z: -3.0, w: 2.4, d: 1.3, lens: ['dev'],
+          summary: 'Each region\'s own save file.',
+          facts: ['Embedded SQLite in WAL mode, inside the region process.', 'A full snapshot every 300 ticks, saved on shutdown and restored on boot.'],
+          repo: 'packages/engine-core', doc: 'docs/ARCHITECTURE.md' },
+        { id: 'world', name: 'World server', cat: 'persistence', layer: 0, x: 0.6, z: 0, w: 3.4, d: 2.0, lens: ['dev'],
+          summary: 'Coordinates regions; never simulates anything.',
+          facts: ['Keeps the region registry and leases, spots stale servers and runs cross-region hand-offs.', 'Player traffic never passes through it, and it runs off every region\'s tick.', 'Talks to regions over webrpc with API-key auth.'],
+          repo: 'packages/world-server', doc: 'docs/wiki/06-multi-region-world.md' },
+        { id: 'regions', name: 'Other regions', cat: 'authority', layer: 0, x: 6.0, z: 0.2, w: 2.6, d: 1.6, lens: ['dev'],
+          summary: 'More of the same, side by side.',
+          facts: ['Every region is its own engine-core process with its own tick, gateway and state.', 'In the stress run, one world server and 16 regions on a 4-core box committed every hand-off, p99 15 ms, with the world server at 15% of a core.'],
+          repo: 'packages/engine-core', doc: 'docs/wiki/06-multi-region-world.md' },
+
+        { id: 'schema', name: 'mmo_engine.fbs', cat: 'contract', layer: -1, x: -9.2, z: 0, w: 0.5, d: 1.6, lens: ['dev'],
+          summary: 'One file defines the wire contract for C++ and TypeScript.',
+          facts: ['FlatBuffers is the single source of truth; flatc generates both languages.', 'Zero-copy structure-of-arrays framing keeps native addons and the sim in step with the client.', 'Control messages are JSON; state is binary.'],
+          repo: 'packages/schema', doc: 'docs/MESSAGE-CATALOG.md' }
+    ];
+
+    // Links. kind: data (state/intents), ctl (control), dbg (debug / tooling). bi = flows both ways.
+    const LINKS = [
+        ['hud', 'mirror', 'input → intent', 'data'],
+        ['mirror', 'scene3d', 'interpolated state', 'data'],
+        ['client', 'mirror', 'app shell', 'ctl'],
+        ['mirror', 'edge', 'Binary WebSocket · FlatBuffers', 'data', true],
+        ['edge', 'auth', 'relayed hello and intents · framed channel', 'data'],
+        ['auth', 'ring', 'validated intents', 'data'],
+        ['ring', 'sim', 'drain input ring', 'data'],
+        ['sim', 'addons', 'in-process N-API calls', 'data'],
+        ['sim', 'ring', 'write component columns', 'data'],
+        ['ring', 'edge', 'snapshot + delta · 30 Hz', 'data'],
+        ['sim', 'persist', 'transaction ring', 'data'],
+        ['sim', 'sqlite', 'WAL · snapshot every 300 ticks', 'data', true],
+        ['sim', 'world', 'heartbeat · hand-offs (webrpc)', 'ctl', true],
+        ['world', 'regions', 'leases · migrations', 'ctl', true],
+        ['pcg', 'sim', 'bake · stream chunks', 'data'],
+        ['content', 'sim', 'rules + data at boot', 'ctl'],
+        ['editor', 'content', 'edits (versioned in git)', 'dbg'],
+        ['editor', 'sim', 'play mode · ECS inspector', 'dbg', true],
+        ['editor', 'pcg', 'graph editing', 'dbg'],
+        ['schema', 'mirror', 'generated TS', 'ctl'],
+        ['schema', 'sim', 'generated TS + C++', 'ctl'],
+        ['schema', 'addons', 'generated C++', 'ctl'],
+        ['bench', 'sim', 'tick budget', 'dbg'],
+        ['regions', 'world', 'heartbeat', 'ctl'],
+        ['client', 'hud', 'input', 'ctl']
+    ];
+
+    // The tour: one player input, end to end.
+    const TOUR = [
+        { title: 'A player presses W', parts: ['hud', 'client'], links: [['client', 'hud']], focus: 'hud', text: 'The client captures the key. It does not move the player: it builds an intent, "walk forward", and sends it. At most one intent per tick.' },
+        { title: 'The intent goes upstream', parts: ['hud', 'mirror', 'edge'], links: [['hud', 'mirror'], ['mirror', 'edge']], focus: 'mirror', text: 'A small binary FlatBuffers message crosses a WebSocket to the edge. The same connection carries state back.' },
+        { title: 'The gateway guards the door', parts: ['edge', 'auth'], links: [['edge', 'auth']], focus: 'auth', text: 'The edge relays the frame to the core\'s gateway. Before hello? Rejected. Someone else\'s entity? Rejected. NaN or Infinity in the vector? Scrubbed. A stale packet? Dropped. Rate limits apply throughout.' },
+        { title: 'Into the ring', parts: ['auth', 'ring'], links: [['auth', 'ring']], focus: 'ring', text: 'A valid intent is packed into one 32-bit command and pushed onto a lock-free ring. No locks and no copies, and the socket side never waits on the sim.' },
+        { title: 'The tick runs', parts: ['ring', 'sim', 'addons', 'content'], links: [['ring', 'sim'], ['sim', 'addons'], ['content', 'sim']], focus: 'sim', text: 'Every 33.3 ms the sim drains the ring and runs its systems over bitECS columns. Physics, navigation and noise run in C++ addons, in-process. What the systems do is set by the game\'s data tables.' },
+        { title: 'State goes back out', parts: ['sim', 'ring', 'edge'], links: [['sim', 'ring'], ['ring', 'edge']], focus: 'edge', text: 'Changed state is written once. The edge cuts it per player by area of interest and sends snapshots and deltas at 30 Hz.' },
+        { title: 'The mirror renders one tick behind', parts: ['edge', 'mirror', 'scene3d'], links: [['mirror', 'edge'], ['mirror', 'scene3d']], focus: 'scene3d', text: 'The client interpolates between server states, so motion looks smooth without it ever predicting game logic. If the client and server disagree, the server is right.' },
+        { title: 'Meanwhile, it is saved', parts: ['sim', 'persist', 'sqlite'], links: [['sim', 'persist'], ['sim', 'sqlite']], focus: 'persist', text: 'The sim enqueues transactions for a persistence worker on its own thread, and snapshots region state every 300 ticks. A slow disk cannot slow a tick.' },
+        { title: 'And it scales out', parts: ['sim', 'world', 'regions'], links: [['sim', 'world'], ['world', 'regions'], ['regions', 'world']], focus: 'world', text: 'Each region is its own process. A world server holds the leases and coordinates hand-offs when players cross borders, but it never simulates.' }
+    ];
+
+    /* =============================================================================
+     * Plain-HTML side: legend and the keyboard-friendly list of parts
+     * ========================================================================== */
+    const $ = (s, r = document) => r.querySelector(s);
+    const byId = Object.fromEntries(PARTS.map(p => [p.id, p]));
+
+    $('#legend').innerHTML = Object.values(CATS).map(c => `<span style="--c:${c.color}"><i></i>${c.name}</span>`).join('');
+    const partsList = $('#parts');
+    PARTS.forEach(p => {
+        const li = document.createElement('li');
+        li.innerHTML = `<button type="button" data-id="${p.id}" style="--c:${CATS[p.cat].color}"><i></i>${p.name}</button>`;
+        partsList.appendChild(li);
+    });
+
+    const detail = $('#detail');
+    const neighbours = (id) => [...new Set(LINKS.filter(l => l[0] === id || l[1] === id).map(l => l[0] === id ? l[1] : l[0]))];
+
+    function renderDetail(p) {
+        const c = CATS[p.cat];
+        const talks = neighbours(p.id).map(n => `<button type="button" data-id="${n}">${byId[n].name}</button>`).join('');
+        detail.style.setProperty('--c', c.color);
+        detail.innerHTML = `
+            <button type="button" class="close" aria-label="Close details">✕</button>
+            <span class="pill">${c.name}</span>
+            <h2>${p.name}</h2>
+            <p class="summary">${p.summary}</p>
+            <ul class="facts">${p.facts.map(f => `<li>${f}</li>`).join('')}</ul>
+            <div class="row-label">Talks to</div>
+            <div class="links">${talks}</div>
+            <div class="row-label">In the repo</div>
+            <div class="repo">${p.repo}</div>
+            <a class="readmore" href="${REPO}blob/main/${p.doc}" target="_blank" rel="noopener">Read more →</a>`;
+    }
+
+    /* =============================================================================
+     * 3D
+     * ========================================================================== */
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const sceneEl = $('#scene');
+    const labelsEl = $('#labels');
+    const state = { lens: 'all', selected: null, hover: null, tour: -1, explode: 0.5, auto: false };
+
+    let renderer, scene3, camera;
+    const nodes = {};      // id -> { part, mesh, edges, tag, alpha, target }
+    const links = [];      // { from, to, curve, line, packets[], tag, alpha, target, key }
+    const layerObjs = [];
+    const labelTags = [];  // all DOM labels with a 3D anchor
+
+    const HOME = { radius: 40, target: new THREE.Vector3(-2.6, -0.8, 0) }; // shifted right of the left panel
+    const orbit = { theta: 0.62, phi: 1.12, radius: HOME.radius, target: HOME.target.clone(), idle: 0 };
+    const spacing = () => 2.4 + state.explode * 4.2;
+    const layerY = (i) => (i - 1.5) * spacing();
+    const partPos = (p) => new THREE.Vector3(p.x, p.layer === -1 ? 0 : layerY(p.layer) + 0.45, p.z);
+
+    function init3D() {
+        try {
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        } catch (e) { document.body.classList.add('no-webgl'); return false; }
+        renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+        renderer.setClearColor(0x000000, 0);
+        sceneEl.appendChild(renderer.domElement);
+
+        scene3 = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+        scene3.add(new THREE.AmbientLight(0xffffff, 0.75));
+        const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(6, 14, 8); scene3.add(key);
+        const rim = new THREE.PointLight(0xfbcfe8, 0.8, 60); rim.position.set(-10, 6, -8); scene3.add(rim);
+
+        // Layer plates
+        LAYERS.forEach((L, i) => {
+            const g = new THREE.Group();
+            const plate = new THREE.Mesh(new THREE.PlaneGeometry(19.5, 11.5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.055, side: THREE.DoubleSide, depthWrite: false }));
+            plate.rotation.x = -Math.PI / 2;
+            const border = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(19.5, 11.5)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32 }));
+            border.rotation.x = -Math.PI / 2;
+            g.add(plate, border);
+            scene3.add(g);
+            const tag = document.createElement('div');
+            tag.className = 'layer-tag';
+            tag.innerHTML = `${L.name}<small>${L.sub}</small>`;
+            labelsEl.appendChild(tag);
+            layerObjs.push({ group: g, index: i, tag, anchor: new THREE.Vector3(10.1, 0, 1.2) });
+        });
+
+        // Parts
+        PARTS.forEach(p => {
+            const color = new THREE.Color(CATS[p.cat].color);
+            const isSchema = p.layer === -1;
+            const geo = isSchema ? new THREE.BoxGeometry(p.w, 1, p.d) : new THREE.BoxGeometry(p.w, 0.8, p.d);
+            const mat = new THREE.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.55), emissive: color, emissiveIntensity: 0.28, metalness: 0.4, roughness: 0.35, transparent: true, opacity: 0.96 });
+            const mesh = new THREE.Mesh(geo, mat);
+            const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.95 }));
+            mesh.add(edges);
+            mesh.userData.id = p.id;
+            scene3.add(mesh);
+
+            const tag = document.createElement('div');
+            tag.className = 'tag';
+            tag.style.setProperty('--c', CATS[p.cat].color);
+            tag.innerHTML = `<i></i>${p.name}`;
+            labelsEl.appendChild(tag);
+            nodes[p.id] = { part: p, mesh, edges, tag, alpha: 1, target: 1, scale: 1 };
+        });
+
+        // The schema column runs through every layer
+        const sch = nodes.schema;
+        sch.mesh.geometry.dispose();
+        sch.mesh.geometry = new THREE.BoxGeometry(0.5, 1, 1.6);
+        sch.edges.geometry.dispose();
+        sch.edges.geometry = new THREE.EdgesGeometry(sch.mesh.geometry);
+
+        // Links
+        LINKS.forEach((L, idx) => {
+            const [a, b, label, kind, bi] = L;
+            const color = new THREE.Color(kind === 'dbg' ? 0xc4b5fd : kind === 'ctl' ? 0x93c5fd : 0xfbcfe8);
+            const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.45 }));
+            scene3.add(line);
+            const packets = [];
+            const count = kind === 'data' ? 3 : 2;
+            for (let k = 0; k < count * (bi ? 2 : 1); k++) {
+                const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }));
+                scene3.add(m);
+                packets.push({ mesh: m, offset: (k % count) / count + (k >= count ? 0.5 / count : 0), rev: k >= count });
+            }
+            const tag = document.createElement('div');
+            tag.className = 'tag edge-tag';
+            tag.textContent = label;
+            tag.style.opacity = 0;
+            labelsEl.appendChild(tag);
+            links.push({ a, b, label, kind, bi: !!bi, line, packets, tag, alpha: 1, target: 1, idx, curve: null, speed: kind === 'data' ? 0.16 : 0.1 });
+        });
+
+        layoutScene();
+        bindInput();
+        const resize = () => {
+            const w = innerWidth, h = innerHeight;
+            renderer.setSize(w, h, false);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        };
+        resize();
+        addEventListener('resize', resize);
+        return true;
+    }
+
+    // Positions depend on the explode slider, so layout runs again whenever it moves.
+    function layoutScene() {
+        layerObjs.forEach(L => { L.group.position.y = layerY(L.index); L.anchor.y = layerY(L.index) + 0.05; });
+        Object.values(nodes).forEach(n => {
+            const p = n.part;
+            n.mesh.position.copy(partPos(p));
+            if (p.layer === -1) { n.mesh.scale.y = spacing() * 3 + 1.2; n.mesh.position.y = 0; }
+        });
+        // keep the schema column's labelled anchor at mid-height
+        links.forEach(L => {
+            const A = nodes[L.a].mesh.position, B = nodes[L.b].mesh.position;
+            const mid = A.clone().add(B).multiplyScalar(0.5);
+            const dir = B.clone().sub(A);
+            const side = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+            const bow = (L.idx % 2 ? 1 : -1) * (0.5 + (L.idx % 3) * 0.25);
+            const lift = Math.abs(dir.y) < 0.2 ? 1.0 + (L.idx % 3) * 0.3 : 0.35;
+            mid.add(side.multiplyScalar(bow)); mid.y += lift;
+            L.curve = new THREE.QuadraticBezierCurve3(A.clone(), mid, B.clone());
+            const pts = L.curve.getPoints(40);
+            L.line.geometry.setFromPoints(pts);
+        });
+    }
+
+    /* ---------- Camera ---------- */
+    function placeCamera() {
+        const sp = Math.sin(orbit.phi), cp = Math.cos(orbit.phi);
+        camera.position.set(
+            orbit.target.x + orbit.radius * sp * Math.sin(orbit.theta),
+            orbit.target.y + orbit.radius * cp,
+            orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta));
+        camera.lookAt(orbit.target);
+    }
+
+    function flyTo(target, radius, theta) {
+        const to = { radius, tx: target.x, ty: target.y, tz: target.z };
+        if (theta !== undefined) {
+            // take the short way round
+            let d = theta - orbit.theta;
+            d = ((d + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+            to.theta = orbit.theta + d;
+        }
+        if (reduceMotion || !window.gsap) {
+            orbit.radius = radius; orbit.target.copy(target); if (theta !== undefined) orbit.theta = to.theta;
+            return;
+        }
+        gsap.to(orbit, { radius, theta: to.theta !== undefined ? to.theta : orbit.theta, duration: 1.1, ease: 'power3.inOut', overwrite: 'auto' });
+        gsap.to(orbit.target, { x: target.x, y: target.y, z: target.z, duration: 1.1, ease: 'power3.inOut', overwrite: 'auto' });
+    }
+
+    /* ---------- Input ---------- */
+    const pointers = new Map();
+    let dragMoved = 0, lastPinch = 0;
+    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+
+    function pickAt(clientX, clientY) {
+        ndc.set((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+        ray.setFromCamera(ndc, camera);
+        const hit = ray.intersectObjects(Object.values(nodes).filter(n => n.target > 0.3).map(n => n.mesh), false)[0];
+        return hit ? hit.object.userData.id : null;
+    }
+
+    function bindInput() {
+        sceneEl.addEventListener('pointerdown', (e) => {
+            sceneEl.setPointerCapture(e.pointerId);
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, shift: e.shiftKey || e.button === 2 });
+            dragMoved = 0; orbit.idle = 0;
+            if (window.gsap) { gsap.killTweensOf(orbit); gsap.killTweensOf(orbit.target); }
+            sceneEl.classList.add('dragging');
+            if (pointers.size === 2) { const [a, b] = [...pointers.values()]; lastPinch = Math.hypot(a.x - b.x, a.y - b.y); }
+        });
+        sceneEl.addEventListener('pointermove', (e) => {
+            const p = pointers.get(e.pointerId);
+            if (!p) { // hover
+                const id = pickAt(e.clientX, e.clientY);
+                if (id !== state.hover) { state.hover = id; sceneEl.classList.toggle('hovering', !!id); }
+                return;
+            }
+            const dx = e.clientX - p.x, dy = e.clientY - p.y;
+            p.x = e.clientX; p.y = e.clientY; dragMoved += Math.abs(dx) + Math.abs(dy); orbit.idle = 0;
+            if (pointers.size === 2) {
+                const [a, b] = [...pointers.values()];
+                const d = Math.hypot(a.x - b.x, a.y - b.y);
+                orbit.radius = Math.min(48, Math.max(8, orbit.radius * (lastPinch / d)));
+                lastPinch = d;
+            } else if (p.shift) {
+                const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+                const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+                const k = orbit.radius * 0.0016;
+                orbit.target.add(right.multiplyScalar(-dx * k)).add(up.multiplyScalar(dy * k));
+            } else {
+                orbit.theta -= dx * 0.0062;
+                orbit.phi = Math.min(2.5, Math.max(0.25, orbit.phi - dy * 0.0062));
+            }
+        });
+        const up = (e) => {
+            const wasClick = dragMoved < 6 && pointers.size === 1;
+            pointers.delete(e.pointerId);
+            if (!pointers.size) sceneEl.classList.remove('dragging');
+            if (wasClick && e.type === 'pointerup') select(pickAt(e.clientX, e.clientY));
+        };
+        sceneEl.addEventListener('pointerup', up);
+        sceneEl.addEventListener('pointercancel', up);
+        sceneEl.addEventListener('contextmenu', (e) => e.preventDefault());
+        sceneEl.addEventListener('wheel', (e) => {
+            e.preventDefault(); orbit.idle = 0;
+            orbit.radius = Math.min(48, Math.max(8, orbit.radius * Math.exp(e.deltaY * 0.0012)));
+        }, { passive: false });
+    }
+
+    /* ---------- Selection, lenses and the tour ---------- */
+    function select(id, fly = true) {
+        state.selected = id;
+        document.querySelectorAll('.parts button').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
+        if (!id) { detail.classList.remove('open'); if (fly && state.tour < 0 && renderer) flyTo(HOME.target, HOME.radius); return; }
+        renderDetail(byId[id]);
+        detail.classList.add('open');
+        if (state.tour >= 0) exitTour(true);
+        if (fly) flyTo(nodes[id].mesh.position, 15, orbit.theta);
+    }
+
+    detail.addEventListener('click', (e) => {
+        if (e.target.closest('.close')) { select(null); return; }
+        const b = e.target.closest('[data-id]');
+        if (b) select(b.dataset.id);
+    });
+    partsList.addEventListener('click', (e) => { const b = e.target.closest('[data-id]'); if (b) select(b.dataset.id); });
+    addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { if (state.tour >= 0) exitTour(); else select(null); }
+        if (state.tour >= 0 && e.key === 'ArrowRight') stepTour(1);
+        if (state.tour >= 0 && e.key === 'ArrowLeft') stepTour(-1);
+    });
+
+    document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+        state.lens = b.dataset.lens;
+        document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    }));
+
+    const exp = $('#explode');
+    exp.addEventListener('input', () => {
+        state.explode = exp.value / 100;
+        $('#explode-val').textContent = exp.value + '%';
+        if (renderer) layoutScene();
+    });
+
+    // Tour
+    const card = $('#tour-card');
+    let autoTimer = null;
+    function showTourStep() {
+        const s = TOUR[state.tour];
+        $('#tour-no').textContent = `Step ${state.tour + 1} of ${TOUR.length}`;
+        $('#tour-title').textContent = s.title;
+        $('#tour-text').textContent = s.text;
+        $('#tour-bar').style.width = ((state.tour + 1) / TOUR.length * 100) + '%';
+        $('#tour-prev').disabled = state.tour === 0;
+        $('#tour-next').textContent = state.tour === TOUR.length - 1 ? 'Finish' : 'Next →';
+        if (renderer) flyTo(nodes[s.focus].mesh.position.clone().add(new THREE.Vector3(0, -1.6, 0)), 19, orbit.theta);
+    }
+    function startTour() {
+        select(null, false);
+        detail.classList.remove('open');
+        state.tour = 0; card.classList.add('open'); document.body.classList.add('touring'); showTourStep();
+        $('#tour-btn').firstChild.textContent = 'Restart the tour ';
+    }
+    function stepTour(d) {
+        const n = state.tour + d;
+        if (n < 0) return;
+        if (n >= TOUR.length) { exitTour(); return; }
+        state.tour = n; showTourStep();
+    }
+    function exitTour(keepCamera) {
+        state.tour = -1; card.classList.remove('open'); document.body.classList.remove('touring');
+        clearInterval(autoTimer); autoTimer = null; state.auto = false; $('#tour-auto').setAttribute('aria-pressed', 'false');
+        if (!keepCamera && renderer) flyTo(HOME.target, HOME.radius);
+    }
+    $('#tour-btn').addEventListener('click', startTour);
+    $('#tour-next').addEventListener('click', () => stepTour(1));
+    $('#tour-prev').addEventListener('click', () => stepTour(-1));
+    $('#tour-exit').addEventListener('click', () => exitTour());
+    $('#tour-auto').addEventListener('click', () => {
+        state.auto = !state.auto;
+        $('#tour-auto').setAttribute('aria-pressed', String(state.auto));
+        clearInterval(autoTimer);
+        if (state.auto) autoTimer = setInterval(() => { if (state.tour >= TOUR.length - 1) { exitTour(); } else stepTour(1); }, 7000);
+    });
+
+    /* ---------- Per-frame: highlight targets, packets, labels ---------- */
+    const linkKey = (a, b) => a + '>' + b;
+
+    function computeTargets() {
+        const step = state.tour >= 0 ? TOUR[state.tour] : null;
+        const selNb = state.selected ? new Set([state.selected, ...neighbours(state.selected)]) : null;
+        const hov = state.hover;
+        Object.values(nodes).forEach(n => {
+            const id = n.part.id;
+            let t = 1;
+            if (state.lens !== 'all' && !n.part.lens.includes(state.lens)) t = 0.14;
+            if (selNb && !selNb.has(id)) t = Math.min(t, 0.2);
+            if (step && !step.parts.includes(id)) t = Math.min(t, 0.1);
+            n.target = t;
+            n.hot = id === hov || id === state.selected || (step && step.focus === id);
+        });
+        links.forEach(L => {
+            let t = Math.min(nodes[L.a].target, nodes[L.b].target);
+            if (state.selected) t = (L.a === state.selected || L.b === state.selected) ? 1 : Math.min(t, 0.12);
+            if (step) t = step.links.some(([a, b]) => (a === L.a && b === L.b) || (L.bi && a === L.b && b === L.a)) ? 1 : 0.07;
+            L.target = t;
+            L.showLabel = (state.selected && (L.a === state.selected || L.b === state.selected)) || (step && t === 1) || (hov && (L.a === hov || L.b === hov));
+        });
+    }
+
+    const tmp = new THREE.Vector3();
+    function project(v) {
+        tmp.copy(v).project(camera);
+        return { x: (tmp.x * 0.5 + 0.5) * innerWidth, y: (-tmp.y * 0.5 + 0.5) * innerHeight, z: tmp.z };
+    }
+
+    let last = performance.now();
+    function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000); last = now;
+        const t = now / 1000;
+
+        orbit.idle += dt;
+        if (!reduceMotion && orbit.idle > 4 && !state.selected && state.tour < 0 && !pointers.size) orbit.theta += dt * 0.05;
+        placeCamera();
+        computeTargets();
+
+        Object.values(nodes).forEach(n => {
+            n.alpha += (n.target - n.alpha) * Math.min(1, dt * 7);
+            const hot = n.hot ? 1 : 0;
+            n.scale += ((hot ? 1.07 : 1) - n.scale) * Math.min(1, dt * 10);
+            n.mesh.material.opacity = (n.part.layer === -1 ? 0.12 + 0.4 * n.alpha : 0.18 + 0.78 * n.alpha);
+            n.mesh.material.emissiveIntensity = 0.2 + hot * 0.55 + (state.tour >= 0 && n.target === 1 ? 0.18 + 0.12 * Math.sin(t * 4) : 0);
+            n.edges.material.opacity = 0.15 + 0.85 * n.alpha;
+            const sy = n.part.layer === -1 ? n.mesh.scale.y : 1;
+            n.mesh.scale.set(n.scale, n.part.layer === -1 ? sy : n.scale, n.scale);
+            const p = project(n.mesh.position.clone().add(new THREE.Vector3(0, n.part.layer === -1 ? 0.2 : 0.75, 0)));
+            n.tag.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%)`;
+            n.tag.style.opacity = (0.1 + 0.9 * n.alpha).toFixed(2);
+            n.tag.classList.toggle('sel', n.part.id === state.selected);
+        });
+
+        links.forEach(L => {
+            L.alpha += (L.target - L.alpha) * Math.min(1, dt * 7);
+            L.line.material.opacity = 0.06 + 0.5 * L.alpha;
+            L.packets.forEach(pk => {
+                let u = ((t * L.speed + pk.offset) % 1 + 1) % 1;
+                if (pk.rev) u = 1 - u;
+                if (reduceMotion) u = 0.5;
+                pk.mesh.position.copy(L.curve.getPoint(u));
+                pk.mesh.material.opacity = 0.95 * L.alpha;
+                pk.mesh.visible = L.alpha > 0.15;
+            });
+            if (L.showLabel) {
+                const p = project(L.curve.getPoint(0.5));
+                L.tag.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -50%)`;
+                L.tag.style.opacity = 1;
+            } else L.tag.style.opacity = 0;
+        });
+
+        layerObjs.forEach(L => {
+            const p = project(L.anchor);
+            L.tag.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(10px, -50%)`;
+        });
+
+        renderer.render(scene3, camera);
+        requestAnimationFrame(frame);
+    }
+
+    if (init3D()) requestAnimationFrame(frame);
+    </script>
+</body>
+</html>

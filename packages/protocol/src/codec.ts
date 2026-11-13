@@ -907,7 +907,7 @@ export function encodeSnapshot(
   Snapshot.addStaminas(b, st);
   Snapshot.addCharacterRefs(b, cr);
   Snapshot.addAnimations(b, an);
-  Snapshot.addVfxEmitters(b, ve);
+  if (ve) Snapshot.addVfxEmitters(b, ve);
   const root = Snapshot.endSnapshot(b);
   Snapshot.finishSnapshotBuffer(b, root);
   return b.asUint8Array();
@@ -1102,7 +1102,7 @@ export interface CollectedStateSoA {
   appearances: AppearanceSoA;
   actions: ActionSoA;
   animations: AnimationSoA;
-  vfxEmitters: VfxEmitterSoA;
+  vfxEmitters?: VfxEmitterSoA;
   spawned: ArrayLike<bigint>;
   despawned: ArrayLike<bigint>;
 }
@@ -1466,7 +1466,7 @@ export function encodeSnapshotSoA(
   const st = buildStaminaBlockSoA(b, s.staminas);
   const cr = buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = buildAnimationBlockSoA(b, s.animations);
-  const ve = buildVfxEmitterBlockSoA(b, s.vfxEmitters);
+  const ve = s.vfxEmitters ? buildVfxEmitterBlockSoA(b, s.vfxEmitters) : 0;
   const spawned = buildU64Vector(b, s.spawned);
   const despawned = buildU64Vector(b, s.despawned);
   Snapshot.startSnapshot(b);
@@ -1486,7 +1486,7 @@ export function encodeSnapshotSoA(
   Snapshot.addStaminas(b, st);
   Snapshot.addCharacterRefs(b, cr);
   Snapshot.addAnimations(b, an);
-  Snapshot.addVfxEmitters(b, ve);
+  if (ve) Snapshot.addVfxEmitters(b, ve);
   const root = Snapshot.endSnapshot(b);
   Snapshot.finishSnapshotBuffer(b, root);
   return b.asUint8Array();
@@ -1513,7 +1513,7 @@ export function encodeDeltaSoA(s: CollectedStateSoA, builder?: flatbuffers.Build
   const cr = sparse && s.characterRefs.eids.length === 0 ? 0 : buildCharacterRefBlockSoA(b, s.characterRefs);
   const an = sparse && s.animations.eids.length === 0 ? 0 : buildAnimationBlockSoA(b, s.animations);
   const po = s.positions && s.positions.eids.length > 0 ? buildPositionBlockSoA(b, s.positions) : 0;
-  const ve = sparse && s.vfxEmitters.eids.length === 0 ? 0 : buildVfxEmitterBlockSoA(b, s.vfxEmitters);
+  const ve = s.vfxEmitters ? (sparse && s.vfxEmitters.eids.length === 0 ? 0 : buildVfxEmitterBlockSoA(b, s.vfxEmitters)) : 0;
   const spawned = buildU64Vector(b, s.spawned);
   const despawned = buildU64Vector(b, s.despawned);
   Delta.startDelta(b);

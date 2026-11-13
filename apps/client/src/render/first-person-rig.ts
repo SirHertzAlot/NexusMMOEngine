@@ -19,6 +19,7 @@ import * as THREE from "three";
 import { combatMove, Move } from "@mmo-engine/protocol";
 import type { FirstPersonMotionSample } from "./first-person-camera.js";
 import { fnv1a32, type SyntyProps } from "./synty-props.js";
+import { shadedMaterial } from "./shading/shading.js";
 
 export type WeaponVisualKind =
   | "unarmed"
@@ -402,9 +403,9 @@ function buildHandGroup(side: "left" | "right", colors: FirstPersonHandColors): 
   const root = new THREE.Group();
   root.name = `fps-hand-${side}`;
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.65, metalness: 0.05 });
-  const sleeveMat = new THREE.MeshStandardMaterial({ color: colors.sleeve, roughness: 0.8, metalness: 0.1 });
-  const cuffMat = new THREE.MeshStandardMaterial({ color: colors.cuff, roughness: 0.55, metalness: 0.25 });
+  const skinMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.65, metalness: 0.05 }), "figure");
+  const sleeveMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: colors.sleeve, roughness: 0.8, metalness: 0.1 }), "figure");
+  const cuffMat = shadedMaterial(new THREE.MeshStandardMaterial({ color: colors.cuff, roughness: 0.55, metalness: 0.25 }), "figure");
 
   // Forearm sleeve extending back toward the shoulder (+Z in camera space)
   const forearmGeo = new THREE.BoxGeometry(0.082, 0.078, 0.28);
@@ -454,28 +455,28 @@ export function buildProceduralWeaponMesh(kind: WeaponVisualKind, rankColor = "#
   group.name = `fps-weapon-${kind}`;
   if (kind === "unarmed") return group;
 
-  const steelMat = new THREE.MeshStandardMaterial({
+  const steelMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: "#d4dce6",
     roughness: 0.28,
     metalness: 0.82,
-  });
-  const guardMat = new THREE.MeshStandardMaterial({
+  }), "figure");
+  const guardMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: "#b89648",
     roughness: 0.38,
     metalness: 0.68,
-  });
-  const gripMat = new THREE.MeshStandardMaterial({
+  }), "figure");
+  const gripMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: "#4a3020",
     roughness: 0.78,
     metalness: 0.1,
-  });
-  const accentMat = new THREE.MeshStandardMaterial({
+  }), "figure");
+  const accentMat = shadedMaterial(new THREE.MeshStandardMaterial({
     color: rankColor || "#7aa2f7",
     roughness: 0.35,
     metalness: 0.5,
     emissive: new THREE.Color(rankColor || "#3b5998"),
     emissiveIntensity: 0.15,
-  });
+  }), "figure");
 
   if (kind === "shield") {
     // Heater / round-boss shield held in the left hand

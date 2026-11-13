@@ -64,6 +64,7 @@ import { detectGpu, type GpuInfo } from "./gpu.js";
 import { PostFx, type ScreenState } from "./post-fx.js";
 import { installBvh } from "./bvh.js";
 import { detectQuality, QUALITY_PRESETS, stepTier, type QualitySettings, type QualityTier } from "./quality.js";
+import { setCelFeather, setCelOutlines } from "./shading/shading.js";
 import { DaySky } from "./sky/day-sky.js";
 import type { PhysicalSky } from "./sky/physical-sky.js";
 import { ParticleFx, budgetMultiplierForTier } from "./fx/particle-fx.js";
@@ -279,6 +280,8 @@ export function WorldCanvas(props: WorldCanvasProps): React.ReactElement {
   }, [cap]);
   useEffect(() => {
     setDpr(QUALITY_PRESETS[active].dpr[1]);
+    setCelFeather(QUALITY_PRESETS[active].celFeather);
+    setCelOutlines(QUALITY_PRESETS[active].outlines);
   }, [active]);
   useEffect(() => {
     onQuality?.(active, detected);

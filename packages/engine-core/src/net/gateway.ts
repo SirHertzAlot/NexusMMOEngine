@@ -816,6 +816,11 @@ function parseHandoffState(state: unknown): z.infer<typeof HandoffStateSchema> |
   return r.success ? r.data : null;
 }
 
+/** Slow-consumer policy (see Gateway.applyBackpressure): soft limit, low mark and hold timeout. */
+const SLOW_SOFT_BYTES = Number(process.env.MMO_SLOW_SOFT_BYTES ?? 2 * 1024 * 1024);
+const SLOW_LOW_BYTES = Number(process.env.MMO_SLOW_LOW_BYTES ?? 256 * 1024);
+const SLOW_HOLD_MS = Number(process.env.MMO_SLOW_HOLD_MS ?? 15_000);
+
 /** A discipline's `requires` map as the wire's list (M4). */
 function requirements(requires: Readonly<Record<string, number>>): { skill: string; level: number }[] {
   return Object.entries(requires).map(([skill, level]) => ({ skill, level }));
@@ -2164,8 +2169,48 @@ export class Gateway {
     }
   }
 
+  /** Slow-consumer policy counters since boot: holds begun, holds released (backlog drained), sessions closed for staying slow, per-tick sends skipped. */
+  readonly slowStats = { holds: 0, releases: 0, closes: 0, skipped: 0 };
+
+  /**
+   * A client that stops reading makes the transport buffer everything sent to it (uWebSockets.js keeps up to 64 MiB per
+   * socket, then drops sends silently, leaving gaps in the delta stream). Bound that: above the soft limit stop sending
+   * to the session and mark it for a replace baseline; once its backlog is down to the low mark it gets that baseline.
+   * A session held longer than the timeout is closed. MMO_SLOW_SOFT_BYTES=0 turns the policy off.
+   */
+  private applyBackpressure(): void {
+    const soft = SLOW_SOFT_BYTES;
+    if (soft <= 0) return;
+    const now = this.clock();
+    for (const s of this.sessions.values()) {
+      const sock = s.socket;
+      if (!sock || !s.welcomed || !sock.bufferedAmount) {
+        s.slowHold = false;
+        continue;
+      }
+      const buffered = sock.bufferedAmount();
+      if (s.slowHold) {
+        if (buffered <= SLOW_LOW_BYTES) {
+          s.slowHold = false;
+          this.slowStats.releases++;
+        } else if (now - (s.slowSinceMs ?? now) > SLOW_HOLD_MS) {
+          this.slowStats.closes++;
+          s.slowHold = false;
+          this.dropSession(s, "slow consumer");
+          continue;
+        }
+      } else if (buffered > soft) {
+        s.slowHold = true;
+        s.slowSinceMs = now;
+        this.slowStats.holds++;
+      }
+      if (s.slowHold) s.needsResync = true;
+    }
+  }
+
   private broadcastInner(tick: number, deltaBytes: Uint8Array, namesEnv: Uint8Array | null, dropsEnv: Uint8Array | null = null, frame: SectorFrame | null = null): void {
     const isSnapshotTick = tick % this.opts.snapshotEveryTicks === 0;
+    this.applyBackpressure();
     this.inBroadcast = true;
     this.playerIndex = null;
     this.tickFarVisible = frame ? farVisibleOf(this.world) : null;
@@ -2220,8 +2265,9 @@ export class Gateway {
       try {
         nf.begin(tick, bySector);
         for (const s of this.sessions.values()) {
-          if (!s.welcomed || !s.socket) continue;
+          if (!s.welcomed || !s.socket || s.slowHold) continue;
           const replace = isSnapshotTick || s.needsResync || !s.interestSet;
+          if (this.capSkips(s, tick, replace, !!dropsEnv)) continue;
           const entries = this.interestEntries(s, frame, replace);
           sessionsList.push(s);
           replacesList.push(replace);
@@ -2252,10 +2298,15 @@ export class Gateway {
 
     for (const s of this.sessions.values()) {
       if (!s.welcomed || !s.socket) continue; // pending or in grace period
+      if (s.slowHold) {
+        this.slowStats.skipped++;
+        continue; // its socket backlog is over the soft limit: nothing goes out until it drains (then a replace baseline)
+      }
       // Names: everyone without interest management; with it, per session (deliverNamesFor), before its delta.
       if (namesEnv && !frame) this.deliver(s, namesEnv, tick);
       if (dropsEnv) this.deliver(s, dropsEnv, tick);
       if (frame) {
+        if (this.capSend && (s.capTick === tick ? s.capSkipNow : this.capSkips(s, tick, isSnapshotTick || s.needsResync || !s.interestSet, !!dropsEnv))) continue;
         let pre: FanoutResult | undefined;
         let preReplace = false;
         if (natSessions !== null && natIdx < natSessions.length && natSessions[natIdx] === s) {
@@ -2615,7 +2666,57 @@ export class Gateway {
     return bySector;
   }
 
+  /** Send-rate cap (opt-in, MMO_SEND_CAP_BYTES=N): a session whose envelopes are under N bytes per tick covered is sent to every second tick. */
+  private readonly capSend: { bytes: number } | null = (() => {
+    const n = Number(process.env.MMO_SEND_CAP_BYTES ?? 0);
+    return Number.isFinite(n) && n > 0 ? { bytes: n } : null;
+  })();
+  readonly capStats = { skipped: 0, catchUp: 0 };
+  private capCounter = 0;
+
+  /**
+   * True when this session gets no DeltaSet this tick. A quiet session (last envelope under the cap, per tick covered)
+   * skips on alternating ticks, staggered by a per-session phase; the send after a skip carries a two-tick window
+   * (rateDelta: rows read at current values), so nothing is lost. Never on a replace, never on a tick with a global drops broadcast (names and drops are per-session sent sets, so they catch up on the next send).
+   */
+  private capSkips(s: ClientSession, tick: number, replace: boolean, extras: boolean): boolean {
+    const cap = this.capSend;
+    if (!cap) return false;
+    if (s.capTick === tick) return s.capSkipNow === true;
+    s.capTick = tick;
+    s.capSkipNow = false;
+    s.capWin = 1;
+    if (s.capPhase === undefined) s.capPhase = this.capCounter++ & 1;
+    if (replace) {
+      s.capSkipped = false;
+      return false;
+    }
+    if (s.capSkipped) {
+      s.capSkipped = false;
+      s.capWin = 2;
+      this.capStats.catchUp++;
+      return false;
+    }
+    if (!extras && ((tick + s.capPhase) & 1) === 1 && (s.capBytes ?? Infinity) < cap.bytes) {
+      s.capSkipped = true;
+      s.capSkipNow = true;
+      this.capStats.skipped++;
+      return true;
+    }
+    return false;
+  }
+
   private interestEntries(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
+    const out = this.interestEntriesInner(s, frame, replace);
+    if (this.capSend) {
+      let n = 0;
+      for (let i = 0; i < out.length; i++) n += out[i].bytes.length;
+      s.capBytes = n / (s.capWin ?? 1);
+    }
+    return out;
+  }
+
+  private interestEntriesInner(s: ClientSession, frame: SectorFrame, replace: boolean): DeltaSetEntry[] {
     const r = this.interest!;
     const prev = replace ? null : (s.interestSet ?? null);
     const eid = s.playerEntity === null ? -1 : this.world.resolveWireId(s.playerEntity);
@@ -2662,13 +2763,17 @@ export class Gateway {
     const every = r.outerEvery;
     let entries: DeltaSetEntry[] | null = null;
     let sharedEntries: readonly DeltaSetEntry[] | null = null;
-    if (!replace && next === prev && !every) {
+    const catchUp = !replace && s.capWin === 2;
+    if (!replace && next === prev && !every && !catchUp) {
       sharedEntries = frame.steadyDeltaEntries(next);
     } else {
       entries = [];
       for (const sector of next) {
         if (!prev?.has(sector)) entries.push({ kind: DeltaSetKind.Full, sector, bytes: frame.full(sector) });
-        else if (every && hasAt && sectorDistance(sector, atX, atZ) > r.enterM) {
+        else if (catchUp) {
+          const d = frame.rateDelta(sector, 2);
+          if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });
+        } else if (every && hasAt && sectorDistance(sector, atX, atZ) > r.enterM) {
           if (frame.tick % every !== 0) continue;
           const d = frame.rateDelta(sector, every);
           if (d) entries.push({ kind: DeltaSetKind.Delta, sector, bytes: d });

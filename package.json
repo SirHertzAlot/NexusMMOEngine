@@ -40,7 +40,7 @@
     "bake:world:force": "npm run bake:world:force --workspace=@mmo-engine/engine-core",
     "preview:world": "npm run preview:world --workspace=@mmo-engine/engine-core --",
     "sim": "npm run sim --workspace=@mmo-engine/engine-core",
-    "test": "node scripts/test-prebuild.mjs && MMO_ORDERED_BUILD=1 npm run test --workspaces --if-present && npm run test:scripts",
+    "test": "node scripts/test-runner.mjs",
     "test:scripts": "node --test \"scripts/test/*.test.mjs\"",
     "smoke:editor-load": "node scripts/editor-load-smoke.mjs",
     "test:addon-fanout": "npm run test --workspace=@mmo-engine/addon-fanout",
@@ -112,6 +112,7 @@
     "packages/addons/perf-probe",
     "packages/build",
     "packages/playtest",
+    "packages/render-fx",
     "packages/synthesis"
   ],
   "dependencies": {

@@ -45,7 +45,7 @@ git pull NexusMMORepo main
 git checkout -b feat/<short-name>     # fix/<short-name> for bug fixes
 ```
 
-The GitHub remote is named **`NexusMMORepo`**, not `origin`.
+The GitHub remote is named **`NexusMMORepo`**, not `origin`. (That is how the original maintainers' checkouts are set up. A fresh clone names it `origin`; either use `origin` in place of `NexusMMORepo` in the commands here, or rename it with `git remote rename origin NexusMMORepo`.)
 
 One feature per branch. Never resume an old branch, even one with a similar
 name — if `main` has moved, `git merge main` **into your branch** and resolve

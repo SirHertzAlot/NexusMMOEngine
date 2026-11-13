@@ -13,6 +13,7 @@
 import * as THREE from "three";
 import { fnv1a32 } from "@mmo-engine/picg";
 import type { DungeonLook } from "@mmo-engine/protocol";
+import { applyShadingToMaterial } from "./shading/shading.js";
 
 type Point = readonly [number, number, number];
 
@@ -98,6 +99,7 @@ export class DungeonAmbience {
     let m = this.materials.get(slot);
     if (!m) {
       m = new THREE.MeshStandardMaterial({ color: this.look?.palette[slot] ?? STONE, roughness: 1, metalness: 0, flatShading: true });
+      applyShadingToMaterial(m, "structure");
       this.materials.set(slot, m);
     }
     return m;
