@@ -1,5 +1,7 @@
 # Editor Architecture — the modular editor
 
+> **Status (2026-11-11):** this is the plan the modular editor was built from, and most of it is built: see roadmap section 1c (EA1 and onward). Folders this plan names that were never created include `content/dialog`, `content/editor/layouts`, `content/tests` and `packages/sidecar`. Read the roadmap for what each slice became, and [EDITOR.md](EDITOR.md) for how the editor works today.
+
 The plan for the phase after the current roadmap: turn `apps/editor` from a
 row of inspector tabs into a proper editor in the mould of Unreal and Unity,
 fitted to how this engine works. It covers four asks:

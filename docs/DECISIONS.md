@@ -2,6 +2,8 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-12 — Clarification: the 0.562 ms p99 "tick" (2026-10-27, Phase 4 B3) is the sim worker's data-plane step, not the end-to-end tick.** The Phase 4 entry below reports **0.562 ms p99 tick latency** for 51,000 entities under 1,000-client fan-out. That number is the 30 Hz sim worker's authoritative step on the shared-memory data plane — movement, intents and the native kernels only. It does **not** include assembling and sending state to 1,000 sockets, which is the larger cost: the end-to-end tick at 1,000 players is on the order of 62–66 ms (roadmap PF2), and one region finished only ~43% of its ticks at that load in the last end-to-end run. The decision log is append-only, so the original entry stands; this clarification is the correction. `docs/PERFORMANCE.md` states the distinction. No code or measurement changed.
+
 - **2026-11-11 — T2: the editor shell renders from its template pin.** The shell slot joins the authoring slot in the interface-templating system (2026-11-02 decision): `INTERFACE_COMPONENTS` gains seven shell-chrome types (menu bar, workspace navigation, tool bar, view tabs, workspace stage, dock, status bar); the current shell is registered as the shell slot's first published template (`current-shell` v1 — regions tree mirroring App.tsx's arrangement exactly, so the pinned default renders byte-for-byte the same UI) alongside a minimal `legacy-shell` fallback frame; the resolver's legacy fallback is per slot (it previously hard-coded the authoring slot's legacy template, so resolving "shell" threw). App.tsx gates each surface's mount on the walked composition (`ui/shell-composition.ts`, `ui/shell-presentation.ts`): moving the pin changes which surfaces mount, a template that omits the workspace tab bar renders without it, and a refused or retired pin falls back to the legacy frame instead of blanking. Layout state (dock visibility/sizes) stays in the local layout store — templates decide composition, not per-user geometry. Next: T3 (template documents on disk under `content/ui-templates/` + VC coverage).
 
 - **2026-11-11 — Fast monorepo test runner and vfxEmitters SoA snapshot typing fix.** 
@@ -80,7 +82,7 @@ Every entry: date, decision, rationale. Newest first.
   - **Native AVX2/SIMD Delta Serialization (addon-codec):** Build a dedicated C++ N-API addon reading directly from SharedArrayBuffer memory pointers to pack 32-byte wire frames in under 0.05ms for 10k entities with 0 bytes of V8 heap garbage, flattening p99 to < 0.1ms.
   - **Native Spatial Grid (addon-spatial):** Replace dynamic template string keys ("${sx},${sz}") and Set<string> allocations in packages/engine-core/src/net/interest.ts with a dense 2D integer spatial hash in C++.
   - **Jolt Multi-Threaded Job System:** Enable JPH::JobSystemThreadPool in packages/addons/physics to scale collision and rigid body simulation across hardware CPU cores without blocking the 30Hz Node.js event loop.
-  - **Bulk Native Raycasting & mimalloc:** Expose CastRaysBulk for parallel combat/LOS checks in under 0.2ms, and link native addons against mimalloc to prevent heap lock contention and memory fragmentation. Full details in docs/ENGINE-COMPARISON-AND-PERFORMANCE.md.
+  - **Bulk Native Raycasting & mimalloc:** Expose CastRaysBulk for parallel combat/LOS checks in under 0.2ms, and link native addons against mimalloc to prevent heap lock contention and memory fragmentation. Full details in docs/business-analysis/ENGINE-COMPARISON-AND-PERFORMANCE.md.
 
 - **2026-10-27 — Client Modernization Architecture: WebGPU + WGSL Compute Migration over Legacy WebGL2.**
   Addressing graphics modernization and technical inquiries regarding OpenGL vs. WebGL:
@@ -869,7 +871,7 @@ Every entry: date, decision, rationale. Newest first.
 
 - **2026-10-28 — C++ Main Tick Migration Phase 0: Baselines and the Transport Guarantee.**
   Completed Phase 0 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md` §4, `docs/CPP-MAIN-TICK-PHASE0-REPORT.md`):
-  1. **Transport bench (`bench:transport`)** at 250 / 500 / 1,000 / 2,000 clients (`packages/engine-core/test/bench/transport-bench.ts`):
+  1. **Transport bench (`bench:transport`)** at 250 / 500 / 1,000 / 2,000 clients (`packages/engine-core/src/net/transport-bench.ts`):
      - `ws` results [sandbox, Node v25, 2 vCPUs]: p99 fan-out 22.5 ms / 42.4 ms / 79.2 ms / 135.7 ms; CPU 68.7% / 98.2% / 100.2% / 99.1% of one core; RSS 66 / 76 / 98 / 106 MB.
      - `uWS` unavailable on this host (prebuilt binary does not support Node 25 on Windows); uWS numbers pending real-hardware measurement per spec §4.
      - `ws` at 500+ clients saturates one core and exceeds the 33.33 ms frame budget at p99 — confirms uWS is required at target scale.

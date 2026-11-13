@@ -1,6 +1,6 @@
 # Characters and Social Systems
 
-Status: **design** (not yet built). Review this before any code lands.
+Status: **built** (2026-11-11), kept as the design record. Accounts and characters (C1 to C3), chat, whispers, friends and blocks (S1, S2), parties (S3), guilds (S4) and quests and dialog (P1) are done and persisted; see the [roadmap](ROADMAP.md) §3. Where this document differs from the code, the code is right, and [MESSAGE-CATALOG.md](MESSAGE-CATALOG.md) is the wire. The skills and combat half moved to [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md).
 Companion to `docs/WORLD-SERVER-SPEC.md` (where world-level data lives)
 and `docs/MESSAGE-CATALOG.md` (the wire protocol this extends).
 
@@ -63,6 +63,8 @@ Standalone behaves like a one-region world.
 
 ### 4.1 Data model (SurrealDB, world server)
 
+> **Storage today.** The SurrealQL below is the design for the world store. Characters are stored in the region's SQLite database (`characters.db`, with a hash store on the world server), and the shape differs in places; read the stores in `packages/engine-core/src/characters/` for the real columns.
+
 ```surql
 DEFINE TABLE character SCHEMAFULL;
 DEFINE FIELD account     ON character TYPE record<account>;
@@ -82,8 +84,7 @@ DEFINE INDEX character_name ON character FIELDS name_key UNIQUE;
 
 - **Character ids** are u64, assigned by the world server, never reused.
   They travel as JSON strings, like entity ids.
-- **Deleting** a character sets `deleted_at`; the name stays reserved
-  for 30 days, then is released. A hard purge job removes the row later.
+- **Deleting** a character is **not built**: there is no delete message and no store code today. The design is that it sets `deleted_at`, the name stays reserved for 30 days, then is released, and a purge job removes the row later.
 - **Inventory** is out of scope here; it gets its own table when items
   exist.
 
@@ -286,7 +287,7 @@ Rules:
   longest-standing officer.
 - 500 members at most. A character is in at most one guild.
 - Guild chat, roster (with presence), message of the day.
-- Stored as `guild` and `guild_member` tables; every change is also
+- Stored as the `guilds`, `guild_members` and `guild_log` tables (SQLite, `guild-store.ts`); every change is also
   appended to a `guild_log` for officers to read.
 
 ### 5.6 Social commands
