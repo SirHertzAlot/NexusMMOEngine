@@ -38,12 +38,17 @@ Tick time is break + collapse + physics for the whole 16k-entity world (a quiet 
    worst tick; 64 stays the default.
 5. **The harness needed ground.** With no terrain collider the carriers fell for ever (y -145 m after 6 s) and never
    settled. The real server loads terrain colliders; nothing to fix, but any new headless test must add ground.
-6. **Open: hitting a part by hand.** Melee measures from the attacker to the target's `Transform` (the model's *pivot*)
+6. **Fixed (DE4c): hitting a part by hand.** Melee measures from the attacker to the target's `Transform` (the model's *pivot*)
    with a 2 m vertical limit (`maxHeightDifferenceM`). A ground-floor wall's pivot is at its top (about 2.5 m up), so
    standing at its foot it is out of reach, although its middle (1.3 m) is not. The median part of a building is about
    5.8 m above its lowest part, so upper parts are out of reach by design (a roof is not meant to be punched), but the
-   ground floor must be hittable. Fix: hit-test against the part's middle (`centreX/Y/Z`). Not done; DE4c.
-7. **Open: a restart rebuilds buildings whole.** Fallen parts are not saved (DE4b).
+   ground floor must be hittable. Fixed: combat now hit-tests a part at its middle with its half-size (`HitBody`).
+7. **Fixed (DE4b): a restart used to rebuild buildings whole.** Resting parts are now saved and restored; on the preview a
+   379-part demolition restarted with 369 of 379 parts at the same pose (the rest differ in the 2nd decimal), the 21
+   broken parts still gone, the same entity count and nothing falling again. The check also found a real bug: a part
+   the break system removes while the scene spawns frees its slot for the next entity, so an entity id read after the
+   spawn could name another entity (the 21 broken parts came back after the restart); the scene now records wire ids
+   and poses at spawn time. Run it with `PERSIST=1 SCENE=... node scripts/collapse-playtest.mjs`.
 8. **Open: `valgrind:perf`** was not run (needs WSL and Linux addon builds).
 9. **Not seen in the client.** The carriers are hidden like colliders; whether the falling models look right (rotation
    about the pivot, parts passing through each other, dust and pieces from DE1/DE2) needs a session with art.

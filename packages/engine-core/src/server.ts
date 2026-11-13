@@ -1098,7 +1098,7 @@ async function main(): Promise<void> {
   };
   const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
   // Buildings that fall when their parts break (DE4): parts stay static until one breaks.
-  const collapse = new CollapseSystem();
+  const collapse = new CollapseSystem({ store: placesStore });
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
     store: placesStore,
     // Mending a building spends the pouch (gathered materials).
