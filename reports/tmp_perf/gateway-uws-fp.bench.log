@@ -1,0 +1,8 @@
+
+> mmo-engine@0.1.0 bench:transport
+> node packages/engine-core/dist/src/net/transport-bench.js
+
+uws   100 clients: CPU   5.8% | broadcast p50 1.154 ms, p99 5.412 ms | RSS 70 MB | 3000/s sent, 3000/s delivered, 3000/s intents in
+ws    100 clients: CPU   9.5% | broadcast p50 1.627 ms, p99 18.847 ms | RSS 78 MB | 2975/s sent, 2975/s delivered, 2987/s intents in
+uws   250 clients: CPU  14.7% | broadcast p50 4.353 ms, p99 18.491 ms | RSS 80 MB | 7531/s sent, 7531/s delivered, 7519/s intents in
+ws    250 clients: CPU  19.3% | broadcast p50 6.026 ms, p99 20.999 ms | RSS 90 MB | 7500/s sent, 7500/s delivered, 7510/s intents in

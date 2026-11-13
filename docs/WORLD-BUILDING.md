@@ -33,11 +33,7 @@ The shipped spec:
 | `ranges`, `volcano` | — | the mountain chain and its volcano |
 | `climate`, `erosion`, `glaciers`, `rivers`, `lakes` | — | the simulation below |
 
-`land` is where the map's shape comes from: the default is a peninsula with
-the sea to the **south** (`waterEdge` 0.6 — the sea covers 60% of that edge,
-plus the lower parts of the east and west), a 300 m shelf falling to a
-40 m-deep sea floor, land rising 30 m over the first 1200 m inland, and broad
-25 m swells every 1500 m.
+`land` is where the map's shape comes from. The default (roadmap WG3) is an **island**: `coast.shape` is `island`, one main landmass of `islandRadius` 1.04 (as a share of the half-size) with 6 smaller `satellites` islands scattered in the sea round it, and a `wander` of 300 m on the coast for bays and headlands. The other coast shapes are `peninsula` (the schema's default), `continents` and `pangaea`. In the peninsula, `side`, `waterEdge`, `tip` and `taper` say which edge is the sea and how far it reaches (the shipped spec still carries `side: south`, `waterEdge: 0.4`, `tip` and `taper`, which only take effect for that shape). Around the coast, a 300 m shelf falls to a 40 m-deep sea floor, land rises 30 m over the first 1200 m inland, and broad 25 m swells repeat every 1500 m. Islands below `minIslandArea` (20,000 cells) sink.
 
 `spawn` is optional and takes either an explicit point or a biome:
 
@@ -203,8 +199,8 @@ The bake shares the server's data folder and seed variables, plus:
 | `MMO_WORLD_CATALOG` | enabled | `0` skips the SurrealDB chunk catalog |
 
 Only the spawn area is populated during the bake; the rest of the world fills
-in as players explore it. The output lands in `MMO_DATA_DIR` (default
-`packages/engine-core/data/region.db`, roughly 92 MB for the 4 km world — partly
+in as players explore it. The output lands in `MMO_DATA_DIR` (default `./data` from where the process starts, which is
+`packages/engine-core/data/region.db` under `npm run`, roughly 92 MB for the 4 km world — partly
 SQLite page overhead over ~61 MB of heights) and is gitignored.
 
 **Tuning loop:** `npm run preview:world` draws the spec's biomes, rainfall,
@@ -291,7 +287,7 @@ walk into.
 Candidates are **world-space cells**, so a candidate belongs to exactly one
 chunk and chunks agree at their borders no matter what order they load in.
 Formation tiles are solved at bake time and cached in `region.db`
-(`formation_tiles`), keyed by world seed, terrain version, plan hash, layer and
+(`formation_tiles_v2`), keyed by world seed, terrain version, plan hash, layer and
 tile index, because solving a tile takes tens of milliseconds — far too long
 for a tick. A tile missing from the cache is solved on demand.
 
