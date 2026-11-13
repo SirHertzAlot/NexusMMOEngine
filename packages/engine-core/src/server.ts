@@ -1242,6 +1242,8 @@ async function main(): Promise<void> {
     // A building holds out against a blow from anyone below its minStrength (IX6).
     canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
     kindScale: (target: number, kind: string): number => breaks.kindScale(target, kind),
+    // A building part is hit at its middle, not at the pivot it is placed by (DE4c).
+    hitBody: (target: number) => collapse.hitBody(sim, target),
     rules: game.rules,
     hooks,
     combatSkills,
