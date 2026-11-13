@@ -34,7 +34,7 @@ import { labelSprite } from "./element-fx.js";
 import { BROKEN_VARIANT, combatMove, type ActionRow, type AssetRefRow, type BodyConfigRow, type TransformRow, type VelocityRow } from "@mmo-engine/protocol";
 import { parseLook, heldOf, lostOf } from "@mmo-engine/art/browser";
 import { MotionType } from "@mmo-engine/schema/generated/js/mmo-engine.js";
-import type { Interpolator, MirrorState } from "@mmo-engine/mirror";
+import type { EntityMirror, Interpolator, MirrorState } from "@mmo-engine/mirror";
 import type { PcgRpcClient } from "@mmo-engine/picg";
 import { placeholderColor, type AssetProvider } from "./assets.js";
 import { EntityFxSystem } from "./entity-fx.js";
@@ -55,6 +55,9 @@ import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate, animalIsFar } from "@mmo-
 import { CorpseProxy } from "./animal/corpse-proxy.js";
 import { shadeWorldObject } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
+import { DamageWatch, stageBrightness } from "./damage-stage.js";
+import { DustPuffs } from "./dust-puffs.js";
+import { puffsFor } from "./dust-sim.js";
 import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
 import { CORPSE_SHOT_OPTIONS, CorpseRagdolls, corpseShotRequested } from "../physics/corpse-ragdolls.js";
 import { SharedBodyTracks, type BodyPose } from "./shared-body-tracks.js";
@@ -270,6 +273,9 @@ export class EntityLayer {
   /** Live corpses: wire id -> the drawn body. The animal is hidden while its corpse exists. */
   private readonly corpseProxies = new Map<bigint, CorpseProxy>();
   private nextCorpseKey = 1;
+  /** Wear on breakable props (DE1): health changes become a darker look and a dust puff. */
+  private readonly damage = new DamageWatch();
+  private readonly dust: DustPuffs;
   private readonly corpsePose = new Float32Array(RAGDOLL_PARTS * 7);
   /** Shared bodies drawn from snapshots, a little behind the clock (see shared-body-tracks). */
   private readonly shared = new SharedBodyTracks({ delaySeconds: SHARED_DELAY_SECONDS });
@@ -290,6 +296,7 @@ export class EntityLayer {
     this.group.add(this.props.group);
     this.group.add(this.roads.group);
     this.fx = new EntityFxSystem(scene, camera);
+    this.dust = new DustPuffs(scene);
     this.group.add(this.vfx.renderer);
     const ground = (x: number, z: number): number | null => this.terrain.heightAt(x, z);
     this.vfx.setGround(ground);
@@ -525,6 +532,15 @@ export class EntityLayer {
     else this.props.remove(wid);
   }
 
+  /** A prop with health: a blow puffs dust where it stands, and its wear darkens it (batched props only). */
+  private watchDamage(wid: bigint, e: EntityMirror): void {
+    if (!e.health || !e.transform || !isStaticProp(e.body, e.asset)) return;
+    const change = this.damage.observe(wid, e.health.current, e.health.max);
+    if (!change) return;
+    this.props.setBrightness(wid, stageBrightness(change.stage));
+    if (change.lost > 0) this.dust.emit(e.transform.px, e.transform.py + 0.4, e.transform.pz, puffsFor(change.lost));
+  }
+
   private shown(wid: bigint, t: TransformRow, b: BodyConfigRow | null, asset?: AssetRefRow): [TransformRow, BodyConfigRow | null] {
     if (!this.depleted.has(wid) && asset?.variant !== BROKEN_VARIANT) {
       this.lowRows.delete(wid);
@@ -572,6 +588,7 @@ export class EntityLayer {
     for (const wid of this.props.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.props.remove(wid);
     gone.length = 0;
+    this.damage.prune((wid) => state.entities.has(wid));
     for (const wid of this.roads.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.roads.remove(wid);
 
@@ -591,6 +608,7 @@ export class EntityLayer {
         this.roads.set(wid, e.transform);
         continue;
       }
+      this.watchDamage(wid, e);
       // A far animal is one stand-in in the instanced batch (WL2 far LOD): see gateFarAnimal.
       const animalMesh = this.meshes.get(wid);
       if (animalMesh?.animal && e.transform) this.gateFarAnimal(wid, animalMesh, e.transform, e.body ?? null);
@@ -758,6 +776,7 @@ export class EntityLayer {
     this.fx.setPlayerPos(this.player);
 
     this.fx.update(dt, now);
+    this.dust.update(dt);
     this.showcase.update(now, dt);
     this.vfx.update(dt);
   }
@@ -843,6 +862,7 @@ export class EntityLayer {
     this.corpseWorld = null;
     this.corpses = null;
     this.fx.dispose();
+    this.dust.dispose(this.group.parent ?? this.group);
     this.showcase.dispose();
     this.vfx.dispose();
     for (const tex of this.plateTextures.values()) tex.dispose();
