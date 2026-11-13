@@ -1,5 +1,7 @@
 # Edge / Core Split — Build Plan
 
+> **Implementation note (2026-11-11).** This is the build plan the split was written from, kept as the design record. All its slices are built (roadmap E1 to E6). The files it says to "create" (`apps/edge/src/mirror.ts`, `mirror-buffer.ts`, `tick-buffer.ts`) were not built under those names; the edge today is `apps/edge/src/` (`game-relay.ts`, `router.ts`, `edge-registry.ts`, `lifecycle.ts`, `config.ts`, `metrics.ts` and `modules/`) with the framed channel in `packages/channel`. For how it runs now, read [ARCHITECTURE.md](ARCHITECTURE.md#how-it-runs-today) and the [networking wiki chapter](wiki/05-networking-and-edge.md); for what it costs, [PERFORMANCE.md](PERFORMANCE.md).
+
 **For:** Claude (the implementing agent). **Goal:** separate the engine into two processes — the **edge** API layer (client connections, HTTP routes, generic packet router, content services) and **engine-core** (pure simulation) — with zero open decisions. Work the slices in order, E1 through E6. Do not start a slice until the previous slice's done checklist is fully green.
 
 **Why:** today the front door (player connections) and the engine room (simulation) are one process. If the core crashes or stalls, every player disconnects. After this change: core-down → the edge holds connections and degrades gracefully; edge-down → the core keeps simulating with no rollback.
@@ -390,6 +392,8 @@ export class Registry {
 - `router_latency_ms{packet_type}` (histogram) — `routePacket` duration.
 - `mirror_deltas_fanned_out_total` (counter).
 - `mirror_snapshot_age_ticks` (gauge) — `currentTick - latestSnapshot.tick`.
+
+> **Names.** The metric names below are the design's, written without the prefix their family carries when scraped (`mmo_edge_`, `mmo_channel_`, `mmo_core_`). The names the code registers are in `apps/edge/src/metrics.ts` and `packages/engine-core/src/channel-server.ts`, for example `mmo_edge_router_requests_total`, `mmo_edge_router_latency_ms`, `mmo_edge_ws_connects_total` and `mmo_core_tick_duration_ms`. Check there before building a dashboard.
 
 - Channel (`mmo_channel_`, recorded in `packages/channel`, labeled by `side=edge|core`):
 - `requests_total`, `timeouts_total`, `errors_total` (counters).

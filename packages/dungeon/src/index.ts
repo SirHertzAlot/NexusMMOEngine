@@ -9,8 +9,13 @@ export { dressDungeon, type DungeonDressing, type DressedProp, type Resource } f
 export { BUILTIN_DRESSING, DressingSchema, loadDressing, type Dressing, type Archetype, type Content, type Vein } from "./dressing.js";
 export { dungeonColliders, LAYOUT_PROP_RADIUS, type Collider } from "./collision.js";
 export { populateDungeon, type Population, type PopulatedSpawn } from "./populate.js";
-export { dungeonShell, DUNGEON_CELL, SHELL_DEFAULTS, SHELL_PARTS, type DungeonShell, type GeometryOps, type ShellOptions, type ShellPart } from "./shell.js";
+export { dungeonShell, DUNGEON_CELL, LEVEL_STEP, SHELL_DEFAULTS, SHELL_PARTS, type DungeonShell, type GeometryOps, type ShellOptions, type ShellPart } from "./shell.js";
 export { layBefore, layFlank, layGrid, layHead, layLine, layOver, layRing, layRow, reachOf, type ArrangeCtx, type LayOpts } from "./arrange.js";
 export { DUNGEON_ART_PATTERNS, matchProps, nameWords, writeArtOverlay, type ArtMatch, type CatalogModel } from "./art.js";
 export { propagateDungeonModules, type Dungeon3DModules, type DungeonModuleOptions } from "./modules.js";
 export { roomInteriors, roomPlan, loadInteriorContent, type RoomInterior } from "./interiors.js";
+export { parseLayoutMask, dungeonFromLayout, layoutPortals, LayoutMask, LayoutPortal, PORTAL_KINDS, type PortalKind } from "./mask-layout.js";
+export { CRYPT_THEMES, bakeCrypt, type CryptTheme, type CryptBake, type LayerBake } from "./crypt-bake.js";
+export { shellCollision, type ShellCollision } from "./shell-collision.js";
+export { stackedDungeon, LayoutStack, type StackedDungeon } from "./stacked-layout.js";
+export { ShellTheme, parseShellTheme, shellOptionsOf, type ShellTheme as ShellThemeSpec } from "./shell-theme.js";

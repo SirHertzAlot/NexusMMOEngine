@@ -30,8 +30,14 @@
 
 import * as THREE from "three";
 import { MAX_SURFACE_LAYERS } from "./surfaces.js";
+import { applyShadingToMaterial } from "../shading/shading.js";
 
 export interface TerrainUniforms {
+  /** The baked terrain mask (packTerrainMask): R base, G rock, B wet, A path. */
+  uMask: THREE.IUniform<THREE.Texture | null>;
+  /** World rect covered by uMask: (x0, z0, sizeX, sizeZ). */
+  uMaskRect: THREE.IUniform<THREE.Vector4>;
+  uHasMask: THREE.IUniform<number>;
   uGround: THREE.IUniform<THREE.Texture | null>;
   /** World rect covered by uGround: (x0, z0, sizeX, sizeZ). */
   uGroundRect: THREE.IUniform<THREE.Vector4>;
@@ -101,6 +107,9 @@ const FRAGMENT_HEAD = /* glsl */ `
   varying vec3 vTerrainPos;
   varying vec3 vTerrainNormal;
   uniform float uWetness;
+  uniform sampler2D uMask;
+  uniform vec4 uMaskRect;
+  uniform float uHasMask;
   uniform sampler2D uGround;
   uniform vec4 uGroundRect;
   uniform float uHasGround;
@@ -252,6 +261,20 @@ const ROUGHNESS_BODY = /* glsl */ `
 `;
 
 // Wet look (WX1): rain darkens the albedo.
+/**
+ * Blend the baked mask over the ground colour: rock exposure greys it, wet
+ * soil darkens it, worn path lightens it. Runs before the lights, so the
+ * cel patch still shades the result.
+ */
+const MASK_BODY = /* glsl */ `
+  if (uHasMask > 0.5) {
+    vec4 mk = texture2D(uMask, (vTerrainPos.xz - uMaskRect.xy) / uMaskRect.zw);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.40, 0.38), mk.g * 0.55);
+    diffuseColor.rgb *= mix(1.0, 0.72, mk.b);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.12 + vec3(0.02), mk.a * 0.5);
+  }
+`;
+
 const WETNESS_BODY = /* glsl */ `
   diffuseColor.rgb *= 1.0 - uWetness * 0.35;
 `;
@@ -270,6 +293,9 @@ const NORMAL_BODY = /* glsl */ `
 
 export function createTerrainUniforms(): TerrainUniforms {
   return {
+    uMask: { value: null },
+    uMaskRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uHasMask: { value: 0 },
     uGround: { value: null },
     uGroundRect: { value: new THREE.Vector4(0, 0, 1, 1) },
     uHasGround: { value: 0 },
@@ -304,11 +330,34 @@ export function createTerrainMaterial(uniforms: TerrainUniforms, far = false): T
       .replace("#include <begin_vertex>", `#include <begin_vertex>\n${VERTEX_BODY}`);
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${FRAGMENT_HEAD}`)
-      .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_BODY}\n${WETNESS_BODY}`)
+      .replace("#include <color_fragment>", `#include <color_fragment>\n${FRAGMENT_BODY}\n${WETNESS_BODY}\n${MASK_BODY}`)
       .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${ROUGHNESS_BODY}`)
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${NORMAL_BODY}`);
   };
   material.customProgramCacheKey = () =>
     (far ? "mmo-terrain-far" : "mmo-terrain") + (material.defines?.TERRAIN_SURFACES !== undefined ? "+surfaces" : "");
+  applyShadingToMaterial(material, "terrain");
   return material;
+}
+
+/**
+ * Pack the baked channels (one byte per sample each, width × depth) into an
+ * RGBA texture for uMask: R base, G rock, B wet, A path. The texture's world
+ * rect is (originX, originZ, width × cell, depth × cell).
+ */
+export function packTerrainMask(channels: { base: Uint8Array; rock: Uint8Array; wet: Uint8Array; path: Uint8Array }, width: number, depth: number): THREE.DataTexture {
+  const n = width * depth;
+  const data = new Uint8Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    data[i * 4] = channels.base[i];
+    data[i * 4 + 1] = channels.rock[i];
+    data[i * 4 + 2] = channels.wet[i];
+    data[i * 4 + 3] = channels.path[i];
+  }
+  const tex = new THREE.DataTexture(data, width, depth, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
 }

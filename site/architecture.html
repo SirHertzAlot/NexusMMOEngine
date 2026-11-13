@@ -165,8 +165,8 @@
             <a href="index.html" class="nav-item">Home</a>
             <a href="pitch.html" class="nav-item">The tour</a>
             <a href="architecture.html" class="nav-item active" aria-current="page">Architecture</a>
-            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/GETTING-STARTED.md" class="nav-item" target="_blank" rel="noopener">Docs</a>
-            <a href="https://github.com/SirHertzAlot/NexusMMOEngine/blob/main/docs/ROADMAP.md" class="nav-item" target="_blank" rel="noopener">Roadmap</a>
+            <a href="docs/index.html" class="nav-item">Docs</a>
+            <a href="docs/roadmap.html" class="nav-item">Roadmap</a>
         </nav>
         <a class="gh-btn" href="https://github.com/SirHertzAlot/NexusMMOEngine" target="_blank" rel="noopener">View on GitHub</a>
     </header>
@@ -243,7 +243,7 @@
     const LAYERS = [
         { id: 'world',   name: 'World & persistence', sub: 'coordinates regions, stores state' },
         { id: 'core',    name: 'Core',                sub: 'one authoritative process per region' },
-        { id: 'edge',    name: 'Edge',                sub: 'sockets, auth, validation' },
+        { id: 'edge',    name: 'Edge',                sub: 'sockets in, deltas out' },
         { id: 'browser', name: 'Browser',             sub: 'mirrors state, never owns it' }
     ];
 
@@ -270,16 +270,16 @@
           facts: ['Read-only ECS inspector and a play mode that runs a server and the game view with a debugger.', 'Rules and gameplay tables, PICG graphs, dungeon tools, world-scale terrain and the art pipeline.', 'A Changes panel with semantic diffs, merge and soft locks over plain git.'],
           repo: 'apps/editor', doc: 'docs/EDITOR-ARCHITECTURE.md' },
 
-        { id: 'edge', name: 'Edge gateway', cat: 'security', layer: 2, x: -1.4, z: 0, w: 3.4, d: 2.0, lens: ['dev'],
-          summary: 'The front door: sockets in, validated intents out.',
-          facts: ['uWebSockets.js is the production default; a pure-JS ws transport is the fallback.', 'Terminates TLS and WebSockets, applies token-bucket rate limits and validates every payload against a strict schema.', 'Computes each player\'s area of interest and encodes binary delta frames per connection.', 'Everything past this boundary treats the network as untrusted.'],
+        { id: 'edge', name: 'Edge relay', cat: 'security', layer: 2, x: -1.4, z: 0, w: 3.4, d: 2.0, lens: ['dev'],
+          summary: 'The front door: players\' sockets in, per-player deltas out.',
+          facts: ['Holds the players\' WebSocket and HTTP on the public port and relays them to the core over a framed TCP channel. It serves sockets with the ws library; a core started alone serves players itself with uWebSockets.js.', 'Routes each packet by type through content/edge/routes.json: forward to the core, or handle on the edge (edge modules). While the core is down it refuses new sockets and answers HTTP 503.', 'Assembles each player\'s DeltaSet from the per-sector bytes the core encodes once (interest management), and serves /health and Prometheus metrics.', 'Authentication, rate limits and schema validation are not here: they are in the core\'s gateway.'],
           repo: 'apps/edge', doc: 'docs/wiki/05-networking-and-edge.md' },
-        { id: 'auth', name: 'Auth + sessions', cat: 'security', layer: 2, x: 3.6, z: -2.0, w: 2.4, d: 1.4, lens: ['dev'],
-          summary: 'Decides who is allowed to send anything at all.',
-          facts: ['A hello handshake with argon2-hashed credentials and session tokens.', 'An intent that arrives before hello is rejected with code 4003 and never reaches the ring.', 'Entity ownership is checked: a player can only drive their own entity.'],
-          repo: 'packages/engine-core', doc: 'docs/wiki/05-networking-and-edge.md' },
+        { id: 'auth', name: 'Gateway + auth', cat: 'security', layer: 1, x: -4.4, z: 3.3, w: 2.6, d: 1.4, lens: ['dev'],
+          summary: 'Decides who is allowed to send anything at all, and how much.',
+          facts: ['The core\'s gateway answers the hello handshake (argon2-hashed credentials, session tokens).', 'An intent that arrives before hello is rejected with code 4003 and never reaches the ring. Entity ownership is checked: a player can only drive their own entity.', 'Token-bucket rate limits and strict schema validation apply to every message; a client that trips them too often is disconnected.', 'The limits are content/rules/ingress.json.'],
+          repo: 'packages/engine-core/src/net', doc: 'docs/wiki/05-networking-and-edge.md' },
 
-        { id: 'ring', name: 'Shared-memory rings', cat: 'authority', layer: 1, x: -4.6, z: 0.2, w: 2.8, d: 1.7, lens: ['dev'],
+{ id: 'ring', name: 'Shared-memory rings', cat: 'authority', layer: 1, x: -4.6, z: 0.2, w: 2.8, d: 1.7, lens: ['dev'],
           summary: 'Lock-free lanes between the gateway and the simulation.',
           facts: ['One page-aligned SharedArrayBuffer holds an input ring, a persistence ring, planar component columns and atomic telemetry.', 'Intents are packed into a single 32-bit command and pushed without locks or copies.', 'If the sim worker crashes, client sockets stay open.'],
           repo: 'packages/engine-core', doc: 'docs/wiki/01-architecture-overview.md' },
@@ -333,8 +333,8 @@
         ['mirror', 'scene3d', 'interpolated state', 'data'],
         ['client', 'mirror', 'app shell', 'ctl'],
         ['mirror', 'edge', 'Binary WebSocket · FlatBuffers', 'data', true],
-        ['edge', 'auth', 'hello · auth', 'ctl'],
-        ['edge', 'ring', 'validated intents · framed channel', 'data'],
+        ['edge', 'auth', 'relayed hello and intents · framed channel', 'data'],
+        ['auth', 'ring', 'validated intents', 'data'],
         ['ring', 'sim', 'drain input ring', 'data'],
         ['sim', 'addons', 'in-process N-API calls', 'data'],
         ['sim', 'ring', 'write component columns', 'data'],
@@ -360,8 +360,8 @@
     const TOUR = [
         { title: 'A player presses W', parts: ['hud', 'client'], links: [['client', 'hud']], focus: 'hud', text: 'The client captures the key. It does not move the player: it builds an intent, "walk forward", and sends it. At most one intent per tick.' },
         { title: 'The intent goes upstream', parts: ['hud', 'mirror', 'edge'], links: [['hud', 'mirror'], ['mirror', 'edge']], focus: 'mirror', text: 'A small binary FlatBuffers message crosses a WebSocket to the edge. The same connection carries state back.' },
-        { title: 'The edge guards the door', parts: ['edge', 'auth'], links: [['edge', 'auth']], focus: 'edge', text: 'Before hello? Rejected. Someone else\'s entity? Rejected. NaN or Infinity in the vector? Scrubbed. A stale packet? Dropped. Rate limits apply throughout.' },
-        { title: 'Into the ring', parts: ['edge', 'ring'], links: [['edge', 'ring']], focus: 'ring', text: 'A valid intent is packed into one 32-bit command and pushed onto a lock-free ring. No locks and no copies, and the socket side never waits on the sim.' },
+        { title: 'The gateway guards the door', parts: ['edge', 'auth'], links: [['edge', 'auth']], focus: 'auth', text: 'The edge relays the frame to the core\'s gateway. Before hello? Rejected. Someone else\'s entity? Rejected. NaN or Infinity in the vector? Scrubbed. A stale packet? Dropped. Rate limits apply throughout.' },
+        { title: 'Into the ring', parts: ['auth', 'ring'], links: [['auth', 'ring']], focus: 'ring', text: 'A valid intent is packed into one 32-bit command and pushed onto a lock-free ring. No locks and no copies, and the socket side never waits on the sim.' },
         { title: 'The tick runs', parts: ['ring', 'sim', 'addons', 'content'], links: [['ring', 'sim'], ['sim', 'addons'], ['content', 'sim']], focus: 'sim', text: 'Every 33.3 ms the sim drains the ring and runs its systems over bitECS columns. Physics, navigation and noise run in C++ addons, in-process. What the systems do is set by the game\'s data tables.' },
         { title: 'State goes back out', parts: ['sim', 'ring', 'edge'], links: [['sim', 'ring'], ['ring', 'edge']], focus: 'edge', text: 'Changed state is written once. The edge cuts it per player by area of interest and sends snapshots and deltas at 30 Hz.' },
         { title: 'The mirror renders one tick behind', parts: ['edge', 'mirror', 'scene3d'], links: [['mirror', 'edge'], ['mirror', 'scene3d']], focus: 'scene3d', text: 'The client interpolates between server states, so motion looks smooth without it ever predicting game logic. If the client and server disagree, the server is right.' },

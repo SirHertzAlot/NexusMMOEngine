@@ -21,6 +21,7 @@ export {
   type AssetManifest,
   type AssetLoadStatus,
 } from "@mmo-engine/art/browser";
+import { shadedMaterial } from "./shading/shading.js";
 
 /** Deterministic placeholder color per entity (HSL from wire id hash). */
 export function placeholderColor(wireId: bigint): THREE.Color {
@@ -68,10 +69,10 @@ export class PlaceholderAssets implements AssetProvider {
         Math.max(body.halfZ * 2, 0.05),
       );
     }
-    const material = new THREE.MeshStandardMaterial({
+    const material = shadedMaterial(new THREE.MeshStandardMaterial({
       roughness: 0.7,
       metalness: 0.1,
-    });
+    }), "fallback");
     return new THREE.Mesh(geometry, material);
   }
 
@@ -98,14 +99,14 @@ export class PlaceholderAssets implements AssetProvider {
       pos.needsUpdate = true;
       geometry.computeVertexNormals();
     }
-    const material = new THREE.MeshStandardMaterial({
+    const material = shadedMaterial(new THREE.MeshStandardMaterial({
       color: new THREE.Color(0x3d6b35),
       roughness: 1,
       metalness: 0,
       transparent: true,
       opacity: 0.92,
       wireframe: this.wireframeTerrain,
-    });
+    }), "terrain");
     const mesh = new THREE.Mesh(geometry, material);
     this.terrainMaterials.add(material);
     // Forget disposed chunks (despawn / rebuild), or the set grows forever.

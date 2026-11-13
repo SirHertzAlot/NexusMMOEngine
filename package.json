@@ -112,6 +112,7 @@
     "packages/addons/perf-probe",
     "packages/build",
     "packages/playtest",
+    "packages/render-fx",
     "packages/synthesis"
   ],
   "dependencies": {

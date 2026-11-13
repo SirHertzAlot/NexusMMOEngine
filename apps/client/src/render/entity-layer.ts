@@ -52,7 +52,7 @@ import type { TerrainRenderer } from "./terrain/terrain-renderer.js";
 import type { QualitySettings } from "./quality.js";
 import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate, animalIsFar } from "@mmo-engine/animal-rig";
 import { CorpseProxy } from "./animal/corpse-proxy.js";
-import { applyShading } from "./shading/shading.js";
+import { shadeWorldObject } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
 import { createClientPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../physics/index.js";
 import { CORPSE_SHOT_OPTIONS, CorpseRagdolls, corpseShotRequested } from "../physics/corpse-ragdolls.js";
@@ -971,13 +971,13 @@ export class EntityLayer {
   private makeBodyMesh(wid: bigint, body: BodyConfigRow | undefined, model: THREE.Object3D | null): THREE.Object3D {
     if (model) {
       colorize(model, placeholderColor(wid));
-      applyShading(model, "model");
+      shadeWorldObject(model, "model");
       return model;
     }
     if (body) {
       const obj = this.assets.bodyMesh(body);
       colorize(obj, placeholderColor(wid));
-      applyShading(obj, "placeholder");
+      shadeWorldObject(obj, "placeholder");
       return obj;
     }
     // Stand-in until the BodyConfig row arrives (spawned entities carry
@@ -987,7 +987,7 @@ export class EntityLayer {
       new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }),
     );
     colorize(obj, placeholderColor(wid));
-    applyShading(obj, "placeholder");
+    shadeWorldObject(obj, "placeholder");
     return obj;
   }
 }
