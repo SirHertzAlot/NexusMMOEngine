@@ -10,9 +10,13 @@
 
 import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene";
 import {
+  DRESSED_KINDS,
   buildingToSceneNodes,
+  dressGarden,
+  isOpenKind,
   synthesizeBuildingForParcel,
   type DecompositionLibrary,
+  type GardenModels,
 } from "@mmo-engine/synthesis";
 import type { SettlementManifest } from "./generate.js";
 import { scaledLayout, townCentreMm } from "./layout.js";
@@ -46,6 +50,11 @@ export interface SceneOptions {
   art?: Record<string, string[]>;
   /** Optional Unity scene DecompositionLibrary: replaces coarse placeholder boxes with enterable multi-part WFC structures. */
   synthesis?: DecompositionLibrary;
+  /**
+   * Models to dress gardens and churchyards with (`pickGardenModels`): a formal layout of equal planters, plants and
+   * ornamental trees instead of a stand-in box. Open ground is never grown through the building synthesis.
+   */
+  gardens?: GardenModels;
 }
 
 /** Unsigned 32-bit FNV-1a hash used as deterministic synthesis seed per parcel. */
@@ -81,7 +90,20 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
     const p = parcels.get(s.parcel)!;
     const a = rules.archetypes[s.archetype]!;
     const pos: [number, number, number] = [(p.center.x - cx) / 1000, raised.get(p.id) ?? 0, (p.center.z - cz) / 1000];
-    if (opts.synthesis && !openGround.has(s.archetype) && opts.synthesis.structures.length > 0) {
+    if (opts.gardens && DRESSED_KINDS.has(s.archetype)) {
+      return dressGarden({
+        id: s.id,
+        kind: s.archetype as "garden" | "churchyard",
+        widthM: Math.max(2, pw / 1000 - 2 * MARGIN_M),
+        depthM: Math.max(2, pd / 1000 - 2 * MARGIN_M),
+        models: opts.gardens,
+        seed: fnvSeed(`${manifest.settlementId}:${s.id}:${s.archetype}`),
+        position: pos,
+        yawDeg: p.facing,
+      });
+    }
+    // Open ground (a garden, a churchyard, a park, a lot) is not a building: never grown through the enclosed templates.
+    if (opts.synthesis && !openGround.has(s.archetype) && !isOpenKind(s.archetype) && opts.synthesis.structures.length > 0) {
       const plotW = Math.max(2, pw / 1000 - 2 * MARGIN_M);
       const plotD = Math.max(2, pd / 1000 - 2 * MARGIN_M);
       const bld = synthesizeBuildingForParcel(

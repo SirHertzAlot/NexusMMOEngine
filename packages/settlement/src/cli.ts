@@ -42,7 +42,7 @@ import { VERBOSITY, type Verbosity } from "./events.js";
 import { ACCESS, defaultRules, loadRules, type Access, type SettlementRules } from "./rules.js";
 import { siteAccess } from "./setting.js";
 import type { Land } from "./industry.js";
-import type { DecompositionLibrary } from "@mmo-engine/synthesis";
+import { pickGardenModels, type DecompositionLibrary } from "@mmo-engine/synthesis";
 import { fitHouseholds, townHalfExtentM } from "./layout.js";
 import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
@@ -96,16 +96,20 @@ async function main(): Promise<void> {
   }
   if (origin.length !== 2 || origin.some((n) => !Number.isFinite(n))) throw new Error("--origin must be x,z in metres (for example 120,-300)");
   let art: Record<string, string[]> | undefined;
+  let catalogModels: CatalogModel[] | undefined;
   if (o.catalog) {
     const models = (JSON.parse(readFileSync(fromUser(o.catalog), "utf8")) as { models: CatalogModel[] }).models;
     art = { ...buildArtMap(models, DEFAULT_ART_PATTERNS), ...buildArtMap(models, DEFAULT_PROP_PATTERNS, "i") };
+    catalogModels = models;
     console.log(`  [art] ${Object.keys(art).length} of ${Object.keys(DEFAULT_ART_PATTERNS).length + Object.keys(DEFAULT_PROP_PATTERNS).length} kinds have models: ${Object.entries(art).map(([k, v]) => `${k} ${v.length}`).join(", ")}`);
   }
   let scale = 1;
+  let scaleDoc: ScaleDoc | undefined;
   if (o.scale) {
     const doc = JSON.parse(readFileSync(fromUser(o.scale), "utf8")) as unknown;
     const issues = validateScale(doc);
     if (issues.length) throw new Error(`--scale: ${issues.map((i) => `${i.path} ${i.message}`).join("; ")}`);
+    scaleDoc = doc as ScaleDoc;
     scale = resolveScale(doc as ScaleDoc, "building");
     console.log(`  [scale] building factor ${scale}`);
   }
@@ -115,10 +119,13 @@ async function main(): Promise<void> {
     synthesis = JSON.parse(readFileSync(fromUser(synthesisPath), "utf8")) as DecompositionLibrary;
     console.log(`  [synthesis] ${synthesis.structures.length} structures, ${synthesis.rooms.length} rooms, ${synthesis.vignettes.length} vignettes`);
   }
+  // Gardens and churchyards are dressed as formal gardens (equal planters, plants, ornamental trees) when the catalog has the models.
+  const gardens = catalogModels ? pickGardenModels(catalogModels, (id) => (scaleDoc ? resolveScale(scaleDoc, "building", id) : 1)) : null;
+  if (catalogModels) console.log(gardens ? `  [gardens] dressed with ${gardens.planter.id}, ${gardens.plants.length} plants, ${gardens.trees.length} trees${gardens.stones ? `, ${gardens.stones.length} headstones` : ""}` : "  [gardens] the catalog has no planter, plant and tree: gardens stay boxes");
   const r = bakeSettlement(
     { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population, ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry, ...(route ? { route } : {}) } } : {}) },
     out,
-    o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}), ...(synthesis ? { synthesis } : {}) } } : {},
+    o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}), ...(synthesis ? { synthesis } : {}), ...(gardens ? { gardens } : {}) } } : {},
   );
   for (const e of r.events) console.log(`  [${e.stage}] ${e.event} ${JSON.stringify(e.data)}`);
   if (!r.ok) throw new Error(`${r.error.stage}: ${r.error.message}`);
