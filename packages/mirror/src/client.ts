@@ -452,6 +452,12 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "drop", item })));
   }
 
+  /** Ask to move a bag item to cell (x, y) of a grid bag, turned when `rot` (CF6, 0x13); the server checks it. */
+  moveItem(item: number, x: number, y: number, rot: boolean): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "move", item, x, y, rot })));
+  }
+
   /** Ask to hold a bag item (M3b, 0x13); swaps with what the hand held. */
   equip(item: number): void {
     if (!this.socket || this.closed) return;

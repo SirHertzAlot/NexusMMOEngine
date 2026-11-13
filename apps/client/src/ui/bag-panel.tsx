@@ -13,8 +13,9 @@
  * the buttons, so the server still decides.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ARMOUR_SLOT_NAMES, type ArmourSlotName, type ItemView } from "@mmo-engine/protocol";
+import { dropVerdict, occupancyOf } from "./bag-grid.js";
 import { t, tName } from "../i18n.js";
 /** Stats in a fixed, readable order; anything else follows alphabetically. */
 const STAT_ORDER = ["power", "armour", "block", "spell", "speed", "crit", "reach", "health", "stagger"];
@@ -157,6 +158,74 @@ function ItemTooltip({ item, hands, worn, top }: { item: ItemView; hands: Hands;
   );
 }
 
+const CELL_PX = 30;
+
+/** A grid bag (CF6): items stand at their footprint; drag one to move it (it snaps to cells), R turns it, green or red shows whether the server would take it. */
+function GridBag({ bag, grid, onMove, onFocus, onEquip }: { bag: Array<ItemView | null>; grid: { columns: number; rows: number; slots: number }; onMove: (item: number, x: number, y: number, rot: boolean) => void; onFocus: (id: number) => void; onEquip: (id: number) => void }): React.ReactElement {
+  const items = bag.filter((i): i is ItemView => i !== null && i.at !== undefined);
+  const el = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ id: number; rot: boolean; x: number; y: number } | null>(null);
+  const cells = occupancyOf(items, grid);
+  const held = drag ? items.find((i) => i.id === drag.id) : undefined;
+  const footprint: [number, number] | null = held?.at ? [held.at.rot ? held.at.h : held.at.w, held.at.rot ? held.at.w : held.at.h] : null;
+  const verdict = drag && footprint ? dropVerdict(grid, cells, footprint, { x: drag.x, y: drag.y, rot: drag.rot }, drag.id) : null;
+  const cellAt = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
+    const r = el.current!.getBoundingClientRect();
+    return { x: Math.floor((e.clientX - r.left) / CELL_PX), y: Math.floor((e.clientY - r.top) / CELL_PX) };
+  };
+  useEffect(() => {
+    if (!drag) return;
+    const key = (e: KeyboardEvent): void => {
+      if (e.code === "KeyR") setDrag((d) => (d ? { ...d, rot: !d.rot } : d));
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [drag]);
+  return (
+    <div
+      ref={el}
+      className="relative select-none rounded border bg-background/40"
+      style={{ width: grid.columns * CELL_PX, height: grid.rows * CELL_PX, backgroundImage: "linear-gradient(to right, rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.07) 1px, transparent 1px)", backgroundSize: `${CELL_PX}px ${CELL_PX}px` }}
+      aria-label={t("bag.slots")}
+      onPointerMove={(e) => drag && setDrag({ ...drag, ...cellAt(e) })}
+      onPointerUp={() => {
+        if (drag && verdict === null) onMove(drag.id, drag.x, drag.y, drag.rot);
+        setDrag(null);
+      }}
+      onPointerLeave={() => setDrag(null)}
+    >
+      {Array.from({ length: grid.columns * grid.rows - grid.slots }, (_, k) => grid.slots + k).map((c) => (
+        <div key={`x${c}`} className="absolute bg-black/50" style={{ left: (c % grid.columns) * CELL_PX, top: Math.floor(c / grid.columns) * CELL_PX, width: CELL_PX, height: CELL_PX }} />
+      ))}
+      {items.map((it) => {
+        const a = it.at!;
+        return (
+          <button
+            key={it.id}
+            type="button"
+            className="absolute flex items-center justify-center overflow-hidden rounded border bg-background/70 p-0.5 text-center text-[9px] leading-tight"
+            style={{ left: a.x * CELL_PX, top: a.y * CELL_PX, width: a.w * CELL_PX, height: a.h * CELL_PX, borderColor: it.color, color: it.color, opacity: drag?.id === it.id ? 0.4 : 1, touchAction: "none" }}
+            aria-label={it.name}
+            onPointerDown={(e) => {
+              onFocus(it.id);
+              setDrag({ id: it.id, rot: a.rot, ...cellAt(e) });
+            }}
+            onDoubleClick={() => onEquip(it.id)}
+          >
+            {it.base}
+          </button>
+        );
+      })}
+      {drag && footprint && (
+        <div
+          className="pointer-events-none absolute rounded border-2"
+          style={{ left: drag.x * CELL_PX, top: drag.y * CELL_PX, width: (drag.rot ? footprint[1] : footprint[0]) * CELL_PX, height: (drag.rot ? footprint[0] : footprint[1]) * CELL_PX, borderColor: verdict === null ? "#22c55e" : "#ef4444", background: verdict === null ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)" }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function BagPanel({
   bag,
   hands,
@@ -164,6 +233,8 @@ export function BagPanel({
   onDrop,
   onEquip,
   onUnequip,
+  grid = null,
+  onMove,
   gold = null,
   onUse,
   hotkeyDef = null,
@@ -175,6 +246,9 @@ export function BagPanel({
   onDrop: (item: number) => void;
   onEquip: (item: number) => void;
   onUnequip: (slot: "main" | "off" | ArmourSlotName) => void;
+  /** A grid bag (CF6): cells across and down; items then show at their footprint and can be dragged, snapped and turned. */
+  grid?: { columns: number; rows: number; slots: number } | null;
+  onMove?: (item: number, x: number, y: number, rot: boolean) => void;
   /** The wallet balance (0x21); null hides the line (the server runs no economy). */
   gold?: number | null;
   /** Eat or drink an item; with onHotkey, the item the E key uses is marked. */
@@ -305,7 +379,9 @@ export function BagPanel({
           ))}
         </div>
       )}
+      {grid && onMove && <GridBag bag={bag} grid={grid} onMove={onMove} onFocus={setFocus} onEquip={(id) => { onEquip(id); setFocus(null); }} />}
       <div
+        hidden={!!grid && !!onMove}
         className="grid grid-cols-6 gap-1 rounded"
         style={over === "bag" ? { outline: "2px solid currentColor" } : undefined}
         aria-label={t("bag.slots")}

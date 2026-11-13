@@ -243,6 +243,7 @@ export function App(): React.ReactElement {
   }, []);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
+  const [bagGrid, setBagGrid] = useState<InventoryMessage["grid"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
   const [worn, setWorn] = useState<Worn>(EMPTY_WORN);
   const [bagOpen, setBagOpen] = useState(false);
@@ -428,6 +429,7 @@ function welcomeTimeoutMs(): number | undefined {
       onBody: setBody,
       onInventory: (inv) => {
         setBag(inv.bag);
+        setBagGrid(inv.grid ?? null);
         // A bigger bag than before is a pickup (the first inventory only sets the baseline).
         const held = inv.bag.filter(Boolean).length;
         if (bagCount.current !== null && held > bagCount.current) audio.playEvent("pickup");
@@ -1060,6 +1062,8 @@ function welcomeTimeoutMs(): number | undefined {
                 hands={hands}
                 worn={worn}
                 gold={gold}
+                grid={bagGrid}
+                onMove={(id, x, y, rot) => client?.moveItem(id, x, y, rot)}
                 onDrop={(id) => client?.dropItem(id)}
                 onEquip={(id) => client?.equip(id)}
                 onUnequip={(slot) => client?.unequip(slot)}
