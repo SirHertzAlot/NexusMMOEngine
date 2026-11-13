@@ -7,9 +7,11 @@
  * sends ops back through callbacks; nothing about quests is decided here.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DialogMessage, QuestStepView, QuestView } from "@mmo-engine/protocol";
 import { Button } from "./components.js";
+import { PerformedText, type PerformedControl } from "./performed-text.js";
+import type { GlossaryTerm } from "./text-performance.js";
 import { t } from "../i18n.js";
 
 /** An open dialog (not the closed notice). */
@@ -185,7 +187,11 @@ export function QuestTracker({ quests }: { quests: readonly QuestView[] }): Reac
  * The npc dialog: their line and the replies open to the player. Number
  * keys pick a reply, Escape closes; both are kept from the game's keys.
  */
-export function DialogPanel({ dialog, onReply, onClose }: { dialog: OpenDialog; onReply: (index: number) => void; onClose: () => void }): React.ReactElement {
+export function DialogPanel({ dialog, onReply, onClose, glossary }: { dialog: OpenDialog; onReply: (index: number) => void; onClose: () => void; glossary?: readonly GlossaryTerm[] }): React.ReactElement {
+  const line = useRef<PerformedControl | null>(null);
+  const [done, setDone] = useState(false);
+  // A new line restarts the performance.
+  useEffect(() => setDone(false), [dialog]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const el = e.target as HTMLElement | null;
@@ -202,6 +208,17 @@ export function DialogPanel({ dialog, onReply, onClose }: { dialog: OpenDialog; 
         e.preventDefault();
         e.stopPropagation();
         onClose();
+      } else if (e.code === "Enter" || e.code === "Space") {
+        // While the line types, a key finishes it; once it is typed, with nothing to answer, it moves on.
+        if (line.current && !line.current.done) {
+          e.preventDefault();
+          e.stopPropagation();
+          line.current.complete();
+        } else if (dialog.replies.length === 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -215,7 +232,14 @@ export function DialogPanel({ dialog, onReply, onClose }: { dialog: OpenDialog; 
           ✕
         </button>
       </div>
-      <p className="mb-3 text-sm leading-relaxed">{dialog.text}</p>
+      <p className="mb-3 text-sm leading-relaxed" onClick={() => line.current?.complete()}>
+        <PerformedText key={`${dialog.npc}:${dialog.text}`} text={dialog.text} glossary={glossary} control={line} onDone={() => setDone(true)} />
+        {done && dialog.replies.length === 0 && (
+          <span className="ml-1 inline-block animate-bounce text-amber-200" aria-hidden="true">
+            ▾
+          </span>
+        )}
+      </p>
       <ol className="flex flex-col gap-1">
         {dialog.replies.map((r, i) => (
           <li key={r.index}>
