@@ -141,7 +141,9 @@ export interface CombatDamage {
   /** The weapon an entity holds; null or absent means fists. */
   weaponOf?: (e: number) => Weapon | null;
   /** The share of a blow the target's worn armour lets through (0..1); absent means 1. */
-  armourOf?: (target: number) => number;
+  armourOf?: (target: number, kind?: "cut" | "blunt" | "thrust") => number;
+  /** Damage kind (`cut`, `blunt`, `thrust`) for a technique id so per-kind armour mitigation applies. */
+  techniqueKind?: (technique: string) => "cut" | "blunt" | "thrust" | undefined;
   /** Skills behind power and defence; absent means skill 0 and no training. */
   skills?: CombatSkills;
   /** Body parts (M2): blows land on parts; absent means whole-body Health. */
@@ -409,7 +411,8 @@ export class CombatSystem implements SimSystem {
           ? dmg.hooks.resolveLanding({ aim: aimedPart, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
         const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
-        const armourFactor = dmg.armourOf?.(t) ?? 1;
+        const kind = dmg.techniqueKind?.(w.technique);
+        const armourFactor = dmg.armourOf?.(t, kind) ?? 1;
         const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, armourFactor, familiarity });
         if (w.family) sk?.useFamily?.(e, w.family);
         amount = blow.amount * arm;

@@ -3,6 +3,8 @@ export { engineDefaults, formatIssue, loadRules, parseRules, RulesError, type Ru
 export { computeStats, ModifierTotals, StatLayout, type StatModifier } from "./stats.js";
 export {
   armourFactor,
+  effectiveArmourHalf,
+  effectiveHealth,
   createHooks,
   decaySkill,
   defenceChance,
@@ -12,6 +14,7 @@ export {
   masteryPower,
   partAndBelow,
   precision,
+  type ArmourFactorOptions,
   type DamageInput,
   type DamageResult,
   type DeathInput,

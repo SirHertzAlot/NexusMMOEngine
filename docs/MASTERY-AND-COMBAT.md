@@ -156,6 +156,7 @@ reads one property as the item's **fit** for it: cut → `edge`, thrust →
 - **Damage:**
   `damage = 10 × √mass × fit_eff × power × part multiplier × armour factor`
   (part multipliers are in the body rules, §4.1).
+  - **Armour mitigation and EHP:** worn armour lets `armourFactor = K / (K + armour)` through (mitigating `armour / (armour + K)`), where `K` defaults to `armourHalf`, optionally overridden per damage kind via `armourHalfByKind` (`cut`, `blunt`, `thrust`) and scaled across tiers by `armourHalfPerLevel`. Tune armour on **Effective Health (EHP)** and **hits-to-kill**, not mitigation percentage: `EHP = HP × (1 + armour / K)` grows **linearly** with armour (`+K` armour adds `+100%` base HP in hits survived with no hard cap and identical treatment for fast hits, slow hits, and DoTs; Path of Exile's hit-size-dependent mitigation was consciously omitted to preserve a clear mental model). For streak-bounded RNG (crits, non-lottery drops), `@mmo-engine/wfc` provides `MarbleBag<T>` beside pure rolls.
 - **Precision** (§4.4) decides where the blow lands, which is the other
   half of what mastery buys.
 
