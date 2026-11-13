@@ -4,6 +4,7 @@
 import * as React from "react";
 import { DungeonPanel } from "../../../apps/editor/src/ui/dungeon-view.js";
 import { GraphEditorPanel } from "../../../apps/editor/src/ui/graph-editor.js";
+import { DungeonBakePanel } from "../../../apps/editor/src/ui/dungeon-bake-panel.js";
 import { DungeonRulesPanel } from "../../../apps/editor/src/ui/dungeon-rules-panel.js";
 import { SettlementPanel } from "../../../apps/editor/src/ui/settlement-panel.js";
 
@@ -14,6 +15,13 @@ export const panels = [
     title: "Dungeon",
     icon: "castle",
     render: () => <DungeonPanel />,
+  },
+  {
+    id: "bake",
+    workspace: "dungeons",
+    title: "Bake",
+    icon: "construction",
+    render: () => <DungeonBakePanel />,
   },
   {
     id: "graphs",
