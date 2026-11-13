@@ -1,0 +1,54 @@
+
+        <!-- PROCGEN BAR -->
+        <div id="procBar" class="flex min-h-10 shrink-0 animate-slide-in-bottom flex-wrap items-center gap-2 border-t bg-card px-3 py-1 text-xs">
+          <span class="font-medium text-muted-foreground">Procgen · Town 0001</span>
+          <label class="text-muted-foreground">seed <input id="seedInput" value="1234" class="h-7 w-[70px] rounded-md border border-input bg-background px-2 font-mono text-xs text-foreground"></label>
+          <button class="btn btn-secondary h-7 px-2.5 text-xs" id="rerollBtn">Reroll unpinned</button>
+          <button class="btn btn-ghost h-7 px-2.5 text-xs" id="pinBtn">Pin: off</button>
+          <span id="procNote" class="text-muted-foreground">hand-placed objects pin automatically</span>
+        </div>
+
+        <!-- PROVENANCE -->
+        <div id="provStrip" class="flex h-9 shrink-0 animate-slide-in-bottom items-center gap-2 border-t bg-card px-3 text-xs">
+          <span class="relative">
+          <button id="provVerb" class="badge badge-outline font-mono transition-colors hover:bg-accent" aria-haspopup="true" aria-expanded="false" title="Provenance history — this session">spawn</button>
+          <div id="provPop" class="pill-pop absolute bottom-full left-0 z-50 mb-1.5 hidden w-96 max-w-[90vw] animate-zoom-in rounded-lg border bg-popover p-3 shadow-xl"></div>
+        </span>
+          <span class="relative">
+            <button id="verPill" class="badge badge-outline font-mono transition-colors hover:bg-accent" aria-haspopup="true" aria-expanded="false" title="Scene versions — designer version control">v4 · draft</button>
+            <div id="verPop" class="pill-pop absolute bottom-full left-0 z-50 mb-1.5 hidden w-96 max-w-[90vw] animate-zoom-in rounded-lg border bg-popover p-3 shadow-xl"></div>
+          </span>
+          <span id="provText" class="truncate text-muted-foreground" aria-live="polite">who: Joey · what: — · when: — · where: Market Square · why: —</span>
+        </div>
+      </section>
+      <div class="dragbar" id="dragR" title="Drag to resize"></div>
+
+      <!-- RIGHT RAIL -->
+      <aside id="railR" aria-label="Inspector panel" class="flex w-[268px] shrink-0 animate-slide-in-right flex-col border-l bg-card/60 max-lg:w-[236px]">
+        <div class="ptitle"><span id="railRTitle">Add — complements the selection</span>
+          <span class="ml-auto flex gap-1">
+            <button class="hbtn" data-act="detach" data-panel="railR" title="Detach / dock">⧉</button>
+            <button class="hbtn" data-act="close" data-panel="railR" title="Close panel">✕</button>
+          </span>
+        </div>
+        <div id="shelf" class="shrink-0 space-y-1 px-3 pb-2 text-[13px]"></div>
+        <div class="ptitle border-t" id="footTitle"><span>Selection — ECS footprint</span></div>
+        <div class="flex shrink-0 items-center gap-2 px-3 pb-2" id="depthRow">
+          <select id="depthSel" aria-label="Footprint depth level" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">
+            <option value="object">Object · summary</option>
+            <option value="components">Components · fields + live values</option>
+            <option value="fields">Fields · + R/W badges</option>
+            <option value="systems">Systems · full graph slice</option>
+          </select>
+          <label id="infraWrap" class="hidden items-center gap-1.5 text-[11px] text-muted-foreground" style="display:none">
+            <input type="checkbox" id="infraChk" class="h-3.5 w-3.5 accent-zinc-900"> infra
+          </label>
+        </div>
+        <div id="footprint" class="min-h-0 flex-1 overflow-y-auto px-3 pb-3"></div>
+        <div id="dbPanel" class="hidden min-h-0 flex-1 flex-col overflow-hidden"></div>
+      </aside>
+    </div>
+  </div>
+
+<button class="edgetab" id="tabL">Hierarchy</button>
+<button class="edgetab" id="tabR">Inspect</button>

@@ -1,0 +1,78 @@
+
+/* ============ MOCK LIVE OVERLAY (H4) ============ */
+const LIVE = {
+  "object:town0001/stall":{ Transform:{x:12.0,y:0.0,z:-34.0,heading:90}, BodyConfig:{shapeKind:"box",motion:"static",radius:1.8}, AssetRef:{assetId:4102}, FlowRef:{graphId:77} },
+  "object:town0001/mira":{ Transform:{x:14.5,y:0.0,z:-31.0,heading:270}, Velocity:{x:0.4,y:0.0,z:0.1}, Health:{current:100,max:100}, Stamina:{current:82,max:100}, Needs:{hunger:0.31,thirst:0.44}, Locomotion:{mode:"walk",speed:1.4}, CharacterRef:{characterId:1001}, Appearance:{paletteId:7} },
+  "object:town0001/shrine":{ Transform:{x:30.0,y:0.0,z:-52.0,heading:0}, AssetRef:{assetId:4200}, VfxEmitter:{effectId:501,rate:1.0}, AudioEmitter:{eventId:901,gain:0.6} },
+  "object:town0001/wolf":{ Transform:{x:44.0,y:0.0,z:-8.0,heading:140}, Velocity:{x:-0.8,y:0.0,z:0.3}, Health:{current:60,max:60}, Locomotion:{mode:"prowl",speed:2.2}, AssetRef:{assetId:4307} },
+  "object:town0001/crate":{ Transform:{x:4.0,y:0.0,z:-20.0,heading:15}, BodyConfig:{shapeKind:"box",motion:"static",radius:0.6}, AssetRef:{assetId:4150} }
+};
+const WIDGET_BODY = {
+  "object:town0001/stall":{title:"Vendor",rows:[["Stock","<span id='wStock'>12</span> items"],["Hours","08:00–17:00"],["Keeper","Mira"]],acts:[["＋ Restock","giveItem"],["Remove module","detachVendor"]]},
+  "object:town0001/mira":{title:"Character",rows:[["Profession","Baker"],["Home","Baker’s Stall"],["Schedule","work 08–17"]],acts:[["Teleport here","teleport"],["Give item","giveItem"]]},
+  "object:town0001/shrine":{title:"Emitter",rows:[["Effect","shrine-flame (501)"],["Rate","<span id='wRate'>1.0</span> /s"],["Audio","bell-soft (901)"]],acts:[["Toggle emitter","toggleEmitter"],["Test burst","testBurst"]]},
+  "object:town0001/wolf":{title:"Creature",rows:[["Temperament","wary"],["Pack","3 (grey wolves)"],["Territory","North fields"]],acts:[["Spawn pack","spawnCreature"],["Scare off","scare"]]},
+  "object:town0001/crate":{title:"Container",rows:[["Contents","flour ×6, tools ×2"],["Capacity","20 slots"]],acts:[["Place fixture","placeItemFixture"]]}
+};
+const SHELF = {
+  "object:town0001/stall":[{label:"Vendor",state:"applied"},{label:"Resident keeper",state:"ok"},{label:"Flow / quest",state:"ok"},{label:"Dialogue",state:"blocked",fix:"needs a character",fixTarget:"object:town0001/mira"},{label:"Loot spawner",state:"blocked",fix:"needs a container",fixTarget:"object:town0001/crate"}],
+  "object:town0001/mira":[{label:"Character",state:"applied"},{label:"Vendor",state:"ok"},{label:"Dialogue",state:"ok"},{label:"Quest giver",state:"ok"}],
+  "object:town0001/shrine":[{label:"VfxEmitter",state:"applied"},{label:"AudioEmitter",state:"applied"},{label:"Interactable",state:"ok"},{label:"Quest target",state:"ok"}],
+  "object:town0001/wolf":[{label:"Creature brain",state:"applied"},{label:"Loot table",state:"ok"},{label:"Pack spawner",state:"ok"}],
+  "object:town0001/crate":[{label:"Container",state:"applied"},{label:"Loot spawner",state:"ok"},{label:"Breakable",state:"ok"}]
+};
+const PROPS = {
+  "object:town0001/stall":{shape:"width:64px;height:44px;background:linear-gradient(#b45309 0 30%,#92400e 30%)"},
+  "object:town0001/mira":{shape:"width:22px;height:44px;background:#0f766e;border-radius:10px 10px 4px 4px"},
+  "object:town0001/shrine":{shape:"width:40px;height:52px;background:#374151",extra:"<div class='flame'></div>"},
+  "object:town0001/wolf":{shape:"width:52px;height:26px;background:#6b7280;border-radius:8px"},
+  "object:town0001/crate":{shape:"width:38px;height:38px;background:#a16207"}
+};
+
+/* ============ STATE + GRAPH HELPERS ============ */
+const N = {}; GRAPH.nodes.forEach(n=>N[n.id]=n);
+const state = { selected:"object:town0001/stall", role:"all", depth:"object", expanded:new Set(["component:Transform"]), graph:false, showInfra:false, stock:12, widgetOpen:false, debug:false, playing:false, scene:"market", pan:{x:0,y:0}, zoom:1, justDragged:false };
+const SCENES = { market:"Market Square", gate:"North Gate", fields:"Fields" };
+const edgesFrom=(id,kind)=>GRAPH.edges.filter(e=>e.from===id&&(!kind||e.kind===kind));
+const edgesTo=(id,kind)=>GRAPH.edges.filter(e=>e.to===id&&(!kind||e.kind===kind));
+function archetypeOf(objId){ const e=edgesFrom(objId,"instantiates")[0]; return e?N[e.to]:null; }
+function componentsOf(objId){ const a=archetypeOf(objId); return a?edgesFrom(a.id,"hasComponent").map(e=>N[e.to]):[]; }
+function systemsFor(targetId){ // targetId: component or field id
+  const out=[];
+  for(const e of GRAPH.edges){ if(e.to===targetId&&(e.kind==="reads"||e.kind==="writes")) out.push({sys:N[e.from],kind:e.kind,confidence:e.confidence}); }
+  return out;
+}
+function objectSystems(objId){
+  const seen=new Map();
+  for(const c of componentsOf(objId)){
+    for(const s of systemsFor(c.id)) seen.set(s.sys.id,s.sys);
+    for(const f of c.fields) for(const s of systemsFor("field:"+c.name+"."+f.name)) seen.set(s.sys.id,s.sys);
+  }
+  return [...seen.values()].sort((a,b)=>(a.tickIndex||99)-(b.tickIndex||99));
+}
+function prov(verb, what, why){
+  document.getElementById("provVerb").textContent=verb;
+  document.getElementById("provText").textContent=`who: Joey · what: ${what} · when: ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} · where: Market Square · why: “${why}”`;
+}
+
+/* ============ RENDER: hierarchy ============ */
+const ROLES=[["all","All"],["characters","Characters"],["vendors","Vendors"],["creatures","Creatures"],["props","Props"]];
+function renderChips(){
+  document.getElementById("roleChips").innerHTML = ROLES.map(([k,l])=>
+    `<button class="badge ${state.role===k?'bg-primary text-primary-foreground border-transparent':'badge-outline hover:bg-accent'} transition-colors" data-role="${k}">${l}</button>`).join("");
+  document.querySelectorAll("#roleChips [data-role]").forEach(ch=>ch.onclick=()=>{state.role=ch.dataset.role;renderChips();renderTree();});
+}
+function renderTree(){
+  const objs=GRAPH.nodes.filter(n=>n.kind==="object");
+  const sceneRow=(k,l)=>`<div class="tnode ${state.scene===k?'sel':''}" style="margin-left:10px" tabindex="0" role="treeitem" aria-selected="${state.scene===k}" data-scene="${k}">▸ <span>${l}</span></div>`;
+  let h=`<div class="px-2 pb-0.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">▾ Town 0001</div>`+sceneRow("market","Market Square");
+  if(state.scene==="market") for(const o of objs){
+    const dim = state.role!=="all" && o.role!==state.role;
+    h+=`<div class="tnode ${o.id===state.selected?'sel':''} ${dim?'opacity-40':''}" style="margin-left:22px" tabindex="0" role="treeitem" aria-selected="${o.id===state.selected}" data-obj="${o.id}">▸ <span class="truncate">${o.name}</span> <span class="ml-auto text-[11px] text-muted-foreground">${o.spawnSource}</span></div>`;
+  }
+  h+=sceneRow("gate","North Gate")+sceneRow("fields","Fields");
+  document.getElementById("tree").innerHTML=h;
+  document.querySelectorAll("#tree [data-obj]").forEach(t=>t.onclick=()=>select(t.dataset.obj,false));
+  document.querySelectorAll("#tree [data-scene]").forEach(t=>t.onclick=()=>loadScene(t.dataset.scene));
+  document.querySelectorAll("#tree [data-obj], #tree [data-scene]").forEach(t=>t.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); t.click(); } });
+}

@@ -1,0 +1,144 @@
+
+/* ============ FLOAT WINDOWS: detach / merge / minimize / close (MVC views) ============ */
+const PANEL_TITLES={ railL:"Hierarchy", railR:"Inspect", debugPanel:"Debug", widget:"Widget", termPanel:"Terminal" };
+const FW=new Map(); let fwSeq=0, fwZ=60;
+function winOf(el){ for(const w of FW.values()) if(w.tabs.includes(el)) return w; return null; }
+function naturalDisplay(el){ if(el.id==="railL"||el.id==="railR") return ""; if(el.id==="termPanel") return "flex"; return "block"; }
+function rectHas(r,x,y){ return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom; }
+function makeWindow(x,y,width){
+  const id="fw"+(++fwSeq);
+  const el=document.createElement("div");
+  el.className="fwin animate-zoom-in"; el.id=id;
+  el.style.left=x+"px"; el.style.top=y+"px"; el.style.width=width+"px"; el.style.zIndex=++fwZ;
+  el.innerHTML=`<div class="fwin-head"><div class="fwin-tabs"></div>
+    <span class="fwin-ctl"><button data-fw="min" title="Minimize to header / restore" aria-label="Minimize window to header">\u2013</button><button data-fw="dock" title="Dock all panels back" aria-label="Dock all panels back">\u2935</button></span></div>
+    <div class="fwin-body"></div>`;
+  document.body.appendChild(el);
+  const win={ id, el, tabs:[], active:null };
+  FW.set(id,win);
+  el.querySelector('[data-fw="min"]').onclick=e=>{ e.stopPropagation(); el.classList.toggle("min"); };
+  el.querySelector('[data-fw="dock"]').onclick=e=>{ e.stopPropagation(); dockAll(win); };
+  el.addEventListener("pointerdown",()=>{ el.style.zIndex=++fwZ; });
+  wireWinDrag(win);
+  return win;
+}
+function renderTabs(win){
+  const bar=win.el.querySelector(".fwin-tabs");
+  bar.innerHTML=win.tabs.map(pn=>`<button class="fwin-tab ${pn===win.active?'on':''}" data-tab="${pn.id}">${pn._tabTitle||PANEL_TITLES[pn.id]||pn.id}</button>`).join("");
+  bar.querySelectorAll("[data-tab]").forEach(t=>{
+    const panel=document.getElementById(t.dataset.tab);
+    t.onclick=()=>{ win.el.classList.remove("min"); activate(win, panel); };
+    t.addEventListener("pointerdown",e=>tabDragStart(e, win, panel));
+  });
+}
+function refreshTabs(el){ const w=winOf(el); if(w) renderTabs(w); }
+function activate(win, panel){
+  win.active=panel;
+  for(const pn of win.tabs) pn.style.display = pn===panel ? naturalDisplay(pn) : "none";
+  renderTabs(win);
+}
+function addToWindow(win, panel){
+  panel._dock = panel._dock || { parent:panel.parentNode, next:panel.nextSibling };
+  win.el.querySelector(".fwin-body").appendChild(panel);
+  win.tabs.push(panel);
+  activate(win, panel);
+}
+function floatPanel(panel){
+  const r=panel.getBoundingClientRect();
+  const win=makeWindow(r.left, r.top, Math.max(r.width, 264));
+  if(panel.id==="railL") document.getElementById("dragL").style.display="none";
+  if(panel.id==="railR") document.getElementById("dragR").style.display="none";
+  if(panel.id==="termPanel") document.getElementById("termDrag").style.display="none";
+  addToWindow(win, panel);
+}
+function ejectPanel(panel){
+  const win=winOf(panel); if(!win) return;
+  win.tabs=win.tabs.filter(pn=>pn!==panel);
+  if(panel._dock) panel._dock.parent.insertBefore(panel, panel._dock.next);
+  panel.style.display = panel.id==="widget" ? (state.widgetOpen?"block":"none") : panel.id==="debugPanel" ? (state.debug?"block":"none") : "";
+  if(panel.id==="railL") document.getElementById("dragL").style.display="";
+  if(panel.id==="railR") document.getElementById("dragR").style.display="";
+  if(panel.id==="termPanel") document.getElementById("termDrag").style.display="";
+  if(!win.tabs.length){ win.el.remove(); FW.delete(win.id); }
+  else activate(win, win.tabs[win.tabs.length-1]);
+}
+function dockAll(win){ [...win.tabs].forEach(pn=>ejectPanel(pn)); }
+function popOut(panel){
+  const win=winOf(panel); if(!win) return;
+  const r=win.el.getBoundingClientRect();
+  win.tabs=win.tabs.filter(pn=>pn!==panel);
+  const nw=makeWindow(r.left+24, r.top+24, Math.max(r.width,264));
+  nw.el.querySelector(".fwin-body").appendChild(panel);
+  nw.tabs.push(panel); activate(nw, panel);
+  if(!win.tabs.length){ win.el.remove(); FW.delete(win.id); }
+  else activate(win, win.tabs[win.tabs.length-1]);
+}
+function toggleFloat(panel){
+  const win=winOf(panel);
+  if(!win){ floatPanel(panel); return; }
+  if(win.tabs.length>1) popOut(panel); else ejectPanel(panel);
+}
+function mergeWindows(src, dst){
+  if(src===dst) return;
+  const act=src.active;
+  for(const pn of [...src.tabs]){
+    src.tabs=src.tabs.filter(x=>x!==pn);
+    dst.el.querySelector(".fwin-body").appendChild(pn);
+    dst.tabs.push(pn);
+  }
+  src.el.remove(); FW.delete(src.id);
+  dst.el.classList.remove("min");
+  activate(dst, act||dst.tabs[0]);
+}
+function startWinDrag(e, win){
+  const el=win.el, r=el.getBoundingClientRect();
+  const sx=e.clientX-r.left, sy=e.clientY-r.top; let hover=null;
+  const mv=ev=>{
+    el.style.left=(ev.clientX-sx)+"px"; el.style.top=(ev.clientY-sy)+"px";
+    const under=[...FW.values()].find(w=>w!==win && rectHas(w.el.getBoundingClientRect(), ev.clientX, ev.clientY));
+    if(hover && hover!==under) hover.el.classList.remove("drop-hint");
+    hover=under||null;
+    if(hover) hover.el.classList.add("drop-hint");
+  };
+  const up=()=>{
+    removeEventListener("pointermove",mv); removeEventListener("pointerup",up);
+    if(hover){ hover.el.classList.remove("drop-hint"); mergeWindows(win, hover); }
+  };
+  addEventListener("pointermove",mv); addEventListener("pointerup",up);
+}
+function wireWinDrag(win){
+  win.el.querySelector(".fwin-head").addEventListener("pointerdown",e=>{
+    if(e.target.closest("button") || e.target.closest(".fwin-tab")) return;
+    startWinDrag(e, win);
+  });
+}
+function tabDragStart(e, win, panel){
+  if(e.button!==undefined && e.button!==0) return;
+  if(win.tabs.length<2){ startWinDrag(e, win); return; }
+  const sx=e.clientX, sy=e.clientY; let done=false;
+  const cleanup=()=>{ removeEventListener("pointermove",mv); removeEventListener("pointerup",up); };
+  const mv=ev=>{
+    if(done) return;
+    if(Math.hypot(ev.clientX-sx, ev.clientY-sy)>10){
+      done=true; cleanup();
+      popOut(panel);
+      const nw=winOf(panel);
+      if(nw) startWinDrag(ev, nw);
+    }
+  };
+  const up=()=>cleanup();
+  addEventListener("pointermove",mv); addEventListener("pointerup",up);
+}
+function closePanel(panel){
+  if(winOf(panel)) ejectPanel(panel);
+  panel.style.display="none";
+  if(panel.id==="railL"){ document.getElementById("dragL").style.display="none"; document.getElementById("tabL").classList.add("show"); }
+  if(panel.id==="railR"){ document.getElementById("dragR").style.display="none"; document.getElementById("tabR").classList.add("show"); }
+}
+document.querySelectorAll("[data-panel]").forEach(b=>{
+  const panel=document.getElementById(b.dataset.panel);
+  if(b.dataset.act==="detach") b.onclick=()=>toggleFloat(panel);
+  if(b.dataset.act==="close") b.onclick=()=>closePanel(panel);
+});
+document.getElementById("tabL").onclick=()=>{ document.getElementById("railL").style.display=""; document.getElementById("dragL").style.display=""; document.getElementById("tabL").classList.remove("show"); };
+document.getElementById("tabR").onclick=()=>{ document.getElementById("railR").style.display=""; document.getElementById("dragR").style.display=""; document.getElementById("tabR").classList.remove("show"); };

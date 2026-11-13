@@ -1,0 +1,89 @@
+
+<script>
+/* ============ MOCK ecs-graph.json — exact schema of GRAPHIFY-HARVESTER-SPEC §4 ============ */
+const GRAPH = {
+  meta:{ schemaVersion:1, builtFromCommit:"mock-0000", graphHash:"mock",
+    counts:{components:13, systems:8, objects:5, edges:64},
+    unresolved:[{site:"packages/engine-core/src/snapshot.ts:88", what:"SnapshotSystem queries all components by design (infrastructure)", system:"SnapshotSystem"}] },
+  nodes:[
+    {id:"component:Transform",kind:"component",name:"Transform",componentId:1,sab:true,fields:[{name:"x",type:"f32"},{name:"y",type:"f32"},{name:"z",type:"f32"},{name:"heading",type:"f32"}]},
+    {id:"component:Velocity",kind:"component",name:"Velocity",componentId:2,sab:true,fields:[{name:"x",type:"f32"},{name:"y",type:"f32"},{name:"z",type:"f32"}]},
+    {id:"component:Health",kind:"component",name:"Health",componentId:3,sab:true,fields:[{name:"current",type:"f32"},{name:"max",type:"f32"}]},
+    {id:"component:Stamina",kind:"component",name:"Stamina",componentId:4,sab:true,fields:[{name:"current",type:"f32"},{name:"max",type:"f32"}]},
+    {id:"component:Needs",kind:"component",name:"Needs",componentId:14,sab:true,fields:[{name:"hunger",type:"f32"},{name:"thirst",type:"f32"}]},
+    {id:"component:BodyConfig",kind:"component",name:"BodyConfig",componentId:5,sab:true,fields:[{name:"shapeKind",type:"u8"},{name:"motion",type:"u8"},{name:"radius",type:"f32"}]},
+    {id:"component:AssetRef",kind:"component",name:"AssetRef",componentId:8,sab:true,fields:[{name:"assetId",type:"u32"}]},
+    {id:"component:Locomotion",kind:"component",name:"Locomotion",componentId:9,sab:true,fields:[{name:"mode",type:"u8"},{name:"speed",type:"f32"}]},
+    {id:"component:CharacterRef",kind:"component",name:"CharacterRef",componentId:10,sab:true,fields:[{name:"characterId",type:"u32"}]},
+    {id:"component:Appearance",kind:"component",name:"Appearance",componentId:11,sab:true,fields:[{name:"paletteId",type:"u16"}]},
+    {id:"component:FlowRef",kind:"component",name:"FlowRef",componentId:18,sab:true,fields:[{name:"graphId",type:"u32"}]},
+    {id:"component:VfxEmitter",kind:"component",name:"VfxEmitter",componentId:19,sab:true,fields:[{name:"effectId",type:"u32"},{name:"rate",type:"f32"}]},
+    {id:"component:AudioEmitter",kind:"component",name:"AudioEmitter",componentId:20,sab:true,fields:[{name:"eventId",type:"u32"},{name:"gain",type:"f32"}]},
+    {id:"archetype:vendor-stall",kind:"archetype",name:"vendor-stall"},
+    {id:"archetype:resident",kind:"archetype",name:"resident"},
+    {id:"archetype:shrine",kind:"archetype",name:"shrine"},
+    {id:"archetype:creature",kind:"archetype",name:"creature"},
+    {id:"archetype:container",kind:"archetype",name:"container"},
+    {id:"object:town0001/stall",kind:"object",name:"Baker’s Stall",scene:"town0001",spawnSource:"hand-placed",widget:"widget:vendor",role:"vendors",pos:{l:26,t:30},wpos:{l:8,t:52}},
+    {id:"object:town0001/mira",kind:"object",name:"Mira",scene:"town0001",spawnSource:"bake",widget:"widget:character",role:"characters",pos:{l:50,t:52},wpos:{l:56,t:8}},
+    {id:"object:town0001/shrine",kind:"object",name:"Shrine of Fire",scene:"town0001",spawnSource:"hand-placed",widget:"widget:emitter",role:"props",pos:{l:72,t:22},wpos:{l:52,t:44}},
+    {id:"object:town0001/wolf",kind:"object",name:"Grey Wolf",scene:"town0001",spawnSource:"procgen",widget:"widget:creature",role:"creatures",pos:{l:76,t:62},wpos:{l:50,t:66}},
+    {id:"object:town0001/crate",kind:"object",name:"Supply Crate",scene:"town0001",spawnSource:"hand-placed",widget:"widget:container",role:"props",pos:{l:14,t:64},wpos:{l:20,t:8}},
+    {id:"system:ResidentSystem",kind:"system",name:"ResidentSystem",role:"simulation",module:"module:residents",tickIndex:6,declared:false},
+    {id:"system:IntegrateSystem",kind:"system",name:"IntegrateSystem",role:"simulation",module:"module:core",tickIndex:3,declared:false},
+    {id:"system:PhysicsSystem",kind:"system",name:"PhysicsSystem",role:"simulation",module:"module:physics",tickIndex:4,declared:false},
+    {id:"system:CreatureSystem",kind:"system",name:"CreatureSystem",role:"simulation",module:"module:creatures",tickIndex:7,declared:false},
+    {id:"system:NeedsSystem",kind:"system",name:"NeedsSystem",role:"simulation",module:"module:core",tickIndex:8,declared:false},
+    {id:"system:VendorSystem",kind:"system",name:"VendorSystem",role:"simulation",module:"module:core",tickIndex:9,declared:false},
+    {id:"system:SnapshotSystem",kind:"system",name:"SnapshotSystem",role:"infrastructure",module:"module:core",tickIndex:20,declared:false},
+    {id:"verb:attachVendor",kind:"verb",name:"attachVendor",home:"core · VendorSystem.attach"},
+    {id:"verb:giveItem",kind:"verb",name:"giveItem",home:"items · ItemService.give"},
+    {id:"verb:spawnCreature",kind:"verb",name:"spawnCreature",home:"creatures · CreatureSystem.spawn"},
+    {id:"verb:teleport",kind:"verb",name:"teleport",home:"admin · player teleport"},
+    {id:"widget:vendor",kind:"widget",name:"Vendor",modules:["vendor"]},
+    {id:"widget:character",kind:"widget",name:"Character",modules:["character"]},
+    {id:"widget:emitter",kind:"widget",name:"Emitter",modules:["vfx","audio"]},
+    {id:"widget:creature",kind:"widget",name:"Creature",modules:["creatures"]},
+    {id:"widget:container",kind:"widget",name:"Container",modules:["items"]}
+  ],
+  edges:[
+    // archetype -> components (the shape)
+    ...["Transform","BodyConfig","AssetRef","FlowRef"].map(c=>({from:"archetype:vendor-stall",to:"component:"+c,kind:"hasComponent",confidence:"introspected",source:"scene loader"})),
+    ...["Transform","Velocity","Health","Stamina","Needs","Locomotion","CharacterRef","Appearance"].map(c=>({from:"archetype:resident",to:"component:"+c,kind:"hasComponent",confidence:"introspected",source:"components.ts"})),
+    ...["Transform","AssetRef","VfxEmitter","AudioEmitter"].map(c=>({from:"archetype:shrine",to:"component:"+c,kind:"hasComponent",confidence:"introspected",source:"components.ts"})),
+    ...["Transform","Velocity","Health","Locomotion","AssetRef"].map(c=>({from:"archetype:creature",to:"component:"+c,kind:"hasComponent",confidence:"introspected",source:"components.ts"})),
+    ...["Transform","BodyConfig","AssetRef"].map(c=>({from:"archetype:container",to:"component:"+c,kind:"hasComponent",confidence:"introspected",source:"components.ts"})),
+    // object -> archetype
+    {from:"object:town0001/stall",to:"archetype:vendor-stall",kind:"instantiates",confidence:"introspected",source:"content/scenes"},
+    {from:"object:town0001/mira",to:"archetype:resident",kind:"instantiates",confidence:"introspected",source:"bake manifest"},
+    {from:"object:town0001/shrine",to:"archetype:shrine",kind:"instantiates",confidence:"introspected",source:"content/scenes"},
+    {from:"object:town0001/wolf",to:"archetype:creature",kind:"instantiates",confidence:"introspected",source:"procgen plan"},
+    {from:"object:town0001/crate",to:"archetype:container",kind:"instantiates",confidence:"introspected",source:"content/scenes"},
+    // fieldOf edges are appended after this literal — they derive from the component nodes themselves
+    // systems: field-level extracted R/W + component-level inferred
+    {from:"system:IntegrateSystem",to:"field:Velocity.x",kind:"reads",confidence:"extracted",source:"systems.ts"},
+    {from:"system:IntegrateSystem",to:"field:Velocity.z",kind:"reads",confidence:"extracted",source:"systems.ts"},
+    {from:"system:IntegrateSystem",to:"field:Transform.x",kind:"writes",confidence:"extracted",source:"systems.ts"},
+    {from:"system:IntegrateSystem",to:"field:Transform.z",kind:"writes",confidence:"extracted",source:"systems.ts"},
+    {from:"system:PhysicsSystem",to:"component:BodyConfig",kind:"reads",confidence:"extracted",source:"systems.ts"},
+    {from:"system:PhysicsSystem",to:"field:Transform.y",kind:"writes",confidence:"extracted",source:"systems.ts"},
+    {from:"system:ResidentSystem",to:"field:Velocity.x",kind:"writes",confidence:"extracted",source:"residents/resident-system.ts"},
+    {from:"system:ResidentSystem",to:"field:Velocity.z",kind:"writes",confidence:"extracted",source:"residents/resident-system.ts"},
+    {from:"system:ResidentSystem",to:"field:Needs.hunger",kind:"reads",confidence:"extracted",source:"residents/resident-system.ts"},
+    {from:"system:ResidentSystem",to:"component:Transform",kind:"reads",confidence:"inferred",source:"defineQuery"},
+    {from:"system:CreatureSystem",to:"field:Velocity.x",kind:"writes",confidence:"extracted",source:"creatures.ts"},
+    {from:"system:CreatureSystem",to:"field:Velocity.z",kind:"writes",confidence:"extracted",source:"creatures.ts"},
+    {from:"system:CreatureSystem",to:"component:Health",kind:"reads",confidence:"inferred",source:"defineQuery"},
+    {from:"system:NeedsSystem",to:"field:Needs.hunger",kind:"writes",confidence:"extracted",source:"stats/needs-system.ts"},
+    {from:"system:NeedsSystem",to:"field:Needs.thirst",kind:"writes",confidence:"extracted",source:"stats/needs-system.ts"},
+    {from:"system:VendorSystem",to:"component:FlowRef",kind:"reads",confidence:"inferred",source:"defineQuery"},
+    {from:"system:SnapshotSystem",to:"component:Transform",kind:"reads",confidence:"inferred",source:"snapshot.ts"},
+    {from:"system:SnapshotSystem",to:"component:Health",kind:"reads",confidence:"inferred",source:"snapshot.ts"},
+    // verbs + widgets
+    {from:"verb:attachVendor",to:"system:VendorSystem",kind:"touches",confidence:"introspected",source:"authoring/verbs.ts"},
+    {from:"verb:spawnCreature",to:"system:CreatureSystem",kind:"touches",confidence:"introspected",source:"authoring/verbs.ts"},
+    {from:"component:FlowRef",to:"widget:vendor",kind:"summons",confidence:"introspected",source:"authoring/relevance.ts"}
+  ]
+};
+/* fieldOf edges derive from the component nodes — one source of truth for the shape. */
+GRAPH.edges.push(...GRAPH.nodes.filter(n=>n.kind==="component").flatMap(c=>c.fields.map(f=>({from:"field:"+c.name+"."+f.name,to:c.id,kind:"fieldOf",confidence:"introspected",source:"components.ts"}))));

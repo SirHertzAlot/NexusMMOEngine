@@ -1,0 +1,63 @@
+
+/* ============ VIEW: pan / zoom / scene loading / resizable rails ============ */
+function applyView(){
+  document.getElementById("world").style.transform=`translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`;
+  document.getElementById("zoomVal").textContent=Math.round(state.zoom*100)+"%";
+}
+function loadScene(k){
+  state.scene=k; state.widgetOpen=false; state.graph=false;
+  state.pan={x:0,y:0}; state.zoom=1;
+  document.getElementById("vlabel").textContent=`Town 0001 — ${SCENES[k]} · LIVE VIEWPORT (stand-in render)`;
+  renderTree(); renderProps(); renderWidget(); renderGraph(); applyView();
+  document.getElementById("world").animate([{opacity:.25},{opacity:1}],{duration:300,easing:"ease-out"});
+}
+(function(){
+  const vp=document.getElementById("viewport"); let drag=null;
+  const vpPtrs=new Map(); let vpPinch=null;
+  const vpDist=()=>{ const [a,b]=[...vpPtrs.values()]; return Math.hypot(a.x-b.x,a.y-b.y); };
+  vp.addEventListener("pointerdown",e=>{
+    if(window.__glActive) return;
+    if(e.target.closest(".prop,#widget,.vtools,.identity,#debugPanel,button")) return;
+    vpPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(vpPtrs.size===2){ vpPinch={d:vpDist(),z:state.zoom}; drag=null; return; }
+    drag={x:e.clientX,y:e.clientY,px:state.pan.x,py:state.pan.y,moved:0};
+    vp.setPointerCapture(e.pointerId);
+  });
+  vp.addEventListener("pointermove",e=>{
+    if(vpPtrs.has(e.pointerId)) vpPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(vpPinch&&vpPtrs.size===2){
+      state.zoom=Math.max(0.4,Math.min(2.5, vpPinch.z*vpDist()/Math.max(1,vpPinch.d)));
+      applyView();
+      document.getElementById("zoomVal").textContent=Math.round(state.zoom*100)+"%";
+      return;
+    }
+    if(!drag) return;
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    drag.moved=Math.max(drag.moved,Math.abs(dx)+Math.abs(dy));
+    state.pan.x=drag.px+dx; state.pan.y=drag.py+dy; applyView();
+  });
+  vp.addEventListener("pointerup",e=>{
+    vpPtrs.delete(e.pointerId); if(vpPtrs.size<2) vpPinch=null;
+    if(drag&&drag.moved>4){ state.justDragged=true; setTimeout(()=>state.justDragged=false,160); }
+    drag=null;
+  });
+  vp.addEventListener("pointercancel",e=>{ vpPtrs.delete(e.pointerId); if(vpPtrs.size<2) vpPinch=null; drag=null; });
+  vp.addEventListener("wheel",e=>{
+    e.preventDefault();
+    if(window.__glActive) return;
+    state.zoom=Math.min(2.5,Math.max(0.4,state.zoom*(e.deltaY<0?1.1:0.9)));
+    applyView();
+  },{passive:false});
+  document.getElementById("homeBtn").onclick=()=>{ if(window.__glHome){ window.__glHome(); return; } state.pan={x:0,y:0}; state.zoom=1; applyView(); };
+  const mk=(handleId, sel, side, min, max)=>{
+    const h=document.getElementById(handleId), el=document.querySelector(sel);
+    h.addEventListener("pointerdown",e=>{
+      e.preventDefault();
+      const sx=e.clientX, sw=el.offsetWidth;
+      const mv=ev=>{ const d=ev.clientX-sx; el.style.width=Math.min(max,Math.max(min, side==="left"? sw+d : sw-d))+"px"; };
+      const up=()=>{ removeEventListener("pointermove",mv); removeEventListener("pointerup",up); };
+      addEventListener("pointermove",mv); addEventListener("pointerup",up);
+    });
+  };
+  mk("dragL","#railL","left",140,420); mk("dragR","#railR","right",180,480);
+})();

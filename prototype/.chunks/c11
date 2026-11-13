@@ -1,0 +1,104 @@
+
+/* ============ RENDER: viewport props + widget ============ */
+function renderProps(){
+  if(state.scene!="market"){
+    document.getElementById("props").innerHTML=`<div class="absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 text-center text-[13.5px] leading-relaxed text-muted-foreground">${state.scene==="none" ? "No scene loaded — File → Open Scene loads one" : SCENES[state.scene]+" — scene loaded"}<br><span class="text-xs">no mock objects in this scene (prototype)</span></div>`;
+    return;
+  }
+  const objs=GRAPH.nodes.filter(n=>n.kind==="object");
+  document.getElementById("props").innerHTML = objs.map(o=>{
+    const sel=o.id===state.selected;
+    return `<div class="prop group absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer" tabindex="0" role="button" aria-label="Select ${o.name}" data-obj="${o.id}" style="left:${o.pos.l}%;top:${o.pos.t}%">
+      <div class="relative transition-transform duration-150 group-hover:scale-105 ${sel?'outline outline-2 outline-black outline-offset-2 rounded-[3px]':''}" style="${PROPS[o.id].shape}"></div>${PROPS[o.id].extra||""}
+      <div class="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-1.5 py-0.5 text-[11px] text-popover-foreground shadow-md transition-opacity duration-150 ${sel?'opacity-100':'opacity-0 group-hover:opacity-100'}">${o.name}</div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".prop").forEach(p=>{
+    const o=N[p.dataset.obj];
+    p.onclick=()=>select(p.dataset.obj,true);
+    p.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); select(p.dataset.obj,true); } };
+    p.addEventListener("pointerdown",e=>{
+      if(!["move","rotate","scale"].includes(state.tool)) return;
+      e.preventDefault();
+      const tool=state.tool, start={x:e.clientX,y:e.clientY,l:o.pos.l,t:o.pos.t,h:(LIVE[o.id]||{}).Transform?.heading||0,s:o._scale||1};
+      const mv=ev=>{
+        const dx=ev.clientX-start.x, dy=ev.clientY-start.y;
+        if(tool==="move"){
+          const r=document.getElementById("viewport").getBoundingClientRect();
+          let nl=start.l+dx/r.width*100, nt=start.t+dy/r.height*100;
+          if(state.snap){ nl=Math.round(nl); nt=Math.round(nt); }
+          o.pos.l=Math.max(2,Math.min(96,nl)); o.pos.t=Math.max(4,Math.min(94,nt));
+          p.style.left=o.pos.l+"%"; p.style.top=o.pos.t+"%";
+        } else if(tool==="rotate"){
+          const L=LIVE[o.id]; if(L&&L.Transform) L.Transform.heading=Math.round(((start.h+dx*0.6)%360+360)%360);
+        } else if(tool==="scale"){
+          o._scale=Math.max(0.5,Math.min(2, start.s - dy*0.005));
+          const sh=p.firstElementChild; if(sh) sh.style.transform=`scale(${o._scale})`;
+        }
+      };
+      const up=()=>{ removeEventListener("pointermove",mv); removeEventListener("pointerup",up); prov(tool, o.name, "dragged in viewport"); renderFootprint(); };
+      addEventListener("pointermove",mv); addEventListener("pointerup",up);
+    });
+  });
+}
+document.getElementById("viewport").onclick=e=>{
+  if(state.justDragged) return;
+  if(["viewport","props","world","graphOverlay","gl"].includes(e.target.id)){ state.widgetOpen=false; renderWidget(); }
+};
+function renderWidget(){
+  const o=N[state.selected], w=document.getElementById("widget"), body=WIDGET_BODY[o.id];
+  const arch=archetypeOf(o.id);
+  const inw=winOf(w);
+  if(!state.widgetOpen){ if(inw) ejectPanel(w); else w.style.display="none"; return; }
+  if(!inw){ w.style.display="block"; w.style.left=o.wpos.l+"%"; w.style.top=o.wpos.t+"%"; }
+  w.innerHTML=`<div class="animate-zoom-in rounded-xl border bg-card p-3 text-card-foreground shadow-xl">
+    <div class="flex items-start gap-2" id="wHead">
+      <h4 class="text-sm font-semibold leading-tight">${body.title} <span class="font-normal text-muted-foreground">— summoned by selection</span></h4>
+      <span class="ml-auto flex gap-1">
+        <button class="hbtn" id="wDetach" title="Detach / dock" aria-label="Detach widget">⧉</button>
+        <button class="hbtn" id="wClose" title="Close" aria-label="Close widget">✕</button>
+      </span>
+    </div>
+    <div class="mt-0.5 font-mono text-[11px] text-muted-foreground">maps to → ${arch.name} · ${o.widget.replace("widget:","")}</div>
+    <div class="mt-1.5">${body.rows.map(r=>`<div class="flex items-center justify-between border-b border-border/60 py-1 text-[13px] last:border-0"><span class="text-muted-foreground">${r[0]}</span><span>${r[1]} <span class="cursor-pointer text-muted-foreground hover:text-foreground">✎</span></span></div>`).join("")}</div>
+    <div class="flex gap-2 pt-2">${body.acts.map((a,i)=>`<button class="btn ${i===0?'btn-primary':'btn-secondary'} h-7 px-2.5 text-xs" data-verb="${a[1]}">${a[0]}</button>`).join("")}</div>
+  </div>`;
+  w.querySelectorAll("[data-verb]").forEach(b=>b.onclick=()=>widgetAction(b.dataset.verb));
+  document.getElementById("wClose").onclick=()=>{state.widgetOpen=false;renderWidget();};
+  document.getElementById("wDetach").onclick=e=>{e.stopPropagation();toggleFloat(w);};
+  w._tabTitle=body.title; refreshTabs(w);
+}
+function widgetAction(verb){
+  const o=N[state.selected];
+  if(verb==="giveItem" && o.id==="object:town0001/stall"){
+    state.stock++; const s=document.getElementById("wStock"); if(s) s.textContent=state.stock;
+    prov("giveItem", o.name, "restock for fair day"); flashProv(); return;
+  }
+  if(verb==="toggleEmitter"){
+    const v=LIVE[o.id].VfxEmitter; v.rate = v.rate>0 ? 0 : 1.0;
+    const r=document.getElementById("wRate"); if(r) r.textContent=v.rate.toFixed(1);
+    prov("set", o.name+" · VfxEmitter.rate", "prototype toggle"); flashProv(); renderFootprint(); return;
+  }
+  prov(verb, o.name, "prototype action"); flashProv();
+}
+function flashProv(){
+  document.getElementById("provStrip").animate(
+    [{backgroundColor:"hsl(240 4% 66%)"},{backgroundColor:"hsl(240 5% 87%)"}],
+    {duration:450, easing:"ease-out"});
+}
+
+/* ============ RENDER: shelf ============ */
+function renderShelf(){
+  const items=SHELF[state.selected]||[];
+  document.getElementById("shelf").innerHTML = items.map((it,i)=>{
+    if(it.state==="applied") return `<div class="flex items-center gap-2 px-1 py-0.5 text-muted-foreground">▸ ${it.label} <span class="badge badge-secondary ml-auto">✓ applied</span></div>`;
+    if(it.state==="ok") return `<div class="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 transition-colors hover:bg-accent" tabindex="0" role="button" aria-label="Add ${it.label}" data-shelf="${i}">▸ ${it.label} <span class="badge badge-outline ml-auto">✓ add</span></div>`;
+    return `<div class="px-1 py-0.5">▸ ${it.label} <span class="text-amber-600">⚠ ${it.fix} — </span><span class="cursor-pointer text-primary underline underline-offset-2" data-fix="${it.fixTarget}">fix: go to ${N[it.fixTarget].name}</span></div>`;
+  }).join("");
+  document.querySelectorAll("[data-shelf]").forEach(el=>el.onclick=()=>{
+    const it=items[+el.dataset.shelf]; it.state="applied";
+    prov("addModule", N[state.selected].name+" · "+it.label, "shelf add (prototype)"); flashProv(); renderShelf();
+  });
+  document.querySelectorAll("[data-fix]").forEach(el=>{ el.onclick=()=>select(el.dataset.fix); el.tabIndex=0; el.setAttribute("role","button"); });
+  document.querySelectorAll("[data-shelf], [data-fix]").forEach(el=>el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); el.click(); } });
+}

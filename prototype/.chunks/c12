@@ -1,0 +1,71 @@
+
+/* ============ RENDER: footprint (granularity ladder, from the graph) ============ */
+function fieldBadges(compName, fieldName){
+  return systemsFor(`field:${compName}.${fieldName}`).map(s=>
+    `<span class="inline-flex items-center rounded border px-1 font-mono text-[10px] ${s.kind==="writes"?"border-orange-600/50 text-orange-700":"border-sky-600/50 text-sky-700"} ${s.confidence==="inferred"?"border-dashed opacity-60":""}" title="${s.sys.name} — ${s.confidence}">${s.kind==="writes"?"W":"R"} ${s.sys.name.replace("System","")}</span>`).join("");
+}
+function renderFootprint(){
+  const o=N[state.selected], comps=componentsOf(o.id), sys=objectSystems(o.id);
+  const arch=archetypeOf(o.id); let h="";
+  if(state.depth==="object"){
+    h=`<div class="rounded-lg border bg-card p-2.5 text-[13px] leading-relaxed animate-fade-in">
+      <b>${o.name}</b> <span class="text-muted-foreground">· ${o.spawnSource}</span><br>
+      archetype <span class="font-mono text-xs">${arch.name}</span><br>
+      <span class="text-muted-foreground">${comps.length} components · ${sys.length} systems touch this shape</span>
+    </div>`;
+  } else {
+    h=`<div class="pb-2 text-[11px] leading-relaxed text-muted-foreground"><span class="livedot ${state.playing?"on":""}"></span>live values stream in real time — click one to edit it (a verb on the live overlay)</div>`;
+    for(const c of comps){
+      const live=(LIVE[o.id]||{})[c.name]||{};
+      const open = state.depth!=="components" || state.expanded.has(c.id);
+      const compSys = systemsFor(c.id);
+      h+=`<div class="mb-2 overflow-hidden rounded-lg border bg-card">
+        <div class="flex cursor-pointer items-center gap-2 bg-muted/40 px-2.5 py-1.5 text-[13px] transition-colors hover:bg-muted/70" data-comp="${c.id}"><b>${c.name}</b><span class="font-mono text-[10px] text-muted-foreground">#${c.componentId} · SAB</span>
+        ${compSys.map(s=>`<span class="inline-flex items-center rounded border border-dashed px-1 font-mono text-[10px] opacity-60" title="${s.sys.name} — inferred from query">uses ${s.sys.name.replace("System","")}</span>`).join("")}
+        <span class="ml-auto text-muted-foreground">${open?"▾":"▸"}</span></div>
+        ${open?`<div>${c.fields.map(f=>`<div class="flex items-center gap-2 border-t border-border/50 px-2.5 py-1 font-mono text-xs"><span class="w-[74px] shrink-0">${f.name}</span><span class="w-7 shrink-0 text-muted-foreground">${f.type}</span>
+          <span class="flex flex-wrap gap-1">${state.depth==="systems"||state.depth==="fields"?fieldBadges(c.name,f.name):""}</span>
+          <span class="ml-auto text-foreground">${liveVal(o.id, c.name, f.name, live[f.name])}</span></div>`).join("")}</div>`:""}
+      </div>`;
+    }
+    if(state.depth==="systems"){
+      const sim=sys.filter(s=>s.role!="infrastructure"), infra=sys.filter(s=>s.role==="infrastructure");
+      h+=`<div class="mt-1 animate-fade-in text-[13px]"><h3 class="pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Systems acting on this shape</h3>
+        <div class="space-y-1">${sim.map(s=>`<div>${s.name} <span class="text-xs text-muted-foreground">tick ${s.tickIndex} · ${s.module}</span></div>`).join("")}
+        ${state.showInfra? infra.map(s=>`<div>${s.name} <span class="text-xs text-muted-foreground">infrastructure · tick ${s.tickIndex}</span></div>`).join("") : (infra.length?`<div class="text-xs text-muted-foreground">+ ${infra.length} infrastructure (folded)</div>`:"")}</div>
+      </div>`;
+    }
+  }
+  document.getElementById("footprint").innerHTML=h;
+  const iw=document.getElementById("infraWrap");
+  iw.style.display = state.depth==="systems" ? "flex" : "none";
+  document.querySelectorAll("#footprint [data-comp]").forEach(el=>{
+    el.tabIndex=0; el.setAttribute("role","button"); el.setAttribute("aria-expanded", state.expanded.has(el.dataset.comp));
+    el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); el.click(); } };
+    el.onclick=()=>{
+      const id=el.dataset.comp;
+      state.expanded.has(id)?state.expanded.delete(id):state.expanded.add(id);
+      if(state.depth==="components") renderFootprint();
+    };
+  });
+  wireLiveEditors(document.getElementById("footprint"));
+}
+
+/* ============ RENDER: graph overlay ============ */
+function renderGraph(){
+  const ov=document.getElementById("graphOverlay");
+  ov.style.display = state.graph ? "block":"none";
+  document.getElementById("graphBtn").classList.toggle("on", state.graph);
+  if(!state.graph) return;
+  const o=N[state.selected], comps=componentsOf(o.id), sys=objectSystems(o.id).filter(s=>s.role!="infrastructure");
+  const cy=i=> 18+ (i*(64/Math.max(comps.length-1,1)));
+  const sy=i=> 22+ (i*(56/Math.max(sys.length-1,1)));
+  let lines="";
+  comps.forEach((c,i)=>{ lines+=`<line x1="20" y1="50" x2="46" y2="${cy(i)}" stroke="hsl(0 0% 0%/.45)" stroke-width="0.4"/>`; });
+  sys.forEach((s,i)=>{ lines+=`<line x1="56" y1="${cy(0)+i*4}" x2="82" y2="${sy(i)}" stroke="hsl(0 0% 0%/.45)" stroke-width="0.4"/>`; });
+  const gn=(txt,x,y,extra)=>`<div class="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border bg-popover px-1.5 py-0.5 font-mono text-[10px] text-popover-foreground shadow ${extra||""}" style="left:${x}%;top:${y}%">${txt}</div>`;
+  ov.innerHTML=`<svg viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>
+    ${gn(o.name,13,50,"border-black/70")}
+    ${comps.map((c,i)=>gn(c.name,51,cy(i))).join("")}
+    ${sys.map((s,i)=>gn(s.name.replace("System",""),89,sy(i),"text-muted-foreground")).join("")}`;
+}

@@ -1,0 +1,40 @@
+
+    <!-- MAIN ROW -->
+    <div class="flex min-h-0 flex-1">
+
+      <!-- LEFT RAIL -->
+      <aside id="railL" aria-label="Hierarchy panel" class="flex w-[216px] shrink-0 animate-slide-in-left flex-col border-r bg-card/60 max-lg:w-[188px]">
+        <div class="ptitle"><span id="railLTitle">In view — hierarchy</span>
+          <span class="ml-auto flex gap-1">
+            <button class="hbtn" data-act="detach" data-panel="railL" title="Detach / dock">⧉</button>
+            <button class="hbtn" data-act="close" data-panel="railL" title="Close panel">✕</button>
+          </span>
+        </div>
+        <div id="roleChips" class="flex flex-wrap gap-1 px-2 pb-2"></div>
+        <div id="tree" role="tree" aria-label="Scene hierarchy" class="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"></div>
+        <div id="explorer" class="hidden min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="tree" aria-label="Project files"></div>
+      </aside>
+      <div class="dragbar" id="dragL" title="Drag to resize"></div>
+
+      <!-- CENTER -->
+      <section class="flex min-w-0 flex-1 flex-col">
+        <div id="viewport" class="relative min-h-0 flex-1 animate-fade-in overflow-hidden">
+          <div id="idChip" role="button" tabindex="0" title="Focus view on selection" class="identity absolute left-3 top-3 z-20 flex cursor-pointer animate-slide-in-top items-center gap-2 rounded-full border bg-card/85 py-1.5 pl-3 pr-2 shadow-sm backdrop-blur transition-colors hover:bg-accent/50">
+            <span id="idName" class="text-[13px] font-semibold">Baker’s Stall</span>
+            <span id="idKind" class="text-[11px] text-muted-foreground">hand-placed · vendor-stall</span>
+          </div>
+          <div class="vtools absolute right-3 top-3 z-20 flex animate-slide-in-top items-center gap-1">
+            <button class="ibtn on max-sm:hidden" data-tool="select" title="Select (V)">V</button><button class="ibtn max-sm:hidden" data-tool="move" title="Move (W)">W</button><button class="ibtn max-sm:hidden" data-tool="rotate" title="Rotate (E)">E</button><button class="ibtn max-sm:hidden" data-tool="scale" title="Scale (R)">R</button>
+            <button class="ibtn w-auto px-2 text-xs" id="graphBtn" title="Graph overlay">Graph</button>
+            <button class="ibtn w-auto px-2 text-xs" id="debugBtn" title="Debug widget">Debug</button>
+            <button id="zoomVal" class="rounded px-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="Reset zoom to 100%">100%</button>
+            <button class="ibtn" id="homeBtn" title="Reset view">⌂</button>
+          </div>
+          <span id="vlabel" class="absolute bottom-3 left-3 z-20 text-[11px] text-muted-foreground">Town 0001 — Market Square · LIVE VIEWPORT (stand-in render)</span>
+          <div id="world">
+            <div id="graphOverlay" class="absolute inset-0" style="display:none"></div>
+            <div id="props" class="absolute inset-0"></div>
+            <div id="widget" class="absolute z-30 w-[280px]" style="display:none"></div>
+          </div>
+          <div id="debugPanel" class="absolute bottom-3 right-3 z-40 w-[302px] rounded-xl border bg-card p-3 shadow-xl" style="display:none"></div>
+        </div>

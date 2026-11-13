@@ -1,0 +1,67 @@
+
+  <!-- FRAME -->
+  <div class="flex min-h-0 flex-1 flex-col">
+
+    <!-- FILE NAV BAR (maintained: File · Save · Help) -->
+    <div class="relative z-40 flex min-h-9 shrink-0 animate-fade-in flex-wrap items-center gap-1 border-b bg-card px-2 py-0.5" role="menubar" aria-label="File navigation">
+      <span class="mr-1 grid h-5 w-5 place-items-center rounded bg-primary text-[11px] font-bold text-primary-foreground">N</span>
+      <span class="mr-2 text-[13px] font-semibold">Nexus Editor</span>
+      <div class="relative">
+        <button class="mbtn" data-menu-btn="fileMenu" aria-haspopup="true" aria-expanded="false">File</button>
+        <div id="fileMenu" role="menu" aria-hidden="true" class="menu-pop absolute left-0 top-full z-50 mt-1 hidden w-60 animate-zoom-in rounded-lg border bg-popover p-1 shadow-xl">
+          <button class="mi">New Scene <span>Ctrl+N</span></button>
+          <button class="mi">Open Scene… <span>Ctrl+O</span></button>
+          <div class="msep"></div>
+          <button class="mi" data-save="1">Save <span>Ctrl+S</span></button>
+          <button class="mi" data-save="1">Save As… <span>Ctrl+Shift+S</span></button>
+          <div class="msep"></div>
+          <button class="mi">Export Scene…</button>
+          <div class="msep"></div>
+          <button class="mi">Close Scene</button>
+        </div>
+      </div>
+      <button class="mbtn" id="saveBtn">Save</button>
+      <div class="relative">
+        <button class="mbtn" data-menu-btn="helpMenu" aria-haspopup="true" aria-expanded="false">Help</button>
+        <div id="helpMenu" role="menu" aria-hidden="true" class="menu-pop absolute left-0 top-full z-50 mt-1 hidden w-60 animate-zoom-in rounded-lg border bg-popover p-1 shadow-xl">
+          <button class="mi">Documentation</button>
+          <button class="mi">Keyboard Shortcuts <span>Ctrl+/</span></button>
+          <div class="msep"></div>
+          <button class="mi">About Nexus Editor</button>
+        </div>
+      </div>
+      <div class="ml-3 flex items-center rounded-lg border bg-secondary/60 p-0.5" role="group" aria-label="Editor mode">
+        <button id="modeDesigner" class="btn h-6 rounded-md bg-primary px-2.5 text-xs text-primary-foreground" aria-pressed="true">Designer</button>
+        <button id="modeDev" class="btn btn-ghost h-6 rounded-md px-2.5 text-xs" aria-pressed="false">Developer ⇄</button>
+      </div>
+      <button id="termBtn" class="btn btn-ghost ml-1 h-7 px-2.5 text-xs" title="Toggle terminal panel">Terminal</button>
+      <div class="flex-1"></div>
+      <span class="text-xs text-muted-foreground max-sm:hidden">Town 0001 — Market Square</span>
+      <span id="saveState" class="ml-2 text-xs text-muted-foreground" aria-live="polite">Saved ✓</span>
+    </div>
+
+    <!-- TOP BAR (maintained, 1:1 with the shipped editor) -->
+    <header class="scrollx flex h-11 shrink-0 animate-fade-in items-center gap-1 border-b bg-card px-2">
+      <button id="navL" class="mnav lg:hidden" aria-label="Toggle hierarchy panel" aria-expanded="false">☰ Hierarchy</button>
+      <button class="ibtn" id="appMenuBtn" title="App menu — File · Save · Help">▦</button>
+      <button class="ibtn" id="undoBtn" title="Undo (Ctrl+Z)">↩</button><button class="ibtn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">↪</button>
+      <div class="mx-1.5 h-[18px] w-px bg-border"></div>
+      <button class="ibtn on" data-tool="select" title="Select">↖</button><button class="ibtn" data-tool="move" title="Move">✥</button><button class="ibtn" data-tool="rotate" title="Rotate">⟳</button><button class="ibtn" data-tool="scale" title="Scale">⤢</button><button class="ibtn on" data-snap="1" title="Grid / snap">▦</button>
+      <div class="mx-1.5 h-[18px] w-px bg-border"></div>
+      <button class="ibtn" id="addBtn" title="Add — from the context shelf">⊞</button><button class="ibtn" id="editBtn" title="Edit — footprint fields">✎</button><button class="ibtn" id="wrenchBtn" title="Tools — debug widget">🔧</button>
+      <div class="flex-1"></div>
+      <button id="playBtn" class="btn h-8 rounded-full bg-orange-600 px-4 font-semibold text-white transition-colors hover:bg-orange-500">▶ Play ▾</button>
+      <button id="pauseBtn" class="ibtn" title="Pause">❚❚</button><button class="ibtn" id="stepBtn" title="Step one tick">▶❘</button>
+      <span class="relative ml-1">
+        <button id="sessPill" class="badge badge-secondary whitespace-nowrap py-1 transition-colors hover:bg-accent" aria-haspopup="true" aria-expanded="false" title="Session details">In editor · 1 client · edge + core</button>
+        <div id="sessPop" data-place="fixed" class="pill-pop z-50 hidden w-80 animate-zoom-in rounded-lg border bg-popover p-3 text-left shadow-xl"></div>
+      </span>
+      <div class="flex-1"></div>
+      <button id="navR" class="mnav lg:hidden" aria-label="Toggle inspector panel" aria-expanded="false">Inspect ☰</button>
+      <button id="serverPill" class="flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent" title="Start / stop the mock world server" aria-pressed="false"><span id="serverDot" class="h-[7px] w-[7px] rounded-full bg-muted-foreground"></span><span id="serverLabel">Server idle</span></button>
+      <span class="relative ml-1">
+        <button id="modPill" class="whitespace-nowrap rounded-full px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent max-sm:hidden" aria-haspopup="true" aria-expanded="false" title="Loaded modules">⌂ 6 modules</button>
+        <div id="modPop" data-place="fixed" data-align="right" class="pill-pop z-50 hidden w-72 animate-zoom-in rounded-lg border bg-popover p-3 text-left shadow-xl"></div>
+      </span>
+      <button class="ibtn ml-1" id="gridBtn2" title="Graph overlay">▦</button>
+    </header>

@@ -1,0 +1,39 @@
+
+        <!-- IDE CENTER (developer surface) -->
+        <div id="ideCenter" class="hidden min-h-0 flex-1 flex-col">
+          <div id="ideTabs" class="scrollx flex h-9 shrink-0 items-center gap-1 border-b bg-card px-2" role="tablist" aria-label="Open files"></div>
+          <div id="crumb" class="flex h-7 shrink-0 items-center gap-1.5 overflow-hidden whitespace-nowrap border-b px-3 font-mono text-[11px] text-muted-foreground"></div>
+          <div id="ghostBar" class="hidden shrink-0 items-center gap-2 border-b bg-accent/60 px-3 py-1.5 text-[11.5px]" role="status"></div>
+          <div class="flex min-h-0 flex-1">
+            <div id="gutter" class="w-11 shrink-0 select-none overflow-hidden border-r bg-card py-3 pr-2 text-right font-mono text-xs leading-5 text-muted-foreground" aria-hidden="true"></div>
+            <textarea id="codeArea" spellcheck="false" aria-label="Code editor" class="min-w-0 flex-1 resize-none bg-background p-3 font-mono text-xs leading-5 text-foreground outline-none"></textarea>
+          </div>
+          <div id="ideStatus" class="flex h-6 shrink-0 items-center gap-3 overflow-hidden whitespace-nowrap border-t px-3 font-mono text-[11px] text-muted-foreground"></div>
+          <div id="termDrag" class="dragbar-y" title="Drag to resize terminal"></div>
+          <div id="termPanel" class="flex h-44 shrink-0 flex-col border-t bg-card">
+            <div class="flex h-8 shrink-0 items-center gap-1 px-2">
+              <button class="btn btn-ghost h-6 rounded-md px-2 text-xs" data-term-tab="terminal">Terminal <span id="termTabCount" class="rounded-full bg-accent px-1.5 text-[10px]" title="Terminals open">1</span></button>
+              <button class="btn btn-ghost h-6 rounded-md px-2 text-xs" data-term-tab="problems">Problems</button>
+              <button class="btn btn-ghost h-6 rounded-md px-2 text-xs" data-term-tab="output">Output</button>
+              <span class="ml-auto hidden text-[11px] text-muted-foreground md:block">graph CLI — try <span class="font-mono text-foreground">graph why object:town0001/stall</span></span>
+              <span class="ml-auto flex gap-1 md:ml-1"><button class="hbtn" id="termDetach" title="Detach terminal" aria-label="Detach terminal">⧉</button><button class="hbtn" id="termClose" title="Close terminal" aria-label="Close terminal">✕</button></span>
+            </div>
+            <div class="flex min-h-0 flex-1">
+              <div class="flex min-w-0 flex-1 flex-col">
+                <div id="termBody" class="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-5"></div>
+                <div class="flex shrink-0 items-center gap-2 border-t px-3 py-1.5">
+                  <span class="font-mono text-xs text-muted-foreground">$</span>
+                  <input id="termInput" class="h-6 flex-1 bg-transparent font-mono text-xs outline-none" placeholder="type a command — help for the list" aria-label="Terminal input">
+                </div>
+              </div>
+              <div id="termSide" class="flex w-44 shrink-0 flex-col border-l" aria-label="Terminal sessions">
+                <div class="flex h-7 shrink-0 items-center gap-1.5 border-b px-2">
+                  <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Terminals</span>
+                  <span id="termCount" class="text-[10px] text-muted-foreground">1 open</span>
+                  <button id="termNew" class="hbtn ml-auto" title="New terminal" aria-label="New terminal">＋</button>
+                </div>
+                <div id="termList" class="min-h-0 flex-1 overflow-y-auto p-1"></div>
+              </div>
+            </div>
+          </div>
+        </div>
