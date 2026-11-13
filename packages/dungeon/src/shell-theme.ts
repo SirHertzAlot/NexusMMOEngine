@@ -6,11 +6,12 @@
  *   simplifyTolerance           wall-line simplification in the polygon step
  *   ceilingMode                 flat ceilings, or open (no ceiling triangles)
  *   floorStyle, wallStyle       the material names the bake reports per part
+ *   cornerMode, cornerSize      square, chamfered or pillared corners, and their size
  *
  * Knobs left out, with reasons: cellSize (the layout's cell is the unit the
  * mask is painted in; changing it means re-deriving the mask in metres), and
  * wallThickness (the shell is the inside surface, so thickness would only move
- * outside faces, which the shell drops). cornerMode is not built yet.
+ * outside faces, which the shell drops).
  */
 import { z } from "zod";
 import type { ShellOptions } from "./shell.js";
@@ -28,6 +29,8 @@ export const ShellTheme = z
     ceilingMode: z.enum(["flat", "open"]).default("flat"),
     floorStyle: style.default("packed-earth"),
     wallStyle: style.default("rough-stone"),
+    cornerMode: z.enum(["square", "chamfered", "pillared"]).default("square"),
+    cornerSize: z.number().min(0.1).max(1).default(0.5),
   })
   .strict();
 export type ShellTheme = z.infer<typeof ShellTheme>;
@@ -45,5 +48,7 @@ export function shellOptionsOf(t: ShellTheme): ShellOptions {
     poolDepth: t.poolDepth,
     simplifyTolerance: t.simplifyTolerance,
     ceilingMode: t.ceilingMode,
+    cornerMode: t.cornerMode,
+    cornerSize: t.cornerSize,
   };
 }

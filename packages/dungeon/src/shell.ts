@@ -13,6 +13,8 @@
  * - Levels: a cell on level L has its floor at L × levelStep metres. Level
  *   −1 is a pit, level +1 a dais; where two levels meet, the step's face is
  *   a wall of the shell.
+ * - Corners: a chamfer or a pillar (`cornerMode`) is rock left standing in
+ *   the corner, so its faces are walls of the shell like any other.
  * - A room a laid interior walls (`laidRooms`) has no wall of its own on its
  *   closed edges: the interior's walls stand there.
  * - Everything is subtracted from a block of rock around the dungeon, and
@@ -51,6 +53,14 @@ export interface ShellOptions {
   simplifyTolerance?: number;
   /** flat: a ceiling over every space. open: no ceiling triangles (the space is open to the sky). */
   ceilingMode?: "flat" | "open";
+  /**
+   * What stands in the floor plan's corners. square: nothing (the walls meet at a right angle). chamfered: each corner
+   * where two walls close in on the room is cut at 45 degrees. pillared: a square column stands on every corner, a
+   * quarter of it showing where the walls close in and three quarters where a wall turns out into the room.
+   */
+  cornerMode?: "square" | "chamfered" | "pillared";
+  /** The chamfer's leg, or the pillar's side, metres (default 0.5; at most half a cell). */
+  cornerSize?: number;
 }
 
 /** Metres between floor levels: one cell's height, a ledge a stair would climb. */
@@ -65,6 +75,8 @@ export const SHELL_DEFAULTS: Required<Omit<ShellOptions, "levels">> = {
   levelStep: LEVEL_STEP,
   simplifyTolerance: 0,
   ceilingMode: "flat",
+  cornerMode: "square",
+  cornerSize: 0.5,
 };
 
 /** What each triangle is. */
@@ -189,12 +201,42 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
 
   // Rock a cell thick round everything, a metre under the basins, the lowest floor and the tallest ceiling.
   const bottom = levelList[0] * step - (pools > 0 ? o.poolDepth : 0) - 1;
+
+  // Corners: rock left standing in the space. Each is a full-height prism on a grid corner, kept inside the cells that
+  // touch that corner, so it only ever takes space out of them. Its faces carry the space tag: they are walls.
+  const corners: unknown[] = [];
+  if (o.cornerMode !== "square") {
+    const size = o.cornerSize;
+    if (!(size > 0) || size > cell / 2) throw new Error(`dungeonShell: cornerSize ${size} must be above 0 and at most half a cell (${cell / 2})`);
+    const walkAt = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && walk[y * W + x] === 1;
+    const tall = top + 1 - bottom;
+    const chamfers: number[] = [];
+    for (let vy = 0; vy <= H; vy++) {
+      for (let vx = 0; vx <= W; vx++) {
+        // The four cells round this grid corner; open counts the walkable ones.
+        const around: Array<[number, number]> = [[vx - 1, vy - 1], [vx, vy - 1], [vx - 1, vy], [vx, vy]];
+        const open = around.filter(([x, y]) => walkAt(x, y));
+        if (open.length !== 1 && open.length !== 3) continue; // a straight wall, open floor, or solid rock
+        const px = vx * cell, pz = vy * cell;
+        if (o.cornerMode === "pillared") {
+          corners.push({ op: "box", min: [px - size / 2, bottom, pz - size / 2], max: [px + size / 2, top + 1, pz + size / 2], tag: TAG.space });
+        } else if (open.length === 1) {
+          // A triangle in the one open cell, its right angle on the corner.
+          const [cx, cy] = open[0];
+          const sx = cx === vx ? 1 : -1, sz = cy === vy ? 1 : -1;
+          chamfers.push(px, pz, px + sx * size, pz, px, pz + sz * size);
+        }
+      }
+    }
+    if (chamfers.length > 0) {
+      const rings = new Uint32Array(chamfers.length / 6).fill(3);
+      corners.push({ op: "extrude", polygons: { points: Float64Array.from(chamfers), rings }, y0: bottom, height: tall, tag: TAG.space });
+    }
+  }
+  const carved = corners.length > 0 ? { op: "difference", of: [{ op: "union", of: space }, ...corners] } : { op: "union", of: space };
   const solid = geo.solid({
     op: "difference",
-    of: [
-      { op: "box", min: [-cell, bottom, -cell], max: [(W + 1) * cell, top + 1, (H + 1) * cell], tag: TAG.rock },
-      { op: "union", of: space },
-    ],
+    of: [{ op: "box", min: [-cell, bottom, -cell], max: [(W + 1) * cell, top + 1, (H + 1) * cell], tag: TAG.rock }, carved],
   });
 
   // Keep the inside surface; name each triangle by its origin and its facing.
