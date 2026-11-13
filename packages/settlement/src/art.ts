@@ -42,19 +42,19 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   warehouse: ["Preset_Stables_\[0-9]+_Optimized$", "Preset_House_04_Optimized$"],
   townhouse: ["Preset_House_1[1-9](_[A-C])?_Optimized$", "Preset_Townhouse_\[0-9]+_Optimized$", "Preset_House_(09_[A-C]|10)_Optimized$"],
   inn: ["Preset_Inn_\[0-9]+_Optimized$", "Preset_Tavern_\[0-9]+_Optimized$"],
-  theatre: ["Preset_Theat(re|er)_\[0-9]+_Optimized$", "Preset_Amphitheat(re|er)_\[0-9]+_Optimized$"],
+  theatre: ["Preset_Theat(re|er)_\[0-9]+_Optimized$", "Preset_Amphitheat(re|er)_\[0-9]+_Optimized$", "Preset_House_(04|05|10)_Optimized$"],
   bathhouse: ["Preset_Bath(house|s)?_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
   town_hall: ["Preset_(Town_?Hall|Guild_?Hall|Manor)_\[0-9]+_Optimized$", "Preset_House_(09_[A-C]|10)_Optimized$"],
   guardhouse: ["Preset_(Guard_?House|Watch_?House|Guard_?Post)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
-  barracks: ["Preset_Barracks_\[0-9]+_Optimized$"],
+  barracks: ["Preset_Barracks_\[0-9]+_Optimized$", "Preset_Stables_\[0-9]+_Optimized$"],
   school: ["Preset_(School|Schoolhouse)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
-  library: ["Preset_(Library|Archive)_\[0-9]+_Optimized$"],
+  library: ["Preset_(Library|Archive)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
   parish_church: ["Preset_Church_\[0-9]+_[C-Z]_Optimized$", "Preset_Church_\[0-9]+_Optimized$", "Preset_Church_01_[AB]_Optimized$"],
-  cathedral: ["Preset_Cathedral_\[0-9]+_Optimized$", "Preset_Basilica_\[0-9]+_Optimized$"],
+  cathedral: ["Preset_Cathedral_\[0-9]+_Optimized$", "Preset_Basilica_\[0-9]+_Optimized$", "Preset_Church_01_B_Optimized$"],
   churchyard: ["(Prop|Preset)_(Graveyard|Cemetery)(_\[0-9]+)?(_Optimized)?$", "(^|_)Gravestone(_|$)"],
   rectory: ["Preset_(Rectory|Vicarage|Parsonage)_\[0-9]+_Optimized$", "Preset_House_0[4-6]_Optimized$"],
   hospital: ["Preset_(Hospital|Infirmary|Almshouse)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
-  monastery: ["Preset_(Monastery|Abbey|Priory)_\[0-9]+_Optimized$"],
+  monastery: ["Preset_(Monastery|Abbey|Priory)_\[0-9]+_Optimized$", "Preset_Church_01_[AB]_Optimized$"],
   apothecary: ["Preset_(Apothecary|Herbalist|Alchemist)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
   tenement: ["Preset_(Tenement|House_1[1-9])(_[A-C])?_Optimized$", "Preset_House_0[2-3](_[A-C])?_Optimized$"],
   shop: ["Preset_(Shop|Store|Merchant)_\[0-9]+_Optimized$", "Preset_House_0[4-6]_Optimized$"],
@@ -74,7 +74,7 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   master_smithy: ["Preset_Blacksmith_\[0-9]+_Optimized$"],
   master_workshop: ["Preset_Workshop_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
   master_bakery: ["Preset_Bakery_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
-  master_fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$"],
+  master_fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$", "Preset_Hut_\[0-9]+_Optimized$"],
   // The town square's well or fountain.
   town_well: ["(Prop|Preset)_(Well|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   // The town wall: straight wall runs, towers, and the gate the road passes through.
@@ -95,6 +95,34 @@ export const DEFAULT_DRESSING_PATTERNS: Record<string, string[]> = {
   farm_yard: ["^(well|fence|picket_fence|silo|windmill|barn|barn_scene|tractor)$"],
   camp_props: ["^(anvil|campfire|lantern|candelabra|tent|ladder|flag|gravestone|fountain)$"],
 };
+
+/**
+ * The places between the towns (places-scene.ts: a homestead's farmhouse, a roadside inn, a shack, a guard outpost, a
+ * camp site's clearing, a farm's field): whole preset names like the towns' buildings, so match them with
+ * `buildArtMap(models, DEFAULT_PLACE_PATTERNS)`. A camp site and a farm's field take the farm packs' dressing models
+ * (`PLACE_DRESSING_KINDS`). A kind with no match stays a box.
+ */
+export const DEFAULT_PLACE_PATTERNS: Record<string, string[]> = {
+  guard_outpost: ["Preset_House_0[6-8]_Optimized$", "Preset_Tower_[0-9]+_Optimized$"],
+  roadside_inn: ["Preset_Inn_\[0-9]+_Optimized$", "Preset_Tavern_\[0-9]+_Optimized$"],
+  // Models used by no town kind: a model has one scale for the whole world, so a shack must not shrink a home that shares its model.
+  shack: ["Preset_Outhouse_01_Optimized$"],
+  farmhouse: ["Preset_Hut_01_Optimized$", "Preset_Shelter_0[12]_Optimized$", "Preset_Farm(house)?_\[0-9]+_Optimized$"],
+};
+
+/** The places whose look is a farm-pack dressing model: place kind -> the DEFAULT_DRESSING_PATTERNS key. */
+export const PLACE_DRESSING_KINDS: Record<string, string> = { camp_site: "camp_props", farm_field: "farm_crops" };
+
+/**
+ * The art map for the places scene: the place patterns, the farm dressing under the names the places use (the yard's
+ * `farm_tools`, `farm_produce` and `farm_yard`, the field and the camp site), each a list of model ids.
+ */
+export function buildPlaceArtMap(models: readonly CatalogModel[]): Record<string, string[]> {
+  const dressing = buildArtMap(models, DEFAULT_DRESSING_PATTERNS, "i");
+  const out: Record<string, string[]> = { ...buildArtMap(models, DEFAULT_PLACE_PATTERNS), ...dressing };
+  for (const [kind, key] of Object.entries(PLACE_DRESSING_KINDS)) if (dressing[key]) out[kind] = dressing[key]!;
+  return out;
+}
 
 /**
  * Street furniture (rules.props, and the terraces' steps), for the packs' prop models: matched case-insensitively
