@@ -24,6 +24,9 @@
  *                      names a matching model; the scene stays a box where none matches.
  *                      The names go into the scene file, so keep it out of git (the
  *                      default scenes folder holds only what you commit)
+ *   --synthesis <file> with --scene, a decomposed building/interior library
+ *                      (content/synthesis/*.local.json, or MMO_SYNTHESIS): structures
+ *                      assemble multi-part exteriors and synthesized interiors instead of single boxes
  *   --scale <file>     a scale doc (content/scale.json): parcels and streets are baked at its building factor
  *   --verbosity <v>   silent | summary | normal | verbose | debug (default summary)
  */
@@ -39,13 +42,14 @@ import { VERBOSITY, type Verbosity } from "./events.js";
 import { ACCESS, defaultRules, loadRules, type Access, type SettlementRules } from "./rules.js";
 import { siteAccess } from "./setting.js";
 import type { Land } from "./industry.js";
+import type { DecompositionLibrary } from "@mmo-engine/synthesis";
 import { fitHouseholds, townHalfExtentM } from "./layout.js";
 import { resolveScale, validateScale, type ScaleDoc } from "@mmo-engine/scene";
 import { selectSites, type Site, type TerrainFields } from "./sites.js";
 
 async function main(): Promise<void> {
   const { values: o } = parseArgs({
-    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, scale: { type: "string" }, access: { type: "string" }, "list-sites": { type: "boolean" } },
+    options: { population: { type: "string" }, seed: { type: "string" }, id: { type: "string" }, rules: { type: "string" }, out: { type: "string" }, scenes: { type: "string" }, verbosity: { type: "string" }, scene: { type: "boolean" }, origin: { type: "string" }, world: { type: "string" }, site: { type: "string" }, catalog: { type: "string" }, synthesis: { type: "string" }, scale: { type: "string" }, access: { type: "string" }, "list-sites": { type: "boolean" } },
   });
   const verbosity = (o.verbosity ?? "summary") as Verbosity;
   if (!VERBOSITY.includes(verbosity)) throw new Error(`--verbosity must be one of ${VERBOSITY.join(", ")}`);
@@ -105,10 +109,16 @@ async function main(): Promise<void> {
     scale = resolveScale(doc as ScaleDoc, "building");
     console.log(`  [scale] building factor ${scale}`);
   }
+  let synthesis: DecompositionLibrary | undefined;
+  const synthesisPath = o.synthesis ?? (process.env.MMO_SYNTHESIS || undefined);
+  if (synthesisPath) {
+    synthesis = JSON.parse(readFileSync(fromUser(synthesisPath), "utf8")) as DecompositionLibrary;
+    console.log(`  [synthesis] ${synthesis.structures.length} structures, ${synthesis.rooms.length} rooms, ${synthesis.vignettes.length} vignettes`);
+  }
   const r = bakeSettlement(
     { settlementId: o.id ?? "0001", seed: Number(o.seed ?? 1) >>> 0, population, ...(access ? { access } : {}), ...(land ? { land } : {}), rules: o.rules ? loadRules(fromUser(o.rules)) : defaultRules(paths.rules), scale, verbosity, ...(dry ? { site: { origin: [origin[0]!, origin[1]!] as [number, number], dry, ...(route ? { route } : {}) } } : {}) },
     out,
-    o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}) } } : {},
+    o.scene ? { scene: { dir: o.scenes ? fromUser(o.scenes) : paths.scenes, origin: [origin[0]!, origin[1]!], ...(art ? { art } : {}), ...(synthesis ? { synthesis } : {}) } } : {},
   );
   for (const e of r.events) console.log(`  [${e.stage}] ${e.event} ${JSON.stringify(e.data)}`);
   if (!r.ok) throw new Error(`${r.error.stage}: ${r.error.message}`);

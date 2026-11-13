@@ -183,13 +183,137 @@ function colliderOf(c: Record<string, unknown> | undefined): Collision | undefin
  * the Transform scale instead (the client draws a body-less asset as a unit box at that scale), and it is lifted by half
  * its height so it rests on the ground instead of being centred on it.
  */
-function spawnBody(deps: SceneSpawnDeps, id: string, w: WorldNode, ground: number, asset: string, collision: Collision, category: ScaleCategory = "prop", visual?: [number, number, number]): number {
+function spawnBody(
+  deps: SceneSpawnDeps,
+  id: string,
+  w: WorldNode,
+  ground: number,
+  asset: string,
+  collision: Collision,
+  category: ScaleCategory = "prop",
+  visual?: [number, number, number],
+  nodeScale?: [number, number, number],
+): number {
   const [x, y, z] = w.position;
   const f = visual ? (deps.scale?.(category, asset) ?? 1) : 1;
   return spawnScatterEntity(deps.sim, {
-    x, y: ground + y + (visual ? (visual[1] * f) / 2 : 0), z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: visual?.[0] ?? 1, sy: visual?.[1] ?? 1, sz: visual?.[2] ?? 1,
+    x, y: ground + y + (visual ? (visual[1] * f) / 2 : 0), z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0,
+    sx: visual?.[0] ?? nodeScale?.[0] ?? 1, sy: visual?.[1] ?? nodeScale?.[1] ?? 1, sz: visual?.[2] ?? nodeScale?.[2] ?? 1,
     assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(id) >>> 0) || 1, archetype: { asset, collision, category },
   }, deps.bounds, deps.scale);
+}
+
+interface BuildingFooting {
+  kind: string;
+  cx: number;
+  cz: number;
+  hw: number;
+  hd: number;
+  floor: number;
+  drop: number;
+  wet: string | null;
+}
+
+function sampleFootprintGround(
+  deps: SceneSpawnDeps,
+  x: number,
+  z: number,
+  hw: number,
+  hd: number,
+  yawDeg: number,
+  onWater: boolean,
+): { floor: number; drop: number; wet: string | null } {
+  const yaw = (yawDeg * Math.PI) / 180;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  let high = -Infinity;
+  let low = Infinity;
+  let wet: string | null = null;
+  const nx = Math.min(16, Math.max(2, Math.ceil(hw)));
+  const nz = Math.min(16, Math.max(2, Math.ceil(hd)));
+  for (let i = -nx; i <= nx; i++) {
+    for (let j = -nz; j <= nz; j++) {
+      const lx = (i / nx) * hw;
+      const lz = (j / nz) * hd;
+      const sx = x + lx * cos + lz * sin;
+      const sz = z - lx * sin + lz * cos;
+      const g = deps.groundHeightAt?.(sx, sz) ?? 0;
+      if (g > high) high = g;
+      if (g < low) low = g;
+      if (wet === null && deps.groundHeightAt && !onWater) {
+        if (!landDry(g, surfaceAt(deps.waterAt, deps.seaLevel, sx, sz), STRUCTURE_MARGIN_M)) {
+          wet = "under water or on the shore (less than " + STRUCTURE_MARGIN_M + " m above the water)";
+        } else if (deps.riverAt?.(sx, sz)) {
+          wet = "on a river";
+        }
+      }
+    }
+  }
+  const surface = onWater ? surfaceAt(deps.waterAt, deps.seaLevel, x, z) : null;
+  const floor = surface !== null && surface > high ? surface : high - low > 0.01 ? high + PLINTH_M : high;
+  return { floor, drop: floor - low, wet };
+}
+
+function computeBuildingFootings(worlds: readonly WorldNode[], deps: SceneSpawnDeps): {
+  ancestorGroup: Map<string, string>;
+  footings: Map<string, BuildingFooting>;
+} {
+  const byId = new Map<string, WorldNode>(worlds.map((w) => [w.node.id, w]));
+  const isBuildingGroup = (w: WorldNode): boolean => w.node.kind === "group" && str(w.node.name).startsWith("building:");
+  const ancestorGroup = new Map<string, string>();
+  const boxes = new Map<string, { kind: string; minX: number; maxX: number; minZ: number; maxZ: number }>();
+
+  for (const w of worlds) {
+    if (isBuildingGroup(w)) {
+      boxes.set(w.node.id, {
+        kind: str(w.node.name).slice("building:".length) || "building",
+        minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity,
+      });
+    }
+  }
+  if (boxes.size === 0) return { ancestorGroup, footings: new Map() };
+
+  for (const w of worlds) {
+    let cur: WorldNode | undefined = w;
+    while (cur?.parentId) {
+      if (boxes.has(cur.parentId)) {
+        ancestorGroup.set(w.node.id, cur.parentId);
+        const box = boxes.get(cur.parentId)!;
+        const st = w.node.components?.Structure;
+        const col = w.node.components?.Collider;
+        let hw = 0.5;
+        let hd = 0.5;
+        if (st) {
+          hw = Math.max(0.25, Number(st.width ?? 1) / 2);
+          hd = Math.max(0.25, Number(st.depth ?? 1) / 2);
+        } else if (col && col.shape === "box") {
+          hw = Math.max(0.25, Number(col.hx ?? 0.5));
+          hd = Math.max(0.25, Number(col.hz ?? 0.5));
+        }
+        const [px, , pz] = w.position;
+        const reach = Math.hypot(hw, hd);
+        if (px - reach < box.minX) box.minX = px - reach;
+        if (px + reach > box.maxX) box.maxX = px + reach;
+        if (pz - reach < box.minZ) box.minZ = pz - reach;
+        if (pz + reach > box.maxZ) box.maxZ = pz + reach;
+        break;
+      }
+      cur = byId.get(cur.parentId);
+    }
+  }
+
+  const footings = new Map<string, BuildingFooting>();
+  for (const [id, box] of boxes) {
+    const anchor = byId.get(id)!;
+    const finite = Number.isFinite(box.minX);
+    const cx = finite ? (box.minX + box.maxX) / 2 : anchor.position[0];
+    const cz = finite ? (box.minZ + box.maxZ) / 2 : anchor.position[2];
+    const hw = finite ? Math.max(0.5, (box.maxX - box.minX) / 2) : 1;
+    const hd = finite ? Math.max(0.5, (box.maxZ - box.minZ) / 2) : 1;
+    const sampled = sampleFootprintGround(deps, cx, cz, hw, hd, 0, false);
+    footings.set(id, { kind: box.kind, cx, cz, hw, hd, ...sampled });
+  }
+  return { ancestorGroup, footings };
 }
 
 export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnResult {
@@ -198,7 +322,10 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
   const expanded = deps.prefabs ? expandPrefabs(scene, deps.prefabs) : { doc: scene, problems: [] as string[] };
   for (const p of expanded.problems) out.skipped.push({ id: p.split(":")[0], reason: p });
   const doc = expanded.doc;
-  for (const w of worldNodes(doc)) {
+  const worlds = worldNodes(doc);
+  const { ancestorGroup, footings } = computeBuildingFootings(worlds, deps);
+
+  for (const w of worlds) {
     const { node } = w;
     if (node.kind === "spawn-point") {
       out.skipped.push({ id: node.id, reason: "spawn-point (players still enter at the world spawn)" });
@@ -209,7 +336,27 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       out.skipped.push({ id: node.id, reason: "outside this region's range" });
       continue;
     }
-    const ground = deps.groundHeightAt?.(x, z) ?? 0;
+    // Modular building group node: emit a single level footing check & optional foundation plinth across all children.
+    if (footings.has(node.id)) {
+      const bf = footings.get(node.id)!;
+      if (bf.wet !== null) {
+        out.skipped.push({ id: node.id, reason: `structure ${bf.kind} refused: its footprint is ${bf.wet}` });
+      } else if (bf.drop > 0) {
+        const f2 = deps.scale?.("building", "structure:foundation") ?? 1;
+        const slab = { shape: "box" as const, halfExtents: [bf.hw / f2, bf.drop / 2 / f2, bf.hd / f2] as [number, number, number], motion: "static" as const };
+        const slabPose: WorldNode = { ...w, position: [bf.cx, 0, bf.cz], yawDeg: 0 };
+        const eid = spawnBody(deps, `${node.id}/foundation`, slabPose, bf.floor - bf.drop / 2, "structure:foundation", slab, "building");
+        out.spawned.push({ id: `${node.id}/foundation`, what: `foundation ${bf.kind}`, entities: [eid] });
+      }
+      continue;
+    }
+    const parentGroupId = ancestorGroup.get(node.id);
+    const parentFooting = parentGroupId ? footings.get(parentGroupId) : undefined;
+    if (parentFooting && parentFooting.wet !== null) {
+      out.skipped.push({ id: node.id, reason: `structure ${parentFooting.kind} refused: its footprint is ${parentFooting.wet}` });
+      continue;
+    }
+    const ground = parentFooting ? parentFooting.floor : (deps.groundHeightAt?.(x, z) ?? 0);
     // An item on the ground, a quest's post: placed things with no creature behind them.
     const item = node.components?.ItemSpawn;
     if (item) {
@@ -248,46 +395,41 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         // Ground under the whole footprint, not just its centre: the floor stands on the highest point
         // (nothing sinks into a slope), the body reaches the lowest, and a foundation slab fills the gap.
         const f = deps.scale?.("building", asset) ?? 1;
-        const size = modelSized ? deps.bounds?.(asset) : undefined;
-        const [hw, hd] = size ? [(size[0] * f) / 2, (size[2] * f) / 2] : [half[0] * f, half[2] * f];
-        const yaw = (w.yawDeg * Math.PI) / 180;
-        const cos = Math.cos(yaw);
-        const sin = Math.sin(yaw);
-        let high = -Infinity;
-        let low = Infinity;
-        // Wet footing: every sample a metre above the water surface, and none on a river cell.
-        let wet: string | null = null;
-        // A grid over the footprint, a sample a metre or so apart (the terrain's own sample spacing), always
-        // including the corners, edge midpoints and centre. ponytail: capped at 32 a side; a bump narrower than that spacing can slip between samples.
-        const nx = Math.min(16, Math.max(2, Math.ceil(hw)));
-        const nz = Math.min(16, Math.max(2, Math.ceil(hd)));
-        for (let i = -nx; i <= nx; i++) {
-          for (let j = -nz; j <= nz; j++) {
-            const lx = (i / nx) * hw;
-            const lz = (j / nz) * hd;
-            const sx = x + lx * cos + lz * sin;
-            const sz = z - lx * sin + lz * cos;
-            const g = deps.groundHeightAt?.(sx, sz) ?? 0;
-            if (g > high) high = g;
-            if (g < low) low = g;
-            if (wet === null && deps.groundHeightAt && !onWater) {
-              if (!landDry(g, surfaceAt(deps.waterAt, deps.seaLevel, sx, sz), STRUCTURE_MARGIN_M)) wet = "under water or on the shore (less than " + STRUCTURE_MARGIN_M + " m above the water)";
-              else if (deps.riverAt?.(sx, sz)) wet = "on a river";
-            }
+        let floor: number;
+        let drop: number;
+        let hw: number;
+        let hd: number;
+        if (parentFooting) {
+          floor = parentFooting.floor;
+          drop = 0;
+          const size = modelSized ? deps.bounds?.(asset) : undefined;
+          hw = size ? (size[0] * f) / 2 : half[0] * f;
+          hd = size ? (size[2] * f) / 2 : half[2] * f;
+        } else {
+          const size = modelSized ? deps.bounds?.(asset) : undefined;
+          [hw, hd] = size ? [(size[0] * f) / 2, (size[2] * f) / 2] : [half[0] * f, half[2] * f];
+          const sampled = sampleFootprintGround(deps, x, z, hw, hd, w.yawDeg, onWater);
+          if (sampled.wet !== null) {
+            out.skipped.push({ id: node.id, reason: `structure ${kind} refused: its footprint is ${sampled.wet}` });
+            continue;
           }
+          floor = sampled.floor;
+          drop = sampled.drop;
         }
-        if (wet !== null) {
-          out.skipped.push({ id: node.id, reason: `structure ${kind} refused: its footprint is ${wet}` });
-          continue;
-        }
-        // On a slope the floor stands a plinth above the highest sample: the ground between samples can peak a few cm higher.
-        // On the water, the floor is the water's surface.
-        const surface = onWater ? surfaceAt(deps.waterAt, deps.seaLevel, x, z) : null;
-        const floor = surface !== null && surface > high ? surface : high - low > 0.01 ? high + PLINTH_M : high;
-        const drop = floor - low;
         // A walk-through stand-in (a paved street, the square, a field) is a box with no body: it carries its size in its scale.
-        const standIn = walkThrough && !modelSized;
-        const building = spawnBody(deps, node.id, w, floor, asset, collision, "building", standIn ? [Number(structure.width), Number(structure.height), Number(structure.depth)] : undefined);
+        const namedModel = str(structure.asset) !== "";
+        const standIn = walkThrough && !modelSized && !namedModel;
+        const building = spawnBody(
+          deps,
+          node.id,
+          w,
+          floor,
+          asset,
+          collision,
+          "building",
+          standIn ? [Number(structure.width), Number(structure.height), Number(structure.depth)] : undefined,
+          walkThrough && namedModel ? w.scale : undefined,
+        );
         const entities = [building];
         if (drop > 0 && !walkThrough) {
           // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).

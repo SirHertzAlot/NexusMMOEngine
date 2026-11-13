@@ -378,4 +378,42 @@ describe("sea level in a scene", () => {
     const { deps } = setup();
     assert.equal(spawnScene(doc([house("h")]) as never, { ...deps, groundHeightAt: () => -50 }).spawned.length, 1);
   });
+
+  it("levels modular building: groups on one unified slope datum and preserves visual scales", () => {
+    const { deps } = setup();
+    const slope = (x: number): number => 0.1 * x + 10;
+    const modular = {
+      id: "bld-1",
+      name: "building:house",
+      kind: "group",
+      transform: { position: [20, 0, 10] },
+      children: [
+        {
+          id: "vis-wall",
+          transform: { position: [-2, 1.25, 0], scale: [1, 1, -1] },
+          components: { Structure: { kind: "wall", asset: "test-kit/Wall_01", width: 2.5, depth: 0.25, height: 2.5 }, Collider: { shape: "none" } },
+        },
+        {
+          id: "vis-upper",
+          transform: { position: [2, 3.75, 0] },
+          components: { Structure: { kind: "wall", asset: "test-kit/Wall_01", width: 2.5, depth: 0.25, height: 2.5 }, Collider: { shape: "none" } },
+        },
+        {
+          id: "col-wall",
+          prefab: "collider",
+          transform: { position: [-2, 2.5, 0] },
+          components: { Collider: { shape: "box", hx: 1.25, hy: 1.25, hz: 0.12 } },
+        },
+      ],
+    };
+    const r = spawnScene(doc([modular]) as never, { ...deps, groundHeightAt: slope });
+    const wLow = r.spawned.find((s) => s.id === "vis-wall")!.entities[0]!;
+    const wHigh = r.spawned.find((s) => s.id === "vis-upper")!.entities[0]!;
+    const colEnt = r.spawned.find((s) => s.id === "col-wall")!.entities[0]!;
+    const foundEnt = r.spawned.find((s) => s.id === "bld-1/foundation")?.entities[0];
+    assert.ok(foundEnt !== undefined, "single foundation plinth emitted for building group on slope");
+    assert.ok(Math.abs((C.Transform.py[wHigh]! - C.Transform.py[wLow]!) - 2.5) < 1e-4, "upper and lower parts keep exact 2.5m elevation diff across slope");
+    assert.equal(C.Transform.sz[wLow], -1, "walk-through named model preserves mirror scale");
+    assert.equal(C.AssetRef.assetHash[colEnt], fnv1a32("collider"), "prefab: collider tags invisible collider asset hash");
+  });
 });

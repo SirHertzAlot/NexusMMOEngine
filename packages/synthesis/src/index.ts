@@ -12,3 +12,7 @@ export * from "./mechanisms.js";
 export * from "./wfc-bridge.js";
 export * from "./to-scene.js";
 export * from "./grammar.js";
+export * from "./unity-parser.js";
+export * from "./glb-bounds.js";
+export * from "./unity-decomposer.js";
+export * from "./building-synthesizer.js";
