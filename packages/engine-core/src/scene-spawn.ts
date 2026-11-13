@@ -177,11 +177,17 @@ function colliderOf(c: Record<string, unknown> | undefined): Collision | undefin
   return { shape, halfExtents: [n(c.hx, 0.5), n(c.hy, 0.5), n(c.hz, 0.5)], radius: n(c.radius, 0.5), motion: "static" };
 }
 
-/** One static body at the node's world pose (y above the ground), carrying `asset`'s hash, through the scatter spawn path. */
-function spawnBody(deps: SceneSpawnDeps, id: string, w: WorldNode, ground: number, asset: string, collision: Collision, category: ScaleCategory = "prop"): number {
+/**
+ * One static body at the node's world pose (y above the ground), carrying `asset`'s hash, through the scatter spawn path.
+ * `visual` is for a walk-through stand-in, which has no BodyConfig for the client to size it by: its footprint rides in
+ * the Transform scale instead (the client draws a body-less asset as a unit box at that scale), and it is lifted by half
+ * its height so it rests on the ground instead of being centred on it.
+ */
+function spawnBody(deps: SceneSpawnDeps, id: string, w: WorldNode, ground: number, asset: string, collision: Collision, category: ScaleCategory = "prop", visual?: [number, number, number]): number {
   const [x, y, z] = w.position;
+  const f = visual ? (deps.scale?.(category, asset) ?? 1) : 1;
   return spawnScatterEntity(deps.sim, {
-    x, y: ground + y, z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: 1, sy: 1, sz: 1,
+    x, y: ground + y + (visual ? (visual[1] * f) / 2 : 0), z, yaw: (w.yawDeg * Math.PI) / 180, pitch: 0, roll: 0, sx: visual?.[0] ?? 1, sy: visual?.[1] ?? 1, sz: visual?.[2] ?? 1,
     assetId: asset, assetHash: fnv1a32(asset), variant: 0, seed: (fnv1a32(id) >>> 0) || 1, archetype: { asset, collision, category },
   }, deps.bounds, deps.scale);
 }
@@ -279,7 +285,9 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
         const surface = onWater ? surfaceAt(deps.waterAt, deps.seaLevel, x, z) : null;
         const floor = surface !== null && surface > high ? surface : high - low > 0.01 ? high + PLINTH_M : high;
         const drop = floor - low;
-        const building = spawnBody(deps, node.id, w, floor, asset, collision, "building");
+        // A walk-through stand-in (a paved street, the square, a field) is a box with no body: it carries its size in its scale.
+        const standIn = walkThrough && !modelSized;
+        const building = spawnBody(deps, node.id, w, floor, asset, collision, "building", standIn ? [Number(structure.width), Number(structure.height), Number(structure.depth)] : undefined);
         const entities = [building];
         if (drop > 0 && !walkThrough) {
           // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).

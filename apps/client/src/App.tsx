@@ -21,7 +21,8 @@ import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
-import { DialogPanel, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
+import { DialogPanel, QuestTracker, itemTitle, questNotices, type OpenDialog } from "./ui/quests.js";
+import { glossaryFrom } from "./ui/text-performance.js";
 import type { DungeonLook, DungeonMessage } from "@mmo-engine/protocol";
 import type { PouchMaterial } from "@mmo-engine/protocol";
 // Lazy-load heavy panels (code splitting)
@@ -261,6 +262,11 @@ export function App(): React.ReactElement {
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
   const [quests, setQuests] = useState<QuestView[] | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
+  // What a quest-giver talks about, coloured wherever it appears in their lines (CF5).
+  const dialogGlossary = useMemo(
+    () => glossaryFrom({ quests: quests?.map((q) => q.name), items: quests?.flatMap((q) => q.rewards.map((r) => itemTitle(r.base))), people: quests?.map((q) => q.giver) }),
+    [quests],
+  );
   const [npcs, setNpcs] = useState<NpcView[]>([]);
   const [nearNpc, setNearNpc] = useState<string | null>(null);
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
@@ -923,7 +929,7 @@ function welcomeTimeoutMs(): number | undefined {
         )}
         {dialog && (
           <div className="absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
-            <DialogPanel dialog={dialog} onReply={onReply} onClose={onCloseDialog} />
+            <DialogPanel dialog={dialog} onReply={onReply} onClose={onCloseDialog} glossary={dialogGlossary} />
           </div>
         )}
         {quests && (

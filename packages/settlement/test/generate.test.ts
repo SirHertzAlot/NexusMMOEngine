@@ -419,5 +419,5 @@ describe("generateSettlement", () => {
 // settlement-rules/8 and settlement-gen/0.5.0: street props, paved streets, terraces and stairs. Again for
 // settlement-rules/9 and settlement-gen/0.6.0: industry (and its workplaces ruled out of a town without the land), and the
 // home-space cap no longer counting farmsteads. Again for settlement-rules/10 and settlement-gen/0.7.0: the guild hall; and for
-// settlement-rules/11 and settlement-gen/0.8.0: resource nodes (none here) and their gate.
-const GOLDEN = "19252664017f0dc7e165005ac34982570868b819dc927b213a028b07bab32108";
+// settlement-rules/11 and settlement-gen/0.8.0: resource nodes (none here) and their gate; and for settlement-rules/12 and settlement-gen/0.9.0: property fences along the lines homes share.
+const GOLDEN = "d0f6c07553f599720731fc4ffce04f6fc8c8902f519016493080543e8a3bb3ab";

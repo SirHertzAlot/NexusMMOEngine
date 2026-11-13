@@ -154,7 +154,7 @@ const IMPL = {
     },
   },
   places: {
-    cmds: (c) => [node(c, "packages/settlement/dist/src/places-cli.js", ["--world", c.paths.worldSpec, "--scenes", c.paths.scenesDir, "--out", join(c.paths.settlementOut, "places.json"), "--seed", String(c.opts.seed)])],
+    cmds: (c) => [node(c, "packages/settlement/dist/src/places-cli.js", ["--world", c.paths.worldSpec, "--scenes", c.paths.scenesDir, "--out", join(c.paths.settlementOut, "places.json"), "--seed", String(c.opts.seed), ...(c.paths.hasCatalog ? ["--catalog", c.paths.catalog] : [])])],
   },
   "scale-fit": {
     cmds: (c) => [node(c, "packages/settlement/dist/src/scale-fit-cli.js", ["--catalog", c.paths.catalog, "--scale", c.paths.scaleBase, "--out", c.paths.scaleOut])],

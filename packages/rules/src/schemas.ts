@@ -408,6 +408,8 @@ export const ItemBaseRulesSchema = z.strictObject({
   /** Uses before it breaks. */
   durability: z.number().int().positive().default(100),
   hand: Hand.default("none"),
+  /** Cells it takes in a bag laid out as a grid (CF6): width across, height down. One cell unless the rules say. */
+  footprint: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]).default([1, 1]),
   /** Armour slot it is worn in (U10); "none" for held items. */
   slot: ArmourSlot.default("none"),
   /** The technique a plain attack with it uses (a combat.json technique). */
@@ -463,6 +465,11 @@ export const LootSchema = z.strictObject({
   pickupRange: positive.default(2.5),
   /** Bag slots per character. */
   bagSlots: z.number().int().min(1).max(256).default(24),
+  /**
+   * Cells across when the bag is a grid (CF6): items then take their base's `footprint` and can be moved and turned.
+   * Absent: the plain slot bag, one cell per item.
+   */
+  bagColumns: z.number().int().min(1).max(64).optional(),
   /** Most items lying on the ground in a region at once: past it, the oldest go. */
   maxGroundItems: z.number().int().min(1).max(65536).default(4096),
 });

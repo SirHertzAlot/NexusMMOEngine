@@ -13,6 +13,7 @@
  * `restore` rebuilds an item from its ledger row after a restart.
  */
 
+import { NOT_A_CELL, checkPlace, firstFit, gridFor, packPlacement, stamp, unpackPlacement, type Footprint, type GridSize, type PlaceRefusal, type Placement } from "@mmo-engine/protocol";
 import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
 
 export const ItemWhere = {
@@ -37,6 +38,16 @@ export type ItemWhereCode = (typeof ItemWhere)[keyof typeof ItemWhere];
 
 const INITIAL_CAPACITY = 1024;
 
+const ONE: Footprint = [1, 1];
+
+/** How a bag is laid out (roadmap CF6): omit it and every item is one cell in one row, exactly the slot bag. */
+export interface BagLayout {
+  /** Cells across; the grid has ceil(bagSlots / columns) rows. */
+  columns?: number;
+  /** An item definition's footprint in cells; absent: one cell each. */
+  footprintOf?: (def: number) => Footprint;
+}
+
 export class ItemStore {
   /** Columns, indexed by slot. */
   ids: Uint32Array;
@@ -56,6 +67,15 @@ export class ItemStore {
   ledger?: ItemLedger;
   private readonly slotOf = new Map<number, number>();
   private readonly bags = new Map<number, Uint32Array>();
+  /** Each character's bag cells: the item id on every cell it covers (0: free, NOT_A_CELL: past the last slot). */
+  private readonly cellsOf = new Map<number, Uint32Array>();
+  /** Bag items that lie turned a quarter. */
+  private readonly turned = new Set<number>();
+  /** The bag as a grid. */
+  readonly grid: GridSize;
+  /** Whether the bag was given a layout (columns): the inventory then says where each item lies. */
+  readonly spatial: boolean;
+  private readonly footprintOf: (def: number) => Footprint;
   /** Item id held in each hand ([main, off]; 0: empty), per character. */
   private readonly handsOf = new Map<number, Uint32Array>();
   /** Item id worn in each armour slot (ARMOUR_SLOTS order; 0: empty), per character. */
@@ -65,7 +85,12 @@ export class ItemStore {
     /** Bag slots per character (rules loot.bagSlots). */
     readonly bagSlots: number,
     capacity = INITIAL_CAPACITY,
+    layout: BagLayout = {},
   ) {
+    this.spatial = layout.columns !== undefined;
+    this.grid = gridFor(bagSlots, layout.columns ?? bagSlots);
+    // Footprints only mean something in a grid: a plain slot bag is one cell per item, whatever the rules say.
+    this.footprintOf = this.spatial ? (layout.footprintOf ?? (() => ONE)) : () => ONE;
     this.capacity = capacity;
     this.ids = new Uint32Array(capacity);
     this.defs = new Uint32Array(capacity);
@@ -110,9 +135,16 @@ export class ItemStore {
     this.slotOf.set(row.id, slot);
     this.used++;
     if (row.id >= this.nextId) this.nextId = row.id + 1;
-    if (row.kind === LedgerKind.Bag && row.slot < this.bagSlots) {
-      this.bag(row.owner)[row.slot] = row.id;
-      this.where[slot] = ItemWhere.Bag;
+    if (row.kind === LedgerKind.Bag && (row.slot & 0x7fff) < this.bagSlots) {
+      // Where it lay (its anchor and turn); when a footprint now overlaps, or the grid changed, the first place it fits.
+      const f = this.footprintOf(row.def);
+      const cells = this.cells(row.owner);
+      const want = unpackPlacement(this.grid, row.slot);
+      const at = checkPlace(this.grid, cells, f, want, row.id) === null ? want : firstFit(this.grid, cells, f, row.id);
+      if (at) {
+        this.lay(row.owner, row.id, f, at);
+        this.where[slot] = ItemWhere.Bag;
+      } else this.where[slot] = ItemWhere.Free;
     } else if (row.kind === LedgerKind.Hold && row.slot < 2) {
       this.hands(row.owner)[row.slot] = row.id;
       this.where[slot] = ItemWhere.Held;
@@ -167,15 +199,85 @@ export class ItemStore {
    */
   putInBag(character: number, id: number): number {
     const slot = this.mustSlot(id);
-    const bag = this.bag(character);
-    const free = bag.indexOf(0);
-    if (free < 0) return -1;
+    const f = this.footprintOf(this.defs[slot]);
+    // Where it fits (its own cells, when it is already in this bag, do not block it).
+    const at = firstFit(this.grid, this.cells(character), f, id);
+    if (!at) return -1;
     this.takeFromWherever(slot, id);
-    bag[free] = id;
+    this.lay(character, id, f, at);
     this.where[slot] = ItemWhere.Bag;
     this.owner[slot] = character;
-    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, free, this.durability[slot]);
-    return free;
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, at), this.durability[slot]);
+    return at.y * this.grid.columns + at.x;
+  }
+
+  /**
+   * Move an item within a character's bag to `to`, turned or not (CF6). The placement is checked here, whatever the
+   * client said: wholly inside the grid, over nothing else, and turned only if the item is not square. Nothing moves
+   * on a refusal.
+   */
+  moveInBag(character: number, id: number, to: Placement): PlaceRefusal | "not-yours" | null {
+    if (!this.inBagOf(character, id)) return "not-yours";
+    const slot = this.mustSlot(id);
+    const f = this.footprintOf(this.defs[slot]);
+    const refusal = checkPlace(this.grid, this.cells(character), f, to, id);
+    if (refusal) return refusal;
+    this.takeFromBag(character, id);
+    this.lay(character, id, f, to);
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, to), this.durability[slot]);
+    return null;
+  }
+
+  /** Where an item lies in a character's bag (anchor and turn), or null when it is not there. */
+  placementOf(character: number, id: number): Placement | null {
+    if (!this.inBagOf(character, id)) return null;
+    const i = this.bag(character).indexOf(id);
+    if (i < 0) return null;
+    return { x: i % this.grid.columns, y: Math.floor(i / this.grid.columns), rot: this.turned.has(id) };
+  }
+
+  /** The footprint (before any turn) of an item definition. */
+  footprint(def: number): Footprint {
+    return this.footprintOf(def);
+  }
+
+  /**
+   * Whether items of these definitions would all fit in a character's bag, one after another, once the items in
+   * `removing` (in that bag now, about to leave it) are gone: the check before a swap or a pickup.
+   */
+  canFit(character: number, defs: readonly number[], removing: readonly number[] = []): boolean {
+    const cells = Uint32Array.from(this.cells(character));
+    for (const id of removing) {
+      const at = this.placementOf(character, id);
+      if (at) stamp(this.grid, cells, this.footprintOf(this.defs[this.mustSlot(id)]), at, 0);
+    }
+    let n = 0;
+    for (const def of defs) {
+      const f = this.footprintOf(def);
+      const at = firstFit(this.grid, cells, f);
+      if (!at) return false;
+      stamp(this.grid, cells, f, at, ++n); // any non-zero mark will do
+    }
+    return true;
+  }
+
+  /** A character's bag cells, created (with the cells past the last slot closed) on first use. */
+  private cells(character: number): Uint32Array {
+    let c = this.cellsOf.get(character);
+    if (!c) {
+      c = new Uint32Array(this.grid.columns * this.grid.rows);
+      for (let i = this.bagSlots; i < c.length; i++) c[i] = NOT_A_CELL;
+      this.cellsOf.set(character, c);
+    }
+    return c;
+  }
+
+  /** Mark an item on its cells and at its anchor, and remember a turn. */
+  private lay(character: number, id: number, f: Footprint, at: Placement): void {
+    stamp(this.grid, this.cells(character), f, at, id);
+    this.bag(character)[at.y * this.grid.columns + at.x] = id;
+    if (at.rot) this.turned.add(id);
+    else this.turned.delete(id);
   }
 
   /**
@@ -188,14 +290,15 @@ export class ItemStore {
     const slot = this.slotOf.get(id);
     if (slot === undefined) return false;
     if (!Number.isInteger(at) || at < 0 || at >= this.bagSlots) return false;
-    const bag = this.bag(character);
-    if (bag[at] !== 0 && bag[at] !== id) return false;
-    if (bag[at] === id) return true;
+    const f = this.footprintOf(this.defs[slot]);
+    const to: Placement = { x: at % this.grid.columns, y: Math.floor(at / this.grid.columns), rot: false };
+    if (this.bag(character)[at] === id && !this.turned.has(id)) return true;
+    if (checkPlace(this.grid, this.cells(character), f, to, id) !== null) return false;
     this.takeFromWherever(slot, id);
-    bag[at] = id;
+    this.lay(character, id, f, to);
     this.where[slot] = ItemWhere.Bag;
     this.owner[slot] = character;
-    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, at, this.durability[slot]);
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, to), this.durability[slot]);
     return true;
   }
 
@@ -233,17 +336,17 @@ export class ItemStore {
     return w;
   }
 
-  /** Empty bag slots a character has. */
+  /** Empty bag cells a character has. */
   emptySlots(character: number): number {
-    const bag = this.bag(character);
+    const cells = this.cells(character);
     let n = 0;
-    for (let i = 0; i < bag.length; i++) if (bag[i] === 0) n++;
+    for (let i = 0; i < cells.length; i++) if (cells[i] === 0) n++;
     return n;
   }
 
-  /** Whether a character's bag has an empty slot. */
+  /** Whether a character's bag has an empty cell (for an item of known size, `canFit`). */
   hasRoom(character: number): boolean {
-    return this.bag(character).indexOf(0) >= 0;
+    return this.cells(character).indexOf(0) >= 0;
   }
 
   /** A character's bag: item id per slot, 0 when empty. Created empty on first use. */
@@ -275,7 +378,11 @@ export class ItemStore {
     const bag = this.bags.get(character);
     if (!bag) return;
     const i = bag.indexOf(id);
-    if (i >= 0) bag[i] = 0;
+    if (i < 0) return;
+    const at: Placement = { x: i % this.grid.columns, y: Math.floor(i / this.grid.columns), rot: this.turned.has(id) };
+    stamp(this.grid, this.cells(character), this.footprintOf(this.defs[this.mustSlot(id)]), at, 0);
+    bag[i] = 0;
+    this.turned.delete(id);
   }
 
   private mustSlot(id: number): number {

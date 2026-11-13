@@ -1,5 +1,5 @@
 {
-  "version": "settlement-rules/11",
+  "version": "settlement-rules/12",
   "demographics": {
     "householdSizeX10": 44,
     "ageShares": {
@@ -174,6 +174,11 @@
         1000,
         400,
         4500
+      ],
+      "fence": [
+        2500,
+        200,
+        1200
       ]
     },
     "lampEveryPlots": 2,
@@ -214,6 +219,14 @@
       "stepRiseMm": 200,
       "stepTreadMm": 350,
       "stairsWidthMm": 3000
+    },
+    "fences": {
+      "enabled": true,
+      "pieceMm": 2500,
+      "frontSetbackMm": 4000,
+      "between": [
+        "housing"
+      ]
     }
   },
   "industry": {

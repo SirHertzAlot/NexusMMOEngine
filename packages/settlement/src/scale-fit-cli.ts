@@ -11,7 +11,7 @@ import { dirname } from "node:path";
 import { fromUser, settlementPaths } from "./paths.js";
 import { parseArgs } from "node:util";
 import { validateScale, type ScaleDoc } from "@mmo-engine/scene";
-import { DEFAULT_ART_PATTERNS, type CatalogModel } from "./art.js";
+import { DEFAULT_ART_PATTERNS, DEFAULT_PROP_PATTERNS, END_TO_END_KINDS, type CatalogModel } from "./art.js";
 import { fitScale } from "./fit.js";
 import { formatScaleReport, scaleReport } from "./report.js";
 import { defaultRules } from "./rules.js";
@@ -26,10 +26,12 @@ if (issues.length) {
 }
 const models = (JSON.parse(readFileSync(fromUser(o.catalog ?? paths.catalog), "utf8")) as { models: CatalogModel[] }).models;
 const rules = defaultRules(paths.rules);
-const doc = fitScale(models, DEFAULT_ART_PATTERNS, rules, base as ScaleDoc);
+// Street furniture is not fitted, but the pieces that must meet end to end (a property fence) are, like the wall.
+const patterns = { ...DEFAULT_ART_PATTERNS, ...Object.fromEntries(END_TO_END_KINDS.filter((k) => k in DEFAULT_PROP_PATTERNS).map((k) => [k, DEFAULT_PROP_PATTERNS[k]!])) };
+const doc = fitScale(models, patterns, rules, base as ScaleDoc);
 const out = fromUser(o.out ?? paths.scaleOut);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(doc, null, 2) + "\n");
-const rows = scaleReport(models, DEFAULT_ART_PATTERNS, doc, rules);
+const rows = scaleReport(models, patterns, doc, rules);
 console.log(formatScaleReport(rows));
 console.log(`[scale-fit] ${Object.keys(doc.assets).length} models fitted, ${rows.filter((r) => r.overflow).length} overflow; wrote ${out} (gitignored; MMO_SCALE=content/scale.local.json)`);

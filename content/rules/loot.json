@@ -2,7 +2,8 @@
   "ownershipSeconds": 30,
   "despawnSeconds": 300,
   "pickupRange": 2.5,
-  "bagSlots": 24,
+  "bagSlots": 48,
+  "bagColumns": 8,
   "maxGroundItems": 4096,
   "tables": {
     "key-rack": {

@@ -31,12 +31,15 @@ export type ItemHand = "main" | "off" | "both" | "none";
  *   armour goes to its slot instead (U10);
  * - use: eat or drink a provision from the bag (it restores hunger or
  *   thirst and is used up);
- * - unequip: what a hand holds, or an armour slot wears, back into the bag.
+ * - unequip: what a hand holds, or an armour slot wears, back into the bag;
+ * - move (CF6): an item within a grid bag to cell (x, y), turned a quarter when `rot`. The server checks the
+ *   placement (inside the grid, over nothing, turned only if not square); refusals are 4005.
  */
 export type ItemAction =
   | { kind: "item"; action: "drop"; item: number }
   | { kind: "item"; action: "equip"; item: number }
   | { kind: "item"; action: "use"; item: number }
+  | { kind: "item"; action: "move"; item: number; x: number; y: number; rot?: boolean }
   | { kind: "item"; action: "unequip"; hand: "main" | "off" }
   | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 
@@ -57,6 +60,8 @@ export interface ItemView {
   slot?: string;
   /** The composed stats (power, armour, crit, …). */
   stats: Record<string, number>;
+  /** In a grid bag (CF6): where it lies and the cells it covers once turned. Absent in a plain slot bag. */
+  at?: { x: number; y: number; rot: boolean; w: number; h: number };
   /** Uses left before it breaks. */
   durability: number;
   /** The model it shows as (art catalog id), "" for the placeholder. */
@@ -73,7 +78,10 @@ export type ArmourSlotName = (typeof ARMOUR_SLOT_NAMES)[number];
 
 export interface InventoryMessage {
   kind: "inventory";
+  /** Slot i's item, or null: in a grid bag an item stands only at its anchor cell (`at` says how far it reaches). */
   bag: Array<ItemView | null>;
+  /** The bag as a grid (CF6): cells across and down. Absent: a plain slot bag. */
+  grid?: { columns: number; rows: number; slots: number };
   /** What each hand holds (M3b); null: empty. A two-handed item is in `main`. */
   main?: ItemView | null;
   off?: ItemView | null;
