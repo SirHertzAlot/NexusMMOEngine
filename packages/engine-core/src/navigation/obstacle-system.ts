@@ -102,6 +102,15 @@ export class NavObstacleSystem implements SimSystem {
     }
     for (const e of entered(sim.ecs) as number[]) {
       if (BodyConfig.motionType[e] !== MotionType.Static) continue;
+      // Thin horizontal slabs (walkable building floor decks, doorway lintels, low stair treads)
+      // must NOT carve 2m tall unwalkable holes in Detour's ground-level navmesh.
+      if (
+        BodyConfig.shapeKind[e] === ShapeKind.Box &&
+        BodyConfig.halfY[e] <= 0.2 &&
+        Math.max(BodyConfig.halfX[e], BodyConfig.halfZ[e]) >= 0.6
+      ) {
+        continue;
+      }
       const ob = this.shape(e);
       this.byEid.set(e, ob);
       this.waiting.push(ob);

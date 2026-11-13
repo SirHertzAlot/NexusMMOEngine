@@ -69,9 +69,15 @@ describe("resolvePaths", () => {
     assert.throws(() => make({ MMO_ASSETS_DIR: "/a", MMO_SCENES_DIR: "/a/scenes" }), /MMO_SCENES_DIR.*MMO_ASSETS_DIR/s);
   });
 
-  it("the catalog may be missing: that is reported, not an error", () => {
+  it("the catalog and synthesis library may be missing: that is reported, not an error", () => {
     const p = make({}, {}, (f) => !f.endsWith("catalog.json"));
     assert.equal(p.hasCatalog, false);
     assert.equal(make().hasCatalog, true);
+    const noSyn = make({}, {}, (f) => !f.endsWith(".local.json"));
+    assert.equal(noSyn.hasSynthesis, false);
+    assert.equal(noSyn.synthesis, at("content/synthesis/fantasy-kingdom.local.json"));
+    assert.equal(make().hasSynthesis, true);
+    assert.throws(() => make({ MMO_SYNTHESIS: "/missing.json" }, {}, (f) => !f.endsWith("missing.json")), /MMO_SYNTHESIS.*does not exist/s);
+    assert.equal(make({ MMO_SYNTHESIS: "/env-syn.json" }, { synthesis: "/flag-syn.json" }).synthesis, resolve("/flag-syn.json"));
   });
 });
