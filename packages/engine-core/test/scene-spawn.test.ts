@@ -310,6 +310,26 @@ describe("structures in a scene", () => {
     assert.equal(C.AssetRef.assetHash[e], fnv1a32("structure:town_gate"));
     assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, e), "no body: nothing to bump into");
   });
+
+  it("gives a walk-through stand-in (a paved street) its size and rests it on the ground, as a body-less box has no other size", () => {
+    const { deps } = setup(); // ground at 2 m
+    const street = { id: "paving-1", transform: { position: [10, 0, 20], rotation: [0, 90, 0] }, components: { Structure: { kind: "paved_road", asset: "", width: 6, depth: 54, height: 0.1 }, Collider: { shape: "none" } } };
+    const r = spawnScene(doc([street]) as never, { ...deps, scale: ((_c: unknown, a: string) => (a === "structure:paved_road" ? 1.5 : 1)) as never });
+    const e = r.spawned[0]!.entities[0]!;
+    assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, e), "still walked over");
+    assert.ok(Math.abs(C.Transform.sx[e]! - 6 * 1.5) < 1e-5, "width in the scale, times the building factor");
+    assert.ok(Math.abs(C.Transform.sy[e]! - 0.1 * 1.5) < 1e-5);
+    assert.ok(Math.abs(C.Transform.sz[e]! - 54 * 1.5) < 1e-5);
+    assert.ok(Math.abs(C.Transform.py[e]! - (2 + (0.1 * 1.5) / 2)) < 1e-5, "its underside on the ground, not its centre");
+  });
+
+  it("leaves a solid structure's scale alone (its BodyConfig sizes it)", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([node("smithy-7", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, deps);
+    const e = r.spawned[0]!.entities[0]!;
+    assert.equal(C.Transform.sx[e], 1);
+    assert.equal(C.Transform.sy[e], 1);
+  });
 });
 
 describe("sea level in a scene", () => {
