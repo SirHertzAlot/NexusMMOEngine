@@ -61,8 +61,9 @@ test("registers each modular building's parts with their middles and colliders",
     assert.deepEqual(p.part.size, [2, 2, 2]);
     assert.deepEqual(p.offset, [1, -1, 0]);
   }
-  assert.equal(h1[1]!.colliders.length, 1, "part 1 has its collider node");
-  assert.equal(h1[0]!.colliders.length, 0);
+  assert.equal(h1[1]!.colliderWires?.length, 1, "part 1 has its collider node");
+  assert.equal(h1[0]!.colliderWires?.length, 0);
+  assert.ok(h1.every((p) => typeof p.wire === "bigint"), "each part carries the wire id it spawned with");
 });
 
 test("grounds a building at its footing", () => {
@@ -82,4 +83,27 @@ test("is off without a collapse system", () => {
   const creatures = new CreatureSystem({ creatures: game.rules.creatures.creatures, bases: game.rules.items.bases });
   const r = spawnScene({ version: 1, name: "t", kind: "world", nodes: [house("h1", 0, 4)] } as never, { sim, creatures, table: () => table });
   assert.ok(r.spawned.length > 0);
+});
+
+test("a part the break system removes while the scene spawns is registered as gone, not as the entity that took its slot", () => {
+  SimWorld.resetEntityCursorForTesting();
+  const sim = new SimWorld();
+  const creatures = new CreatureSystem({ creatures: game.rules.creatures.creatures, bases: game.rules.items.bases });
+  let specs: readonly CollapsePartSpec[] = [];
+  spawnScene({ version: 1, name: "t", kind: "world", nodes: [house("h1", 0, 4)] } as never, {
+    sim,
+    creatures,
+    table: () => table,
+    // A break record re-applied on boot removes the wall parts at once; the next entity spawned reuses the slot.
+    breakables: { register: (eid) => sim.despawn(eid) },
+    structureBreakable: (kind) => (kind === "wall" ? ({ health: 10, into: "remove", respawnS: null } as never) : undefined),
+    collapse: { registerBuilding: (_s, _k, parts) => void (specs = parts) },
+  });
+  assert.equal(specs.length, 4);
+  const [floor, ...walls] = specs;
+  assert.ok(sim.resolveWireId(floor!.wire!) >= 0, "the floor is alive");
+  for (const w of walls) assert.equal(sim.resolveWireId(w.wire!), -1, "a removed wall resolves to nothing, whoever took its slot");
+  const col = walls[0]!.colliderWires!;
+  assert.equal(col.length, 1);
+  assert.ok(sim.resolveWireId(col[0]!) >= 0, "and its collider, spawned after, is its own live entity");
 });

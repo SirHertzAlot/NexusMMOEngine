@@ -332,6 +332,10 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
   const doc = expanded.doc;
   const worlds = worldNodes(doc);
   const { ancestorGroup, footings } = computeBuildingFootings(worlds, deps);
+  // What a modular building's parts were when they spawned (DE4): a part the break system removes during the spawn
+  // frees its slot for the next entity, so an entity id read afterwards may be somebody else's.
+  const partSpawn = new Map<string, { wire: bigint; x: number; y: number; z: number; qy: number; qw: number }>();
+  const colliderWires = new Map<string, bigint>();
 
   for (const w of worlds) {
     const { node } = w;
@@ -439,6 +443,9 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           walkThrough && namedModel ? w.scale : undefined,
         );
         const entities = [building];
+        if (deps.collapse && ancestorGroup.has(node.id)) {
+          partSpawn.set(node.id, { wire: deps.sim.wireId(building), x: Transform.px[building]!, y: Transform.py[building]!, z: Transform.pz[building]!, qy: Transform.qy[building]!, qw: Transform.qw[building]! });
+        }
         if (drop > 0 && !walkThrough) {
           // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).
           if (BodyConfig.shapeKind[building] === ShapeKind.Box) BodyConfig.halfY[building] = Math.max(BodyConfig.halfY[building]!, drop);
@@ -535,12 +542,14 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
       }
     }
     if (collision && collision.shape !== "none") {
-      out.spawned.push({ id: node.id, what: `collider ${collision.shape}`, entities: [spawnBody(deps, node.id, w, ground, names[0] || `collider:${node.id}`, collision)] });
+      const colliderEntity = spawnBody(deps, node.id, w, ground, names[0] || `collider:${node.id}`, collision);
+      if (deps.collapse && ancestorGroup.has(node.id)) colliderWires.set(node.id, deps.sim.wireId(colliderEntity));
+      out.spawned.push({ id: node.id, what: `collider ${collision.shape}`, entities: [colliderEntity] });
       continue;
     }
     out.skipped.push({ id: node.id, reason: names.length > 0 ? `nothing spawns "${names[0]}"` : "no prefab or Spawner creature" });
   }
-  if (deps.collapse) registerCollapsibleBuildings(doc.name, ancestorGroup, new Map(worlds.map((w) => [w.node.id, w.node])), (g) => footings.get(g)?.floor, out, deps, deps.collapse);
+  if (deps.collapse) registerCollapsibleBuildings(doc.name, ancestorGroup, new Map(worlds.map((w) => [w.node.id, w.node])), (g) => footings.get(g)?.floor, partSpawn, colliderWires, out, deps, deps.collapse);
   return out;
 }
 
@@ -555,48 +564,53 @@ function registerCollapsibleBuildings(
   ancestorGroup: ReadonlyMap<string, string>,
   nodes: ReadonlyMap<string, { components?: Record<string, Record<string, unknown>> }>,
   floorOf: (group: string) => number | undefined,
+  partSpawn: ReadonlyMap<string, { wire: bigint; x: number; y: number; z: number; qy: number; qw: number }>,
+  colliderWires: ReadonlyMap<string, bigint>,
   out: SceneSpawnResult,
   deps: SceneSpawnDeps,
   collapse: NonNullable<SceneSpawnDeps["collapse"]>,
 ): void {
-  const parts = new Map<string, Map<string, { eid: number; kind: string; colliders: number[] }>>();
-  const colliders = new Map<string, Map<string, number[]>>();
+  // Parts by group, keyed `<base>#<N>`; their colliders (by wire id) under the same key.
+  const parts = new Map<string, Map<string, { id: string; kind: string }>>();
+  const colliders = new Map<string, Map<string, bigint[]>>();
   for (const r of out.spawned) {
     const group = ancestorGroup.get(r.id);
     if (!group) continue;
     const vis = /^(.*)-vis-(\d+)$/.exec(r.id);
-    if (vis && r.what.startsWith("structure ") && r.entities[0] !== undefined) {
+    if (vis && r.what.startsWith("structure ") && partSpawn.has(r.id)) {
       const g = parts.get(group) ?? new Map();
-      g.set(`${vis[1]}#${vis[2]}`, { eid: r.entities[0], kind: r.what.slice("structure ".length), colliders: [] });
+      g.set(`${vis[1]}#${vis[2]}`, { id: r.id, kind: r.what.slice("structure ".length) });
       parts.set(group, g);
       continue;
     }
     const col = /^(.*)-p(\d+)-col/.exec(r.id);
-    if (col) {
+    const wire = colliderWires.get(r.id);
+    if (col && wire !== undefined) {
       const g = colliders.get(group) ?? new Map();
-      g.set(`${col[1]}#${col[2]}`, [...(g.get(`${col[1]}#${col[2]}`) ?? []), ...r.entities]);
+      g.set(`${col[1]}#${col[2]}`, [...(g.get(`${col[1]}#${col[2]}`) ?? []), wire]);
       colliders.set(group, g);
     }
   }
   for (const [group, g] of parts) {
     const specs: CollapsePartSpec[] = [];
     for (const [key, p] of g) {
-      const eid = p.eid;
-      const st = nodes.get(key.slice(0, key.lastIndexOf("#")) + "-vis-" + key.slice(key.lastIndexOf("#") + 1))?.components?.Structure;
+      const at = partSpawn.get(p.id)!;
+      const st = nodes.get(p.id)?.components?.Structure;
       if (!st) continue;
       const size: [number, number, number] = [Number(st.width), Number(st.height), Number(st.depth)];
       if (!size.every((v) => Number.isFinite(v) && v > 0)) continue;
       const offset: [number, number, number] = [Number(st.centreX ?? 0), Number(st.centreY ?? 0), Number(st.centreZ ?? 0)];
-      const yaw = 2 * Math.atan2(Transform.qy[eid]!, Transform.qw[eid]!);
+      const yaw = 2 * Math.atan2(at.qy, at.qw);
       const cos = Math.cos(yaw);
       const sin = Math.sin(yaw);
       const part: SupportPart = {
-        pos: [Transform.px[eid]! + offset[0] * cos + offset[2] * sin, Transform.py[eid]! + offset[1], Transform.pz[eid]! - offset[0] * sin + offset[2] * cos],
+        pos: [at.x + offset[0] * cos + offset[2] * sin, at.y + offset[1], at.z - offset[0] * sin + offset[2] * cos],
         size,
         yawDeg: (yaw * 180) / Math.PI,
         category: p.kind,
       };
-      specs.push({ eid, colliders: colliders.get(group)?.get(key) ?? [], part, offset });
+      // A part the break system removed while spawning has no live entity now: the wire ids say so.
+      specs.push({ eid: deps.sim.resolveWireId(at.wire), wire: at.wire, colliders: [], colliderWires: colliders.get(group)?.get(key) ?? [], part, offset });
     }
     const floor = floorOf(group);
     if (specs.length >= 3) collapse.registerBuilding(deps.sim, `${scene}/${group}`, specs, floor !== undefined ? { groundY: floor, groundTol: 0.3 } : {});

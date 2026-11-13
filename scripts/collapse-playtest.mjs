@@ -27,13 +27,13 @@ const game = loadGameRules();
 const doc = JSON.parse(readFileSync(SCENE, "utf8"));
 const kinds = loadStructureBreakables(fileURLToPath(new URL("content/structures.json", ROOT)));
 
-async function world() {
+async function world(store) {
   SimWorld.resetEntityCursorForTesting?.();
   const sim = new SimWorld();
-  const collapse = new CollapseSystem({ maxActive: +(process.env.MAXA ?? 64), perTick: +(process.env.PERTICK ?? 8) });
+  const collapse = new CollapseSystem({ maxActive: +(process.env.MAXA ?? 64), perTick: +(process.env.PERTICK ?? 8), ...(store ? { store } : {}) });
   let pbMs = 0, pbCalls = 0; const origPB = collapse.partBroken.bind(collapse); collapse.partBroken = (s2, e) => { const t = performance.now(); const r = origPB(s2, e); pbMs += performance.now() - t; pbCalls++; return r; };
   globalThis.__pb = () => [pbCalls, +pbMs.toFixed(1)];
-  const breaks = new BreakSystem(breakDefsOf(), { onBreak: (s, ev) => collapse.partBroken(s, ev.eid) });
+  const breaks = new BreakSystem(breakDefsOf(), { ...(store ? { store } : {}), onBreak: (s, ev) => collapse.partBroken(s, ev.eid) });
   const creatures = new CreatureSystem({ creatures: game.rules.creatures.creatures, bases: game.rules.items.bases });
   const t0 = performance.now();
   const r = spawnScene(doc, {
@@ -59,6 +59,31 @@ async function world() {
   return { sim, collapse, breaks, physics, r, spawnMs };
 }
 
+if (process.env.PERSIST) {
+  // Persistence: demolish a building, let it settle, then boot a second world from the same store and compare.
+  const { SqlitePlacesStore } = await imp("interact/index.js");
+  const Database = (await import("better-sqlite3")).default;
+  const store = new SqlitePlacesStore(new Database(":memory:"));
+  const a = await world(store);
+  const pick = [...a.collapse.buildings.entries()].sort((x, y) => y[1].parts.length - x[1].parts.length)[1];
+  const grounded = pick[1].graph.grounded.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+  for (const i of grounded) { const e = a.sim.resolveWireId(pick[1].parts[i].wid); if (e >= 0) C.Health.current[e] = 0; }
+  for (let i = 0; i < 30 * 40; i++) { a.breaks.step(a.sim); a.collapse.step(a.sim, dt); a.physics.step(a.sim, dt); }
+  const rec = store.all().filter((r) => r.kind === "collapse");
+  console.log("run 1:", { building: pick[0], parts: pick[1].parts.length, fell: a.collapse.stats.fallen, stillFalling: a.collapse.stats.active, queued: a.collapse.stats.queued, collapseRecords: rec.length, breakRecords: store.all().filter((r) => r.kind === "break").length, entities: a.sim.liveEntityCount });
+  const poseOf = (w2, key) => { const b = w2.collapse.buildings.get(key); return b.parts.map((p) => { const e = w2.sim.resolveWireId(p.wid); return e < 0 ? null : [+C.Transform.px[e].toFixed(2), +C.Transform.py[e].toFixed(2), +C.Transform.pz[e].toFixed(2)]; }); };
+  const before = poseOf(a, pick[0]);
+  a.physics.close();
+  const b = await world(store);
+  const after = poseOf(b, pick[0]);
+  const same = before.filter((p, i) => JSON.stringify(p) === JSON.stringify(after[i])).length;
+  if (process.env.SHOWDIFF) console.log(before.map((p, i) => (JSON.stringify(p) === JSON.stringify(after[i]) ? null : [i, p, after[i]])).filter(Boolean).slice(0, 6));
+  let ticks = 0;
+  for (; ticks < 30 * 5; ticks++) { b.breaks.step(b.sim); b.collapse.step(b.sim, dt); b.physics.step(b.sim, dt); }
+  console.log("run 2 (restart):", { partsAtSamePose: same + " of " + before.length, partsGoneBoth: before.filter((p, i) => p === null && after[i] === null).length, fellAgainAfter5s: b.collapse.stats.fallen, stillFalling: b.collapse.stats.active, queued: b.collapse.stats.queued, entities: b.sim.liveEntityCount, spawnMs: +b.spawnMs.toFixed(0) });
+  b.physics.close();
+  process.exit(0);
+}
 const w = await world();
 const { sim, collapse, breaks, physics } = w;
 const stats = { spawned: w.r.spawned.length, skipped: w.r.skipped.length, buildings: collapse.stats.buildings, entities: sim.liveEntityCount, spawnMs: +w.spawnMs.toFixed(0) };

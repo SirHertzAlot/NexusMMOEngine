@@ -15,7 +15,13 @@
  * keeps its final pose; a part that is still moving after `maxAgeS` is frozen the same way.
  *
  * Cost is bounded: at most `perTick` parts are released per tick and at most `maxActive` carriers are dynamic at
- * once; the rest wait in the queue. Not persisted yet: a restart rebuilds the buildings whole (DE4b).
+ * once; the rest wait in the queue.
+ *
+ * Persistence (DE4b): a part that comes to rest is saved to the places store (`collapse`, keyed by building and part,
+ * with its resting pose); on boot `registerBuilding` puts each saved part back where it lay (its colliders gone, the
+ * visual at the pose, a static carrier under it), treats a part whose visual is already gone (a break the break
+ * system re-applied) as broken, and lets whatever then lacks support fall again, as it would have. A part that was
+ * mid-fall at shutdown simply falls again.
  */
 
 import { addComponent } from "bitecs";
@@ -24,6 +30,7 @@ import { fnv1a32 } from "@mmo-engine/scatter";
 import { AssetRef, BodyConfig, MotionType, ShapeKind, Transform, Velocity } from "../components.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { PlacesStore } from "./places-store.js";
 
 /** The asset hash the client hides (collision-only entities). */
 const COLLIDER_HASH = fnv1a32("collider") >>> 0;
@@ -33,6 +40,12 @@ export interface CollapsePartSpec {
   eid: number;
   /** Entities that are this part's collision only (removed when it falls). */
   colliders: readonly number[];
+  /**
+   * Wire ids taken when the entities were spawned, for a scene whose break system may remove a part while it spawns
+   * (the freed slot is reused at once, so the entity ids above can then name somebody else): they win when given.
+   */
+  wire?: bigint;
+  colliderWires?: readonly bigint[];
   /** Its box, for the support graph and its carrier: the middle of the model, in world metres. */
   part: SupportPart;
   /** From the visual's position to the middle of the model, in the visual's own axes (default: none). */
@@ -52,6 +65,9 @@ export interface CollapseOptions {
   maxAgeS?: number;
   /** Mass in kg per cubic metre of a part's box (default 250). */
   density?: number;
+  /** Where resting parts are kept across restarts (DE4b); absent: not persisted. */
+  store?: PlacesStore;
+  now?: () => number;
   /** A part fell: its building key and visual entity (for effects, tallies). */
   onFall?: (sim: SimWorld, building: string, eid: number) => void;
 }
@@ -80,6 +96,8 @@ interface Queued {
 }
 
 interface Falling {
+  building: Building;
+  index: number;
   /** The visual entity and its carrier. */
   visual: bigint;
   carrier: bigint;
@@ -90,6 +108,17 @@ interface Falling {
 }
 
 const SLOW_MS = 0.05;
+
+/** A body's pose: its middle and its turn. */
+interface Pose {
+  px: number;
+  py: number;
+  pz: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+}
 
 /** `v` turned by the unit quaternion (x, y, z, w). */
 function rotate(v: readonly [number, number, number], qx: number, qy: number, qz: number, qw: number): [number, number, number] {
@@ -158,16 +187,68 @@ export class CollapseSystem implements SimSystem {
       graph,
       gone: new Set(),
       parts: specs.map((s) => ({
-        wid: sim.wireId(s.eid),
-        colliders: s.colliders.map((c) => sim.wireId(c)),
+        wid: s.wire ?? sim.wireId(s.eid),
+        colliders: s.colliderWires ? [...s.colliderWires] : s.colliders.map((c) => sim.wireId(c)),
         size: s.part.size,
         offset: s.offset ?? [0, 0, 0],
         centre: s.part.pos,
       })),
     };
     this.buildings.set(key, b);
-    specs.forEach((s, index) => this.of.set(sim.wireId(s.eid), { building: b, index }));
+    b.parts.forEach((part, index) => this.of.set(part.wid, { building: b, index }));
+    this.restore(sim, b, specs);
     return graph;
+  }
+
+  /** Re-apply what the last run left: parts already broken, and parts that lay at rest (DE4b). */
+  private restore(sim: SimWorld, b: Building, specs: readonly CollapsePartSpec[]): void {
+    const store = this.opts.store;
+    specs.forEach((s, index) => {
+      const part = b.parts[index]!;
+      // A break the break system re-applied on boot: the visual is already gone, its colliders are not.
+      if (sim.resolveWireId(part.wid) < 0) {
+        this.dropColliders(sim, part);
+        b.gone.add(index);
+        this.dirty.add(b);
+        return;
+      }
+      const rec = store?.load("collapse", `${b.key}#${index}`);
+      if (!rec) return;
+      let saved: { n: number; pose: Pose } | null = null;
+      try {
+        saved = JSON.parse(rec.state.slice("fell:".length)) as { n: number; pose: Pose };
+      } catch {
+        saved = null;
+      }
+      // A rebaked building has other parts under the same keys: the record means nothing.
+      if (!rec.state.startsWith("fell:") || !saved || saved.n !== specs.length || !saved.pose) {
+        store!.clear("collapse", `${b.key}#${index}`);
+        return;
+      }
+      this.dropColliders(sim, part);
+      const v = sim.resolveWireId(part.wid);
+      this.spawnCarrier(sim, part, v, false, saved.pose);
+      b.gone.add(index);
+      this.dirty.add(b);
+      this.placeAt(sim, v, part.offset, saved.pose);
+    });
+  }
+
+  private dropColliders(sim: SimWorld, part: PartState): void {
+    for (const c of part.colliders) {
+      const ce = sim.resolveWireId(c);
+      if (ce >= 0) sim.despawn(ce);
+    }
+  }
+
+  /** A visual where a body with `pose` has it: the body's middle less the pivot offset turned with it. */
+  private placeAt(sim: SimWorld, v: number, offset: readonly [number, number, number], pose: Pose): void {
+    const T = Transform;
+    const o = rotate(offset, pose.qx, pose.qy, pose.qz, pose.qw);
+    T.px[v] = pose.px - o[0];
+    T.py[v] = pose.py - o[1];
+    T.pz[v] = pose.pz - o[2];
+    T.qx[v] = pose.qx; T.qy[v] = pose.qy; T.qz[v] = pose.qz; T.qw[v] = pose.qw;
   }
 
   /**
@@ -180,10 +261,7 @@ export class CollapseSystem implements SimSystem {
     if (!at) return false;
     const { building, index } = at;
     if (building.gone.has(index)) return true;
-    for (const c of building.parts[index]!.colliders) {
-      const ce = sim.resolveWireId(c);
-      if (ce >= 0) sim.despawn(ce);
-    }
+    this.dropColliders(sim, building.parts[index]!);
     building.gone.add(index);
     this.dirty.add(building);
     return true;
@@ -228,7 +306,7 @@ export class CollapseSystem implements SimSystem {
         if (ce >= 0) sim.despawn(ce);
       }
       const carrier = this.spawnCarrier(sim, part, visual, true);
-      this.falling.push({ visual: part.wid, carrier: sim.wireId(carrier), offset: part.offset, size: part.size, since: this.now, slowSince: null });
+      this.falling.push({ building: q.building, index: q.index, visual: part.wid, carrier: sim.wireId(carrier), offset: part.offset, size: part.size, since: this.now, slowSince: null });
       this.fallen++;
       this.opts.onFall?.(sim, q.building.key, visual);
     }
@@ -286,11 +364,7 @@ export class CollapseSystem implements SimSystem {
     const c = sim.resolveWireId(f.carrier);
     if (v < 0 || c < 0) return;
     const T = Transform;
-    const o = rotate(f.offset, T.qx[c]!, T.qy[c]!, T.qz[c]!, T.qw[c]!);
-    T.px[v] = T.px[c]! - o[0];
-    T.py[v] = T.py[c]! - o[1];
-    T.pz[v] = T.pz[c]! - o[2];
-    T.qx[v] = T.qx[c]!; T.qy[v] = T.qy[c]!; T.qz[v] = T.qz[c]!; T.qw[v] = T.qw[c]!;
+    this.placeAt(sim, v, f.offset, { px: T.px[c]!, py: T.py[c]!, pz: T.pz[c]!, qx: T.qx[c]!, qy: T.qy[c]!, qz: T.qz[c]!, qw: T.qw[c]! });
   }
 
   /** Freeze parts that have come to rest, or have been falling too long: a static carrier where it lies. */
@@ -316,6 +390,14 @@ export class CollapseSystem implements SimSystem {
       const pose = { px: T.px[c]!, py: T.py[c]!, pz: T.pz[c]!, qx: T.qx[c]!, qy: T.qy[c]!, qz: T.qz[c]!, qw: T.qw[c]! };
       sim.despawn(c);
       this.spawnCarrier(sim, { size: f.size, centre: [pose.px, pose.py, pose.pz] }, v, false, pose);
+      const r4 = (x: number): number => Math.round(x * 1e4) / 1e4;
+      this.opts.store?.save({
+        kind: "collapse",
+        key: `${f.building.key}#${f.index}`,
+        state: `fell:${JSON.stringify({ n: f.building.parts.length, pose: { px: r4(pose.px), py: r4(pose.py), pz: r4(pose.pz), qx: r4(pose.qx), qy: r4(pose.qy), qz: r4(pose.qz), qw: r4(pose.qw) } })}`,
+        at: (this.opts.now ?? Date.now)(),
+        respawnAt: null,
+      });
     }
     this.falling = keep;
   }
