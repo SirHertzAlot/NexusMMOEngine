@@ -58,3 +58,5 @@ export {
   type VfxColorGradient,
 } from "./vfx-schema.js";
 export { vfxToQuarks, vfxToQuarksJson } from "./vfx-convert.js";
+export * from "./baked-store.js";
+export * from "./cinematics/index.js";

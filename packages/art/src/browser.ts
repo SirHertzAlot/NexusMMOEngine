@@ -38,3 +38,4 @@ export {
   type VfxColorGradient,
 } from "./vfx-schema.js";
 export { vfxToQuarks } from "./vfx-convert.js";
+export * from "./cinematics/index.js";
