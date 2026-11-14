@@ -48,9 +48,28 @@ export interface CollapsePartSpec {
   colliderWires?: readonly bigint[];
   /** Its box, for the support graph and its carrier: the middle of the model, in world metres. */
   part: SupportPart;
-  /** From the visual's position to the middle of the model, in the visual's own axes (default: none). */
+  /** From the visual's position to the middle of the model, in the box's axes (default: none). */
   offset?: readonly [number, number, number];
+  /**
+   * The model's tilt within its box's frame, a quaternion (default none): the box, its offset and its carrier keep the
+   * part's yaw, and the model is drawn turned by this inside it (a beam laid on its side).
+   */
+  tilt?: Quat;
 }
+
+export type Quat = readonly [number, number, number, number];
+const NO_TILT: Quat = [0, 0, 0, 1];
+
+/** a * b: turned by b, then by a. */
+export function mulQuat(a: Quat, b: Quat): [number, number, number, number] {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+}
+const unturn = (q: Quat): Quat => [-q[0], -q[1], -q[2], q[3]];
 
 export interface CollapseOptions {
   /** Most carriers dynamic at once (default 64). */
@@ -77,6 +96,7 @@ interface PartState {
   colliders: bigint[];
   size: readonly [number, number, number];
   offset: readonly [number, number, number];
+  tilt: Quat;
   /** Where the middle stood (world), for the carrier. */
   centre: readonly [number, number, number];
 }
@@ -102,6 +122,7 @@ interface Falling {
   visual: bigint;
   carrier: bigint;
   offset: readonly [number, number, number];
+  tilt: Quat;
   size: readonly [number, number, number];
   since: number;
   slowSince: number | null;
@@ -175,7 +196,8 @@ export class CollapseSystem implements SimSystem {
     if (!at) return undefined;
     const part = at.building.parts[at.index]!;
     const T = Transform;
-    const o = rotate(part.offset, T.qx[eid]!, T.qy[eid]!, T.qz[eid]!, T.qw[eid]!);
+    const [qx, qy, qz, qw] = mulQuat([T.qx[eid]!, T.qy[eid]!, T.qz[eid]!, T.qw[eid]!], unturn(part.tilt));
+    const o = rotate(part.offset, qx, qy, qz, qw);
     return { x: T.px[eid]! + o[0], y: T.py[eid]! + o[1], z: T.pz[eid]! + o[2], rx: Math.min(3, Math.max(part.size[0], part.size[2]) / 2), ry: part.size[1] / 2 };
   }
 
@@ -191,6 +213,7 @@ export class CollapseSystem implements SimSystem {
         colliders: s.colliderWires ? [...s.colliderWires] : s.colliders.map((c) => sim.wireId(c)),
         size: s.part.size,
         offset: s.offset ?? [0, 0, 0],
+        tilt: s.tilt ?? NO_TILT,
         centre: s.part.pos,
       })),
     };
@@ -230,7 +253,7 @@ export class CollapseSystem implements SimSystem {
       this.spawnCarrier(sim, part, v, false, saved.pose);
       b.gone.add(index);
       this.dirty.add(b);
-      this.placeAt(sim, v, part.offset, saved.pose);
+      this.placeAt(sim, v, part.offset, saved.pose, part.tilt);
     });
   }
 
@@ -241,14 +264,14 @@ export class CollapseSystem implements SimSystem {
     }
   }
 
-  /** A visual where a body with `pose` has it: the body's middle less the pivot offset turned with it. */
-  private placeAt(sim: SimWorld, v: number, offset: readonly [number, number, number], pose: Pose): void {
+  /** A visual where a body with `pose` has it: the body's middle less the pivot offset turned with it, tilted within it. */
+  private placeAt(sim: SimWorld, v: number, offset: readonly [number, number, number], pose: Pose, tilt: Quat): void {
     const T = Transform;
     const o = rotate(offset, pose.qx, pose.qy, pose.qz, pose.qw);
     T.px[v] = pose.px - o[0];
     T.py[v] = pose.py - o[1];
     T.pz[v] = pose.pz - o[2];
-    T.qx[v] = pose.qx; T.qy[v] = pose.qy; T.qz[v] = pose.qz; T.qw[v] = pose.qw;
+    [T.qx[v], T.qy[v], T.qz[v], T.qw[v]] = mulQuat([pose.qx, pose.qy, pose.qz, pose.qw], tilt);
   }
 
   /**
@@ -306,7 +329,7 @@ export class CollapseSystem implements SimSystem {
         if (ce >= 0) sim.despawn(ce);
       }
       const carrier = this.spawnCarrier(sim, part, visual, true);
-      this.falling.push({ building: q.building, index: q.index, visual: part.wid, carrier: sim.wireId(carrier), offset: part.offset, size: part.size, since: this.now, slowSince: null });
+      this.falling.push({ building: q.building, index: q.index, visual: part.wid, carrier: sim.wireId(carrier), offset: part.offset, tilt: part.tilt, size: part.size, since: this.now, slowSince: null });
       this.fallen++;
       this.opts.onFall?.(sim, q.building.key, visual);
     }
@@ -314,7 +337,7 @@ export class CollapseSystem implements SimSystem {
   }
 
   /** A body-only entity at the part's middle: dynamic while it falls, static where it comes to rest. */
-  private spawnCarrier(sim: SimWorld, part: { size: readonly [number, number, number]; centre: readonly [number, number, number] }, visual: number, dynamic: boolean, pose?: { px: number; py: number; pz: number; qx: number; qy: number; qz: number; qw: number }): number {
+  private spawnCarrier(sim: SimWorld, part: { size: readonly [number, number, number]; centre: readonly [number, number, number]; tilt: Quat }, visual: number, dynamic: boolean, pose?: { px: number; py: number; pz: number; qx: number; qy: number; qz: number; qw: number }): number {
     const e = sim.spawn();
     addComponent(sim.ecs, Transform, e);
     const T = Transform;
@@ -323,7 +346,8 @@ export class CollapseSystem implements SimSystem {
       T.qx[e] = pose.qx; T.qy[e] = pose.qy; T.qz[e] = pose.qz; T.qw[e] = pose.qw;
     } else {
       T.px[e] = part.centre[0]; T.py[e] = part.centre[1]; T.pz[e] = part.centre[2];
-      T.qx[e] = Transform.qx[visual]!; T.qy[e] = Transform.qy[visual]!; T.qz[e] = Transform.qz[visual]!; T.qw[e] = Transform.qw[visual]!;
+      // The carrier is the box, which keeps the part's yaw: the model's tilt is taken back out.
+      [T.qx[e], T.qy[e], T.qz[e], T.qw[e]] = mulQuat([Transform.qx[visual]!, Transform.qy[visual]!, Transform.qz[visual]!, Transform.qw[visual]!], unturn(part.tilt));
     }
     T.sx[e] = T.sy[e] = T.sz[e] = 1;
     addComponent(sim.ecs, AssetRef, e);
@@ -364,7 +388,7 @@ export class CollapseSystem implements SimSystem {
     const c = sim.resolveWireId(f.carrier);
     if (v < 0 || c < 0) return;
     const T = Transform;
-    this.placeAt(sim, v, f.offset, { px: T.px[c]!, py: T.py[c]!, pz: T.pz[c]!, qx: T.qx[c]!, qy: T.qy[c]!, qz: T.qz[c]!, qw: T.qw[c]! });
+    this.placeAt(sim, v, f.offset, { px: T.px[c]!, py: T.py[c]!, pz: T.pz[c]!, qx: T.qx[c]!, qy: T.qy[c]!, qz: T.qz[c]!, qw: T.qw[c]! }, f.tilt);
   }
 
   /** Freeze parts that have come to rest, or have been falling too long: a static carrier where it lies. */
@@ -389,7 +413,7 @@ export class CollapseSystem implements SimSystem {
       const T = Transform;
       const pose = { px: T.px[c]!, py: T.py[c]!, pz: T.pz[c]!, qx: T.qx[c]!, qy: T.qy[c]!, qz: T.qz[c]!, qw: T.qw[c]! };
       sim.despawn(c);
-      this.spawnCarrier(sim, { size: f.size, centre: [pose.px, pose.py, pose.pz] }, v, false, pose);
+      this.spawnCarrier(sim, { size: f.size, centre: [pose.px, pose.py, pose.pz], tilt: f.tilt }, v, false, pose);
       const r4 = (x: number): number => Math.round(x * 1e4) / 1e4;
       this.opts.store?.save({
         kind: "collapse",
