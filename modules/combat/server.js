@@ -57,14 +57,15 @@ export function createSystems(ctx) {
   const magic = new MagicSystem(rules.spells);
 
   // Worn armour: bots and props wear nothing (factor 1).
-  const armourOf = (e) => {
+  const armourOf = (e, kind) => {
     if (!hasComponent(sim.ecs, CharacterRef, e)) return 1;
-    return config.getWornFactor(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
+    return config.getWornFactor(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e], kind);
   };
   const combatDamage = {
     hooks: config.hooks,
     weaponOf: config.getWeaponOf,
     armourOf,
+    techniqueKind: (t) => rules.combat.techniques[t]?.damageKind,
     skills: config.combatSkills,
     body,
     techniques: () => Object.keys(rules.combat.techniques),

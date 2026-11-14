@@ -68,7 +68,9 @@
     "bake:all": "node scripts/bake-all.mjs",
     "settlement:bake": "npm run settlement:bake --workspace=@mmo-engine/settlement --",
     "settlement:region": "npm run settlement:region --workspace=@mmo-engine/settlement --",
-    "crawler:improvements": "node scripts/improvement-crawler.mjs"
+    "crawler:improvements": "node scripts/improvement-crawler.mjs",
+    "graphify:build": "npm run build --workspace=@mmo-engine/graphify",
+    "graphify:check": "node packages/graphify/dist/src/cli.js --check"
   },
   "version": "0.1.0",
   "workspaces": [
@@ -113,7 +115,8 @@
     "packages/build",
     "packages/playtest",
     "packages/render-fx",
-    "packages/synthesis"
+    "packages/synthesis",
+    "packages/graphify"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.1.0",

@@ -7,7 +7,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Retargeter } from "../src/convert/retarget.js";
+import { Retargeter, validateRetargetedClip } from "../src/convert/retarget.js";
+import { ANIMATION_SOURCES, CMU_P1_VERBS, CMU_TAKES, CMU_TRAVERSAL_TAKES } from "../src/convert/convert-animations.js";
 
 interface Rig {
   scene: THREE.Group;
@@ -139,5 +140,40 @@ describe("Retargeter", () => {
     const r = new Retargeter({ scene: src.scene, hips: "src_Hips", map: MAP, rootFrom: clip }, { scene: ours.scene, hips: "Hips" });
     check(src, ours, clip, r);
     assert.ok(direction(ours, "Spine", "Head").y > 0.99, "upright");
+  });
+});
+
+describe("validateRetargetedClip footSlide & CMU P1 traversal", () => {
+  it("measures zero footSlide when planted foot stays still and detects planar skating", () => {
+    const ours = humanoid(OURS, new THREE.Quaternion());
+    const plantedClip = new THREE.AnimationClip("Walk01_Fwd", 1, [
+      new THREE.QuaternionKeyframeTrack("Elbow_L.quaternion", [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+    ]);
+    const calm = validateRetargetedClip(plantedClip, 200, { rig: ours.scene, maxFootSlide: 0.05 });
+    assert.equal(calm.footSlide, 0);
+
+    // Move Hips laterally 0.5 m across 1 s while Ankle_L remains rigid (lowest bone -> planted throughout).
+    const skatingClip = new THREE.AnimationClip("SkatingTest", 1, [
+      new THREE.VectorKeyframeTrack("Hips.position", [0, 1], [0, 1, 0, 0.5, 1, 0]),
+    ]);
+    const bad = validateRetargetedClip(skatingClip, 200, { rig: ours.scene });
+    assert.ok(Math.abs(bad.footSlide - 0.5) < 0.05, `expected ~0.5 m slide, got ${bad.footSlide}`);
+    assert.throws(
+      () => validateRetargetedClip(skatingClip, 200, { rig: ours.scene, maxFootSlide: 0.1 }),
+      /foot slide/,
+    );
+  });
+
+  it("wires pinned P1 CMU traversal takes cleanly without overlapping combat or parked trials", () => {
+    const trav = ANIMATION_SOURCES.find((s) => s.id === "cmu-traversal");
+    assert.ok(trav);
+    assert.equal(trav.clipsExpected, Object.keys(CMU_TRAVERSAL_TAKES).length);
+    assert.equal(Object.keys(CMU_TRAVERSAL_TAKES).length, 20);
+    for (const trial of Object.keys(CMU_TRAVERSAL_TAKES)) {
+      assert.equal(CMU_TAKES[trial], undefined, `duplicate combat/traversal trial ${trial}`);
+      assert.ok(CMU_P1_VERBS[trial].verb);
+    }
+    // 128_01 Motorcycle is explicitly parked in CMU-IMPLEMENTATION-MAP §3.5
+    assert.equal(CMU_TRAVERSAL_TAKES["128_01"], undefined);
   });
 });

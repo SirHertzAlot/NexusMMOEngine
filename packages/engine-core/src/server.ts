@@ -1006,7 +1006,8 @@ async function main(): Promise<void> {
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
   // function, by character id.
-  const wornFactor = (id: number): number => armourFactor(game.rules, itemsOf().armourTotal(id));
+  const wornFactor = (id: number, kind?: "cut" | "blunt" | "thrust"): number =>
+    armourFactor(game.rules, itemsOf().armourTotal(id), kind ? { kind } : undefined);
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   // Slice 2: items/itemDefs come from the items module during assembly.
@@ -1211,7 +1212,7 @@ async function main(): Promise<void> {
       const d = itemsOf().defs;
       return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def], family: d.bases[def] };
     },
-    getArmourOf: (character: number) => wornFactor(character),
+    getArmourOf: (character: number, kind?: "cut" | "blunt" | "thrust") => wornFactor(character, kind),
     getLootPool: () => itemsOf().defs.ofSource("mob"),
     getChestPool: () => itemsOf().defs.ofSource("chest"),
     grantItem: (character: number, def: number) => itemsOf().grantItem(character, def),

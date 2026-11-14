@@ -423,7 +423,11 @@ function decomposeUnityMat(mat: THREE.Matrix4): { pos: Vec3Tuple; rot: QuatTuple
   return { pos: [p.x, p.y, p.z], rot: [q.x, q.y, q.z, q.w], scl: [s.x, s.y, s.z] };
 }
 
-function readPiTrs(mods: UnityPrefabMod[]): {
+/**
+ * A prefab instance's own transform and state. Only the mods aimed at the source's root count when `roots` is given: a
+ * mod aimed at a child (an opened chest lid, a hidden shutter) is that child's, and would move or hide the whole instance.
+ */
+function readPiTrs(mods: UnityPrefabMod[], roots?: ReadonlySet<string>): {
   isActive: boolean;
   name?: string;
   pos: Vec3Tuple;
@@ -437,6 +441,7 @@ function readPiTrs(mods: UnityPrefabMod[]): {
   const scl: Vec3Tuple = [1, 1, 1];
 
   for (const m of mods) {
+    if (roots && m.targetFileId && !roots.has(m.targetFileId)) continue;
     const v = Number(m.value);
     switch (m.propertyPath) {
       case "m_IsActive":
@@ -496,6 +501,8 @@ export interface ExtractUnitySceneOptions {
 }
 
 const DEFAULT_IGNORE = ["global volume", "directional light", "reflection probe", "main camera"];
+/** The fixed fileIDs of a model (FBX) importer's root Transform and GameObject. */
+const MODEL_ROOTS: ReadonlySet<string> = new Set(["-8679921383154817045", "919132149155446097"]);
 
 /**
  * Parse a Unity scene file and extract every placed geometry instance in Engine coordinates,
@@ -522,6 +529,35 @@ export function extractUnitySceneNodes(
     prefabCache.set(assetPath, parsed);
     return parsed;
   };
+
+  // The fileIDs an instance's own overrides target in its source: a model's importer roots, or a prefab's top Transform
+  // and GameObject (a variant's are stripped, standing for its base's roots). Undefined (apply every mod) if unknown.
+  const rootCache = new Map<string, ReadonlySet<string> | undefined>();
+  const rootsOf = (src: string | undefined, depth = 0): ReadonlySet<string> | undefined => {
+    if (!src) return undefined;
+    if (!src.endsWith(".prefab")) return MODEL_ROOTS;
+    if (rootCache.has(src)) return rootCache.get(src);
+    const d = getPrefabDoc(src);
+    let ids: Set<string> | undefined;
+    if (d && depth < 8) {
+      ids = new Set();
+      const strippedRoot = (piId: string | undefined, srcFileId: string | undefined): boolean => {
+        const p = piId ? d.prefabInstances.get(piId) : undefined;
+        if (!p || p.transformParent !== "0" || !srcFileId) return false;
+        return rootsOf(p.sourceGuid ? index.guidToPath.get(p.sourceGuid) : undefined, depth + 1)?.has(srcFileId) ?? false;
+      };
+      for (const tf of d.transforms.values()) {
+        const top = tf.stripped ? strippedRoot(tf.prefabInstance, tf.correspondingSource?.fileId) : !tf.father || tf.father === "0";
+        if (!top) continue;
+        ids.add(tf.fileId);
+        if (tf.gameObject) ids.add(tf.gameObject);
+      }
+      for (const go of d.gameObjects.values()) if (go.prefabInstance && strippedRoot(go.prefabInstance, go.correspondingSource?.fileId)) ids.add(go.fileId);
+    }
+    rootCache.set(src, ids);
+    return ids;
+  };
+  const srcOf = (pi: UnityPrefabInstance): string | undefined => (pi.sourceGuid ? index.guidToPath.get(pi.sourceGuid) : undefined);
 
   // Resolve active state and names along Transform chain
   const isTfActive = (tfId: string, d: UnityDocumentParsed): boolean => {
@@ -562,11 +598,11 @@ export function extractUnitySceneNodes(
       // Tracestripped Transform: its PrefabInstance's transformParent * local matrix inside the prefab + any mods
       const pi = d.prefabInstances.get(tf.prefabInstance);
       const parentMat = pi ? getWorldMatrix(pi.transformParent, d, keyPrefix) : new THREE.Matrix4();
-      const piTrs = pi ? readPiTrs(pi.mods) : { pos: [0, 0, 0] as Vec3Tuple, rot: [0, 0, 0, 1] as QuatTuple, scl: [1, 1, 1] as Vec3Tuple };
+      const srcPath = pi ? srcOf(pi) : undefined;
+      const piTrs = pi ? readPiTrs(pi.mods, rootsOf(srcPath)) : { pos: [0, 0, 0] as Vec3Tuple, rot: [0, 0, 0, 1] as QuatTuple, scl: [1, 1, 1] as Vec3Tuple };
       const piMat = composeUnityMat(piTrs.pos, piTrs.rot, piTrs.scl);
 
       let subMat = new THREE.Matrix4();
-      const srcPath = pi?.sourceGuid ? index.guidToPath.get(pi.sourceGuid) : undefined;
       const srcDoc = srcPath ? getPrefabDoc(srcPath) : undefined;
       if (srcDoc) {
         const subTfId = tf.correspondingSource.fileId;
@@ -617,11 +653,10 @@ export function extractUnitySceneNodes(
     meta: { rootGroup: string; groupPath: string; isInteriorHint: boolean },
     depth: number,
   ): void => {
-    const trs = readPiTrs(pi.mods);
-    if (!trs.isActive) return;
-
-    const srcPath = pi.sourceGuid ? index.guidToPath.get(pi.sourceGuid) : undefined;
+    const srcPath = srcOf(pi);
     if (!srcPath) return;
+    const trs = readPiTrs(pi.mods, rootsOf(srcPath));
+    if (!trs.isActive) return;
 
     const piLocalMat = composeUnityMat(trs.pos, trs.rot, trs.scl);
     const piWorldMat = new THREE.Matrix4().copy(parentWorldMat).multiply(piLocalMat);
@@ -688,29 +723,51 @@ export function extractUnitySceneNodes(
       emitPrefabInstance(childPi, prefabDoc, comb, childMeta, depth + 1);
     }
 
-    // Any direct mesh GOs inside the .prefab that are not just empty parent containers
+    // Direct mesh GOs inside the .prefab. One model file is one placement: its sub-meshes (glass, shutters, a lid) are
+    // GameObjects under the one holding its root mesh, or siblings under an empty root, and the converted model already
+    // holds them all. So each model is placed once, at the lowest common ancestor of its GameObjects. (No prefab in the
+    // pack places one sub-mesh twice, so two GameObjects of one model are never two copies.)
+    const chainOf = (tfId: string): string[] => {
+      const c: string[] = [];
+      for (let cur: string | undefined = tfId; cur && cur !== "0" && !c.includes(cur); cur = prefabDoc.transforms.get(cur)?.father) c.unshift(cur);
+      return c;
+    };
+    const byModel = new Map<string, { meshPath: string; name: string; chains: string[][] }>();
     for (const tf of prefabDoc.transforms.values()) {
       if (!tf.gameObject || tf.stripped) continue;
       const meshGuid = prefabDoc.meshGuidsByGo.get(tf.gameObject);
       const meshPath = meshGuid ? index.guidToPath.get(meshGuid) : undefined;
       const go = prefabDoc.gameObjects.get(tf.gameObject);
-      if (!go || !go.isActive) continue;
-      if (meshPath) {
-        const meshPart = canonicalPartId(path.posix.basename(meshPath, path.posix.extname(meshPath)));
-        if (ignore.some((ig) => meshPart.toLowerCase().includes(ig))) continue;
-        const comb = new THREE.Matrix4().copy(piWorldMat).multiply(subWorld(tf.fileId));
-        const dec = decomposeUnityMat(comb);
-        out.push({
-          partId: meshPart,
-          name: go.name || meshPart,
-          sourceGuid: meshGuid,
-          sourceAssetPath: meshPath,
-          rootGroup: meta.rootGroup,
-          groupPath: childPath,
-          isInteriorHint: childMeta.isInteriorHint,
-          transform: unityTrsToEngine(dec.pos, dec.rot, dec.scl),
-        });
+      if (!go || !go.isActive || !meshGuid || !meshPath) continue;
+      const chain = chainOf(tf.fileId);
+      const m = byModel.get(meshGuid);
+      if (!m) byModel.set(meshGuid, { meshPath, name: go.name, chains: [chain] });
+      else {
+        if (chain.length < Math.min(...m.chains.map((x) => x.length))) m.name = go.name;
+        m.chains.push(chain);
       }
+    }
+    for (const [meshGuid, { meshPath, name, chains }] of byModel) {
+      const meshPart = canonicalPartId(path.posix.basename(meshPath, path.posix.extname(meshPath)));
+      if (ignore.some((ig) => meshPart.toLowerCase().includes(ig))) continue;
+      let common = chains[0]!;
+      for (const c of chains) {
+        let i = 0;
+        while (i < common.length && i < c.length && common[i] === c[i]) i++;
+        common = common.slice(0, i);
+      }
+      const comb = new THREE.Matrix4().copy(piWorldMat).multiply(subWorld(common.at(-1) ?? "0"));
+      const dec = decomposeUnityMat(comb);
+      out.push({
+        partId: meshPart,
+        name: name || meshPart,
+        sourceGuid: meshGuid,
+        sourceAssetPath: meshPath,
+        rootGroup: meta.rootGroup,
+        groupPath: childPath,
+        isInteriorHint: childMeta.isInteriorHint,
+        transform: unityTrsToEngine(dec.pos, dec.rot, dec.scl),
+      });
     }
   };
 
@@ -723,5 +780,10 @@ export function extractUnitySceneNodes(
     emitPrefabInstance(pi, doc, parentWorld, meta, 0);
   }
 
-  return out;
+  // The same model at the same place twice (the pack's demo scenes have a few) would only z-fight: keep one.
+  const seen = new Set<string>();
+  return out.filter((n) => {
+    const k = `${n.partId}|${n.transform.pos}|${n.transform.rot}|${n.transform.scale}`;
+    return !seen.has(k) && Boolean(seen.add(k));
+  });
 }

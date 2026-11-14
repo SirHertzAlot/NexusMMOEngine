@@ -32,8 +32,12 @@ export interface DamageInput {
   item: ItemProps;
   /** Where the blow landed (a body part id). */
   part: string;
-  /** Share of the blow that gets through armour (1 = none worn). */
+  /** Share of the blow that gets through armour (1 = none worn). If omitted alongside `armourTotal`, derived via `armourFactor`. */
   armourFactor?: number;
+  /** Optional worn armour total used when `armourFactor` is not precomputed. */
+  armourTotal?: number;
+  /** Optional defender tier/level (>= 1) used with `armourTotal` and `armourHalfPerLevel`. */
+  targetLevel?: number;
   /** Familiarity with this item family, 0..1 (adds up to familiarity.maxFitBonus fit). */
   familiarity?: number;
 }
@@ -175,14 +179,46 @@ export function masteryPower(rules: Rules, m: number): number {
   return p.novice + p.masterBonus * Math.pow(clamp01(m), p.curve);
 }
 
+export interface ArmourFactorOptions {
+  /** Damage kind (`cut`, `blunt`, `thrust`) for per-kind K overrides (`armourHalfByKind`). */
+  kind?: DamageKind;
+  /** Content tier or defender level (>= 1); scales K via `armourHalfPerLevel`. */
+  level?: number;
+}
+
 /**
- * Share of a blow worn armour lets through: H/(H+total), so `armourHalf`
- * total halves it. Bare skin lets everything through.
+ * Resolve the effective half-mitigation constant K for a blow's damage kind
+ * and target tier/level: `K = K_kind * (1 + armourHalfPerLevel * max(0, level - 1))`.
  */
-export function armourFactor(rules: Rules, total: number): number {
-  const h = rules.combat.damage.armourHalf;
+export function effectiveArmourHalf(rules: Rules, opts?: ArmourFactorOptions): number {
+  const d = rules.combat.damage;
+  const base = (opts?.kind ? d.armourHalfByKind[opts.kind] : undefined) ?? d.armourHalf;
+  const lvl = opts?.level;
+  if (lvl === undefined || !Number.isFinite(lvl) || d.armourHalfPerLevel <= 0) return base;
+  return base * (1 + d.armourHalfPerLevel * Math.max(0, lvl - 1));
+}
+
+/**
+ * Share of a blow worn armour lets through: K/(K+total), so mitigation
+ * percentage is total/(total+K) and effective health scales linearly with armour.
+ * Bare skin (`total <= 0`) lets everything through (factor 1).
+ */
+export function armourFactor(rules: Rules, total: number, opts?: ArmourFactorOptions): number {
   if (!(total > 0)) return 1;
-  return h / (h + total);
+  const k = effectiveArmourHalf(rules, opts);
+  return k / (k + total);
+}
+
+/**
+ * Effective health (EHP) against blows of `opts`: `hp * (1 + total / K)`.
+ * Every +K armour adds 100% of raw HP in effective survivability linearly,
+ * with no diminishing return in hits-to-kill.
+ */
+export function effectiveHealth(hp: number, total: number, rules: Rules, opts?: ArmourFactorOptions): number {
+  if (!(hp > 0)) return 0;
+  if (!(total > 0)) return hp;
+  const k = effectiveArmourHalf(rules, opts);
+  return hp * (1 + total / k);
 }
 
 /** Chance the blow lands where it was aimed. */
@@ -241,9 +277,15 @@ function part(rules: Rules, id: string): BodyPart {
 
 function defaultHooks(rules: Rules): RuleHooks {
   return {
-    computeDamage({ technique, skill, item, part: partId, armourFactor = 1, familiarity = 0 }) {
+    computeDamage({ technique, skill, item, part: partId, armourFactor: givenFactor, armourTotal, targetLevel, familiarity = 0 }) {
       const t = rules.combat.techniques[technique];
       if (!t) throw new Error(`rules: no technique "${technique}"`);
+      const factor =
+        givenFactor !== undefined
+          ? givenFactor
+          : armourTotal !== undefined
+            ? armourFactor(rules, armourTotal, { kind: t.damageKind, level: targetLevel })
+            : 1;
       const m = skill / rules.skills.max;
       const fit = Math.min(1, item[t.property] + rules.skills.familiarity.maxFitBonus * clamp01(familiarity));
       const d = rules.combat.damage;
@@ -253,7 +295,7 @@ function defaultHooks(rules: Rules): RuleHooks {
         effectiveFit(rules, fit, m) *
         masteryPower(rules, m) *
         part(rules, partId).hitMultiplier *
-        clamp01(armourFactor);
+        clamp01(factor);
       return { amount, kind: t.damageKind };
     },
 
