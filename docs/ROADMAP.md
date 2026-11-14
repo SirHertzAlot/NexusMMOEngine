@@ -184,6 +184,7 @@ Permissive licenses only.
 | TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | ✅ | PR #227: Leva + lil-gui DEV-gated; automated prod-bundle check. |
 | TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | ✅ | PR #228: 3 characters, 7/7 tests, survive TL1. |
 | TL5 | ozz-animation (bake and native side) and acl clip compression at bake | ✅ | PR #229: interface + design doc; native vendoring is follow-up. |
+| CL0 | Cutscene Lane C0 schemas & 6-gate bake validator (`packages/art/src/cinematics/{schema,validate,index}.ts`); C1–C4 follow-up | 🚧 | C0 landed (`✅`): `CinematicDefSchema` (`kind: "baked" \| "live"`, mandatory `fallbackBakedId` for `live`, duration/actor/prop caps), `CinematicBundleManifestSchema`, `RecordedFinalSampleSchema`, and `validateCinematicBundle` enforcing all 6 hard bake gates (`reproducibility`, `clipValidity`, `arrival`, `duration`, `bundleBudget` ≤ 2 MB, `license`). C1–C4 (playback runtime, headless render/MuJoCo offline bake, live WASM lane) are 📋. |
 
 Spikes (evaluate first; each has a pass bar in the doc, and a fail means
 write the reason and park it):
@@ -433,6 +434,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | PF3 | Perf pass: native `selectNames` skips known sectors: each sector's id list is hashed once per tick and a session re-checks only the ids new to a sector. Ids scanned per call fall from about 200,000 to about 4,000 at 1,000 players. | ✅ (#654; `docs/NATIVE-FANOUT.md`) | `selectNames` 5.9 to 0.77 ms per tick at 1,000 players; whole-tick mean 74 to 65 ms in single runs. `assemble` (about 8 ms) is now the larger native piece. |
 | PF4 | Perf pass: `PropCollisionSystem`'s per-tick XZ grid (SG4b) uses 4 m cells, not 32 m. At 32 m every mover's query spanned the whole 64 m tile and the grid cost 3 times the plain scan. | ✅ (#662) | `prop-collision-tick` 55.9 M to 5.9 M instructions per tick on Node 24 (plain scan: 18.3 M); walker positions bit-identical to the plain scan over 150,000 walker-ticks in five random worlds. New workload `prop-collision-wide` (5,000 props on 200 m): 8.8 M per tick. The Node 22 baseline in `perf/callgrind-baseline.json` was not updated (see the log). |
 | DET1 | Procgen noise is the same bits on every machine: the FastNoise2 addon builds with strict IEEE flags (`-O2 -fno-fast-math -ffp-contract=off`, no `-march`; MSVC `/fp:precise`) instead of `-O3 -ffast-math -march=haswell`. The terrain mask goldens, which passed on Intel and failed on the AMD CI runners, are re-pinned and pass on both. Worlds baked before this differ from worlds baked after it | ✅ | #695 |
+| MJ1 | Physics scope evaluation: Jolt + SoA vs. MuJoCo (`patches/MUJOCO-ENGINE-NOTE.md`) | ✅ | Verdict recorded: Jolt + bulk SoA remains the authoritative physics engine for the 50k-entity main tick (MuJoCo excluded from authoritative tick). MuJoCo (Apache-2.0) is scoped strictly to offline/baked-physics Cutscene Lane (`CL0` / `patches/CUTSCENE-LANE-SPEC.md`); any live WASM lane (C4) stays gated behind mandatory `fallbackBakedId` and Android frame-time checks. |
 
 ## 5b. Edge / core split
 
@@ -528,6 +530,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-13**: CL0 C0 (🚧): cinematic schemas and the 6-gate bake validator; MJ1 verdict: Jolt stays authoritative, MuJoCo offline-only. (`feat/cl0-cutscene-lane`)
 - **2026-11-12**: DOC1 passes eight and nine (🚧, `feat/docs-audit`): every "Still open" audit item closed — the remaining prose re-read against the code (wiki ch03–09, the `ARCHITECTURE.md` body, `GETTING-STARTED.md`, `GAMEPLAY.md`, the pre-existing `CONFIGURATION.md` rows, `MASTERY-AND-COMBAT.md` §§2–5); stale island/biome, test-suite, E3b edge-port, editor-workspace and C++20→C++17 statements fixed; a `DECISIONS.md` clarification appended for the 0.562 ms figure; the IX1a and SG7 roadmap notes corrected; `ENGINE-COMPARISON-AND-PERFORMANCE.md` moved into `docs/business-analysis/` per AGENTS.md §1.
 - **2026-11-11**: DOC1 and DOC2 (🚧, `feat/docs-audit`): full documentation audit with a report, the first-read docs reworked, and a dedicated performance-and-constraints page.
 - **2026-11-11**: WEB5 docs site (🚧, `feat/site-docs`): the curated docs rendered from `docs/` with markdown-it, over a 3D terrain backdrop. Also resolved the roadmap's leftover merge-conflict markers.
