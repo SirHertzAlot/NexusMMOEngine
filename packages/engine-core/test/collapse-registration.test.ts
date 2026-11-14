@@ -72,6 +72,20 @@ test("grounds a building at its footing", () => {
   assert.equal(typeof got[0]!.o?.groundY, "number");
 });
 
+test("a tilted part is drawn tilted, and handed over with its tilt and its yaw-only box", () => {
+  const h = house("h1", 0, 4);
+  // Part 2: a beam with no body of its own (as the synthesis writes visuals), yawed 90 then rolled 90.
+  h.children[2] = { ...h.children[2]!, transform: { position: [2, 0, 0], rotation: [0, 90, 90] }, components: { ...h.children[2]!.components, Collider: { shape: "none" } } } as never;
+  const { got } = run([h]);
+  const p = got[0]!.parts[2]!;
+  const q = [Transform.qx[p.eid]!, Transform.qy[p.eid]!, Transform.qz[p.eid]!, Transform.qw[p.eid]!];
+  q.forEach((v) => assert.ok(Math.abs(v - 0.5) < 1e-4, `drawn turned by yaw then roll: ${q}`));
+  const s = Math.SQRT1_2;
+  [0, 0, s, s].forEach((v, i) => assert.ok(Math.abs(p.tilt![i]! - v) < 1e-4, `its tilt: ${p.tilt}`));
+  assert.ok(Math.abs(p.part.yawDeg - 90) < 1e-3, "its box keeps the yaw");
+  assert.equal(got[0]!.parts[1]!.tilt, undefined, "an untilted part has none");
+});
+
 test("leaves a building with fewer than three parts, and plain structures, alone", () => {
   const { got } = run([house("tiny", 0, 2), part("lone", "house", 50, 0, 0, 4, 4, 4)]);
   assert.deepEqual(got, []);
