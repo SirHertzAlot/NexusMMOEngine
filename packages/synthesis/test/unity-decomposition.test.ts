@@ -373,6 +373,12 @@ describe("4-Tier Hierarchical Decomposition & WFC Building Synthesis", () => {
   });
 
   it("synthesizes deterministic multi-part enterable buildings with valid modular colliders", () => {
+    // A kind the kit has no building for gets its stand-in family, never whatever building comes up.
+    for (let seed = 1; seed <= 24; seed++) {
+      assert.match(synthesizeBuilding(lib, { archetype: "bakery", seed }).prototypeId, /House/, `bakery, seed ${seed}`);
+      assert.match(synthesizeBuilding(lib, { archetype: "school", seed }).prototypeId, /Tavern/, `school, seed ${seed}`);
+      assert.match(synthesizeBuilding(lib, { archetype: "observatory", seed }).prototypeId, /House/, `unlisted kind, seed ${seed}`);
+    }
     const b1 = synthesizeBuilding(lib, { archetype: "tavern", seed: 101, maxFootprintM: [8, 8] });
     const b2 = synthesizeBuilding(lib, { archetype: "tavern", seed: 101, maxFootprintM: [8, 8] });
     assert.deepEqual(b1.placements, b2.placements, "same seed yields byte-identical placements");
