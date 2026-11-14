@@ -7,11 +7,11 @@
  *   ceilingMode                 flat ceilings, or open (no ceiling triangles)
  *   floorStyle, wallStyle       the material names the bake reports per part
  *   cornerMode, cornerSize      square, chamfered or pillared corners, and their size
+ *   wallThickness               0: the inside surface only. Above 0: a wall body
+ *                               that thick, with its outside faces in the shell
  *
- * Knobs left out, with reasons: cellSize (the layout's cell is the unit the
- * mask is painted in; changing it means re-deriving the mask in metres), and
- * wallThickness (the shell is the inside surface, so thickness would only move
- * outside faces, which the shell drops).
+ * Knob left out, with the reason: cellSize (the layout's cell is the unit the
+ * mask is painted in; changing it means re-deriving the mask in metres).
  */
 import { z } from "zod";
 import type { ShellOptions } from "./shell.js";
@@ -31,6 +31,7 @@ export const ShellTheme = z
     wallStyle: style.default("rough-stone"),
     cornerMode: z.enum(["square", "chamfered", "pillared"]).default("square"),
     cornerSize: z.number().min(0.1).max(1).default(0.5),
+    wallThickness: z.number().min(0).max(2).default(0),
   })
   .strict();
 export type ShellTheme = z.infer<typeof ShellTheme>;
@@ -50,5 +51,6 @@ export function shellOptionsOf(t: ShellTheme): ShellOptions {
     ceilingMode: t.ceilingMode,
     cornerMode: t.cornerMode,
     cornerSize: t.cornerSize,
+    wallThickness: t.wallThickness,
   };
 }
