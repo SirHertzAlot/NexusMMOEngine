@@ -2,6 +2,12 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — WebGPU-only Grassworks deferred while client targets R3F WebGL (`patches/GRASSWORKS-ENGINE-NOTE.md`).**
+  Hold Grassworks evaluation (`TS8` ⏸️) and retain `stylized-components` (MIT) plus terrain detail layers as our active ground-cover stack, revisiting Grassworks only if the client migrates to WebGPU and passes live FPS, cel-style fit, and commercial licence verification. Rationale: Grassworks requires WebGPU (`WGSL`) shaders unavailable on our current WebGL client target.
+
+- **2026-11-13 — `patches/` implementation & wiring audit (`PATCH-01`..`05` and `DUNGEON-DETAIL-BAKE-BUILD-PROMPT.md`).**
+  Recorded in `ROADMAP.md` that `PATCH-01`..`05` primitives (`stepSimulationSoABitset` in `integrate.cc`, `MortonSpatialIndex` and `GenerationalSlabAllocator` in `sab-store.ts`, `AtomicMPSCQueue` in `lockless-ring.ts` / `packages/logging` / `log_producer.h`, and `PersistenceWorkerRuntime` in `persist-worker.ts`) are unit-tested (`patches-verification.test.ts`) while hot-path runtime wiring in `sim-worker.ts`, `data-plane-server.ts`, `net/interest.ts`, and single-query `FOR ...` SurrealQL batching in `persist-worker.ts` remain open; and `DUNGEON-DETAIL-BAKE-BUILD-PROMPT.md` Phases 0–4 already landed via PR #673, `DET1` (#695), and `DB1`–`DB3` (#696–#698), with remaining cel-shading and terrain-mask follow-ups tracked in `CEL-SHADING-AUDIT.md` and `TERRAIN-MASK.md`.
+
 - **2026-11-13 — The wire-ready editor prototype is packaged as a contract, not mistaken for the production editor.** The completed W1–W5 prototype, its GameProject save spec, screenshots, and a zero-dependency reference backend now live under `docs/library/mmo-engine-editor-ui/`. The durable boundary is the NexusWire seam: authoring edits become serializable commands, the GameProject document is persisted through one Backend contract, local storage is the always-available mirror, and HTTP mode writes through plus reconciles by `manifest.savedAt`. The reference server exists to prove and conformance-test that contract; it does not replace the planned Express editor backend, and the prototype does not replace `apps/editor/`. GSAP's use in this package is scoped to the prototype, leaving the shipped-surface motion split unchanged (GSAP for the website, anime.js for the game frontend).
 
 - **2026-11-12 — Unity scene 4-tier decomposition, modular WFC building synthesis, and pivot-compensated colliders (branch `feat/unity-scene-wfc-decomposition`).**
