@@ -83,6 +83,7 @@ export {
   MAX_FLIGHT_HEIGHT,
 } from "./systems.js";
 export type { SimSystem, PhysicsBackend, PhysicsAddBatch, WaterSurface } from "./systems.js";
+export type { AccessRef, SystemAccess } from "./system-access.js";
 export { waterSurfaceFromMaps } from "./terrain/water-surface.js";
 
 export {
