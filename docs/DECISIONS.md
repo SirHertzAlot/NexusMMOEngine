@@ -2,6 +2,8 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — Version A `VfxFlipbook` & `Noise` turbulence.**
+  Extended `packages/art/src/vfx-schema.ts` and `vfx-convert.ts` (`VfxBlendMode`, `VfxTextureSampling`, `VfxFlipbookLoop`, `resolveFlipbookFrames`, `resolveEmitterRenderSettings`, `FrameOverLife` flipbook playback) rather than building bespoke shader paths for Pixel Fireball (`content/vfx/pfb-*.json`) and KR ambient VFX (`life-motes.json`, `corruption-bleed.json`).
 - **2026-11-13 — Baked Asset Store B0 uses built-in `node:sqlite` (`DatabaseSync`) with fail-closed two-lane licence gating (`packages/art/src/baked-store.ts`).**
   Use Node's built-in `node:sqlite` (`DatabaseSync`, schema version `BAKED_STORE_SCHEMA_VERSION = 1`, tables `assets`/`variants`/`chunks`/`clips`/`knobs`/`store_meta`) as a separate read-only asset index database excluded from `browser.ts`, with SHA-256 content-addressed chunk deduplication (`buildBakedAssetIndex`, `openBakedAssetStore`) and fail-closed `classifyAssetLicence` / `validateBakeLicences` across `"own-game"` vs `"shipped-prototype-pack"`. Rationale: adds zero npm dependencies, avoids mixing static baked asset catalogs with world state DBs, deduplicates shared variant chunks, and rejects missing, unknown, restricted, raw, or MJS-derived sources before pack artifacts are published; B1–B4 (geometry bake, clips, client SAB placement, chunked delivery) stay planned.
 - **2026-11-13 — Procedural buildings Route B synthesis adopted in TS; Spark Gaussian splatting gated to R&D-only (`packages/synthesis/src/{parametric-template,building-weathering,structure-spillover,building-provenance}.ts`).**
