@@ -71,7 +71,8 @@ export interface ShellOptions {
    * How thick the walls, floor slab and roof slab are, metres (default 0; at most one cell). 0: the shell is the inside
    * surface only. Above 0: the shell also carries the outside faces of a wall body that thick, tagged outer. Rock between
    * two spaces that is thinner than twice the thickness stays solid; wider, and each space gets its own wall with a gap
-   * between. With an open ceiling there is no roof slab: the walls end level with the space's top.
+   * between. With an open ceiling there is no roof slab: the walls end level with the space's top, and the only ceiling
+   * triangles left are the undersides of a taller neighbour's wall where it overhangs a lower space.
    */
   wallThickness?: number;
 }
@@ -324,7 +325,9 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     else if (up > 0.7) part = "floor";
     else if (up < -0.7) part = "ceiling";
     else part = "wall";
-    if (part === "ceiling" && o.ceilingMode === "open") continue;
+    // Open to the sky: no ceilings. With a wall body the space's top is cut through the rock's top, so no ceiling stands
+    // over it; any down-facing face left is the underside of a taller neighbour's wall, and it stays so the body is closed.
+    if (part === "ceiling" && o.ceilingMode === "open" && thick === 0) continue;
     if (part === "wall" && laidHeight.size > 0 && closesLaidRoom(a, b, c)) continue;
     keep.push(t);
     parts.push(SHELL_PARTS.indexOf(part));

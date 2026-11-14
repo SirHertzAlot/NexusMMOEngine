@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { dungeonFromLayout, dungeonShell, parseLayoutMask, parseShellTheme, shellCollision, shellOptionsOf, SHELL_PARTS, type DungeonShell, type GeometryOps } from "../src/index.js";
+import { BUILTIN_THEMES, dungeonFromLayout, dungeonShell, generateDungeon, parseLayoutMask, parseShellTheme, shellCollision, shellOptionsOf, SHELL_PARTS, type DungeonShell, type GeometryOps } from "../src/index.js";
 
 const require = createRequire(import.meta.url);
 const geo = require("@mmo-engine/addon-geometry") as GeometryOps;
@@ -122,6 +122,17 @@ describe("shell wall thickness", () => {
     assert.equal(count(s, CEILING), 0);
     assert.ok(Math.abs(s.bounds.max[1] - H) < 1e-4, `top ${s.bounds.max[1]}`);
     assert.ok(count(s, OUTER) > 0);
+  });
+
+  it("generated dungeons stay closed with a wall body: flat, pillared and open to the sky", () => {
+    const d = generateDungeon({ seed: 1, rooms: 12, loopChance: 0.15, decorDensity: 0.6, theme: "ancient" }, BUILTIN_THEMES.ancient);
+    for (const extra of [{}, { cornerMode: "pillared" as const }, { ceilingMode: "open" as const }]) {
+      const plain = dungeonShell(d, geo, extra);
+      const s = dungeonShell(d, geo, { ...extra, wallThickness: 0.5 });
+      const use = edgeUse(s);
+      assert.ok(use.every((n) => n === 2), `${JSON.stringify(extra)}: edge uses ${[...new Set(use)].join(", ")}`);
+      assert.ok(Math.abs(s.stats.volume - plain.stats.volume) < 0.05, `${JSON.stringify(extra)}: space ${s.stats.volume} against ${plain.stats.volume}`);
+    }
   });
 
   it("the outside is solid for collision", () => {
