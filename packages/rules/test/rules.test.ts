@@ -12,6 +12,8 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   armourFactor,
+  effectiveArmourHalf,
+  effectiveHealth,
   createHooks,
   decaySkill,
   defenceChance,
@@ -71,6 +73,46 @@ describe("our game's rules (content/rules)", () => {
     assert.equal(armourFactor(rules, 0), 1);
     assert.equal(armourFactor(rules, rules.combat.damage.armourHalf), 0.5);
     assert.ok(armourFactor(rules, 1000) < 0.05);
+  });
+
+  it("generalises K per damage kind and tier level while preserving linear EHP", () => {
+    const custom = parseRules({
+      ...rules,
+      combat: {
+        ...rules.combat,
+        damage: {
+          base: 10,
+          massPower: 0.5,
+          armourHalf: 10,
+          armourHalfByKind: { cut: 10, blunt: 25 },
+          armourHalfPerLevel: 0.5,
+        },
+      },
+    });
+    assert.equal(effectiveArmourHalf(custom, { kind: "cut", level: 1 }), 10);
+    assert.equal(effectiveArmourHalf(custom, { kind: "blunt", level: 1 }), 25);
+    assert.equal(effectiveArmourHalf(custom, { kind: "thrust", level: 1 }), 10, "unset kind inherits armourHalf");
+    assert.equal(effectiveArmourHalf(custom, { kind: "cut", level: 3 }), 20, "level 3 with +0.5/level doubles K");
+    assert.equal(armourFactor(custom, 25, { kind: "blunt", level: 1 }), 0.5);
+    assert.equal(armourFactor(custom, 10, { kind: "cut", level: 1 }), 0.5);
+
+    // EHP grows linearly: every +K armour adds +HP effective health
+    const baseHp = 1000;
+    const ehp0 = effectiveHealth(baseHp, 0, custom, { kind: "blunt" });
+    const ehpK = effectiveHealth(baseHp, 25, custom, { kind: "blunt" });
+    const ehp2K = effectiveHealth(baseHp, 50, custom, { kind: "blunt" });
+    assert.equal(ehp0, 1000);
+    assert.equal(ehpK, 2000);
+    assert.equal(ehp2K, 3000);
+
+    // computeDamage derives armourFactor from armourTotal + targetLevel when armourFactor is omitted
+    const h = createHooks(custom);
+    const sword = { mass: 1.3, edge: 0.9, point: 0.8, hardness: 0.9 };
+    const unarmoured = h.computeDamage({ technique: "cut", skill: 50, item: sword, part: "torso" });
+    const level1Armoured = h.computeDamage({ technique: "cut", skill: 50, item: sword, part: "torso", armourTotal: 10, targetLevel: 1 });
+    const level3Armoured = h.computeDamage({ technique: "cut", skill: 50, item: sword, part: "torso", armourTotal: 20, targetLevel: 3 });
+    assert.ok(Math.abs(level1Armoured.amount - unarmoured.amount * 0.5) < 1e-6);
+    assert.ok(Math.abs(level3Armoured.amount - unarmoured.amount * 0.5) < 1e-6);
   });
 
   it("deteriorate slowly: ~94 after two months, the floor after about a year", () => {

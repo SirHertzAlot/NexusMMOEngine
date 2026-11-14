@@ -110,7 +110,24 @@ export const CombatSchema = z.strictObject({
     .strictObject({ novice: z.number().min(0).default(0.4), masterBonus: z.number().min(0).default(1.6), curve: positive.default(1.5) })
     .prefault({}),
   /** damage = base × mass^massPower × fit_eff × power × part multiplier × armour factor. */
-  damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5), armourHalf: positive.default(10) }).prefault({}),
+  damage: z
+    .strictObject({
+      base: positive.default(10),
+      massPower: z.number().min(0).default(0.5),
+      /** Armour value K that halves incoming damage when no per-kind K is specified. */
+      armourHalf: positive.default(10),
+      /** Optional per-damage-kind K overrides (`cut`, `blunt`, `thrust`); unset kinds inherit `armourHalf`. */
+      armourHalfByKind: z
+        .strictObject({
+          cut: positive.optional(),
+          blunt: positive.optional(),
+          thrust: positive.optional(),
+        })
+        .prefault({}),
+      /** Linear tier/level scaling on K per level above 1: K_eff = K * (1 + armourHalfPerLevel * max(0, level - 1)). */
+      armourHalfPerLevel: z.number().min(0).default(0),
+    })
+    .prefault({}),
   /** Chance a blow lands on the aimed part: novice + masterBonus × m. */
   precision: z.strictObject({ novice: share.default(0.3), masterBonus: share.default(0.65) }).prefault({}),
   /**

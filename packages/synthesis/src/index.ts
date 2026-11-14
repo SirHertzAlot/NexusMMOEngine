@@ -20,3 +20,7 @@ export * from "./structure-checks.js";
 export * from "./scene-check.js";
 export * from "./garden-dresser.js";
 export * from "./support-graph.js";
+export * from "./parametric-template.js";
+export * from "./building-weathering.js";
+export * from "./structure-spillover.js";
+export * from "./building-provenance.js";
