@@ -14,6 +14,11 @@ import { bareKind, envelopeReport, pruneDetached, synthesisRoute, turnByYaw } fr
 export interface SceneCheckOptions {
   /** A group smaller than this many touching parts is not a building (default 3). */
   minParts?: number;
+  /**
+   * Parts closer than this count as touching, metres (default 0.5: on the village preview, dressing that rests on or
+   * hangs off a part stands up to 0.45 m from it by its box, a wall torch or a chain sign; what floats stands 0.5 m+ off).
+   */
+  gap?: number;
   /** Remove the house parts an open-ground parcel was given (default true). */
   stripOpen?: boolean;
 }
@@ -101,7 +106,7 @@ export function checkSettlementScene(scene: SceneDoc, o: SceneCheckOptions = {})
         row.removed.openGround = parts.length;
       }
     } else {
-      const r = pruneDetached(parts.map((p) => p.placement), { minParts: o.minParts ?? 3 });
+      const r = pruneDetached(parts.map((p) => p.placement), { minParts: o.minParts ?? 3, gap: o.gap ?? 0.5 });
       for (const x of r.removed) {
         drop.add(parts[x.index]!.index);
         if (x.reason === "isolated") row.removed.isolated++;
