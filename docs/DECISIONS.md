@@ -2,6 +2,9 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — Finite cycle-seeded `MarbleBag<T>`.**
+  Adopted deterministic finite-bag sampling (`packages/wfc/src/marble-bag.ts`) with `snapshot()`/`restore()` and nested entries (`MarbleOutcomeEntry`, `MarbleNestedEntry`) for streak-bounded encounter/loot variation without sacrificing replay determinism.
+
 - **2026-11-13 — The wire-ready editor prototype is packaged as a contract, not mistaken for the production editor.** The completed W1–W5 prototype, its GameProject save spec, screenshots, and a zero-dependency reference backend now live under `docs/library/mmo-engine-editor-ui/`. The durable boundary is the NexusWire seam: authoring edits become serializable commands, the GameProject document is persisted through one Backend contract, local storage is the always-available mirror, and HTTP mode writes through plus reconciles by `manifest.savedAt`. The reference server exists to prove and conformance-test that contract; it does not replace the planned Express editor backend, and the prototype does not replace `apps/editor/`. GSAP's use in this package is scoped to the prototype, leaving the shipped-surface motion split unchanged (GSAP for the website, anime.js for the game frontend).
 
 - **2026-11-12 — Unity scene 4-tier decomposition, modular WFC building synthesis, and pivot-compensated colliders (branch `feat/unity-scene-wfc-decomposition`).**

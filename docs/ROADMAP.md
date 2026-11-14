@@ -321,6 +321,7 @@ Everything here is React DOM over the world canvas, fed by the server
 | W1 | WFC solver (`packages/wfc`) | ✅ | [`DUNGEONS-AND-LOOT.md`](DUNGEONS-AND-LOOT.md) §9 |
 | W2 | Formations: WFC decides what, scatter and the raymarcher decide where | ✅ | 〃 |
 | W3 | WFC solver: count and budget checks kept incrementally | ✅ | Settlement generation 36x faster at population 2000; output unchanged (#486) |
+| W4 | Deterministic `MarbleBag<T>` RNG generic (`packages/wfc/src/marble-bag.ts`) | ✅ | Branch `feat/w4-marble-bag`: weighted finite-bag draws with `MarbleOutcomeEntry`/`MarbleNestedEntry`, cycle-seeded reshuffle (`autoReshuffle`), and deterministic `snapshot()`/`restore()`. |
 | D1 | Dungeon layouts, `dungeon:bake` | ✅ | 〃 |
 | D2 | Dungeon dressing: archetypes, interiors, resource veins | ✅ | 〃 |
 | S1 (species) | Species ecology and spawn tables | ✅ | 〃 |
@@ -530,6 +531,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-13**: W4 `MarbleBag<T>` (✅): deterministic finite-bag draws with nested entries and `snapshot()`/`restore()` in `packages/wfc/src/marble-bag.ts`. (`feat/w4-marble-bag`)
 - **2026-11-13**: SY1b tilt through scenes (#711, ✅): building parts keep their pitch and roll from the synthesis to the client; 278 parts of the preview village were drawn upright before.
 - **2026-11-13**: SY2b clean Unity extraction (#710, ✅): the floating and duplicated building pieces came from the extractor placing one model per sub-mesh GameObject and applying child overrides to whole instances; fixed there, the envelope check reads stepped plans, and the bake prunes detached parts.
 - **2026-11-12**: DOC1 passes eight and nine (🚧, `feat/docs-audit`): every "Still open" audit item closed — the remaining prose re-read against the code (wiki ch03–09, the `ARCHITECTURE.md` body, `GETTING-STARTED.md`, `GAMEPLAY.md`, the pre-existing `CONFIGURATION.md` rows, `MASTERY-AND-COMBAT.md` §§2–5); stale island/biome, test-suite, E3b edge-port, editor-workspace and C++20→C++17 statements fixed; a `DECISIONS.md` clarification appended for the 0.562 ms figure; the IX1a and SG7 roadmap notes corrected; `ENGINE-COMPARISON-AND-PERFORMANCE.md` moved into `docs/business-analysis/` per AGENTS.md §1.
