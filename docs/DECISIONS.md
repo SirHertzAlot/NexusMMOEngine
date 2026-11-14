@@ -2,6 +2,9 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — KR House pure metaphysics & quest generics.**
+  Encoded worldbuilding rules (`packages/rules/src/worldbuilding.ts`) and 7 quest/dialog builders (`packages/engine-core/src/quests/worldbuilding-generics.ts`) as setting-agnostic, schema-validated evaluators (`MagicSourceSchema`, `WardSchema`, `CostLedgerSchema`, `FabricHealthSchema`, `ShrineDevotionSchema`, `PactSchema`, `RiteSchema`, `treatSickPlace`, `priceDueOptions`, `composeGiverProfile`).
+
 - **2026-11-13 — The wire-ready editor prototype is packaged as a contract, not mistaken for the production editor.** The completed W1–W5 prototype, its GameProject save spec, screenshots, and a zero-dependency reference backend now live under `docs/library/mmo-engine-editor-ui/`. The durable boundary is the NexusWire seam: authoring edits become serializable commands, the GameProject document is persisted through one Backend contract, local storage is the always-available mirror, and HTTP mode writes through plus reconciles by `manifest.savedAt`. The reference server exists to prove and conformance-test that contract; it does not replace the planned Express editor backend, and the prototype does not replace `apps/editor/`. GSAP's use in this package is scoped to the prototype, leaving the shipped-surface motion split unchanged (GSAP for the website, anime.js for the game frontend).
 
 - **2026-11-12 — Unity scene 4-tier decomposition, modular WFC building synthesis, and pivot-compensated colliders (branch `feat/unity-scene-wfc-decomposition`).**
