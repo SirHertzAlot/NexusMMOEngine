@@ -63,6 +63,17 @@ describe("checkSettlementScene", () => {
     assert.equal(report.missingCounts["west wall"], 1);
   });
 
+  it("keeps dressing that hangs just off a wall, and drops what stands a metre from anything", () => {
+    // A torch 0.3 m off the north wall's face at head height; a cabinet hanging in the middle of the room, 0.7 m above
+    // the floor and 0.9 m below the roof.
+    const torch = vis("h2", 6, "SM_Prop_Torch_01", 0, 1.6, 3.5, 0.2, 0.5, 0.2);
+    const cabinet = vis("h2", 7, "SM_Prop_Cabinet_01", 0, 1.1, 0, 1, 0.4, 0.5);
+    const { scene } = checkSettlementScene(doc(group("h2", "house", [...house("h2"), ...torch, ...cabinet])));
+    const ids = scene.nodes[0]!.children![0]!.children!.map((c) => c.id);
+    assert.ok(ids.includes("h2-vis-6") && ids.includes("h2-p6-col"), "the torch stays");
+    assert.ok(!ids.includes("h2-vis-7") && !ids.includes("h2-p7-col"), "the cabinet goes");
+  });
+
   it("can keep open-ground parts when asked", () => {
     const { scene } = checkSettlementScene(doc(group("g0", "garden", house("g0"))), { stripOpen: false });
     assert.equal(scene.nodes[0]!.children![0]!.children!.length, 12);

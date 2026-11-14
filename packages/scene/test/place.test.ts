@@ -42,6 +42,16 @@ describe("worldNodes", () => {
     assert.deepEqual(c.scale, [2, 2, 2]);
     assert.equal(c.parentId, "p");
   });
+
+  it("keeps a node's own pitch and roll, which its children do not inherit", () => {
+    let doc = emptyScene("arena", "arena");
+    doc = addNode(doc, null, { id: "p", transform: { rotation: [5, 90, 0] } });
+    doc = addNode(doc, "p", { id: "c", transform: { rotation: [10, 30, -20] } });
+    const [p, c] = worldNodes(doc);
+    assert.deepEqual(p!.tiltDeg, [5, 0]);
+    assert.equal(c!.yawDeg, 120);
+    assert.deepEqual(c!.tiltDeg, [10, -20]);
+  });
 });
 
 describe("keep", () => {
