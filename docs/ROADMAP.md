@@ -184,6 +184,7 @@ Permissive licenses only.
 | TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | ✅ | PR #227: Leva + lil-gui DEV-gated; automated prod-bundle check. |
 | TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | ✅ | PR #228: 3 characters, 7/7 tests, survive TL1. |
 | TL5 | ozz-animation (bake and native side) and acl clip compression at bake | ✅ | PR #229: interface + design doc; native vendoring is follow-up. |
+| B0 | Baked Asset Store B0 SQLite index, SHA-256 chunk dedupe, and fail-closed licence lanes (`packages/art/src/baked-store.ts`); B1–B4 follow-up | 🚧 | B0 landed (`✅`, `baked-store.test.ts` green): uses built-in `node:sqlite` (`DatabaseSync`, `BAKED_STORE_SCHEMA_VERSION = 1`, zero new npm deps; excluded from `browser.ts`), tables `assets`/`variants`/`chunks`/`clips`/`knobs`/`store_meta`, `buildBakedAssetIndex`/`openBakedAssetStore`, `lookupAssetChunk`/`getVariantInfo`/`dedupeReport`/`licenceCoverageReport`, and fail-closed `validateBakeLicences` across `"own-game"` vs `"shipped-prototype-pack"`. B1–B4 (geometry bake, clips, client SAB placement, chunked delivery) remain 📋. |
 
 Spikes (evaluate first; each has a pass bar in the doc, and a fail means
 write the reason and park it):
@@ -528,6 +529,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-13**: B0 (🚧): `node:sqlite` baked asset index with SHA-256 chunk dedupe and fail-closed licence lanes in `packages/art/src/baked-store.ts`. (`feat/b0-baked-asset-store`)
 - **2026-11-12**: DOC1 passes eight and nine (🚧, `feat/docs-audit`): every "Still open" audit item closed — the remaining prose re-read against the code (wiki ch03–09, the `ARCHITECTURE.md` body, `GETTING-STARTED.md`, `GAMEPLAY.md`, the pre-existing `CONFIGURATION.md` rows, `MASTERY-AND-COMBAT.md` §§2–5); stale island/biome, test-suite, E3b edge-port, editor-workspace and C++20→C++17 statements fixed; a `DECISIONS.md` clarification appended for the 0.562 ms figure; the IX1a and SG7 roadmap notes corrected; `ENGINE-COMPARISON-AND-PERFORMANCE.md` moved into `docs/business-analysis/` per AGENTS.md §1.
 - **2026-11-11**: DOC1 and DOC2 (🚧, `feat/docs-audit`): full documentation audit with a report, the first-read docs reworked, and a dedicated performance-and-constraints page.
 - **2026-11-11**: WEB5 docs site (🚧, `feat/site-docs`): the curated docs rendered from `docs/` with markdown-it, over a 3D terrain backdrop. Also resolved the roadmap's leftover merge-conflict markers.
