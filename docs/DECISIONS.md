@@ -2,6 +2,8 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — KR House pure metaphysics & quest generics.**
+  Encoded worldbuilding rules (`packages/rules/src/worldbuilding.ts`) and 7 quest/dialog builders (`packages/engine-core/src/quests/worldbuilding-generics.ts`) as setting-agnostic, schema-validated evaluators (`MagicSourceSchema`, `WardSchema`, `CostLedgerSchema`, `FabricHealthSchema`, `ShrineDevotionSchema`, `PactSchema`, `RiteSchema`, `treatSickPlace`, `priceDueOptions`, `composeGiverProfile`).
 - **2026-11-13 — Linear-EHP armour mitigation.**
   Adopted `armourFactor = K / (K + armour)` with `armourHalfByKind` and `armourHalfPerLevel` (`effectiveArmourHalf`, `effectiveHealth`, `DamageInput.armourTotal`, `DamageInput.targetLevel`), rejecting hit-size-dependent mitigation so effective health scales linearly and predictably across tiers.
 - **2026-11-13 — Version A `VfxFlipbook` & `Noise` turbulence.**

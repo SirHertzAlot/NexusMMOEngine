@@ -63,12 +63,25 @@ const StepTypeSchema = z.strictObject({
   excludes: z.array(id).default([]),
 });
 
+export const STRUCTURE_SKINS = [
+  "story-circle",
+  "kishotenketsu",
+  "fichtean-curve",
+  "freytag",
+  "monomyth",
+  "three-act",
+  "save-the-cat",
+] as const;
+export type StructureSkin = (typeof STRUCTURE_SKINS)[number];
+
 const TemplateSchema = z.strictObject({
   /** Quest name, templated like step text. */
   name: z.string().min(1).max(80),
   /** The stages, in order: one step each. */
   stages: z.array(id).min(1).max(12),
   rewards: z.array(RewardSchema).max(5).default([]),
+  /** Optional narrative structure skin (KR-HOUSE Quest Generic 6). */
+  structure: z.enum(STRUCTURE_SKINS).optional(),
 });
 
 export const StepsFileSchema = z.strictObject({
