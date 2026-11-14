@@ -184,6 +184,7 @@ Permissive licenses only.
 | TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | ✅ | PR #227: Leva + lil-gui DEV-gated; automated prod-bundle check. |
 | TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | ✅ | PR #228: 3 characters, 7/7 tests, survive TL1. |
 | TL5 | ozz-animation (bake and native side) and acl clip compression at bake | ✅ | PR #229: interface + design doc; native vendoring is follow-up. |
+| B0 | Baked Asset Store B0 SQLite index, SHA-256 chunk dedupe, and fail-closed licence lanes (`packages/art/src/baked-store.ts`); B1–B4 follow-up | 🚧 | B0 landed (`✅`, `baked-store.test.ts` green): uses built-in `node:sqlite` (`DatabaseSync`, `BAKED_STORE_SCHEMA_VERSION = 1`, zero new npm deps; excluded from `browser.ts`), tables `assets`/`variants`/`chunks`/`clips`/`knobs`/`store_meta`, `buildBakedAssetIndex`/`openBakedAssetStore`, `lookupAssetChunk`/`getVariantInfo`/`dedupeReport`/`licenceCoverageReport`, and fail-closed `validateBakeLicences` across `"own-game"` vs `"shipped-prototype-pack"`. B1–B4 (geometry bake, clips, client SAB placement, chunked delivery) remain 📋. |
 | CL0 | Cutscene Lane C0 schemas & 6-gate bake validator (`packages/art/src/cinematics/{schema,validate,index}.ts`); C1–C4 follow-up | 🚧 | C0 landed (`✅`): `CinematicDefSchema` (`kind: "baked" \| "live"`, mandatory `fallbackBakedId` for `live`, duration/actor/prop caps), `CinematicBundleManifestSchema`, `RecordedFinalSampleSchema`, and `validateCinematicBundle` enforcing all 6 hard bake gates (`reproducibility`, `clipValidity`, `arrival`, `duration`, `bundleBudget` ≤ 2 MB, `license`). C1–C4 (playback runtime, headless render/MuJoCo offline bake, live WASM lane) are 📋. |
 | CMU1 | CMU P1 Traversal 20-clip set & planted-foot slide measurement (`packages/art/src/convert/{convert-animations,retarget}.ts`) | ✅ | Branch `feat/cmu1-traversal-footslide`: added `CMU_P1_VERBS`, `CMU_TRAVERSAL_TAKES`, `"cmu-traversal"` (`clipsExpected: 20` across `climb`, `step-up`, `vault`, `duck`, `roll`) and real `measureClipFootSlide` / `validateRetargetedClip` options `{ rig, maxFootSlide, plantToleranceM }`. |
 
@@ -535,6 +536,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-13**: B0 (🚧): `node:sqlite` baked asset index with SHA-256 chunk dedupe and fail-closed licence lanes in `packages/art/src/baked-store.ts`. (`feat/b0-baked-asset-store`)
 - **2026-11-13**: SY3 (✅): parametric building templates, lot variation and district narrowing, 7-channel weathering, spillover and 5W1H provenance in `@mmo-engine/synthesis`. (`feat/sy3-parametric-buildings`)
 - **2026-11-13**: CL0 C0 (🚧): cinematic schemas and the 6-gate bake validator; MJ1 verdict: Jolt stays authoritative, MuJoCo offline-only. (`feat/cl0-cutscene-lane`)
 - **2026-11-13**: CMU1 (✅): planted-foot `measureClipFootSlide` replaces the stubbed slide check; the 20-clip `cmu-traversal` set is registered. (`feat/cmu1-traversal-footslide`)

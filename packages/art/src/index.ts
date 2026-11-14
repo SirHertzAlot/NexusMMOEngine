@@ -40,4 +40,5 @@ export * from "./character/clip-playback.js";
 export * from "./media/index.js";
 export * from "./character/stand-in.js";
 export { loadParticleBudgets, budgetForTier, DEFAULT_PARTICLE_BUDGETS, type ParticleBudgets, type TierBudget, type QualityTier } from "./particle-budgets.js";
+export * from "./baked-store.js";
 export * from "./cinematics/index.js";
