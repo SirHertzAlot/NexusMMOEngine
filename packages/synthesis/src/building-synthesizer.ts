@@ -117,6 +117,22 @@ function worldBoxXZ(pos: Vec3Tuple, rot: QuatTuple, scale: Vec3Tuple, local?: Bo
   return { minX, maxX, minZ, maxZ };
 }
 
+/**
+ * Settlement kinds a kit may have no building for, and the families that stand in, first found wins: a shop is a
+ * house with a counter, a granary a barn, a town hall a hall. Any other kind stands in as a house.
+ */
+const STAND_INS: Readonly<Record<string, readonly string[]>> = {
+  tenement: ["house"], townhouse: ["house"], artisan_house: ["house"], rectory: ["house"], apothecary: ["house"],
+  shop: ["house"], bakery: ["house"], master_bakery: ["house"], library: ["house"], farmstead: ["house"],
+  master_farmstead: ["house"], school: ["tavern", "house"],
+  granary: ["stables", "barn"], warehouse: ["stables", "barn"],
+  sawmill: ["workshop", "smithy"], master_smithy: ["smithy"], master_workshop: ["workshop", "smithy"],
+  mine: ["shelter", "hut"], fishery: ["hut"], master_fishery: ["hut"],
+  guild_hall: ["tavern"], market: ["tavern"], theatre: ["tavern"], bathhouse: ["tavern"], hospital: ["tavern"], town_hall: ["tavern"],
+  parish_church: ["church", "chapel"], cathedral: ["church", "chapel"], monastery: ["church", "chapel"],
+  watch_hq: ["tower", "guardhouse"], gaol: ["tower", "guardhouse"], barracks: ["tower", "guardhouse"],
+};
+
 /** Choose a prototype matching the requested settlement archetype and parcel budget via WFC. */
 function selectPrototypeWithWfc(
   library: DecompositionLibrary,
@@ -125,11 +141,13 @@ function selectPrototypeWithWfc(
   maxFootprintM?: [number, number],
 ): StructurePrototype {
   const archLower = archetype.toLowerCase();
-  let candidates = library.structures.filter(
-    (s) =>
-      s.settlementArchetypes.some((a) => a.toLowerCase() === archLower) ||
-      s.category.toLowerCase() === archLower,
-  );
+  const serving = (kind: string): StructurePrototype[] =>
+    library.structures.filter((s) => s.settlementArchetypes.some((a) => a.toLowerCase() === kind) || s.category.toLowerCase() === kind);
+  let candidates = serving(archLower);
+  for (const kind of [...(STAND_INS[archLower] ?? []), "house"]) {
+    if (candidates.length > 0) break;
+    candidates = serving(kind);
+  }
   if (candidates.length === 0) {
     // Broad fallback when library doesn't carry a specialized structure archetype
     candidates = library.structures.filter((s) => s.hasInterior);
