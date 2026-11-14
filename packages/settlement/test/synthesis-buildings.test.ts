@@ -52,6 +52,8 @@ function makeTestLibrary() {
     n("Preset_House_A", "Kit_Roof_01", [0, 2.5, 0]),
     n("Preset_House_A", "Kit_Prop_Table_01", [2.5, 0, 1.2]),
     n("Preset_House_A", "Kit_Prop_Chair_01", [2.5, 0, 0.6]),
+    // A stray wall piece hanging in the air above the house, touching nothing.
+    n("Preset_House_A", "Kit_Wall_01", [0, 9, 0]),
 
     n("Preset_Tavern_A", "Kit_Floor_01", [20, 0, 0]),
     n("Preset_Tavern_A", "Kit_Floor_01", [22.5, 0, 0]),
@@ -83,5 +85,17 @@ describe("settlementScene with Unity DecompositionLibrary", () => {
     const kids = sample.children ?? [];
     assert.ok(kids.some((c) => c.components?.Structure && c.components?.Collider?.shape === "none"), "visual meshes have Collider: none");
     assert.ok(kids.some((c) => c.prefab === "collider" && c.components?.Collider?.shape === "box"), "invisible box colliders attached");
+  });
+
+  it("bakes no building part that touches nothing or hangs in the air", () => {
+    const res = generateSettlement({ settlementId: "syn-01", seed: 42, population: 120, rules: BUILTIN_RULES });
+    assert.equal(res.ok, true);
+    const doc = settlementScene(res.manifest, BUILTIN_RULES, { origin: [0, 0], synthesis: makeTestLibrary() });
+    const houses = (doc.nodes[0]!.children ?? []).filter((n) => n.name?.startsWith("building:"));
+    assert.ok(houses.length > 0);
+    for (const h of houses) {
+      const high = (h.children ?? []).filter((c) => (c.transform?.position?.[1] ?? 0) > 8);
+      assert.deepEqual(high.map((c) => c.id), [], `${h.id}: the stray wall and its collider are gone`);
+    }
   });
 });

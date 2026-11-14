@@ -40,7 +40,7 @@ import type { SimWorld } from "./world.js";
 import { hasComponent } from "bitecs";
 import type { SupportPart } from "@mmo-engine/placement";
 import { BodyConfig, ShapeKind, Transform } from "./components.js";
-import type { CollapsePartSpec } from "./interact/collapse.js";
+import { mulQuat, type CollapsePartSpec, type Quat } from "./interact/collapse.js";
 import type { CreatureSystem } from "./creatures.js";
 import { buildSpawn } from "./admin/spawn.js";
 import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
@@ -334,7 +334,7 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
   const { ancestorGroup, footings } = computeBuildingFootings(worlds, deps);
   // What a modular building's parts were when they spawned (DE4): a part the break system removes during the spawn
   // frees its slot for the next entity, so an entity id read afterwards may be somebody else's.
-  const partSpawn = new Map<string, { wire: bigint; x: number; y: number; z: number; qy: number; qw: number }>();
+  const partSpawn = new Map<string, { wire: bigint; x: number; y: number; z: number; qy: number; qw: number; tilt?: Quat }>();
   const colliderWires = new Map<string, bigint>();
 
   for (const w of worlds) {
@@ -443,8 +443,15 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
           walkThrough && namedModel ? w.scale : undefined,
         );
         const entities = [building];
+        // The model's own tilt (a beam laid on its side), drawn within its yaw. Only a body-less part tilts: a body keeps
+        // its yaw, its box being given in the yaw's axes.
+        const tilt = walkThrough && (w.tiltDeg[0] !== 0 || w.tiltDeg[1] !== 0) ? tiltQuat(w.tiltDeg) : undefined;
         if (deps.collapse && ancestorGroup.has(node.id)) {
-          partSpawn.set(node.id, { wire: deps.sim.wireId(building), x: Transform.px[building]!, y: Transform.py[building]!, z: Transform.pz[building]!, qy: Transform.qy[building]!, qw: Transform.qw[building]! });
+          partSpawn.set(node.id, { wire: deps.sim.wireId(building), x: Transform.px[building]!, y: Transform.py[building]!, z: Transform.pz[building]!, qy: Transform.qy[building]!, qw: Transform.qw[building]!, ...(tilt ? { tilt } : {}) });
+        }
+        if (tilt) {
+          const T = Transform;
+          [T.qx[building], T.qy[building], T.qz[building], T.qw[building]] = mulQuat([T.qx[building]!, T.qy[building]!, T.qz[building]!, T.qw[building]!], tilt);
         }
         if (drop > 0 && !walkThrough) {
           // The body reaches the lowest ground (its buried half already does, unless the drop is taller than it).
@@ -553,6 +560,13 @@ export function spawnScene(scene: SceneDoc, deps: SceneSpawnDeps): SceneSpawnRes
   return out;
 }
 
+/** A node's own pitch (about X) then roll (about Z), degrees, as a quaternion to apply after its yaw. */
+function tiltQuat([pitch, roll]: readonly [number, number]): Quat {
+  const a = (pitch * Math.PI) / 360;
+  const b = (roll * Math.PI) / 360;
+  return mulQuat([Math.sin(a), 0, 0, Math.cos(a)], [0, 0, Math.sin(b), Math.cos(b)]);
+}
+
 /**
  * Hand each modular building's parts to the collapse system: a part is the Structure node `<base>-vis-N` (the model,
  * drawn at its pivot, with no body of its own), its colliders the nodes `<base>-pN-col...` of the same group. The
@@ -564,7 +578,7 @@ function registerCollapsibleBuildings(
   ancestorGroup: ReadonlyMap<string, string>,
   nodes: ReadonlyMap<string, { components?: Record<string, Record<string, unknown>> }>,
   floorOf: (group: string) => number | undefined,
-  partSpawn: ReadonlyMap<string, { wire: bigint; x: number; y: number; z: number; qy: number; qw: number }>,
+  partSpawn: ReadonlyMap<string, { wire: bigint; x: number; y: number; z: number; qy: number; qw: number; tilt?: Quat }>,
   colliderWires: ReadonlyMap<string, bigint>,
   out: SceneSpawnResult,
   deps: SceneSpawnDeps,
@@ -610,7 +624,7 @@ function registerCollapsibleBuildings(
         category: p.kind,
       };
       // A part the break system removed while spawning has no live entity now: the wire ids say so.
-      specs.push({ eid: deps.sim.resolveWireId(at.wire), wire: at.wire, colliders: [], colliderWires: colliders.get(group)?.get(key) ?? [], part, offset });
+      specs.push({ eid: deps.sim.resolveWireId(at.wire), wire: at.wire, colliders: [], colliderWires: colliders.get(group)?.get(key) ?? [], part, offset, ...(at.tilt ? { tilt: at.tilt } : {}) });
     }
     const floor = floorOf(group);
     if (specs.length >= 3) collapse.registerBuilding(deps.sim, `${scene}/${group}`, specs, floor !== undefined ? { groundY: floor, groundTol: 0.3 } : {});
