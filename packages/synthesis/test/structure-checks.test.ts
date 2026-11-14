@@ -67,6 +67,14 @@ describe("envelopeReport", () => {
     const halfNorth = closed.map((p) => (p.partId === "n" ? part("n", "wall", -2, 1.2, 4, 4, 2, 0.2) : p));
     assert.deepEqual(envelopeReport(halfNorth).missing, ["north wall"], "half the side is open");
   });
+  it("counts a side's set-back walls: a T-plan whose wing stands out past the main front", () => {
+    // The main body's north wall stands at z 4; a 3 m wing in its middle pushes the north edge out to z 6.
+    const wing = [part("wn", "wall", 0, 1.2, 6, 3, 2, 0.2), part("we", "wall", 1.5, 1.2, 5, 0.2, 2, 2), part("ww", "wall", -1.5, 1.2, 5, 0.2, 2, 2)];
+    const north = [part("n1", "wall", -2.75, 1.2, 4, 2.5, 2, 0.2), part("n2", "wall", 2.75, 1.2, 4, 2.5, 2, 0.2)];
+    const t = [...closed.filter((p) => p.partId !== "n"), ...north, ...wing];
+    assert.deepEqual(envelopeReport(t), { closed: true, missing: [] });
+    assert.deepEqual(envelopeReport(t.filter((p) => !/^n\d/.test(p.partId))).missing, ["north wall"], "but not without the main front");
+  });
   it("counts overlapping wall parts once", () => {
     const doubled = [...closed, side("n2", 0, 4, "x")];
     assert.equal(envelopeReport(doubled).closed, true);
