@@ -159,7 +159,10 @@ export interface EnvelopeOptions {
   isRoof?: (p: SynthesizedPlacement) => boolean;
   /** Share of a side's length its walls must cover (default 0.55: real footprints are L-shaped and offset, so a box-wide wall is too strict; measured on the village preview). */
   coverage?: number;
-  /** How far a wall may stand from the footprint's edge and still count as that side's, metres (default 1). */
+  /**
+   * How far in from the footprint's edge a wall may stand and still count as that side's, metres (default half the
+   * footprint's depth across that side: an L-, T- or stepped plan sets part of a side back; measured on the village preview).
+   */
   reach?: number;
 }
 
@@ -180,7 +183,6 @@ export function envelopeReport(parts: readonly SynthesizedPlacement[], o: Envelo
   const isWall = o.isWall ?? ((p: SynthesizedPlacement) => WALL.test(p.category) || WALL.test(p.partId));
   const isRoof = o.isRoof ?? ((p: SynthesizedPlacement) => ROOF.test(p.category) || ROOF.test(p.partId));
   const coverage = o.coverage ?? 0.55;
-  const reach = o.reach ?? 1;
   const boxes = parts.map(placementBox);
   const min = [Infinity, Infinity];
   const max = [-Infinity, -Infinity];
@@ -193,13 +195,15 @@ export function envelopeReport(parts: readonly SynthesizedPlacement[], o: Envelo
     max[1] = Math.max(max[1]!, b.max[2]);
   }
   const missing: string[] = [];
-  const sides: Array<[string, number, number, (b: Aabb) => number, (b: Aabb) => [number, number]]> = [
-    ["north wall", max[1]!, max[0]! - min[0]!, (b) => b.max[2], (b) => [b.min[0], b.max[0]]],
-    ["south wall", min[1]!, max[0]! - min[0]!, (b) => b.min[2], (b) => [b.min[0], b.max[0]]],
-    ["east wall", max[0]!, max[1]! - min[1]!, (b) => b.max[0], (b) => [b.min[2], b.max[2]]],
-    ["west wall", min[0]!, max[1]! - min[1]!, (b) => b.min[0], (b) => [b.min[2], b.max[2]]],
+  const [w, d] = [max[0]! - min[0]!, max[1]! - min[1]!];
+  const sides: Array<[string, number, number, number, (b: Aabb) => number, (b: Aabb) => [number, number]]> = [
+    ["north wall", max[1]!, w, d, (b) => b.max[2], (b) => [b.min[0], b.max[0]]],
+    ["south wall", min[1]!, w, d, (b) => b.min[2], (b) => [b.min[0], b.max[0]]],
+    ["east wall", max[0]!, d, w, (b) => b.max[0], (b) => [b.min[2], b.max[2]]],
+    ["west wall", min[0]!, d, w, (b) => b.min[0], (b) => [b.min[2], b.max[2]]],
   ];
-  for (const [name, edge, length, along, span] of sides) {
+  for (const [name, edge, length, depth, along, span] of sides) {
+    const reach = o.reach ?? depth / 2;
     // The walls on this side, their extents merged so overlapping parts are not counted twice.
     const spans = parts.flatMap((p, i) => (isWall(p) && Math.abs(along(boxes[i]!) - edge) <= reach ? [span(boxes[i]!)] : [])).sort((a, b) => a[0] - b[0]);
     let covered = 0;

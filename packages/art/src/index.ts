@@ -40,3 +40,23 @@ export * from "./character/clip-playback.js";
 export * from "./media/index.js";
 export * from "./character/stand-in.js";
 export { loadParticleBudgets, budgetForTier, DEFAULT_PARTICLE_BUDGETS, type ParticleBudgets, type TierBudget, type QualityTier } from "./particle-budgets.js";
+export {
+  VfxEffect,
+  VfxBlendMode,
+  VfxTextureSampling,
+  VfxFlipbookLoop,
+  VfxFlipbook,
+  parseVfxEffect,
+  resolveFlipbookFrames,
+  resolveEmitterRenderSettings,
+  type VfxEmitter,
+  type VfxSpawnShape,
+  type VfxForce,
+  type VfxCurve,
+  type VfxScalar,
+  type VfxColor,
+  type VfxColorGradient,
+} from "./vfx-schema.js";
+export { vfxToQuarks, vfxToQuarksJson } from "./vfx-convert.js";
+export * from "./baked-store.js";
+export * from "./cinematics/index.js";

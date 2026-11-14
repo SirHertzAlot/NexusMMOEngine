@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import type { SceneDoc, SceneKind, SceneNode } from "@mmo-engine/scene";
 import type { BuildingSynthesisResult, QuatTuple, SynthesisOutput, SynthesizedPlacement } from "./types.js";
 
@@ -39,6 +40,17 @@ export function yawDegrees([x, y, z, w]: QuatTuple): number {
 /** Round to millimetres, the precision a scene file keeps. */
 const mm = (v: number): number => Math.round(v * 1000) / 1000 || 0;
 
+/**
+ * A part's turn as scene Euler degrees [pitch, yaw, roll] (yaw first, then pitch, then roll: three.js "YXZ"), with a
+ * tilt under a hundredth of a degree read as none.
+ */
+export function sceneRotation([x, y, z, w]: QuatTuple): [number, number, number] {
+  const e = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(x, y, z, w), "YXZ");
+  const deg = (r: number): number => mm((r * 180) / Math.PI);
+  const tilt = (r: number): number => (Math.abs(deg(r)) < 0.01 ? 0 : deg(r));
+  return [tilt(e.x), deg(e.y), tilt(e.z)];
+}
+
 function localToParent(
   px: number,
   py: number,
@@ -53,30 +65,37 @@ function localToParent(
   return [mm(px + lx * c + lz * s), mm(py + ly), mm(pz - lx * s + lz * c)];
 }
 
-/** Compute local axis-aligned bounds of a placed part before Y rotation. */
+/** A placed part's axis-aligned bounds about its pivot in its yaw's axes: its scaled box, tilted by its pitch and roll. */
 function localScaledBounds(p: SynthesizedPlacement): {
   minX: number; maxX: number;
   minY: number; maxY: number;
   minZ: number; maxZ: number;
 } {
   const [sx, sy, sz] = p.transform.scale;
+  let box: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
   if (p.pivotBounds) {
     const b = p.pivotBounds;
     const x0 = b.min[0] * sx, x1 = b.max[0] * sx;
     const y0 = b.min[1] * sy, y1 = b.max[1] * sy;
     const z0 = b.min[2] * sz, z1 = b.max[2] * sz;
-    return {
+    box = {
       minX: Math.min(x0, x1), maxX: Math.max(x0, x1),
       minY: Math.min(y0, y1), maxY: Math.max(y0, y1),
       minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1),
     };
+  } else {
+    const [w, h, d] = p.size;
+    box = {
+      minX: -Math.abs(w) / 2, maxX: Math.abs(w) / 2,
+      minY: 0, maxY: Math.abs(h),
+      minZ: -Math.abs(d) / 2, maxZ: Math.abs(d) / 2,
+    };
   }
-  const [w, h, d] = p.size;
-  return {
-    minX: -Math.abs(w) / 2, maxX: Math.abs(w) / 2,
-    minY: 0, maxY: Math.abs(h),
-    minZ: -Math.abs(d) / 2, maxZ: Math.abs(d) / 2,
-  };
+  const [pitch, , roll] = sceneRotation(p.transform.rot);
+  if (pitch === 0 && roll === 0) return box;
+  const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler((pitch * Math.PI) / 180, 0, (roll * Math.PI) / 180, "YXZ"));
+  const t = new THREE.Box3(new THREE.Vector3(box.minX, box.minY, box.minZ), new THREE.Vector3(box.maxX, box.maxY, box.maxZ)).applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(tilt));
+  return { minX: t.min.x, maxX: t.max.x, minY: t.min.y, maxY: t.max.y, minZ: t.min.z, maxZ: t.max.z };
 }
 
 /** Emit invisible `prefab: "collider"` SceneNodes compensating for GLB pivot, split doorways, and stepped stairs. */
@@ -190,19 +209,21 @@ export function buildingToSceneNodes(
 
   for (let i = 0; i < building.placements.length; i++) {
     const p = building.placements[i];
-    const [w, h, d] = p.size;
-    const yawDeg = mm(yawDegrees(p.transform.rot));
+    const rotation = sceneRotation(p.transform.rot);
+    const yawDeg = rotation[1];
     const [sx, sy, sz] = p.transform.scale;
     const nonUnitScale = Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01 || Math.abs(sz - 1) > 0.01;
     const resolvedAsset = opts.assets?.[p.assetRef] ?? p.assetRef;
     const lb = localScaledBounds(p);
+    // A tilted part's box is its tilted model's bounds in its yaw's axes, as every reader of the box turns it by yaw only.
+    const [w, h, d] = rotation[0] !== 0 || rotation[2] !== 0 ? [lb.maxX - lb.minX, lb.maxY - lb.minY, lb.maxZ - lb.minZ] : p.size;
 
     children.push({
       id: `${opts.id}-vis-${i}`,
       name: p.partId,
       transform: {
         position: [mm(p.transform.pos[0]), mm(p.transform.pos[1]), mm(p.transform.pos[2])],
-        rotation: [0, yawDeg, 0],
+        rotation,
         ...(nonUnitScale ? { scale: [sx, sy, sz] } : {}),
       },
       components: {

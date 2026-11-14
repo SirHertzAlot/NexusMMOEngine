@@ -11,6 +11,15 @@
 import { solve, type WfcOption } from "@mmo-engine/wfc";
 import { categorizeDetailedPart, categorizePart, type DetailedPartCategory } from "./extractor.js";
 import { solveBuildingRoomPlan, solveRoomVignetteSlots } from "./wfc-bridge.js";
+import {
+  createParametricTemplateFromPrototype,
+  rollLotVariation,
+  type LotVariationRoll,
+} from "./parametric-template.js";
+import {
+  runBuildingAdoptionPipeline,
+  type BuildingAdoptionResult,
+} from "./building-provenance.js";
 import type {
   BoundsData,
   BuildingRoomPlan,
@@ -117,6 +126,22 @@ function worldBoxXZ(pos: Vec3Tuple, rot: QuatTuple, scale: Vec3Tuple, local?: Bo
   return { minX, maxX, minZ, maxZ };
 }
 
+/**
+ * Settlement kinds a kit may have no building for, and the families that stand in, first found wins: a shop is a
+ * house with a counter, a granary a barn, a town hall a hall. Any other kind stands in as a house.
+ */
+const STAND_INS: Readonly<Record<string, readonly string[]>> = {
+  tenement: ["house"], townhouse: ["house"], artisan_house: ["house"], rectory: ["house"], apothecary: ["house"],
+  shop: ["house"], bakery: ["house"], master_bakery: ["house"], library: ["house"], farmstead: ["house"],
+  master_farmstead: ["house"], school: ["tavern", "house"],
+  granary: ["stables", "barn"], warehouse: ["stables", "barn"],
+  sawmill: ["workshop", "smithy"], master_smithy: ["smithy"], master_workshop: ["workshop", "smithy"],
+  mine: ["shelter", "hut"], fishery: ["hut"], master_fishery: ["hut"],
+  guild_hall: ["tavern"], market: ["tavern"], theatre: ["tavern"], bathhouse: ["tavern"], hospital: ["tavern"], town_hall: ["tavern"],
+  parish_church: ["church", "chapel"], cathedral: ["church", "chapel"], monastery: ["church", "chapel"],
+  watch_hq: ["tower", "guardhouse"], gaol: ["tower", "guardhouse"], barracks: ["tower", "guardhouse"],
+};
+
 /** Choose a prototype matching the requested settlement archetype and parcel budget via WFC. */
 function selectPrototypeWithWfc(
   library: DecompositionLibrary,
@@ -125,11 +150,13 @@ function selectPrototypeWithWfc(
   maxFootprintM?: [number, number],
 ): StructurePrototype {
   const archLower = archetype.toLowerCase();
-  let candidates = library.structures.filter(
-    (s) =>
-      s.settlementArchetypes.some((a) => a.toLowerCase() === archLower) ||
-      s.category.toLowerCase() === archLower,
-  );
+  const serving = (kind: string): StructurePrototype[] =>
+    library.structures.filter((s) => s.settlementArchetypes.some((a) => a.toLowerCase() === kind) || s.category.toLowerCase() === kind);
+  let candidates = serving(archLower);
+  for (const kind of [...(STAND_INS[archLower] ?? []), "house"]) {
+    if (candidates.length > 0) break;
+    candidates = serving(kind);
+  }
   if (candidates.length === 0) {
     // Broad fallback when library doesn't carry a specialized structure archetype
     candidates = library.structures.filter((s) => s.hasInterior);
@@ -462,16 +489,43 @@ export function synthesizeBuilding(
   opts: BuildingSynthesisOptions,
 ): BuildingSynthesisResult {
   const startMs = Date.now();
-  const proto = selectPrototypeWithWfc(library, opts.archetype, opts.seed, opts.maxFootprintM);
-  const density = opts.dressingDensity ?? 0.75;
+  const wantsAdoption = Boolean(
+    opts.parametricTemplate ||
+    opts.weatheringInputs ||
+    (opts.spilloverLayers && opts.spilloverLayers.length > 0) ||
+    opts.emitProvenance,
+  );
+  const preRoll: LotVariationRoll | undefined = opts.parametricTemplate
+    ? rollLotVariation(opts.parametricTemplate, {
+        seed: opts.seed,
+        parcelSizeM: opts.maxFootprintM,
+        district: opts.district,
+        overrides: opts.knobOverrides,
+      })
+    : undefined;
+  const effectiveMaxFootprintM: [number, number] | undefined = preRoll
+    ? opts.maxFootprintM
+      ? [
+          Math.min(opts.maxFootprintM[0], preRoll.rolledFootprintM[0]),
+          Math.min(opts.maxFootprintM[1], preRoll.rolledFootprintM[1]),
+        ]
+      : preRoll.rolledFootprintM
+    : opts.maxFootprintM;
+
+  const proto = selectPrototypeWithWfc(library, opts.archetype, opts.seed, effectiveMaxFootprintM);
+  const rolledDensity =
+    preRoll && typeof preRoll.knobValues.dressingDensity === "number"
+      ? preRoll.knobValues.dressingDensity
+      : undefined;
+  const density = opts.dressingDensity ?? rolledDensity ?? 0.75;
   const synthesizeInteriors = opts.synthesizeInteriors ?? true;
   const yawRad = ((opts.frontYawDeg ?? 0) * Math.PI) / 180;
   const rotQ = yawQuat(yawRad);
 
   // Uniform XZ plot scale if structure slightly exceeds plot bounds (never squash height below 0.9m factor)
   let fitXZ = 1;
-  if (opts.maxFootprintM) {
-    const [mw, md] = opts.maxFootprintM;
+  if (effectiveMaxFootprintM) {
+    const [mw, md] = effectiveMaxFootprintM;
     const ratio = Math.min(mw / Math.max(0.5, proto.footprint[0]), md / Math.max(0.5, proto.footprint[2]));
     if (ratio < 1) {
       fitXZ = Math.max(0.78, ratio);
@@ -575,6 +629,39 @@ export function synthesizeBuilding(
     r3(proto.footprint[2] * fitXZ),
   ];
 
+  let adoption: BuildingAdoptionResult | undefined;
+  if (wantsAdoption) {
+    const template =
+      opts.parametricTemplate ??
+      createParametricTemplateFromPrototype({
+        prototype: proto,
+        id: `auto-${proto.id}`,
+        family: proto.category,
+      });
+    const weatheringInputs = opts.weatheringInputs ?? {
+      moisture: 0.25,
+      aspectDeg: opts.frontYawDeg ?? 0,
+      buildingAgeYears: 0,
+      groundY: 0,
+      seed: opts.seed,
+    };
+    adoption = runBuildingAdoptionPipeline({
+      buildingId: opts.buildingId ?? `${opts.archetype}-${opts.seed}`,
+      archetype: opts.archetype,
+      template,
+      seed: opts.seed,
+      parcelSizeM: opts.maxFootprintM,
+      district: opts.district,
+      overrides: opts.knobOverrides,
+      preRolledVariation: preRoll,
+      weatheringInputs,
+      placements: finalPlacements,
+      adjacentStructures: opts.adjacentStructures,
+      spilloverLayers: opts.spilloverLayers,
+      tierScale: opts.detailTierScale,
+    });
+  }
+
   return {
     archetype: opts.archetype,
     prototypeId: proto.id,
@@ -594,6 +681,7 @@ export function synthesizeBuilding(
       vignettesPlaced: roomPlans.reduce((s, r) => s + r.vignettesPlaced.length, 0),
       wfcRestarts: 0,
     },
+    ...(adoption ? { adoption } : {}),
   };
 }
 

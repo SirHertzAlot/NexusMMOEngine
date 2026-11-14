@@ -6,6 +6,17 @@
  */
 
 import { z } from "zod";
+import type {
+  DistrictNarrowingRule,
+  KnobValue,
+  ParametricBuildingTemplate,
+} from "./parametric-template.js";
+import type { BuildingWeatheringInputParams } from "./building-weathering.js";
+import type {
+  AdjacentStructureRef,
+  StructureDetailLayerInput,
+} from "./structure-spillover.js";
+import type { BuildingAdoptionResult } from "./building-provenance.js";
 
 export type Vec3Tuple = [number, number, number];
 export type QuatTuple = [number, number, number, number];
@@ -473,6 +484,24 @@ export interface BuildingSynthesisOptions {
   frontYawDeg?: number;
   /** Whether to re-synthesize interior decoration vignettes using WFC + Learned rules instead of verbatim replay. Default true. */
   synthesizeInteriors?: boolean;
+  /** Optional parametric template rolled deterministically from seed within district/parcel constraints. */
+  parametricTemplate?: ParametricBuildingTemplate;
+  /** Optional district/ward constraint narrowing rule or district name. */
+  district?: string | DistrictNarrowingRule;
+  /** Optional explicit knob overrides merged during parametric roll. */
+  knobOverrides?: Record<string, KnobValue>;
+  /** Optional building weathering inputs (moisture, aspect, settlement-held buildingAgeYears). */
+  weatheringInputs?: BuildingWeatheringInputParams;
+  /** Optional structure-surface spillover detail layers (vines crossing wall/ground seams). */
+  spilloverLayers?: readonly StructureDetailLayerInput[];
+  /** Optional nearby structures evaluated for spillover seam propagation. */
+  adjacentStructures?: readonly AdjacentStructureRef[];
+  /** Optional detail tier scale passed to `@mmo-engine/placement` (default 1). */
+  detailTierScale?: number;
+  /** Emit Slice H adoption payload + 5W1H provenance even using a prototype-derived template. */
+  emitProvenance?: boolean;
+  /** Optional building identifier recorded in 5W1H provenance (defaults to `${archetype}-${seed}`). */
+  buildingId?: string;
 }
 
 export interface BuildingRoomPlan {
@@ -497,4 +526,6 @@ export interface BuildingSynthesisResult {
     vignettesPlaced: number;
     wfcRestarts: number;
   };
+  /** Slice H parametric variation, weathering mask, spillover detail passes, and 5W1H provenance. */
+  adoption?: BuildingAdoptionResult;
 }
