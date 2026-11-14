@@ -32,112 +32,112 @@
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Action"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Health"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Locomotion"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:NavAgent"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Velocity"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Action"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Health"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Locomotion"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:NavAgent"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:508",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Velocity"
     },
     {
@@ -214,14 +214,14 @@
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:485",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Breakable"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:485",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Health"
     },
     {
@@ -256,14 +256,14 @@
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:485",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Breakable"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:485",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Health"
     },
     {
@@ -3385,315 +3385,315 @@
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:345",
+      "source": "packages/engine-core/src/interact/collapse.ts:369",
       "to": "field:BodyConfig.halfX"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:345",
+      "source": "packages/engine-core/src/interact/collapse.ts:369",
       "to": "field:BodyConfig.halfY"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:345",
+      "source": "packages/engine-core/src/interact/collapse.ts:369",
       "to": "field:BodyConfig.halfZ"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:179",
+      "source": "packages/engine-core/src/interact/collapse.ts:201",
       "to": "field:Transform.px"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:179",
+      "source": "packages/engine-core/src/interact/collapse.ts:201",
       "to": "field:Transform.py"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:179",
+      "source": "packages/engine-core/src/interact/collapse.ts:201",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:178",
+      "source": "packages/engine-core/src/interact/collapse.ts:199",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:178",
+      "source": "packages/engine-core/src/interact/collapse.ts:199",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:178",
+      "source": "packages/engine-core/src/interact/collapse.ts:199",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:178",
+      "source": "packages/engine-core/src/interact/collapse.ts:199",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:381",
+      "source": "packages/engine-core/src/interact/collapse.ts:405",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:381",
+      "source": "packages/engine-core/src/interact/collapse.ts:405",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:381",
+      "source": "packages/engine-core/src/interact/collapse.ts:405",
       "to": "field:Velocity.lz"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:329",
+      "source": "packages/engine-core/src/interact/collapse.ts:353",
       "to": "component:AssetRef"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:335",
+      "source": "packages/engine-core/src/interact/collapse.ts:359",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:319",
+      "source": "packages/engine-core/src/interact/collapse.ts:342",
       "to": "component:Transform"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:332",
+      "source": "packages/engine-core/src/interact/collapse.ts:356",
       "to": "component:Velocity"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:330",
+      "source": "packages/engine-core/src/interact/collapse.ts:354",
       "to": "field:AssetRef.assetHash"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:331",
+      "source": "packages/engine-core/src/interact/collapse.ts:355",
       "to": "field:AssetRef.variant"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:342",
+      "source": "packages/engine-core/src/interact/collapse.ts:366",
       "to": "field:BodyConfig.friction"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:338",
+      "source": "packages/engine-core/src/interact/collapse.ts:362",
       "to": "field:BodyConfig.halfX"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:339",
+      "source": "packages/engine-core/src/interact/collapse.ts:363",
       "to": "field:BodyConfig.halfY"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:340",
+      "source": "packages/engine-core/src/interact/collapse.ts:364",
       "to": "field:BodyConfig.halfZ"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:347",
+      "source": "packages/engine-core/src/interact/collapse.ts:371",
       "to": "field:BodyConfig.layer"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:345",
+      "source": "packages/engine-core/src/interact/collapse.ts:369",
       "to": "field:BodyConfig.mass"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:346",
+      "source": "packages/engine-core/src/interact/collapse.ts:370",
       "to": "field:BodyConfig.motionType"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:341",
+      "source": "packages/engine-core/src/interact/collapse.ts:365",
       "to": "field:BodyConfig.radius"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:344",
+      "source": "packages/engine-core/src/interact/collapse.ts:368",
       "to": "field:BodyConfig.restitution"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:337",
+      "source": "packages/engine-core/src/interact/collapse.ts:361",
       "to": "field:BodyConfig.shapeKind"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:248",
+      "source": "packages/engine-core/src/interact/collapse.ts:271",
       "to": "field:Transform.px"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:249",
+      "source": "packages/engine-core/src/interact/collapse.ts:272",
       "to": "field:Transform.py"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:250",
+      "source": "packages/engine-core/src/interact/collapse.ts:273",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:251",
+      "source": "packages/engine-core/src/interact/collapse.ts:346",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:251",
+      "source": "packages/engine-core/src/interact/collapse.ts:346",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:251",
+      "source": "packages/engine-core/src/interact/collapse.ts:346",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:251",
+      "source": "packages/engine-core/src/interact/collapse.ts:346",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:328",
+      "source": "packages/engine-core/src/interact/collapse.ts:352",
       "to": "field:Transform.sx"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:328",
+      "source": "packages/engine-core/src/interact/collapse.ts:352",
       "to": "field:Transform.sy"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:328",
+      "source": "packages/engine-core/src/interact/collapse.ts:352",
       "to": "field:Transform.sz"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:334",
+      "source": "packages/engine-core/src/interact/collapse.ts:358",
       "to": "field:Velocity.ax"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:334",
+      "source": "packages/engine-core/src/interact/collapse.ts:358",
       "to": "field:Velocity.ay"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:334",
+      "source": "packages/engine-core/src/interact/collapse.ts:358",
       "to": "field:Velocity.az"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:333",
+      "source": "packages/engine-core/src/interact/collapse.ts:357",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:333",
+      "source": "packages/engine-core/src/interact/collapse.ts:357",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "extracted",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:333",
+      "source": "packages/engine-core/src/interact/collapse.ts:357",
       "to": "field:Velocity.lz"
     },
     {
@@ -3882,175 +3882,175 @@
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:444",
+      "source": "packages/engine-core/src/combat.ts:447",
       "to": "component:God"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:468",
+      "source": "packages/engine-core/src/combat.ts:471",
       "to": "component:Stamina"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:296",
+      "source": "packages/engine-core/src/combat.ts:298",
       "to": "field:Action.move"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:475",
+      "source": "packages/engine-core/src/combat.ts:478",
       "to": "field:Action.seq"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:297",
+      "source": "packages/engine-core/src/combat.ts:299",
       "to": "field:Action.started"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:310",
+      "source": "packages/engine-core/src/combat.ts:312",
       "to": "field:Action.yaw"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:290",
+      "source": "packages/engine-core/src/combat.ts:292",
       "to": "field:Health.current"
-    },
-    {
-      "confidence": "extracted",
-      "from": "system:combat",
-      "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:318",
-      "to": "field:Locomotion.mode"
-    },
-    {
-      "confidence": "extracted",
-      "from": "system:combat",
-      "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:291",
-      "to": "field:PlayerIntent.buttons"
-    },
-    {
-      "confidence": "extracted",
-      "from": "system:combat",
-      "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:406",
-      "to": "field:PlayerIntent.lookPitch"
-    },
-    {
-      "confidence": "extracted",
-      "from": "system:combat",
-      "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:294",
-      "to": "field:PlayerIntent.lookYaw"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
       "source": "packages/engine-core/src/combat.ts:320",
+      "to": "field:Locomotion.mode"
+    },
+    {
+      "confidence": "extracted",
+      "from": "system:combat",
+      "kind": "reads",
+      "source": "packages/engine-core/src/combat.ts:293",
+      "to": "field:PlayerIntent.buttons"
+    },
+    {
+      "confidence": "extracted",
+      "from": "system:combat",
+      "kind": "reads",
+      "source": "packages/engine-core/src/combat.ts:408",
+      "to": "field:PlayerIntent.lookPitch"
+    },
+    {
+      "confidence": "extracted",
+      "from": "system:combat",
+      "kind": "reads",
+      "source": "packages/engine-core/src/combat.ts:296",
+      "to": "field:PlayerIntent.lookYaw"
+    },
+    {
+      "confidence": "extracted",
+      "from": "system:combat",
+      "kind": "reads",
+      "source": "packages/engine-core/src/combat.ts:322",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:321",
+      "source": "packages/engine-core/src/combat.ts:323",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:382",
+      "source": "packages/engine-core/src/combat.ts:384",
       "to": "field:Transform.px"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:385",
+      "source": "packages/engine-core/src/combat.ts:387",
       "to": "field:Transform.py"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:383",
+      "source": "packages/engine-core/src/combat.ts:385",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:348",
+      "source": "packages/engine-core/src/combat.ts:350",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/engine-core/src/combat.ts:349",
+      "source": "packages/engine-core/src/combat.ts:351",
       "to": "field:Velocity.lz"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:473",
+      "source": "packages/engine-core/src/combat.ts:476",
       "to": "field:Action.move"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:475",
+      "source": "packages/engine-core/src/combat.ts:478",
       "to": "field:Action.seq"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:474",
+      "source": "packages/engine-core/src/combat.ts:477",
       "to": "field:Action.started"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:305",
+      "source": "packages/engine-core/src/combat.ts:307",
       "to": "field:Action.yaw"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:444",
+      "source": "packages/engine-core/src/combat.ts:447",
       "to": "field:Health.current"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:348",
+      "source": "packages/engine-core/src/combat.ts:350",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "extracted",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/engine-core/src/combat.ts:349",
+      "source": "packages/engine-core/src/combat.ts:351",
       "to": "field:Velocity.lz"
     },
     {
@@ -7541,7 +7541,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "c0e98111c96f8909dc0eba41fbaf4506f7f2fde8",
+    "builtFromCommit": "93d05b276ea398f08ae0a5a1acb7465712385d7d",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 37,
@@ -7622,7 +7622,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "52ad1f0aadb47f7588d075c0ee94cb121b941b35b9febd3588f2a3524fd80b7c",
+    "graphHash": "fd8ad73ecf64a180aafefae4055188c9b99cb1a234f3ac8dda44f26e4fd637ec",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -7647,14 +7647,14 @@
       "modules/characters/module.json": "64066d43ae85a5dfa6616d9da2c21591e7f3b839ed9069ac72f9b268434fe253",
       "modules/chat/module.json": "3c9272de7ccc037eb80ef1a1b4d66a6e29479d4bfef09b91a12f1483982e45d2",
       "modules/combat/module.json": "ae615ac7acfb0654d76414937106eedce1fd3070729d1abf8983d81c95c65684",
-      "modules/combat/server.js": "5fb1dcbb747fcfc50e4b4e4ad48512b849fb3b6ab04d9df3122b410c4c558a3d",
+      "modules/combat/server.js": "1a3ab84c0f30d5e4a969dbb6c4d25fdbd11e6f8181c24b8c0825f7c70818c542",
       "modules/core/module.json": "c83dca0dbf70615bb4d15d3184f56f27d0435949c38cfbcb187fa434d76140eb",
       "modules/creatures/module.json": "095a85e81bfba6bef2cd6c00b0cbefdf2a4a19cda91197c1c32d0edb8775bfd9",
       "modules/creatures/server.js": "47ad69c38fd3ae42151ecc1c0e6cb520d6334a0e9f7ef96dfa3aeec8656dec56",
       "modules/database/module.json": "8e42b9b27f3fda10cd25f27464200d533a57c66a3afdf878385fdbbbe0bf4ba2",
       "modules/debug/module.json": "9b08a4c265ffdae0d26f858d1082df1cf54757d940dcefcfeed6870be8f8a919",
       "modules/dungeons/module.json": "275fc8c42758e2062978d1145a804dc99da4bd7890f7bf64d5e64f8d2564fd08",
-      "modules/dungeons/server.js": "65374135801f12ff536e7e17d7c55ea12923b6e458fd8d14343cbe5cbf801441",
+      "modules/dungeons/server.js": "d8a3a005e35b68ab584c0978fc4895902d7e510e1a189a7cf53885ee48aa2083",
       "modules/economy/module.json": "11f94ae013aa613bc7268318f4c6c0cf88ecdbf27345e6a98ede2d455f3c4d04",
       "modules/economy/server.js": "60f6ac5add7c3f49c07025f4fc375356668bd0c48e00f64d21e7e3b054555578",
       "modules/ecs/module.json": "727e0ee9b9658d07a12d24a801c076b50c816a56fa54896c9b004cbaa3aa17f0",
@@ -7715,7 +7715,7 @@
       "packages/engine-core/src/characters/store.ts": "7b67b939b8b9d9251776d6c7024891076ef016ec5c9ea67cacd8eff921ac6dc8",
       "packages/engine-core/src/chat.ts": "3293ee5e5e07ba56615ce17ba0c8cd825331c71ad8f7b2c1cb7b3aa823af53f4",
       "packages/engine-core/src/combat-content.ts": "d76dcfff2ee207434e2b56b9d321ffa14c768fff13c1ce2f3bbc90edf007ec0d",
-      "packages/engine-core/src/combat.ts": "7d4c75e774908059dbb0644d0191da6600d543f35f3dc291574b92631886c9e2",
+      "packages/engine-core/src/combat.ts": "4acabff9a17115d0882e72491acaaee9b545131f34b7b995030346fd6952ec13",
       "packages/engine-core/src/components.ts": "fa91dc4abf8867d063c16d80fd4d3a5cd902c8dc5993db6eaa7d24939b0c0cb3",
       "packages/engine-core/src/crafting/crafting-service.ts": "71272c039cce600c731c374d9e2225d22baad76058937e07a9fba1a9a606b31e",
       "packages/engine-core/src/creatures.ts": "0b07651c559793b5058abe62b472f28de71c7625bb29c57daff4e0352d596949",
@@ -7724,9 +7724,9 @@
       "packages/engine-core/src/delta-apply.ts": "3969aa091e471c3fe1afe8fb788978a37b3a4625e977e70f56d0de0ac54041c1",
       "packages/engine-core/src/duel.ts": "a0da16e86be51fa8211fdfada38e029d2ac33bbd5a7fdd80d8a1cf1dd9df5cc8",
       "packages/engine-core/src/dungeons/content.ts": "fc5fa1e094db4af3de7fa62f90000a73da8c3dd58733ceb688308b2f781113fa",
-      "packages/engine-core/src/dungeons/instance.ts": "558dfa4373124daf491b8e8dadff9036bc4d501e7d09a8dda56f02d8e304a723",
+      "packages/engine-core/src/dungeons/instance.ts": "48f0fbe9ebe16fb5e4b7bb4d41a5eb8b44ecfee956adcd70276349a98376ab97",
       "packages/engine-core/src/dungeons/interiors.ts": "ecae2fa0935019c1a7dabb3b1f0299dd30ddafc3470331f223ab0f7ac7288185",
-      "packages/engine-core/src/dungeons/manager.ts": "47c3fcaa2702ad5e3b7eb8bf81ae018c761824e03e3d3149032490bfe84b728f",
+      "packages/engine-core/src/dungeons/manager.ts": "33f5a6c3f14e1802c9d6c5528deb53a1adf8ed436dfff257128d66c278f3b4e0",
       "packages/engine-core/src/dungeons/placement.ts": "932b79d2e9c81b7f7114adb6aa04583664a8e7012c0a38bbadf8f2683cddcf00",
       "packages/engine-core/src/dungeons/pool.ts": "e8e8be70b584cd216d107a760f4c85074ab38720fe7c11d0e83f902402190980",
       "packages/engine-core/src/dungeons/prop-mesh.ts": "7d5f4e8bc3a70b2f83b85f8d73b42d0b45178024524dc21abe701b75e89da278",
@@ -7750,7 +7750,7 @@
       "packages/engine-core/src/index.ts": "d5d98da4c9c726b1747ba846f66c9ef55b485187f8c5d1854376a864f1922fd2",
       "packages/engine-core/src/interact/breaks.ts": "1d1154e2d42718d4755cfdb335c0aca3c92ae82743f35b9a88c0485902bfd7df",
       "packages/engine-core/src/interact/chests.ts": "d7647d6866cafd3a2bf3d9a1ddc4d7033a067f2f4ba0a1dce61eb85b91e22d25",
-      "packages/engine-core/src/interact/collapse.ts": "a8afa94f2e7c609b4f76c598df0b21143ae73a73432bd628d20b612295f54292",
+      "packages/engine-core/src/interact/collapse.ts": "62f441955d098f071767216290d3cf0a02e53d35cee475e251f1d31d83b366b2",
       "packages/engine-core/src/interact/index.ts": "62c594f5f3cdb4bc6d6420906ae8f792c303b1e275dad62bf9787694773c1788",
       "packages/engine-core/src/interact/places-store.ts": "821758c3491eac0aa6046d2cde2b9e7461bec469b70a8e4db868a93730524640",
       "packages/engine-core/src/interact/structures.ts": "e36b7dee7086d1e3e2c9d17bc1184c6e148d26b1bb05743053916e400d3fbcb7",
@@ -7825,12 +7825,13 @@
       "packages/engine-core/src/procgen/wildlife-table.ts": "7975d1f6d8b84d47efc9c271b99b8193065a00396bb4adce2d25af0dc640ebe7",
       "packages/engine-core/src/procgen/world-populator.ts": "3dd29275081e317647417a4ced3c996d8425b96c262d3044e99f33612caf7038",
       "packages/engine-core/src/prop-collision.ts": "b665c8345071196ca3429a9fae4e1054aae3472a4025d6e45e044a5c5cf6cfc8",
-      "packages/engine-core/src/quests/content.ts": "39618c1387c1bea6cac0e211d07c054e57709bfb8a5cec412d29b5e4a0875920",
+      "packages/engine-core/src/quests/content.ts": "cfb0d0d1e14cd2ead7c174d9e42b218e22444371a811648a3603f2a04d43a9cc",
       "packages/engine-core/src/quests/generate.ts": "a6d4b19a60e8400a32066244799ed2eb6a44059042724c2cae30f83792ab28e7",
       "packages/engine-core/src/quests/quest-def.ts": "dc2de1da7be0e0401652b96dab90a68966da397c2b3aae12f1ee9e5b2b7f4765",
       "packages/engine-core/src/quests/quest-log.ts": "0454ef43f0f3ef0cff27ec4deb291183ee795b3549462a75df08bf137a46cdb4",
       "packages/engine-core/src/quests/quest-service.ts": "3678a214bcb051f6ee7c2d824c09dbab7c8976ab54e1dc12fd4fbb10174caf0b",
       "packages/engine-core/src/quests/quest-store.ts": "c9f76e68003d77fd90e85359368579b20793534c592602285b73d20f14fe298c",
+      "packages/engine-core/src/quests/worldbuilding-generics.ts": "57ded3b013541b1e165732a345171d0ec486668a6aab564c8398298241da9d01",
       "packages/engine-core/src/residents/index.ts": "e3e3d3f24db578d09449435ffbc3e8d6fbacce5a9111f33989bd61c0aa41a56b",
       "packages/engine-core/src/residents/lessons.ts": "ae3f55e33d77d695e3b97214c9f4972e7e073f4a6a2f080540c92d5f3a0882e5",
       "packages/engine-core/src/residents/resident-system.ts": "d484d0b15942c99905ab21c1352e2daf4929845ca24d84452ab9c19399f36b2f",
@@ -7843,9 +7844,9 @@
       "packages/engine-core/src/sab-probe-worker.ts": "9cc4eb16d205be55fa6e6f6d38603921888030607d4925d08b3e017864e2aa8a",
       "packages/engine-core/src/sab-store.ts": "6d3490a367e10ac856994ccd18fe1b3d9cec436fe4e61085ed9ba4c1a4a4a181",
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
-      "packages/engine-core/src/scene-spawn.ts": "17fea0b92c95999539481a3784ce168177a06dbcdc16af6b150248055eebfd7a",
+      "packages/engine-core/src/scene-spawn.ts": "c398b9b7e5ff7431f4905a86a312ddcf90e8947d5f222c3ab3c38e607ce05dea",
       "packages/engine-core/src/server-settings.ts": "644264d10ee891ef74170c742cab78b7fe35012fa962129e7e2127b7a1c69236",
-      "packages/engine-core/src/server.ts": "be46bdc1f6f7bef756f79a371d0647bae443fbf9aec58b0c28f20f4c33d22ef7",
+      "packages/engine-core/src/server.ts": "6a45feb88107d1dcb3022c91d090cecbcb17186de6ced16b1549ace9b82c76c0",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "2f3bbe93d1308674d14567c416e755f8a25c48e842d7926472b88838267f98ec",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
@@ -8001,7 +8002,7 @@
       "kind": "archetype",
       "name": "Spawner",
       "objectCount": 1,
-      "source": "packages/engine-core/src/scene-spawn.ts:508"
+      "source": "packages/engine-core/src/scene-spawn.ts:515"
     },
     {
       "components": [
@@ -11939,7 +11940,7 @@
       "name": "collapse",
       "role": "simulation",
       "simName": "collapse",
-      "source": "packages/engine-core/src/interact/collapse.ts:131",
+      "source": "packages/engine-core/src/interact/collapse.ts:152",
       "tickIndex": 5
     },
     {
@@ -11965,7 +11966,7 @@
       "name": "combat",
       "role": "simulation",
       "simName": "combat",
-      "source": "packages/engine-core/src/combat.ts:221",
+      "source": "packages/engine-core/src/combat.ts:223",
       "tickIndex": 22
     },
     {
