@@ -184,6 +184,7 @@ Permissive licenses only.
 | TL3 | Dev tweak overlays: Leva in the client and lil-gui in the editor, DEV-gated, three seeded control groups | ✅ | PR #227: Leva + lil-gui DEV-gated; automated prod-bundle check. |
 | TL4 | Gobkit CC0 rigged characters as placeholder animation test subjects | ✅ | PR #228: 3 characters, 7/7 tests, survive TL1. |
 | TL5 | ozz-animation (bake and native side) and acl clip compression at bake | ✅ | PR #229: interface + design doc; native vendoring is follow-up. |
+| GH1–H3 | Graphify Harvester H1–H3: AST + live bitECS ECS graph, `SimSystem.access` ratchet, and CLI (`packages/graphify/`, `packages/engine-core/src/system-access.ts`, `content/graph/ecs-graph.json`); H4 live overlay follow-up | 🚧 | H1–H3 landed (`✅`): `graphify:build` / `graphify:check` extract live bitECS components/fields + TS Compiler API AST (`defineQuery`, direct field R/W) into deterministic `content/graph/ecs-graph.json` (`419` nodes — `28` components, `99` fields, `43` systems [`32` sim + `11` infra/other], `31` modules, `185` objects, `4` archetypes, `13` verbs, `16` widgets — and `1077` edges). `5/32` sim systems carry explicit `SimSystem.access` (`intent`, `character`, `integrate`, `colliders`, `physics`); remaining `27` gated by `INFERRED_SIM_ALLOWLIST` / `MAX_UNANNOTATED_SIM_SYSTEMS` ratchet (`roles.ts`), with `10` dynamic `unresolved` targets logged cleanly. H4 (live world-server overlay) remains 📋. |
 
 Spikes (evaluate first; each has a pass bar in the doc, and a fail means
 write the reason and park it):
@@ -528,6 +529,7 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 ## Update log
 
 Newest first. One line per merged PR or decision.
+- **2026-11-13**: GH1–H3 (🚧): `@mmo-engine/graphify` harvester, `SimSystem.access` ratchet and `content/graph/ecs-graph.json` (419 nodes, 1,077 edges). (`feat/gh-graphify-harvester`)
 - **2026-11-12**: DOC1 passes eight and nine (🚧, `feat/docs-audit`): every "Still open" audit item closed — the remaining prose re-read against the code (wiki ch03–09, the `ARCHITECTURE.md` body, `GETTING-STARTED.md`, `GAMEPLAY.md`, the pre-existing `CONFIGURATION.md` rows, `MASTERY-AND-COMBAT.md` §§2–5); stale island/biome, test-suite, E3b edge-port, editor-workspace and C++20→C++17 statements fixed; a `DECISIONS.md` clarification appended for the 0.562 ms figure; the IX1a and SG7 roadmap notes corrected; `ENGINE-COMPARISON-AND-PERFORMANCE.md` moved into `docs/business-analysis/` per AGENTS.md §1.
 - **2026-11-11**: DOC1 and DOC2 (🚧, `feat/docs-audit`): full documentation audit with a report, the first-read docs reworked, and a dedicated performance-and-constraints page.
 - **2026-11-11**: WEB5 docs site (🚧, `feat/site-docs`): the curated docs rendered from `docs/` with markdown-it, over a 3D terrain backdrop. Also resolved the roadmap's leftover merge-conflict markers.
