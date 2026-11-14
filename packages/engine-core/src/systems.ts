@@ -52,12 +52,15 @@ import {
   Velocity,
 } from "./components.js";
 import type { SimWorld } from "./world.js";
+import type { SystemAccess } from "./system-access.js";
 import { DEFAULT_MOVEMENT, type MovementRules } from "./movement.js";
 import { Injury, NO_JUMP } from "./body.js";
 import type { ChunkDataSource } from "./procgen/chunk-source.js";
 
 export interface SimSystem {
   readonly name: string;
+  /** Optional declarative component/field access contract for static dataflow verification. */
+  readonly access?: SystemAccess;
   /** Advance one fixed step. dtSeconds is the fixed step (STEP_MS/1000). */
   step(sim: SimWorld, dtSeconds: number): void;
 }
@@ -94,6 +97,15 @@ export function modeSpeed(sim: SimWorld, e: number): number {
 
 export class IntentSystem implements SimSystem {
   readonly name = "intent";
+  readonly access: SystemAccess = {
+    system: "intent",
+    reads: [
+      { component: "PlayerIntent", fields: ["mx", "mz"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "Injury", fields: ["move"] },
+    ],
+    writes: [{ component: "Velocity", fields: ["lx", "lz"] }],
+  };
   private readonly query = defineQuery([PlayerIntent, Velocity]);
 
   step(sim: SimWorld, _dtSeconds: number): void {
@@ -204,6 +216,25 @@ export interface CharacterOptions {
  */
 export class CharacterSystem implements SimSystem {
   readonly name = "character";
+  readonly access: SystemAccess = {
+    system: "character",
+    reads: [
+      { component: "PlayerIntent", fields: ["my", "jump", "buttons"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+      { component: "Velocity", fields: ["ly"] },
+      { component: "Locomotion", fields: ["mode", "abilities", "breath"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Injury", fields: ["move", "flags"] },
+      "Noclip",
+      "God",
+    ],
+    writes: [
+      { component: "Transform", fields: ["px", "py", "pz"] },
+      { component: "Velocity", fields: ["ly"] },
+      { component: "Locomotion", fields: ["mode", "breath"] },
+      { component: "Health", fields: ["current"] },
+    ],
+  };
   private readonly query = defineQuery([PlayerIntent, Velocity, Transform]);
   private readonly source: ChunkDataSource | null;
   private readonly worldSeed: bigint;
@@ -387,6 +418,15 @@ export class CharacterSystem implements SimSystem {
 
 export class IntegrateSystem implements SimSystem {
   readonly name = "integrate";
+  readonly access: SystemAccess = {
+    system: "integrate",
+    reads: [
+      { component: "Transform", fields: ["px", "py", "pz"] },
+      { component: "Velocity", fields: ["lx", "ly", "lz"] },
+      { component: "BodyConfig", fields: ["motionType"] },
+    ],
+    writes: [{ component: "Transform", fields: ["px", "py", "pz"] }],
+  };
   private readonly free = defineQuery([Transform, Velocity, Not(BodyConfig)]);
   // Dynamic and static bodies are PhysicsSystem's; integrating them here
   // too would double-apply their motion. Kinematic bodies are moved by
@@ -433,6 +473,34 @@ export const CHARACTER_CAPSULE = { radius: 0.35, halfHeight: 0.55, mass: 80 } as
  */
 export class ColliderSystem implements SimSystem {
   readonly name = "colliders";
+  readonly access: SystemAccess = {
+    system: "colliders",
+    reads: [
+      { component: "Transform", fields: ["sx", "sy", "sz"] },
+      "Velocity",
+      "PlayerIntent",
+      "Locomotion",
+    ],
+    writes: [
+      { component: "Velocity", fields: ["lx", "ly", "lz", "ax", "ay", "az"] },
+      {
+        component: "BodyConfig",
+        fields: [
+          "shapeKind",
+          "halfX",
+          "halfY",
+          "halfZ",
+          "radius",
+          "mass",
+          "motionType",
+          "layer",
+          "friction",
+          "restitution",
+        ],
+      },
+    ],
+    excludes: ["BodyConfig", "AssetRef"],
+  };
   private readonly query = defineQuery([Transform, Not(BodyConfig), Not(AssetRef)]);
 
   step(sim: SimWorld): void {
@@ -595,6 +663,32 @@ const SYNC_FLAG_TELEPORT = 0x01;
  */
 export class PhysicsSystem implements SimSystem {
   readonly name = "physics";
+  readonly access: SystemAccess = {
+    system: "physics",
+    reads: [
+      { component: "Transform", fields: ["px", "py", "pz", "qx", "qy", "qz", "qw"] },
+      { component: "Velocity", fields: ["lx", "ly", "lz", "ax", "ay", "az"] },
+      {
+        component: "BodyConfig",
+        fields: [
+          "shapeKind",
+          "halfX",
+          "halfY",
+          "halfZ",
+          "radius",
+          "mass",
+          "friction",
+          "restitution",
+          "motionType",
+          "layer",
+        ],
+      },
+    ],
+    writes: [
+      { component: "Transform", fields: ["px", "py", "pz", "qx", "qy", "qz", "qw"] },
+      { component: "Velocity", fields: ["lx", "ly", "lz", "ax", "ay", "az"] },
+    ],
+  };
   private readonly query = defineQuery([Transform, Velocity, BodyConfig]);
   private readonly teleports = new Set<bigint>();
   // Bodies the backend could not create, since start, and whether the current

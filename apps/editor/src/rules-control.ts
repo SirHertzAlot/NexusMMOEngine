@@ -200,11 +200,15 @@ export const TECHNIQUE_FIELDS: FieldSpec[] = [
 export const COMBAT_SECTIONS: FieldSectionSpec[] = [
   {
     title: "Damage",
-    help: "damage = base × mass^massPower × fit × power × part multiplier × armour factor.",
+    help: "damage = base × mass^massPower × fit × power × part multiplier × armour factor. Mitigation = armour / (armour + K); Effective HP = HP × (1 + armour / K) scales linearly.",
     fields: [
       { key: "damage.base", label: "Base damage", kind: "number", min: 0, def: 10 },
       { key: "damage.massPower", label: "Mass power", kind: "number", min: 0, def: 0.5, help: "How much a heavier weapon adds. 0: mass doesn't matter." },
-      { key: "damage.armourHalf", label: "Armour halves at", kind: "number", min: 0, def: 10, help: "The armour value that halves a blow." },
+      { key: "damage.armourHalf", label: "Armour halves at (K)", kind: "number", min: 0, def: 10, help: "Default armour K that halves a blow when no per-kind override is set." },
+      { key: "damage.armourHalfByKind.cut", label: "Armour K (cut)", kind: "number", min: 0, optional: true, help: "Optional cut K override; empty inherits default K." },
+      { key: "damage.armourHalfByKind.blunt", label: "Armour K (blunt)", kind: "number", min: 0, optional: true, help: "Optional blunt K override; empty inherits default K." },
+      { key: "damage.armourHalfByKind.thrust", label: "Armour K (thrust)", kind: "number", min: 0, optional: true, help: "Optional thrust K override; empty inherits default K." },
+      { key: "damage.armourHalfPerLevel", label: "Armour K scaling / level", kind: "number", min: 0, def: 0, help: "Adds this share of K per level above 1." },
     ],
   },
   {
