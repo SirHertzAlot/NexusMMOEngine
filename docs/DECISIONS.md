@@ -2,6 +2,8 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — Graphify Harvester H1–H3 combines live bitECS subprocess introspection with TS Compiler API AST extraction and an explicit `SimSystem.access` ratchet (`packages/graphify/`, `packages/engine-core/src/system-access.ts`, `content/graph/ecs-graph.json`).**
+  Spawn a clean Node/TS subprocess to extract live bitECS components/fields (`28` components, `99` fields), inspect TypeScript ASTs (`defineQuery`, direct field R/W) for `43` systems (`32` simulation + `11` infra/other) and `31` modules, serialize deterministic `content/graph/ecs-graph.json` (`419` nodes, `1077` edges), log dynamic targets verbatim as `unresolved` (`10` sites with `file:line`), and enforce explicit `SimSystem.access?: SystemAccess` annotations via `INFERRED_SIM_ALLOWLIST` / `MAX_UNANNOTATED_SIM_SYSTEMS` (`5/32` sim systems declared so far: `intent`, `character`, `integrate`, `colliders`, `physics`). Rationale: prevents compiler/graph tooling dependencies from entering runtime bundles, refuses to guess dynamic bitECS access, and ratchets down unannotated simulation systems without blocking incremental adoption; H4 live world-server overlay stays planned.
 - **2026-11-13 — KR House pure metaphysics & quest generics.**
   Encoded worldbuilding rules (`packages/rules/src/worldbuilding.ts`) and 7 quest/dialog builders (`packages/engine-core/src/quests/worldbuilding-generics.ts`) as setting-agnostic, schema-validated evaluators (`MagicSourceSchema`, `WardSchema`, `CostLedgerSchema`, `FabricHealthSchema`, `ShrineDevotionSchema`, `PactSchema`, `RiteSchema`, `treatSickPlace`, `priceDueOptions`, `composeGiverProfile`).
 - **2026-11-13 — Linear-EHP armour mitigation.**
