@@ -21,6 +21,12 @@
  *   the block's outside is dropped: what remains is the inside surface,
  *   every triangle facing into the space you walk in, tagged floor, wall,
  *   ceiling or basin by where it came from and which way it faces.
+ * - Wall thickness (`wallThickness` above 0): the rock is no longer a block
+ *   round the whole dungeon. It is the space grown outwards by the thickness,
+ *   on every side, under every floor and over every ceiling, so the dungeon
+ *   is a walled body standing free. The body's outside faces are kept and
+ *   tagged outer: the shell is then a closed mesh with an inside and an
+ *   outside. The body reaches past the painted cells by the thickness.
  *
  * The geometry comes in as a parameter (`@mmo-engine/addon-geometry`, or
  * anything with its two calls), so this package stays plain TypeScript.
@@ -61,6 +67,14 @@ export interface ShellOptions {
   cornerMode?: "square" | "chamfered" | "pillared";
   /** The chamfer's leg, or the pillar's side, metres (default 0.5; at most half a cell). */
   cornerSize?: number;
+  /**
+   * How thick the walls, floor slab and roof slab are, metres (default 0; at most one cell). 0: the shell is the inside
+   * surface only. Above 0: the shell also carries the outside faces of a wall body that thick, tagged outer. Rock between
+   * two spaces that is thinner than twice the thickness stays solid; wider, and each space gets its own wall with a gap
+   * between. With an open ceiling there is no roof slab: the walls end level with the space's top, and the only ceiling
+   * triangles left are the undersides of a taller neighbour's wall where it overhangs a lower space.
+   */
+  wallThickness?: number;
 }
 
 /** Metres between floor levels: one cell's height, a ledge a stair would climb. */
@@ -77,10 +91,11 @@ export const SHELL_DEFAULTS: Required<Omit<ShellOptions, "levels">> = {
   ceilingMode: "flat",
   cornerMode: "square",
   cornerSize: 0.5,
+  wallThickness: 0,
 };
 
 /** What each triangle is. */
-export const SHELL_PARTS = ["floor", "wall", "ceiling", "basin"] as const;
+export const SHELL_PARTS = ["floor", "wall", "ceiling", "basin", "outer"] as const;
 export type ShellPart = (typeof SHELL_PARTS)[number];
 
 /** The slice of `@mmo-engine/addon-geometry` the shell needs. */
@@ -89,7 +104,7 @@ export interface GeometryOps {
     mask: Uint8Array,
     width: number,
     height: number,
-    opts?: { cell?: number; simplify?: number },
+    opts?: { cell?: number; simplify?: number; offset?: number; join?: "miter" | "round" | "square" | "bevel" },
   ): { points: Float64Array; rings: Uint32Array; area: number };
   solid(tree: unknown): { positions: Float32Array; indices: Uint32Array; tags: Uint16Array; volume: number; genus: number };
 }
@@ -109,14 +124,17 @@ export interface DungeonShell {
     floorArea: number;
     /** Volume of the space inside, m³. */
     volume: number;
+    /** Volume of the wall body, m³ (0 when wallThickness is 0: the rock has no outside). */
+    wallVolume: number;
     rooms: number;
     pools: number;
     ms: number;
   };
 }
 
-// Tags the solid's leaves carry (the rock's outside is dropped).
+// Tags the solid's leaves carry (the rock's outside is dropped, unless the walls have a thickness).
 const TAG = { rock: 1, space: 2, basin: 3 } as const;
+const OUTER = SHELL_PARTS.indexOf("outer");
 
 export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions = {}): DungeonShell {
   const o = { ...SHELL_DEFAULTS, ...options, roomHeight: { ...SHELL_DEFAULTS.roomHeight, ...options.roomHeight } };
@@ -165,6 +183,16 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   const laid = new Int32Array(n).fill(-1);
   for (let i = 0; i < n; i++) if (walk[i] && laidHeight.has(d.roomId[i])) laid[i] = d.roomId[i];
   const polyOpts = { cell, ...(o.simplifyTolerance > 0 ? { simplify: o.simplifyTolerance } : {}) };
+  const thick = o.wallThickness;
+  if (!(thick >= 0) || thick > cell) throw new Error(`dungeonShell: wallThickness ${thick} must be from 0 to one cell (${cell})`);
+  // With a wall thickness, every piece of space gets a piece of rock round it: the same cells grown outwards by the
+  // thickness (square corners), from that far under its floor to that far over its ceiling. An open ceiling gets no slab.
+  const grown = { ...polyOpts, offset: thick, join: "miter" as const };
+  const roof = o.ceilingMode === "open" ? 0 : thick;
+  const body: unknown[] = [];
+  const wrap = (mask: Uint8Array, y0: number, height: number): void => {
+    if (thick > 0) body.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, grown), y0: y0 - thick, height: height + thick + roof, tag: TAG.rock });
+  };
   const floor = geo.cellsToPolygons(walk, W, H, polyOpts);
   if (floor.rings.length === 0) throw new Error("dungeonShell: the layout has no floor");
 
@@ -172,7 +200,9 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   const space: unknown[] = [];
   let top = -Infinity;
   for (const L of levelList) {
-    space.push({ op: "extrude", polygons: geo.cellsToPolygons(levelMask(L, (i) => walk[i] === 1), W, H, polyOpts), y0: L * step, height: o.corridorHeight, tag: TAG.space });
+    const mask = levelMask(L, (i) => walk[i] === 1);
+    space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step, height: o.corridorHeight, tag: TAG.space });
+    wrap(mask, L * step, o.corridorHeight);
     top = Math.max(top, L * step + o.corridorHeight);
   }
   let rooms = 0;
@@ -185,6 +215,7 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
       if (!mask.includes(1)) continue;
       any = true;
       space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step, height: h, tag: TAG.space });
+      wrap(mask, L * step, h);
       top = Math.max(top, L * step + h);
     }
     if (any) rooms++;
@@ -196,6 +227,8 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
       const mask = levelMask(L, (i) => pool[i] === 1);
       if (!mask.includes(1)) continue;
       space.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, polyOpts), y0: L * step - o.poolDepth, height: o.poolDepth, tag: TAG.basin });
+      // The slab under a basin only: its top is the floor's own slab.
+      if (thick > 0) body.push({ op: "extrude", polygons: geo.cellsToPolygons(mask, W, H, grown), y0: L * step - o.poolDepth - thick, height: o.poolDepth + thick, tag: TAG.rock });
     }
   }
 
@@ -234,10 +267,8 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     }
   }
   const carved = corners.length > 0 ? { op: "difference", of: [{ op: "union", of: space }, ...corners] } : { op: "union", of: space };
-  const solid = geo.solid({
-    op: "difference",
-    of: [{ op: "box", min: [-cell, bottom, -cell], max: [(W + 1) * cell, top + 1, (H + 1) * cell], tag: TAG.rock }, carved],
-  });
+  const rock = thick > 0 ? { op: "union", of: body } : { op: "box", min: [-cell, bottom, -cell], max: [(W + 1) * cell, top + 1, (H + 1) * cell], tag: TAG.rock };
+  const solid = geo.solid({ op: "difference", of: [rock, carved] });
 
   // Keep the inside surface; name each triangle by its origin and its facing.
   const src = solid.positions;
@@ -275,7 +306,14 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   const parts: number[] = [];
   for (let t = 0; t < solid.tags.length; t++) {
     const tag = solid.tags[t];
-    if (tag === TAG.rock) continue;
+    if (tag === TAG.rock) {
+      // The rock's own faces: dropped when the rock is the block round everything, kept as the wall body's outside.
+      if (thick > 0) {
+        keep.push(t);
+        parts.push(OUTER);
+      }
+      continue;
+    }
     const a = solid.indices[t * 3] * 3, b = solid.indices[t * 3 + 1] * 3, c = solid.indices[t * 3 + 2] * 3;
     const ux = src[b] - src[a], uy = src[b + 1] - src[a + 1], uz = src[b + 2] - src[a + 2];
     const vx = src[c] - src[a], vy = src[c + 1] - src[a + 1], vz = src[c + 2] - src[a + 2];
@@ -287,7 +325,9 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
     else if (up > 0.7) part = "floor";
     else if (up < -0.7) part = "ceiling";
     else part = "wall";
-    if (part === "ceiling" && o.ceilingMode === "open") continue;
+    // Open to the sky: no ceilings. With a wall body the space's top is cut through the rock's top, so no ceiling stands
+    // over it; any down-facing face left is the underside of a taller neighbour's wall, and it stays so the body is closed.
+    if (part === "ceiling" && o.ceilingMode === "open" && thick === 0) continue;
     if (part === "wall" && laidHeight.size > 0 && closesLaidRoom(a, b, c)) continue;
     keep.push(t);
     parts.push(SHELL_PARTS.indexOf(part));
@@ -316,6 +356,9 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
   });
 
   const rockVolume = (W + 2) * cell * ((H + 2) * cell) * (top + 1 - bottom);
+  // The block's volume less what is left of it is the space. A wall body has no block to measure against, so the space is
+  // measured on its own.
+  const spaceVolume = thick > 0 ? geo.solid(carved).volume : rockVolume - solid.volume;
   return {
     positions: Float32Array.from(positions),
     indices,
@@ -325,7 +368,8 @@ export function dungeonShell(d: Dungeon, geo: GeometryOps, options: ShellOptions
       triangles: keep.length,
       vertices: positions.length / 3,
       floorArea: floor.area,
-      volume: rockVolume - solid.volume,
+      volume: spaceVolume,
+      wallVolume: thick > 0 ? solid.volume : 0,
       rooms,
       pools,
       ms: performance.now() - t0,
