@@ -2,6 +2,8 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — Linear-EHP armour mitigation.**
+  Adopted `armourFactor = K / (K + armour)` with `armourHalfByKind` and `armourHalfPerLevel` (`effectiveArmourHalf`, `effectiveHealth`, `DamageInput.armourTotal`, `DamageInput.targetLevel`), rejecting hit-size-dependent mitigation so effective health scales linearly and predictably across tiers.
 - **2026-11-13 — Version A `VfxFlipbook` & `Noise` turbulence.**
   Extended `packages/art/src/vfx-schema.ts` and `vfx-convert.ts` (`VfxBlendMode`, `VfxTextureSampling`, `VfxFlipbookLoop`, `resolveFlipbookFrames`, `resolveEmitterRenderSettings`, `FrameOverLife` flipbook playback) rather than building bespoke shader paths for Pixel Fireball (`content/vfx/pfb-*.json`) and KR ambient VFX (`life-motes.json`, `corruption-bleed.json`).
 - **2026-11-13 — Baked Asset Store B0 uses built-in `node:sqlite` (`DatabaseSync`) with fail-closed two-lane licence gating (`packages/art/src/baked-store.ts`).**
