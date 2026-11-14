@@ -2,6 +2,8 @@
 
 Every entry: date, decision, rationale. Newest first.
 
+- **2026-11-13 — Real world-space foot-slide gating & CMU P1 traversal.**
+  Replaced stubbed retarget checks with planted-foot world displacement measurement (`measureClipFootSlide` in `retarget.ts`) and registered the 20-clip `cmu-traversal` source (`climb`, `step-up`, `vault`, `duck`, `roll` in `convert-animations.ts`).
 - **2026-11-13 — Finite cycle-seeded `MarbleBag<T>`.**
   Adopted deterministic finite-bag sampling (`packages/wfc/src/marble-bag.ts`) with `snapshot()`/`restore()` and nested entries (`MarbleOutcomeEntry`, `MarbleNestedEntry`) for streak-bounded encounter/loot variation without sacrificing replay determinism.
 
