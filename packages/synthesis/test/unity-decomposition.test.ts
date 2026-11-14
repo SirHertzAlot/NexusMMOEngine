@@ -258,6 +258,60 @@ PrefabInstance:
     assert.equal(nodes[0]!.transform.pos[2], 5);
   });
 
+  it("places a model with sub-mesh GameObjects once, and keeps a child's overrides off the instance", () => {
+    // One FBX, three GameObjects: the wall at the root, its glass on top of it and a shutter hinged 1.5 m along.
+    const go = (id: number, name: string, tf: number, father: number, x: number, mesh: number) => `--- !u!1 &${id}
+GameObject:
+  m_IsActive: 1
+  m_Name: ${name}
+--- !u!4 &${tf}
+Transform:
+  m_GameObject: {fileID: ${id}}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: ${x}, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Father: {fileID: ${father}}
+--- !u!33 &${id + 2}
+MeshFilter:
+  m_GameObject: {fileID: ${id}}
+  m_Mesh: {fileID: ${mesh}, guid: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, type: 3}
+`;
+    const prefab = `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+${go(2020, "SM_Test_Window_01_Shutter", 2021, 2001, 1.5, 4300004)}${go(2000, "SM_Test_Window_01", 2001, 0, 0, 4300000)}${go(2010, "SM_Test_Window_01_Glass", 2011, 2001, 0, 4300002)}`;
+    // The scene places it at x 4, opens the shutter (moves it to x 9) and hides it: both are the shutter's, not the wall's.
+    const mod = (target: number, path: string, value: number) => `      - target: {fileID: ${target}, guid: cccccccccccccccccccccccccccccccc, type: 3}
+        propertyPath: ${path}
+        value: ${value}
+`;
+    // It is placed twice at the same spot (a slip in the source scene).
+    const instance = (id: number) => `--- !u!1001 &${id}
+PrefabInstance:
+  m_Modification:
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+${mod(2001, "m_LocalPosition.x", 4)}${mod(2021, "m_LocalPosition.x", 9)}${mod(2020, "m_IsActive", 0)}  m_SourcePrefab: {fileID: 100100000, guid: cccccccccccccccccccccccccccccccc, type: 3}
+`;
+    const scene = `%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+${instance(40)}${instance(41)}`;
+    const index: UnityPackageIndex = {
+      guidToPath: new Map([
+        ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "Assets/Models/SM_Test_Window_01.fbx"],
+        ["cccccccccccccccccccccccccccccccc", "Assets/Prefabs/SM_Test_Window_01.prefab"],
+      ]),
+      textFiles: new Map([
+        ["Assets/Prefabs/SM_Test_Window_01.prefab", prefab],
+        ["Assets/Scenes/Window.unity", scene],
+      ]),
+    };
+    const nodes = extractUnitySceneNodes(index, "Assets/Scenes/Window.unity", { expandNestedPrefabs: true });
+    assert.equal(nodes.length, 1, "one wall: not one per sub-mesh, not two at one spot, and not hidden by the shutter's override");
+    assert.equal(nodes[0]!.partId, "SM_Test_Window_01");
+    assert.equal(nodes[0]!.name, "SM_Test_Window_01", "named for its root GameObject, whichever the prefab lists first");
+    assert.equal(nodes[0]!.transform.pos[0], -4, "at the wall's own place, not the opened shutter's");
+  });
+
   it("reads corner-pivoted GLB AABB and shifts sockets and circular relativeYawDeg accordingly", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-glb-"));
     try {
@@ -319,6 +373,12 @@ describe("4-Tier Hierarchical Decomposition & WFC Building Synthesis", () => {
   });
 
   it("synthesizes deterministic multi-part enterable buildings with valid modular colliders", () => {
+    // A kind the kit has no building for gets its stand-in family, never whatever building comes up.
+    for (let seed = 1; seed <= 24; seed++) {
+      assert.match(synthesizeBuilding(lib, { archetype: "bakery", seed }).prototypeId, /House/, `bakery, seed ${seed}`);
+      assert.match(synthesizeBuilding(lib, { archetype: "school", seed }).prototypeId, /Tavern/, `school, seed ${seed}`);
+      assert.match(synthesizeBuilding(lib, { archetype: "observatory", seed }).prototypeId, /House/, `unlisted kind, seed ${seed}`);
+    }
     const b1 = synthesizeBuilding(lib, { archetype: "tavern", seed: 101, maxFootprintM: [8, 8] });
     const b2 = synthesizeBuilding(lib, { archetype: "tavern", seed: 101, maxFootprintM: [8, 8] });
     assert.deepEqual(b1.placements, b2.placements, "same seed yields byte-identical placements");

@@ -12,6 +12,7 @@ import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene"
 import {
   DRESSED_KINDS,
   buildingToSceneNodes,
+  checkSettlementScene,
   dressGarden,
   isOpenKind,
   synthesizeBuildingForParcel,
@@ -224,12 +225,15 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       },
     });
   }
-  const scene: SceneDoc = {
+  const built: SceneDoc = {
     version: 1,
     name: `settlement-${manifest.settlementId}`,
     kind: "world",
     nodes: [{ id: `settlement-${manifest.settlementId}`, name: `Settlement ${manifest.settlementId}`, transform: { position: [opts.origin[0], 0, opts.origin[1]] }, children }],
   };
+  // A synthesized building keeps only its connected, grounded parts: one touching nothing or hanging in the air goes,
+  // with its collider (open ground is dressed on its own and left alone).
+  const scene = opts.synthesis ? checkSettlementScene(built, { stripOpen: false }).scene : built;
   const issues = validateScene(scene);
   if (issues.length) throw new Error(`settlement ${manifest.settlementId} is not a valid scene: ${issues.map((i) => `${i.path || "(scene)"} ${i.message}`).join("; ")}`);
   return scene;

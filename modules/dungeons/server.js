@@ -41,7 +41,7 @@ export function createSystems(ctx) {
     characterStore,
     partyOf: (name) => config.getGateway().partyOf(name),
     weaponOf: (character) => config.getWeaponOf(character),
-    armourOf: (character) => config.getArmourOf(character),
+    armourOf: (character, kind) => config.getArmourOf(character, kind),
     lootPool: () => config.getLootPool(),
     chestPool: () => config.getChestPool(),
     grant: (character, def) => config.grantItem(character, def),
