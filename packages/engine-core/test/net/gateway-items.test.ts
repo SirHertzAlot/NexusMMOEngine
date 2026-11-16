@@ -26,6 +26,7 @@ import { BodySystem } from "../../src/body.js";
 import { CombatSystem, type HitEvent } from "../../src/combat.js";
 import type { HitMessage } from "@mmo-engine/protocol";
 import { SimWorld } from "../../src/world.js";
+import * as C from "../../src/components.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import { makeCredentialStore, TEST_PASSWORD } from "./auth-harness.js";
 
@@ -283,6 +284,47 @@ describe("gateway: items", () => {
     assert.equal(hit.disarmed, true);
     assert.ok(!decodeControl<InventoryMessage>((await invP)[0]).main, "the sword left the hand");
     assert.equal(decodeControl<DropsMessage>((await dropsP)[0]).drops.length, 1, "and lies on the ground");
+    await alice.close();
+  });
+
+  it("auto-stacks stackables and handles wire split and combine actions (CF6)", async () => {
+    const world = new SimWorld();
+    const rules = engineDefaults();
+    rules.items.bases.bread = { ...rules.items.fallback, maxStack: 5, footprint: [1, 1], models: [] };
+    rules.loot.bagColumns = 4;
+    rules.loot.bagSlots = 8;
+    const breadPool: PoolItemLike[] = [
+      { id: "bread", rank: "common", source: "drop", item: "bread", seed: 1, bundle: { Identity: { id: "bread", name: "Bread", base: "bread" }, Rank: { id: "common", color: "#ffffff" }, Stats: {} } },
+    ];
+    const items = new ItemService({ defs: new ItemDefs(breadPool, rules), loot: rules.loot, tickHz: 30 });
+    now = 1_000_000;
+    gw = new Gateway({ clock: () => now, disconnectGraceMs: 1000, credentialStore: await makeCredentialStore(), world, systems: [items], items, admins: ["alice"] });
+    const port = await gw.listen();
+    gw.frame(now);
+    const alice = await join(`ws://127.0.0.1:${port}`, "alice");
+
+    const inv1P = alice.waitFor(MessageType.Inventory, 4);
+    for (let i = 0; i < 4; i++) assert.equal((await admin(alice, "give", { def: "bread" })).ok, true);
+    const inv1 = decodeControl<InventoryMessage>((await inv1P)[3]);
+    const bagStacks = inv1.bag.filter((b): b is NonNullable<typeof b> => b !== null);
+    assert.equal(bagStacks.length, 1);
+    const stack1 = bagStacks[0]!;
+    assert.equal(stack1.count, 4);
+    assert.equal(stack1.maxStack, 5);
+
+    const inv2P = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "split", item: stack1.id, count: 1 }));
+    const inv2 = decodeControl<InventoryMessage>((await inv2P)[0]);
+    const stacks = inv2.bag.filter((b): b is NonNullable<typeof b> => b !== null).sort((a, b) => (a.count ?? 1) - (b.count ?? 1));
+    assert.equal(stacks.length, 2);
+    assert.deepEqual(stacks.map((s) => s.count), [1, 3]);
+
+    const inv3P = alice.waitFor(MessageType.Inventory, 1);
+    alice.sendRaw(MessageType.Item, encodeControl({ kind: "item", action: "combine", from: stacks[0]!.id, into: stacks[1]!.id }));
+    const inv3 = decodeControl<InventoryMessage>((await inv3P)[0]);
+    const combined = inv3.bag.filter((b): b is NonNullable<typeof b> => b !== null);
+    assert.equal(combined.length, 1);
+    assert.equal(combined[0]!.count, 4);
     await alice.close();
   });
 });

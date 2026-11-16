@@ -19,6 +19,7 @@ import { LocomotionMode } from "@mmo-engine/protocol";
 import type { Discipline, SkillsRules } from "@mmo-engine/rules";
 import { Health, Locomotion, PlayerIntent } from "../components.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import { SkillIndex, SkillSheet } from "./mastery.js";
 
@@ -41,6 +42,15 @@ export interface DisciplineView {
 
 export class MasterySystem implements SimSystem {
   readonly name = "mastery";
+  readonly access: SystemAccess = {
+    system: "mastery",
+    reads: [
+      { component: "Health", fields: ["current"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "PlayerIntent", fields: ["mx", "my", "mz"] },
+    ],
+    writes: [],
+  };
   readonly index: SkillIndex;
   private readonly query = defineQuery([PlayerIntent, Health]);
   private readonly sheets = new Map<number, SkillSheet>();

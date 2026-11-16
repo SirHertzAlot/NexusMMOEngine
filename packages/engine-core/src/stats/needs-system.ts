@@ -20,12 +20,28 @@ import { LocomotionMode } from "@mmo-engine/protocol";
 import type { NeedsRules } from "@mmo-engine/rules";
 import { God, Health, Locomotion, Needs, PlayerIntent, Transform } from "../components.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 
 export type NeedKind = "hunger" | "thirst";
 
 export class NeedsSystem implements SimSystem {
   readonly name = "needs";
+  readonly access: SystemAccess = {
+    system: "needs",
+    reads: [
+      "God",
+      { component: "Health", fields: ["current"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "Needs", fields: ["hunger", "hungerMax", "thirst", "thirstMax"] },
+      { component: "PlayerIntent", fields: ["mx", "my", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "Health", fields: ["current"] },
+      { component: "Needs", fields: ["hunger", "hungerMax", "thirst", "thirstMax"] },
+    ],
+  };
   private readonly query = defineQuery([Needs, Health]);
 
   /** Entities seen at 0 Health: refilled when they rise. */

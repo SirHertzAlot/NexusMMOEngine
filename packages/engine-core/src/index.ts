@@ -440,7 +440,7 @@ export {
   PERSIST_TX_KIND,
   AtomicSPSCTransactionQueue,
 } from "./lockless-ring.js";
-export type { PersistTxKind, PersistTransaction } from "./lockless-ring.js";
+export type { PersistTxKind, PersistTransaction, DataPlaneCommandQueue } from "./lockless-ring.js";
 
 export {
   TICK_RATE_HZ,
@@ -504,3 +504,24 @@ export {
 
 // SAB Logging Layer Exports (docs/SAB-LOGGING-LAYER-SPEC.md)
 export * from "./logging/index.js";
+
+// Admin Inspector & Graphify H4 Selection-Scoped Live Overlay
+export {
+  InspectArgsSchema,
+  inspectEntity,
+  projectEntityComponents,
+  type InspectArgs,
+  type ProjectedComponent,
+  type ProjectedField,
+} from "./admin/inspect.js";
+export {
+  EntityFieldTracker,
+  MAX_WATCHED_ENTITIES,
+  WATCH_TTL_TICKS,
+  projectEntityOverlay,
+  resolveBuildCommit,
+  type LiveEntityOverlay,
+  type LiveOverlayComponent,
+  type LiveOverlayField,
+  type LiveWriterRecord,
+} from "./admin/live-overlay.js";

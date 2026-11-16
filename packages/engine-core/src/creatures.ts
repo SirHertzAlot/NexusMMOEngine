@@ -36,6 +36,7 @@ import { fnv1a32 } from "@mmo-engine/scatter";
 import * as C from "./components.js";
 import type { Weapon } from "./combat.js";
 import { attachDefaultCollider, CHARACTER_CAPSULE, PLAYER_SPEED, type SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import { clearOfStatics } from "./prop-collision.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
@@ -130,6 +131,28 @@ export function isAwake(activity: string, t: number | null): boolean {
 
 export class CreatureSystem implements SimSystem {
   readonly name = "creatures";
+  readonly access: SystemAccess = {
+    system: "creatures",
+    reads: [
+      "BodyConfig",
+      "CharacterRef",
+      { component: "Health", fields: ["current", "max"] },
+      { component: "NavAgent", fields: ["seq", "state"] },
+      { component: "PlayerIntent", fields: ["mx", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move"] },
+      { component: "AssetRef", fields: ["assetHash", "variant"] },
+      "FarVisible",
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Locomotion", fields: ["abilities", "breath", "mode"] },
+      { component: "NavAgent", fields: ["seq", "speed", "tx", "ty", "tz"] },
+      { component: "PlayerIntent", fields: ["buttons", "jump", "lookYaw", "mx", "my", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "sx", "sy", "sz"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+  };
   private readonly brains = new Map<number, Brain>();
   private readonly characters = defineQuery([C.Transform, C.Health, C.CharacterRef]);
   private readonly everything = defineQuery([C.Transform, C.Health]);

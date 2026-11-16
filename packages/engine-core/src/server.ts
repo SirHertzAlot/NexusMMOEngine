@@ -1493,6 +1493,7 @@ async function main(): Promise<void> {
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
     atomicOps: atomicOps ?? undefined,
+    damageStages: () => breaks.damageStages(),
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),

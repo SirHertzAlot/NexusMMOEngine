@@ -29,6 +29,7 @@ import { defineSABComponent } from "./sab-store.js";
 import type { Spell, SpellsRules } from "@mmo-engine/rules";
 import { Action, Health, PlayerIntent, Transform } from "./components.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 
 /** The mana pool, server only (the owner hears it as the 0x1c `mana` message). */
@@ -57,6 +58,20 @@ interface Casting {
 
 export class MagicSystem implements SimSystem {
   readonly name = "magic";
+  readonly access: SystemAccess = {
+    system: "magic",
+    reads: [
+      { component: "Action", fields: ["move"] },
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Mana", fields: ["current", "max"] },
+      { component: "PlayerIntent", fields: ["mx", "mz"] },
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: [
+      { component: "Health", fields: ["current"] },
+      { component: "Mana", fields: ["current", "max"] },
+    ],
+  };
   private readonly query = defineQuery([Health, PlayerIntent]);
   private byId = new Map<string, Spell>();
   private readonly casting = new Map<number, Casting>();

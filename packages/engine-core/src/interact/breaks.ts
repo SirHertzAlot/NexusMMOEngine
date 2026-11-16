@@ -24,6 +24,7 @@ import { BROKEN_VARIANT } from "@mmo-engine/protocol";
 import { AssetRef, BodyConfig, Breakable, Health, Transform, Velocity } from "../components.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { PlacesStore } from "./places-store.js";
 import type { ChestView } from "@mmo-engine/protocol";
 
@@ -101,9 +102,28 @@ interface Pending {
 
 export class BreakSystem implements SimSystem {
   readonly name = "breaks";
+  readonly access: SystemAccess = {
+    system: "breaks",
+    reads: [
+      "BodyConfig",
+      "Breakable",
+      { component: "AssetRef", fields: ["assetHash", "variant"] },
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qy"] },
+    ],
+    writes: [
+      "BodyConfig",
+      "Breakable",
+      "Transform",
+      { component: "AssetRef", fields: ["assetHash", "variant"] },
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Velocity", fields: ["ax", "ay", "az", "lx", "ly", "lz"] },
+    ],
+  };
   private readonly bodies = defineQuery([Transform, Health, Breakable]);
   private readonly keys = new Map<number, string>();
   private readonly eidDefs = new Map<number, BreakableDef>();
+  private readonly customStages = new Map<string, readonly number[]>();
   private pending: Pending[] = [];
   /** Buildings that stand broken and can be mended, by entity. */
   private readonly ruins = new Map<number, Ruin>();
@@ -129,6 +149,9 @@ export class BreakSystem implements SimSystem {
     addComponent(sim.ecs, Breakable, eid);
     this.keys.set(eid, key);
     this.eidDefs.set(eid, def);
+    if (def.stages && def.stages.length > 0 && hasComponent(sim.ecs, AssetRef, eid)) {
+      this.customStages.set(`${AssetRef.assetHash[eid]! >>> 0}:${def.health}`, def.stages);
+    }
     const rec = this.opts.store?.load("break", key);
     if (!rec) return;
     if (rec.respawnAt !== null && this.now() >= rec.respawnAt) {
@@ -275,6 +298,23 @@ export class BreakSystem implements SimSystem {
     const out = [...this.changed].map((e) => this.view(e, sim));
     this.changed = new Set();
     return out;
+  }
+
+  /** Custom damage-stage thresholds (DE1), keyed by assetHash or `assetHash:maxHealth`. */
+  damageStages(): Record<string, number[]> | undefined {
+    const out: Record<string, number[]> = {};
+    let any = false;
+    for (const [hash, def] of this.defs) {
+      if (def.stages && def.stages.length > 0) {
+        out[String(hash >>> 0)] = [...def.stages];
+        any = true;
+      }
+    }
+    for (const [key, stages] of this.customStages) {
+      out[key] = [...stages];
+      any = true;
+    }
+    return any ? out : undefined;
   }
 
   /** Props whose time has come are back. */

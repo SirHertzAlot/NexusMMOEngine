@@ -20,10 +20,29 @@ export function damageStage(current: number, max: number, thresholds: readonly n
   return stage;
 }
 
-export const stageBrightness = (stage: number): number => STAGE_BRIGHTNESS[Math.min(stage, STAGE_BRIGHTNESS.length - 1)] ?? 1;
+export function stageBrightness(stage: number, totalStages = STAGE_THRESHOLDS.length): number {
+  if (stage <= 0) return 1;
+  if (totalStages === 2) return STAGE_BRIGHTNESS[Math.min(stage, STAGE_BRIGHTNESS.length - 1)] ?? 0.62;
+  const clamped = Math.min(stage, Math.max(1, totalStages));
+  if (totalStages <= 1) return 0.68;
+  const u = (clamped - 1) / (totalStages - 1);
+  return Math.round((0.86 - 0.32 * u) * 100) / 100;
+}
+
+/** Pick per-asset/per-health custom thresholds when the server sent them, else the default 2-stage thresholds. */
+export function thresholdsFor(
+  stages: Readonly<Record<string, readonly number[]>> | null | undefined,
+  assetHash: number | undefined,
+  maxHealth: number,
+): readonly number[] {
+  if (!stages || assetHash === undefined) return STAGE_THRESHOLDS;
+  const h = assetHash >>> 0;
+  return stages[`${h}:${maxHealth}`] ?? stages[String(h)] ?? STAGE_THRESHOLDS;
+}
 
 export interface DamageChange {
   stage: number;
+  totalStages: number;
   /** Fraction of max health lost since last seen (0 on first sight, or when it healed). */
   lost: number;
 }
@@ -35,14 +54,15 @@ export class DamageWatch {
   /** The change since this entity was last seen, or null when its health did not move (or it is whole and new). */
   observe(wid: bigint, current: number, max: number, thresholds: readonly number[] = STAGE_THRESHOLDS): DamageChange | null {
     const stage = damageStage(current, max, thresholds);
+    const totalStages = thresholds.length || STAGE_THRESHOLDS.length;
     const before = this.last.get(wid);
     if (!before) {
       this.last.set(wid, { current, stage });
-      return stage === 0 ? null : { stage, lost: 0 };
+      return stage === 0 ? null : { stage, totalStages, lost: 0 };
     }
     if (before.current === current) return null;
     this.last.set(wid, { current, stage });
-    return { stage, lost: current < before.current && max > 0 ? (before.current - current) / max : 0 };
+    return { stage, totalStages, lost: current < before.current && max > 0 ? (before.current - current) / max : 0 };
   }
 
   forget(wid: bigint): void {

@@ -20,6 +20,7 @@ import { addComponent, hasComponent, removeComponent } from "bitecs";
 import { BodyConfig, Transform } from "../components.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { ChestView } from "@mmo-engine/protocol";
 import type { PlacesStore } from "./places-store.js";
 
@@ -76,6 +77,14 @@ export type ChestCheck = { ok: true; castSeconds: number; spell: string } | { ok
 
 export class ChestSystem implements SimSystem {
   readonly name = "chests";
+  readonly access: SystemAccess = {
+    system: "chests",
+    reads: [
+      "BodyConfig",
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: ["BodyConfig"],
+  };
   private readonly chests = new Map<number, Chest>();
   private changed = new Set<Chest>();
   private readonly reachM: number;

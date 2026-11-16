@@ -58,6 +58,7 @@ import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velo
 import { blowRng, type BodySystem } from "./body.js";
 import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 
 /** What a striker swings: the rules technique, the item's physics and its reach (m). */
@@ -222,6 +223,24 @@ export function aimFromLookPitch(
 
 export class CombatSystem implements SimSystem {
   readonly name = "combat";
+  readonly access: SystemAccess = {
+    system: "combat",
+    reads: [
+      "God",
+      "Stamina",
+      { component: "Action", fields: ["move", "seq", "started", "yaw"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "PlayerIntent", fields: ["buttons", "lookPitch", "lookYaw", "mx", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move", "seq", "started", "yaw"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+  };
   private readonly query = defineQuery([PlayerIntent, Velocity, Action]);
   /** Buttons held last tick, per entity (presses are the new bits). */
   private readonly held = new Map<number, number>();

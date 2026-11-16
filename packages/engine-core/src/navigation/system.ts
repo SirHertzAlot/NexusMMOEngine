@@ -22,6 +22,7 @@ import {
   Transform,
 } from "../components.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import {
   NAV_PATH_STATUS,
   type NavigationBackend,
@@ -60,6 +61,17 @@ export interface NavigationSystemOptions {
 
 export class NavigationSystem implements SimSystem {
   readonly name = "NavigationSystem";
+  readonly access: SystemAccess = {
+    system: "NavigationSystem",
+    reads: [
+      { component: "PathRequest", fields: ["profile", "token", "x", "z"] },
+      { component: "PathState", fields: ["token"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "PathState", fields: ["status", "token", "waypointCount", "waypointOffset"] },
+    ],
+  };
   readonly waypoints: WaypointStore;
 
   private readonly input: FindPathsInput;

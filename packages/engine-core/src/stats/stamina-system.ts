@@ -19,6 +19,7 @@ import { LocomotionMode } from "@mmo-engine/protocol";
 import { Action, Locomotion, PlayerIntent, Stamina } from "../components.js";
 import { Injury } from "../body.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import { DEFAULT_MOVEMENT } from "../movement.js";
 
@@ -39,6 +40,19 @@ export const BUILTIN_REGEN = S.regenPerSecond;
 
 export class StaminaSystem implements SimSystem {
   readonly name = "stamina";
+  readonly access: SystemAccess = {
+    system: "stamina",
+    reads: [
+      "Action",
+      { component: "Injury", fields: ["stamina"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "PlayerIntent", fields: ["jump", "mx", "my", "mz"] },
+      { component: "Stamina", fields: ["current", "max"] },
+    ],
+    writes: [
+      { component: "Stamina", fields: ["current"] },
+    ],
+  };
   private readonly query = defineQuery([Stamina, PlayerIntent, Action]);
   /** Eids with jump held last tick — jump costs on the rising edge. */
   private readonly jumpHeld = new Set<number>();

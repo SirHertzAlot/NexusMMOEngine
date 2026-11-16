@@ -13,7 +13,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { AnimalTemplate } from "@mmo-engine/animal-rig";
+import { AnimalTemplate, summarizeRig, type RigSummary } from "@mmo-engine/animal-rig";
 
 /** One position-only geometry of every mesh in the model, in the model's own space. */
 function positionsOf(root: THREE.Object3D): THREE.BufferGeometry | null {
@@ -35,10 +35,60 @@ function positionsOf(root: THREE.Object3D): THREE.BufferGeometry | null {
   return mergeGeometries(flat, false);
 }
 
+/** Structured summary readout of a procedural animal rig (`WL2` rig view). */
+export function RigSummaryPanel({ summary }: { summary: RigSummary }): React.JSX.Element {
+  const totalWeighted = summary.bones.reduce((acc, b) => acc + b.vertices, 0);
+  const totalVertices = totalWeighted + summary.unweighted;
+  return (
+    <div className="rounded-md border border-border bg-card/60 p-2.5 text-xs">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+        <div>
+          <span className="text-muted-foreground">Type: </span>
+          <span className="font-medium">{summary.type}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Size (L×W×H): </span>
+          <span className="tabular-nums font-medium">
+            {summary.length.toFixed(2)}×{summary.width.toFixed(2)}×{summary.height.toFixed(2)} m
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Leg / Knee: </span>
+          <span className="tabular-nums font-medium">
+            {summary.legLength.toFixed(2)} / {summary.kneeHeight.toFixed(2)} m
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Vertices: </span>
+          <span className="tabular-nums font-medium">{totalVertices}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Unweighted: </span>
+          <span className={`tabular-nums font-medium ${summary.unweighted > 0 ? "text-amber-400" : ""}`}>
+            {summary.unweighted}
+          </span>
+        </div>
+      </div>
+      <div className="mt-2 border-t border-border/60 pt-1.5">
+        <div className="mb-1 text-[11px] font-medium text-muted-foreground">Vertices per bone</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
+          {summary.bones.map((bone) => (
+            <div key={bone.name} className="flex items-center justify-between gap-2">
+              <span className="truncate font-mono text-[11px]">{bone.name}</span>
+              <span className="tabular-nums text-muted-foreground">{bone.vertices}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RigPreview({ url, modelName }: { url: string; modelName: string }): React.JSX.Element {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const [status, setStatus] = React.useState("loading…");
   const [speed, setSpeed] = React.useState(0);
+  const [summary, setSummary] = React.useState<RigSummary | null>(null);
   const speedRef = React.useRef(0);
   speedRef.current = speed;
 
@@ -66,6 +116,7 @@ export function RigPreview({ url, modelName }: { url: string; modelName: string 
     let model: THREE.Object3D | null = null;
 
     setStatus("loading…");
+    setSummary(null);
     new GLTFLoader().load(
       url,
       (gltf) => {
@@ -75,9 +126,12 @@ export function RigPreview({ url, modelName }: { url: string; modelName: string 
         const template = geometry ? AnimalTemplate.from(geometry, undefined, modelName) : null;
         if (!template) {
           setStatus("not a four-legged or named animal: no rig");
+          setSummary(null);
           scene.add(model);
           return;
         }
+        const vertexCount = template.geometry.getAttribute("position")?.count ?? 0;
+        setSummary(summarizeRig(template.seg, vertexCount));
         // The rig replaces the mesh: it is the skinned copy the template made.
         const material = new THREE.MeshStandardMaterial({ color: 0xb8a68a, roughness: 0.8, metalness: 0, transparent: true, opacity: 0.55 });
         rig = template.create(material);
@@ -146,6 +200,7 @@ export function RigPreview({ url, modelName }: { url: string; modelName: string 
           <span className="tabular-nums">{speed.toFixed(1)} m/s</span>
         </label>
       </div>
+      {summary && <RigSummaryPanel summary={summary} />}
     </div>
   );
 }

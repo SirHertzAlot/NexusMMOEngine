@@ -13,10 +13,22 @@
 import { defineQuery, hasComponent } from "bitecs";
 import { Health, Stamina } from "../components.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 
 export class StatsSystem implements SimSystem {
   readonly name = "stats";
+  readonly access: SystemAccess = {
+    system: "stats",
+    reads: [
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Stamina", fields: ["current", "max"] },
+    ],
+    writes: [
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Stamina", fields: ["current", "max"] },
+    ],
+  };
   private readonly query = defineQuery([Health]);
   /** Entity -> the stats version last applied (versions are unique across the book). */
   private readonly synced = new Map<number, number>();

@@ -32,7 +32,7 @@ describe("ItemLedger", () => {
     assert.equal(l.count(), 4);
     const rows = l.load();
     assert.equal(rows.length, 2);
-    assert.deepEqual(rows[0], { id: 1, kind: LedgerKind.Bag, def: 3, owner: 77, slot: 2, durability: 9, x: 0, z: 0 });
+    assert.deepEqual(rows[0], { id: 1, kind: LedgerKind.Bag, def: 3, owner: 77, slot: 2, durability: 9, x: 0, z: 0, count: 1 });
     assert.equal(rows[1].kind, LedgerKind.Create);
     assert.equal(l.flush(), 0);
   });
@@ -129,5 +129,55 @@ describe("ItemService with a ledger", () => {
     const eid = b.groundEntity(drop.item);
     assert.equal(WorldItem.despawnAt[eid], 500 + 300 * 30, "fresh despawn timer");
     assert.equal(WorldItem.owner[eid], 0);
+  });
+});
+
+describe("stack counts and legacy schema migration (CF6)", () => {
+  it("records, restores, and migrates count column on existing SQLite databases", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE item_events (
+        seq INTEGER PRIMARY KEY,
+        item_id INTEGER NOT NULL,
+        tick INTEGER NOT NULL,
+        committed_at INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        def INTEGER NOT NULL,
+        owner REAL NOT NULL,
+        slot INTEGER NOT NULL,
+        durability REAL NOT NULL,
+        x REAL NOT NULL,
+        z REAL NOT NULL
+      );
+      CREATE TABLE item_latest (
+        item_id INTEGER PRIMARY KEY,
+        tick INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        def INTEGER NOT NULL,
+        owner REAL NOT NULL,
+        slot INTEGER NOT NULL,
+        durability REAL NOT NULL,
+        x REAL NOT NULL,
+        z REAL NOT NULL
+      );
+      INSERT INTO item_events (seq, item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (1, 1, 10, 1000, 2, 3, 77, 0, 100, 0, 0);
+      INSERT INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z) VALUES (1, 10, 2, 3, 77, 0, 100, 0, 0);
+    `);
+
+    const ledger = new ItemLedger(db);
+    const cols = db.prepare("PRAGMA table_info(item_events)").all() as Array<{ name: string }>;
+    assert.ok(cols.some((c) => c.name === "count"), "ALTER TABLE added count column");
+    ledger.record(LedgerKind.Bag, 2, 4, 77, 1, 100, 0, 0, 12);
+    ledger.flush();
+
+    const rows = new ItemLedger(db).load().sort((a, b) => a.id - b.id);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0]!.count, 1);
+    assert.equal(rows[1]!.count, 12);
+
+    const store = new ItemStore(8, 3);
+    for (const row of rows) store.restore(row);
+    assert.equal(store.countOf(1), 1);
+    assert.equal(store.countOf(2), 12);
   });
 });

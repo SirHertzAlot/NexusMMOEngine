@@ -20,6 +20,7 @@ import type { LootRules } from "@mmo-engine/rules";
 import { AssetRef, Transform, WorldItem } from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import type { Held } from "@mmo-engine/art/character";
 import { HAND_CODE, HAND_NAME, type ItemDefs } from "./item-defs.js";
@@ -69,6 +70,19 @@ const worldItems = defineQuery([WorldItem]);
 
 export class ItemService implements SimSystem {
   readonly name = "items";
+  readonly access: SystemAccess = {
+    system: "items",
+    reads: [
+      { component: "AssetRef", fields: ["variant"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qy"] },
+      { component: "WorldItem", fields: ["despawnAt", "item", "ownedUntil", "owner"] },
+    ],
+    writes: [
+      { component: "AssetRef", fields: ["assetHash", "variant"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qx", "qy", "qz", "sx", "sy", "sz"] },
+      { component: "WorldItem", fields: ["despawnAt", "item", "ownedUntil", "owner"] },
+    ],
+  };
   readonly defs: ItemDefs;
   readonly store: ItemStore;
   private loot: LootRules;
@@ -89,7 +103,11 @@ export class ItemService implements SimSystem {
     this.loot = o.loot;
     this.tickHz = o.tickHz;
     this.groundHeightAt = o.groundHeightAt ?? (() => 0);
-    this.store = new ItemStore(o.loot.bagSlots, undefined, { columns: o.loot.bagColumns, footprintOf: (def) => this.defs.footprint[def] ?? [1, 1] });
+    this.store = new ItemStore(o.loot.bagSlots, undefined, {
+      columns: o.loot.bagColumns,
+      footprintOf: (def) => this.defs.footprint[def] ?? [1, 1],
+      maxStackOf: (def) => this.defs.maxStack[def] ?? 1,
+    });
     this.rankOrder = o.rankOrder ?? [];
     this.starterBase = o.starterBase ?? null;
     this.atomicGrant = o.atomicGrant ?? null;
@@ -120,9 +138,10 @@ export class ItemService implements SimSystem {
    * (a character id; 0: anyone) for the rules' ownership time. Returns the
    * item id and its entity slot.
    */
-  spawnDrop(sim: SimWorld, def: number, x: number, z: number, owner: number): { item: number; eid: number } {
+  spawnDrop(sim: SimWorld, def: number, x: number, z: number, owner: number, count = 1): { item: number; eid: number } {
     if (def < 0 || def >= this.defs.count) throw new RangeError(`items: no definition ${def}`);
-    const item = this.store.create(def, this.defs.durability[def]);
+    const n = Math.max(1, Math.min(this.defs.maxStack[def] ?? 1, Math.trunc(count)));
+    const item = this.store.create(def, this.defs.durability[def], n);
     const eid = this.placeOnGround(sim, item, x, z, owner);
     return { item, eid };
   }
@@ -165,10 +184,14 @@ export class ItemService implements SimSystem {
       return { ok: false, error: "that belongs to someone else for now" };
     }
     const item = WorldItem.item[eid];
-    if (!this.store.canFit(character, [this.store.defs[this.store.slot(item)]!])) return { ok: false, error: "your bag is full" };
+    const slot = this.store.slot(item);
+    const def = this.store.defs[slot]!;
+    const count = this.store.counts[slot] || 1;
+    const name = this.defs.names[def];
+    if (!this.store.canFit(character, [def], [], [count])) return { ok: false, error: "your bag is full" };
     this.removeGroundEntity(sim, item, eid);
-    this.store.putInBag(character, item);
-    return { ok: true, message: `picked up ${this.defs.names[this.store.defs[this.store.slot(item)]]}` };
+    this.store.bagStackOrPlace(character, item);
+    return { ok: true, message: count > 1 ? `picked up ${name} ×${count}` : `picked up ${name}` };
   }
 
   /** Drop an item from `character`'s bag at its avatar's feet (anyone may take it). */
@@ -316,13 +339,23 @@ export class ItemService implements SimSystem {
     return true;
   }
 
-  /** Give a new item straight into a bag (admin `give`). */
-  give(character: number, def: number): ItemResult {
+  /** Give `count` units of an item straight into a bag, topping up partial stacks first (admin `give`). */
+  give(character: number, def: number, count = 1): ItemResult {
     if (def < 0 || def >= this.defs.count) return { ok: false, error: "no such item" };
-    if (!this.store.canFit(character, [def])) return { ok: false, error: "the bag is full" };
-    const item = this.store.create(def, this.defs.durability[def]);
-    this.store.putInBag(character, item);
-    return { ok: true, message: `gave ${this.defs.names[def]} (item ${item})` };
+    const n = Math.max(1, Math.trunc(count));
+    if (!this.store.canFit(character, [def], [], [n])) return { ok: false, error: "the bag is full" };
+    let left = this.store.mergeIntoBag(character, def, n);
+    let firstId = 0;
+    const maxS = Math.max(1, this.defs.maxStack[def] ?? 1);
+    while (left > 0) {
+      const batch = Math.min(left, maxS);
+      const item = this.store.create(def, this.defs.durability[def], batch);
+      this.store.putInBag(character, item);
+      if (firstId === 0) firstId = item;
+      left -= batch;
+    }
+    const suffix = firstId ? ` (item ${firstId})` : " (stacked)";
+    return { ok: true, message: `gave ${this.defs.names[def]}${n > 1 ? ` ×${n}` : ""}${suffix}` };
   }
 
   /**
@@ -398,10 +431,16 @@ export class ItemService implements SimSystem {
    * Take an item out of a character's bag and destroy it (vendor sales,
    * quest hand-ins). False when the item is not in the character's bag.
    */
-  take(character: number, item: number): boolean {
+  /** Take `count` units (default: whole stack) out of a character's bag. */
+  take(character: number, item: number, count?: number): boolean {
     if (!this.store.inBagOf(character, item)) return false;
-    this.store.destroy(item);
-    return true;
+    const have = this.store.countOf(item);
+    if (count === undefined || count >= have) {
+      this.store.destroy(item);
+      return true;
+    }
+    if (!Number.isInteger(count) || count < 1) return false;
+    return this.store.setBagCount(character, item, have - count);
   }
 
   /**
@@ -418,23 +457,27 @@ export class ItemService implements SimSystem {
     const quench = stats.quench ?? 0;
     if (nourish <= 0 && quench <= 0) return { ok: false, error: "you can't eat or drink that" };
     if (!apply(nourish, quench, dryRun)) return { ok: false, error: nourish > 0 ? "you're not hungry" : "you're not thirsty" };
-    if (!dryRun) this.store.destroy(item);
+    if (!dryRun) {
+      const count = this.store.countOf(item);
+      if (count > 1) this.store.setBagCount(character, item, count - 1);
+      else this.store.destroy(item);
+    }
     return { ok: true, message: `${nourish > 0 ? "ate" : "drank"} ${this.defs.names[def]}` };
   }
 
   /** Use one item of an item base up from a character's bag (a key). False when they carry none. */
   takeBase(character: number, base: string): boolean {
     for (const item of this.store.bag(character)) {
-      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) return this.take(character, item);
+      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) return this.take(character, item, 1);
     }
     return false;
   }
 
-  /** How many items of an item base a character carries in their bag (quest checks). */
+  /** How many units of an item base a character carries in their bag (quest checks). */
   countBase(character: number, base: string): number {
     let n = 0;
     for (const item of this.store.bag(character)) {
-      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) n++;
+      if (item !== 0 && this.defs.bases[this.store.defs[this.store.slot(item)]] === base) n += this.store.countOf(item);
     }
     return n;
   }
@@ -521,12 +564,60 @@ export class ItemService implements SimSystem {
     return rows.length > 0 ? { kind: "drops", drops: rows } : null;
   }
 
-  /** Move an item within a grid bag (CF6): the store checks the placement, so a client cannot put anything anywhere. */
+  /** Move an item within a grid bag (CF6), or combine when dropped onto a matching partial stack. */
   move(character: number, item: number, to: { x: number; y: number; rot: boolean }): ItemResult {
     if (!this.store.spatial) return { ok: false, error: "this bag is not a grid" };
     const refusal = this.store.moveInBag(character, item, to);
     if (refusal === null) return { ok: true, message: "moved" };
+    if (refusal === "occupied") {
+      const target = this.store.occupantInBag(character, item, to);
+      if (target && target > 0) {
+        const sFrom = this.store.slot(item);
+        const sTo = this.store.slot(target);
+        if (
+          sFrom >= 0 &&
+          sTo >= 0 &&
+          this.store.defs[sFrom] === this.store.defs[sTo] &&
+          (this.defs.maxStack[this.store.defs[sTo]] ?? 1) > 1 &&
+          this.store.countOf(target) < (this.defs.maxStack[this.store.defs[sTo]] ?? 1)
+        ) {
+          return this.combine(character, item, target);
+        }
+      }
+    }
     return { ok: false, error: refusal === "not-yours" ? "you don't have that" : refusal === "outside" ? "that does not fit there" : refusal === "occupied" ? "something is in the way" : "that can't be turned" };
+  }
+
+  /** Combine two stacks of the same item definition inside a character's bag (CF6). */
+  combine(character: number, from: number, into: number): ItemResult {
+    const r = this.store.combineInBag(character, from, into);
+    if (r === "ok") return { ok: true, message: "stacked" };
+    return {
+      ok: false,
+      error: r === "not-yours" ? "you don't have that" : r === "full" ? "that stack is already full" : "those items can't be stacked",
+    };
+  }
+
+  /** Split `count` units off a stack into another slot/cell inside `character`'s bag (CF6). */
+  split(character: number, item: number, count: number, to?: { x: number; y: number; rot?: boolean }): ItemResult {
+    if (to && !this.store.spatial) return { ok: false, error: "this bag is not a grid" };
+    const r = this.store.splitInBag(character, item, count, to ? { x: to.x, y: to.y, rot: to.rot === true } : undefined);
+    if (r.ok) return { ok: true, message: "split" };
+    return {
+      ok: false,
+      error:
+        r.error === "not-yours"
+          ? "you don't have that"
+          : r.error === "cannot-split"
+            ? "cannot split that amount"
+            : r.error === "no-room"
+              ? "your bag is full"
+              : r.error === "outside"
+                ? "that does not fit there"
+                : r.error === "occupied"
+                  ? "something is in the way"
+                  : "that can't be turned",
+    };
   }
 
   /** What a character's bag holds, for the inventory message. */
@@ -569,6 +660,8 @@ export class ItemService implements SimSystem {
     if (slot < 0) throw new Error(`items: no item ${item}`);
     const d = this.store.defs[slot];
     const defs = this.defs;
+    const count = this.store.counts[slot] || 1;
+    const maxStack = defs.maxStack[d] ?? 1;
     return {
       id: item,
       def: defs.ids[d],
@@ -579,6 +672,7 @@ export class ItemService implements SimSystem {
       hand: HAND_NAME[defs.hand[d]],
       slot: defs.slot[d],
       stats: { ...defs.stats[d] },
+      ...(maxStack > 1 ? { count, maxStack } : count > 1 ? { count } : {}),
       durability: Math.round(this.store.durability[slot]),
       model: defs.models[d],
     };

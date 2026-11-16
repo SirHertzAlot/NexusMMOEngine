@@ -315,6 +315,7 @@ export interface MemoryArenaOffsets {
   readonly TELEMETRY: number;
   readonly BAKE: number;
   readonly PLANAR_SOA: number;
+  readonly MPSC_INPUT_RING: number;
 }
 
 /** Round `byteOffset` up to a 64-byte CPU cache-line boundary. */
@@ -332,6 +333,9 @@ export function computeArenaOffsets(
   const telemetry = rings + 49_152;
   const bake = rings + 65_536;
   const planarSoA = alignCacheLine(bake);
+  const colBytes = alignCacheLine(entityCapacity * BYTES_PER_FLOAT);
+  const bitsetBytes = alignCacheLine(Math.ceil(entityCapacity / 32) * BYTES_PER_INT);
+  const mpscInputRing = alignCacheLine(planarSoA + 8 * colBytes + bitsetBytes);
   return {
     MATRIX: 0,
     RINGS: rings,
@@ -339,6 +343,7 @@ export function computeArenaOffsets(
     TELEMETRY: telemetry,
     BAKE: bake,
     PLANAR_SOA: planarSoA,
+    MPSC_INPUT_RING: mpscInputRing,
   };
 }
 
@@ -500,7 +505,8 @@ export interface EntitySnapshot {
 export function writeEntityStateToSAB(
   floatMatrixView: Float32Array,
   entityIndex: number,
-  state: Partial<EntitySnapshot>
+  state: Partial<EntitySnapshot>,
+  intMatrixView?: Int32Array,
 ): void {
   const base = entityIndex * SOA_LAYOUT.STRIDE;
   if (state.px !== undefined) floatMatrixView[base + SOA_LAYOUT.POSITION_X] = state.px;
@@ -509,7 +515,9 @@ export function writeEntityStateToSAB(
   if (state.vx !== undefined) floatMatrixView[base + SOA_LAYOUT.VELOCITY_X] = state.vx;
   if (state.vy !== undefined) floatMatrixView[base + SOA_LAYOUT.VELOCITY_Y] = state.vy;
   if (state.vz !== undefined) floatMatrixView[base + SOA_LAYOUT.VELOCITY_Z] = state.vz;
-  const intView = new Int32Array(floatMatrixView.buffer, floatMatrixView.byteOffset, floatMatrixView.length);
+  const intView =
+    intMatrixView ??
+    new Int32Array(floatMatrixView.buffer, floatMatrixView.byteOffset, floatMatrixView.length);
   if (state.hp !== undefined) {
     intView[base + SOA_LAYOUT.HEALTH] = state.hp;
   }
@@ -520,7 +528,8 @@ export function writeEntityStateToSAB(
 
 export function readEntityStateFromSAB(
   floatMatrixView: Float32Array,
-  entityIndex: number
+  entityIndex: number,
+  intMatrixView?: Int32Array,
 ): {
   px: number;
   py: number;
@@ -532,7 +541,9 @@ export function readEntityStateFromSAB(
   intent: number;
 } {
   const base = entityIndex * SOA_LAYOUT.STRIDE;
-  const intView = new Int32Array(floatMatrixView.buffer, floatMatrixView.byteOffset, floatMatrixView.length);
+  const intView =
+    intMatrixView ??
+    new Int32Array(floatMatrixView.buffer, floatMatrixView.byteOffset, floatMatrixView.length);
   return {
     px: floatMatrixView[base + SOA_LAYOUT.POSITION_X],
     py: floatMatrixView[base + SOA_LAYOUT.POSITION_Y],
@@ -779,7 +790,8 @@ export class GenerationalSlabAllocator {
   public allocate(
     floatMatrixView?: Float32Array,
     soaViews?: PlanarSoAViews,
-    initialState: Partial<EntitySnapshot> = { hp: 100 }
+    initialState: Partial<EntitySnapshot> = { hp: 100 },
+    intMatrixView?: Int32Array,
   ): number {
     if (this.activeCount >= this.maxEntities) {
       return 0;
@@ -801,7 +813,7 @@ export class GenerationalSlabAllocator {
 
         const gen = this.generations[entityIndex];
         if (floatMatrixView) {
-          writeEntityStateToSAB(floatMatrixView, entityIndex, initialState);
+          writeEntityStateToSAB(floatMatrixView, entityIndex, initialState, intMatrixView);
         }
         if (soaViews) {
           const hp = initialState.hp ?? 100;
@@ -845,7 +857,8 @@ export class GenerationalSlabAllocator {
   public free(
     handle: number,
     floatMatrixView?: Float32Array,
-    soaViews?: PlanarSoAViews
+    soaViews?: PlanarSoAViews,
+    intMatrixView?: Int32Array,
   ): boolean {
     if (!this.isValid(handle)) {
       return false;
@@ -872,7 +885,7 @@ export class GenerationalSlabAllocator {
         vz: 0,
         hp: 0,
         intent: 0,
-      });
+      }, intMatrixView);
     }
     if (soaViews) {
       soaViews.hp[index] = 0;

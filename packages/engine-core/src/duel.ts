@@ -43,9 +43,15 @@ const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round
 
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 
 export class DuelSystem implements SimSystem {
   readonly name = "duel";
+  readonly access: SystemAccess = {
+    system: "duel",
+    reads: [],
+    writes: [],
+  };
   /** Target -> challenge (one incoming challenge at a time; latest wins). */
   private readonly challenges = new Map<number, Challenge>();
   /** Entity -> its duel (both partners point at the same Duel). */

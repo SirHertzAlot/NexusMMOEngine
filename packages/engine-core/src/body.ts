@@ -51,6 +51,7 @@ import { defineSABComponent } from "./sab-store.js";
 import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks, type TreatmentKind } from "@mmo-engine/rules";
 import { Action, God, Health, PlayerIntent, Transform } from "./components.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 
 /** Part states, as stored (2 bits each in Injury.bits). */
@@ -215,6 +216,23 @@ export function blowRng(tick: number, a: number, b: number): () => number {
 
 export class BodySystem implements SimSystem {
   readonly name = "body";
+  readonly access: SystemAccess = {
+    system: "body",
+    reads: [
+      "God",
+      { component: "Action", fields: ["move"] },
+      { component: "Body", fields: ["hp", "wound", "clot", "blood", "bloodMax", "seen", "lost"] },
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Injury", fields: ["bits"] },
+      { component: "PlayerIntent", fields: ["mx", "mz"] },
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: [
+      { component: "Body", fields: ["hp", "wound", "clot", "blood", "bloodMax", "seen", "lost"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Injury", fields: ["bits", "move", "stamina", "flags"] },
+    ],
+  };
   private readonly query = defineQuery([Health, PlayerIntent]);
   private layout: Layout;
   /** Entities whose set of lost parts changed since the last drainLooks. */

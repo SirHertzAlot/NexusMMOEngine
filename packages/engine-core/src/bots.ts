@@ -26,6 +26,7 @@ import { IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import { HAIR_COLOURS, SKIN_TONES, lookToJson, randomLook, type CharacterLook, type Gender, type ModularCatalog } from "@mmo-engine/art/character";
 import * as C from "./components.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
 
@@ -65,6 +66,22 @@ const stuckTicks = (sim: SimWorld): number => Math.max(1, Math.round(sim.movemen
 
 export class BotSystem implements SimSystem {
   readonly name = "bots";
+  readonly access: SystemAccess = {
+    system: "bots",
+    reads: [
+      { component: "NavAgent", fields: ["seq", "state"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move"] },
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Locomotion", fields: ["abilities", "breath", "mode"] },
+      { component: "NavAgent", fields: ["seq", "speed", "tx", "ty", "tz"] },
+      { component: "PlayerIntent", fields: ["buttons", "jump", "lookYaw", "mx", "my", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "sx", "sy", "sz"] },
+      "Velocity",
+    ],
+  };
   private readonly bots: number[] = [];
   private readonly brains = new Map<number, Brain>();
   private spawned = false;

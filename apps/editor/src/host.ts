@@ -138,6 +138,7 @@ import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
+import { handleGraphRoute } from "./graph-host.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
 import { handleAudioRoute } from "./audio-host.js";
@@ -1488,6 +1489,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           }
           if (url.startsWith("/assets/") && req.method === "GET") {
             serveAssetFile(req, res);
+            return;
+          }
+          const graphReply = handleGraphRoute(repoRoot, req.method ?? "GET", req.url ?? "/");
+          if (graphReply) {
+            sendJson(res, graphReply.status, graphReply.body);
             return;
           }
           const contentReply = handleContentRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);

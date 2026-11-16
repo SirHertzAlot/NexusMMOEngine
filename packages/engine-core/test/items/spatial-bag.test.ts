@@ -151,3 +151,49 @@ describe("swaps use footprints", () => {
     assert.equal(s.canFit(C, [SHIELD, SHIELD], [shield]), false);
   });
 });
+
+describe("stacking and combining in grid bags (CF6)", () => {
+  const maxStackOf = (d: number) => (d === RING ? 5 : 1);
+
+  it("bagStackOrPlace tops up partial stacks up to maxStack before allocating new slots, and canFit counts headroom", () => {
+    const s = new ItemStore(2, undefined, { columns: 2, footprintOf: (d) => defs().footprint[d]!, maxStackOf }); // 2 x 1 grid: only 2 cells!
+    const a = s.create(RING, 100, 3);
+    assert.equal(s.bagStackOrPlace(C, a).ok, true);
+    assert.equal(s.countOf(a), 3);
+
+    // Adding 4 more rings: 2 merge into `a` (filling it to 5), 2 spill to cell 1.
+    const b = s.create(RING, 100, 4);
+    assert.equal(s.bagStackOrPlace(C, b).ok, true);
+    assert.equal(s.countOf(a), 5);
+    assert.equal(s.countOf(b), 2);
+    assert.equal(s.bag(C).length, 2);
+
+    // 3 more headroom exists in `b`! So 3 rings fit even though all 2 cells are occupied.
+    assert.equal(s.canFit(C, [RING, RING, RING]), true);
+    assert.equal(s.canFit(C, [RING, RING, RING, RING]), false);
+
+    // Gear (maxStack 1) never stacks even if same def.
+    assert.equal(s.maxStackFor(SWORD), 1);
+    assert.equal(s.canFit(C, [SWORD]), false);
+  });
+
+  it("combineInBag merges stacks and splitInBag splits into a free cell", () => {
+    const s = new ItemStore(6, undefined, { columns: 3, footprintOf: (d) => defs().footprint[d]!, maxStackOf });
+    const src = s.create(RING, 100, 4);
+    const dst = s.create(RING, 100, 3);
+    assert.equal(s.bagStackOrPlace(C, src).ok, true);
+    assert.equal(s.bagStackOrPlace(C, dst).ok, true);
+
+    assert.equal(s.combineInBag(C, src, dst), "ok");
+    assert.equal(s.countOf(dst), 5);
+    assert.equal(s.countOf(src), 2);
+
+    const splitRes = s.splitInBag(C, dst, 2);
+    if (!splitRes.ok) throw new Error(splitRes.error);
+    assert.equal(s.countOf(dst), 3);
+    assert.equal(s.countOf(splitRes.id), 2);
+    assert.equal(s.combineInBag(C, splitRes.id, src), "ok");
+    assert.equal(s.exists(splitRes.id), false);
+    assert.equal(s.countOf(src), 4);
+  });
+});

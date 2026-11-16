@@ -19,6 +19,7 @@ import { defineQuery, hasComponent, Not } from "bitecs";
 import type { DeathInput, DeathOutcome, RespawnOutcome, RuleHooks } from "@mmo-engine/rules";
 import { Action, Breakable, Health, PlayerIntent, Transform, Velocity } from "./components.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 import type { DuelSystem } from "./duel.js";
 
@@ -51,6 +52,22 @@ interface Corpse {
 
 export class DeathSystem implements SimSystem {
   readonly name = "death";
+  readonly access: SystemAccess = {
+    system: "death",
+    reads: [
+      "Action",
+      "PlayerIntent",
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move"] },
+      { component: "Health", fields: ["current"] },
+      { component: "PlayerIntent", fields: ["buttons"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+    excludes: ["Breakable"],
+  };
   private readonly bodies = defineQuery([Transform, Health, Not(Breakable)]);
   private readonly dead = new Map<number, Corpse>();
   private events: LifeEvent[] = [];

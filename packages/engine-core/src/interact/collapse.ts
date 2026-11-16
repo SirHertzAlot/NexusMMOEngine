@@ -30,6 +30,7 @@ import { fnv1a32 } from "@mmo-engine/scatter";
 import { AssetRef, BodyConfig, MotionType, ShapeKind, Transform, Velocity } from "../components.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { PlacesStore } from "./places-store.js";
 
 /** The asset hash the client hides (collision-only entities). */
@@ -151,6 +152,34 @@ function rotate(v: readonly [number, number, number], qx: number, qy: number, qz
 
 export class CollapseSystem implements SimSystem {
   readonly name = "collapse";
+  readonly access: SystemAccess = {
+    system: "collapse",
+    reads: [
+      { component: "BodyConfig", fields: ["halfX", "halfY", "halfZ"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qx", "qy", "qz"] },
+      { component: "Velocity", fields: ["lx", "ly", "lz"] },
+    ],
+    writes: [
+      { component: "AssetRef", fields: ["assetHash", "variant"] },
+      {
+        component: "BodyConfig",
+        fields: [
+          "friction",
+          "halfX",
+          "halfY",
+          "halfZ",
+          "layer",
+          "mass",
+          "motionType",
+          "radius",
+          "restitution",
+          "shapeKind",
+        ],
+      },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qx", "qy", "qz", "sx", "sy", "sz"] },
+      { component: "Velocity", fields: ["ax", "ay", "az", "lx", "ly", "lz"] },
+    ],
+  };
   private readonly buildings = new Map<string, Building>();
   private readonly of = new Map<bigint, { building: Building; index: number }>();
   private queue: Queued[] = [];

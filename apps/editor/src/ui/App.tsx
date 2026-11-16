@@ -52,6 +52,8 @@ import { QuestDetailsLive, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
 import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
+import { EcsFootprintSection } from "./ecs-footprint.js";
+import { serverLink, useServerLink } from "./server-gate.js";
 
 // ---------------------------------------------------------------- config
 
@@ -2175,6 +2177,12 @@ function GameplayDetails(): React.JSX.Element {
 }
 
 function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
+  const linkState = useServerLink();
+  const isWireId = /^\d+$/.test(selection.id);
+  const liveAdmin = React.useMemo(
+    () => (linkState.phase === "live" && isWireId ? { admin: (c: string, a?: unknown) => serverLink.admin(c, a) } : undefined),
+    [linkState.phase, isWireId],
+  );
   return (
     <div className="flex flex-col gap-3 text-xs">
       <div>
@@ -2203,6 +2211,12 @@ function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typ
           </section>
         ))
       )}
+      <EcsFootprintSection
+        componentNames={selection.components.map((c) => c.name)}
+        wireId={isWireId ? selection.id : undefined}
+        objectId={isWireId ? undefined : selection.id}
+        admin={liveAdmin}
+      />
     </div>
   );
 }

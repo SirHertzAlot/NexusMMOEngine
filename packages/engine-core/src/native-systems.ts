@@ -55,6 +55,18 @@ export interface NativeIntegrateBinding {
     entityCount: number,
     dt: number,
   ): boolean;
+  stepSimulationSoABitset?(
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    vx: Float32Array,
+    vy: Float32Array,
+    vz: Float32Array,
+    hp: Int32Array,
+    aliveBitset: Uint32Array,
+    entityCount: number,
+    dt: number,
+  ): boolean;
   applyIntentsAndStep(
     floatMatrixView: Float32Array,
     entityCount: number,

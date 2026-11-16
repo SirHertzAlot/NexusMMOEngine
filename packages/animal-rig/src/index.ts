@@ -6,3 +6,4 @@ export * from "./animal-rig.js";
 export * from "./gait.js";
 export * from "./segment.js";
 export * from "./far-lod.js";
+export * from "./rig-summary.js";

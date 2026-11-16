@@ -3,7 +3,7 @@
  * predicts it with the same shared checks, so the highlight never disagrees with the answer.
  */
 
-import { NOT_A_CELL, checkPlace, stamp, type Footprint, type GridSize, type PlaceRefusal, type Placement } from "@mmo-engine/protocol";
+import { NOT_A_CELL, canStackViews, checkPlace, occupantAt, stamp, type Footprint, type GridSize, type PlaceRefusal, type Placement } from "@mmo-engine/protocol";
 import type { ItemView } from "@mmo-engine/protocol";
 
 /** One id per covered cell (0: free), with the cells past the last slot closed. */
@@ -23,4 +23,22 @@ export function occupancyOf(items: readonly ItemView[], grid: GridSize & { slots
  */
 export function dropVerdict(grid: GridSize, cells: ArrayLike<number>, footprint: Footprint, p: Placement, self: number): PlaceRefusal | null {
   return checkPlace(grid, cells, footprint, p, self);
+}
+
+/**
+ * If dropping `dragged` at `p` covers exactly one other stackable item of the same definition that still
+ * has headroom (`count < maxStack`), return that target item's id; otherwise null.
+ */
+export function dropCombineTarget(
+  grid: GridSize,
+  cells: ArrayLike<number>,
+  items: readonly ItemView[],
+  dragged: ItemView,
+  footprint: Footprint,
+  p: Placement,
+): number | null {
+  const targetId = occupantAt(grid, cells, footprint, p, dragged.id);
+  if (!targetId || targetId <= 0) return null;
+  const target = items.find((i) => i.id === targetId);
+  return target && canStackViews(dragged, target) ? targetId : null;
 }

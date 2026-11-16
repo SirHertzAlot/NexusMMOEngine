@@ -61,6 +61,36 @@ export function checkPlace(g: GridSize, occupancy: ArrayLike<number>, f: Footpri
   return null;
 }
 
+/**
+ * Inspect the single item occupying `p` (ignoring `self` and empty cells).
+ * Returns `0` when clear, an item id > 0 when all overlapping cells belong to that one item,
+ * or `null` when out of bounds, invalid rotation, hitting closed cells, or overlapping multiple items.
+ */
+export function occupantAt(g: GridSize, occupancy: ArrayLike<number>, f: Footprint, p: Placement, self = 0): number | null {
+  if ((p.rot && !canRotate(f)) || !inside(g, f, p)) return null;
+  const [w, h] = sizeOf(f, p.rot);
+  let target = 0;
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const at = occupancy[cellOf(g, p.x + i, p.y + j)]!;
+      if (at === 0 || at === self) continue;
+      if (at === NOT_A_CELL) return null;
+      if (target === 0) target = at;
+      else if (target !== at) return null;
+    }
+  }
+  return target;
+}
+
+/** Whether two stackable item views of the same definition can combine into `into` (which has free stack room). */
+export function canStackViews(
+  from: { def: string; id: number },
+  into: { def: string; id: number; count?: number; maxStack?: number },
+): boolean {
+  const max = into.maxStack ?? 1;
+  return max > 1 && from.id !== into.id && from.def === into.def && (into.count ?? 1) < max;
+}
+
 /** Mark the placement's cells with `id` (0 clears them). The caller has checked it. */
 export function stamp(g: GridSize, occupancy: { [i: number]: number }, f: Footprint, p: Placement, id: number): void {
   const [w, h] = sizeOf(f, p.rot);

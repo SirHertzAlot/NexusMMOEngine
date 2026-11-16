@@ -24,14 +24,18 @@ import { fileURLToPath } from "node:url";
 import {
   DATA_PLANE_ENTITY_CAPACITY,
   INTENT_FLAGS,
-  OFFSETS,
   SOA_LAYOUT,
   TELEMETRY_SLOTS,
   attachSharedMemoryPlane,
+  GenerationalSlabAllocator,
+  MortonSpatialIndex,
+  setEntityAliveBit,
+  syncMatrixToPlanar,
+  type EntitySnapshot,
   type SharedMemoryPlaneViews,
 } from "./sab-store.js";
 import {
-  AtomicSPSCQueue,
+  AtomicMPSCQueue,
   AtomicSPSCTransactionQueue,
   PERSIST_TX_KIND,
 } from "./lockless-ring.js";
@@ -67,6 +71,18 @@ export interface NativeEngineKernel {
     entityCount: number,
     dt: number,
   ): void;
+  stepSimulationSoABitset(
+    px: Float32Array,
+    py: Float32Array,
+    pz: Float32Array,
+    vx: Float32Array,
+    vy: Float32Array,
+    vz: Float32Array,
+    hp: Int32Array,
+    aliveBitset: Uint32Array,
+    entityCount: number,
+    dt: number,
+  ): void;
   applyIntentsAndStep(
     floatMatrixView: Float32Array,
     entityCount: number,
@@ -83,7 +99,7 @@ export interface NativeEngineKernel {
 }
 
 /** Pure JS fallback matching the C++ kernel semantics bit-for-bit if native binary is unavailable. */
-function createJsFallbackKernel(): NativeEngineKernel {
+export function createJsFallbackKernel(): NativeEngineKernel {
   return {
     isNative: false,
     stepSimulation(floatMatrixView: Float32Array, entityCount: number, dt: number): void {
@@ -123,6 +139,48 @@ function createJsFallbackKernel(): NativeEngineKernel {
     ): void {
       const dtf = Math.fround(dt);
       for (let i = 0; i < entityCount; i++) {
+        if (hp[i] <= 0) continue;
+        px[i] = Math.fround(px[i] + Math.fround(vx[i] * dtf));
+        py[i] = Math.fround(py[i] + Math.fround(vy[i] * dtf));
+        pz[i] = Math.fround(pz[i] + Math.fround(vz[i] * dtf));
+      }
+    },
+    stepSimulationSoABitset(
+      px: Float32Array,
+      py: Float32Array,
+      pz: Float32Array,
+      vx: Float32Array,
+      vy: Float32Array,
+      vz: Float32Array,
+      hp: Int32Array,
+      aliveBitset: Uint32Array,
+      entityCount: number,
+      dt: number,
+    ): void {
+      const dtf = Math.fround(dt);
+      const fullWords = entityCount >>> 5;
+      for (let w = 0; w < fullWords; w++) {
+        let word = aliveBitset[w] >>> 0;
+        if (word === 0) continue;
+        const base = w << 5;
+        let nextWord = 0;
+        while (word !== 0) {
+          const lsb = (word & -word) >>> 0;
+          const bit = 31 - Math.clz32(lsb);
+          const i = base + bit;
+          if (hp[i] > 0) {
+            px[i] = Math.fround(px[i] + Math.fround(vx[i] * dtf));
+            py[i] = Math.fround(py[i] + Math.fround(vy[i] * dtf));
+            pz[i] = Math.fround(pz[i] + Math.fround(vz[i] * dtf));
+            nextWord |= lsb;
+          }
+          word = (word ^ lsb) >>> 0;
+        }
+        if (nextWord === 0) {
+          aliveBitset[w] = 0;
+        }
+      }
+      for (let i = fullWords << 5; i < entityCount; i++) {
         if (hp[i] <= 0) continue;
         px[i] = Math.fround(px[i] + Math.fround(vx[i] * dtf));
         py[i] = Math.fround(py[i] + Math.fround(vy[i] * dtf));
@@ -205,6 +263,10 @@ export function loadNativeKernel(): NativeEngineKernel {
             typeof mod.stepSimulationSoA === "function"
               ? mod.stepSimulationSoA.bind(mod)
               : fallback.stepSimulationSoA,
+          stepSimulationSoABitset:
+            typeof mod.stepSimulationSoABitset === "function"
+              ? mod.stepSimulationSoABitset.bind(mod)
+              : fallback.stepSimulationSoABitset,
           applyIntentsAndStep:
             typeof mod.applyIntentsAndStep === "function"
               ? mod.applyIntentsAndStep.bind(mod)
@@ -245,6 +307,7 @@ export interface SimWorkerConfig {
   decodeMovementIntents?: boolean;
   baseSpeed?: number;
   useBatchDrain?: boolean;
+  enableSpatialIndex?: boolean;
   kernel?: NativeEngineKernel;
   /** SAB of the process's log ring. Absent (CLI benches) = no ring emission. */
   logRingSab?: SharedArrayBuffer;
@@ -272,14 +335,17 @@ export interface SimTickMetrics {
  */
 export class SimWorkerRuntime {
   public readonly views: SharedMemoryPlaneViews;
-  public readonly inputQueue: AtomicSPSCQueue;
+  public readonly inputQueue: AtomicMPSCQueue;
   public readonly persistQueue: AtomicSPSCTransactionQueue;
+  public readonly slabAllocator: GenerationalSlabAllocator;
+  public readonly spatialIndex: MortonSpatialIndex;
   public readonly kernel: NativeEngineKernel;
   public readonly entityCapacity: number;
   public readonly mode: SimExecutionMode;
   public readonly decodeMovementIntents: boolean;
   public readonly baseSpeed: number;
   public readonly useBatchDrain: boolean;
+  public readonly enableSpatialIndex: boolean;
 
   private readonly drainScratch: Int32Array;
   private readonly logRing?: LogRingBuffer;
@@ -300,22 +366,24 @@ export class SimWorkerRuntime {
     const inputCap = config.inputRingCapacity ?? DEFAULT_INPUT_RING_CAPACITY;
     const persistCap = config.persistRingCapacity ?? DEFAULT_PERSIST_RING_CAPACITY;
 
-    // When using the default 10,000 entity capacity, OFFSETS.RINGS === this.views.offsets.RINGS
-    const ringOffset =
-      this.entityCapacity === DATA_PLANE_ENTITY_CAPACITY
-        ? OFFSETS.RINGS
-        : this.views.offsets.RINGS;
-    this.inputQueue = new AtomicSPSCQueue(config.sharedMemory, ringOffset, inputCap);
+    this.inputQueue = AtomicMPSCQueue.attachTokenRing(
+      config.sharedMemory,
+      this.views.offsets.MPSC_INPUT_RING,
+      inputCap,
+    );
     this.persistQueue = new AtomicSPSCTransactionQueue(
       config.sharedMemory,
       this.views.offsets.PERSIST_RING,
       persistCap,
     );
+    this.slabAllocator = new GenerationalSlabAllocator(this.entityCapacity);
+    this.spatialIndex = new MortonSpatialIndex(this.entityCapacity);
     this.kernel = config.kernel ?? loadNativeKernel();
     this.mode = config.mode ?? "matrix";
     this.decodeMovementIntents = config.decodeMovementIntents ?? false;
     this.baseSpeed = config.baseSpeed ?? DEFAULT_BASE_SPEED;
     this.useBatchDrain = config.useBatchDrain ?? false;
+    this.enableSpatialIndex = config.enableSpatialIndex ?? (this.mode === "planar-soa");
     this.drainScratch = new Int32Array(inputCap);
     if (config.logRingSab && config.logRingCapacity) {
       this.logRing = new LogRingBuffer(config.logRingCapacity, config.logRingSab);
@@ -338,8 +406,56 @@ export class SimWorkerRuntime {
     }
   }
 
+  /** Allocate an entity slot in shared memory via PATCH-05 GenerationalSlabAllocator (zero GC). */
+  public allocateEntity(initialState: Partial<EntitySnapshot> = { hp: 100 }): number {
+    return this.slabAllocator.allocate(
+      this.views.floatMatrixView,
+      this.views.planar,
+      initialState,
+      this.views.intMatrixView,
+    );
+  }
+
+  /** Free an entity slot by generational handle and clear its SAB alive state. */
+  public freeEntity(handle: number): boolean {
+    return this.slabAllocator.free(
+      handle,
+      this.views.floatMatrixView,
+      this.views.planar,
+      this.views.intMatrixView,
+    );
+  }
+
+  /** Check whether a 32-bit packed entity handle is live and matches its generation. */
+  public isEntityHandleValid(handle: number): boolean {
+    return this.slabAllocator.isValid(handle);
+  }
+
+  /** Rebuild the Morton Z-order spatial index over Planar SoA entities (PATCH-02, zero GC). */
+  public rebuildSpatialIndex(worldHalfExtent: number = 4096): number {
+    return this.spatialIndex.rebuildFromSoA(this.views.planar, this.entityCapacity, worldHalfExtent);
+  }
+
+  /** Query alive entities within `radius` of `(centerX, centerZ)` into `outEntityIndices`. */
+  public queryEntitiesInRadius(
+    centerX: number,
+    centerZ: number,
+    radius: number,
+    outEntityIndices: Uint16Array,
+    worldHalfExtent: number = 4096,
+  ): number {
+    return this.spatialIndex.queryRadius(
+      this.views.planar,
+      centerX,
+      centerZ,
+      radius,
+      outEntityIndices,
+      worldHalfExtent,
+    );
+  }
+
   private applyCommandToken(commandToken: number): boolean {
-    const { intMatrixView, planar } = this.views;
+    const { floatMatrixView, intMatrixView, planar } = this.views;
     // Unpack bits: [EntityIndex (16-bit) | ActionCode (16-bit)]
     const entityIndex = (commandToken >>> 16) & 0xffff;
     const actionCode = commandToken & 0xffff;
@@ -349,10 +465,13 @@ export class SimWorkerRuntime {
       intMatrixView[baseOffset + SOA_LAYOUT.INTENT_BIT] = actionCode;
       if (this.mode === "planar-soa") {
         planar.intent[entityIndex] = actionCode;
+        if (planar.hp[entityIndex] > 0) {
+          setEntityAliveBit(planar.aliveBitset, entityIndex, true);
+        }
       }
 
-      // Optional velocity translation on the matrix before stepSimulation when requested
-      if (this.decodeMovementIntents && this.mode === "matrix") {
+      // Optional velocity translation on the matrix / planar views before stepping
+      if (this.decodeMovementIntents && (this.mode === "matrix" || this.mode === "planar-soa")) {
         const moveMask =
           INTENT_FLAGS.FORWARD |
           INTENT_FLAGS.BACKWARD |
@@ -360,31 +479,36 @@ export class SimWorkerRuntime {
           INTENT_FLAGS.RIGHT |
           INTENT_FLAGS.UP |
           INTENT_FLAGS.DOWN;
+        let vx = 0;
+        let vy = 0;
+        let vz = 0;
         if ((actionCode & moveMask) !== 0) {
           const speed =
             (actionCode & INTENT_FLAGS.SPRINT) !== 0 ? this.baseSpeed * 2.0 : this.baseSpeed;
-          let vx = 0;
-          let vy = 0;
-          let vz = 0;
           if (actionCode & INTENT_FLAGS.RIGHT) vx += speed;
           if (actionCode & INTENT_FLAGS.LEFT) vx -= speed;
           if (actionCode & INTENT_FLAGS.UP) vy += speed;
           if (actionCode & INTENT_FLAGS.DOWN) vy -= speed;
           if (actionCode & INTENT_FLAGS.FORWARD) vz += speed;
           if (actionCode & INTENT_FLAGS.BACKWARD) vz -= speed;
-          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_X] = vx;
-          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Y] = vy;
-          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Z] = vz;
+        }
+        if (this.mode === "planar-soa") {
+          planar.vx[entityIndex] = vx;
+          planar.vy[entityIndex] = vy;
+          planar.vz[entityIndex] = vz;
         } else {
-          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_X] = 0;
-          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Y] = 0;
-          this.views.floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Z] = 0;
+          floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_X] = vx;
+          floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Y] = vy;
+          floatMatrixView[baseOffset + SOA_LAYOUT.VELOCITY_Z] = vz;
         }
       }
 
       // Enqueue lockless persistence checkpoint if PERSIST_CHECKPOINT flag is set
       if ((actionCode & INTENT_FLAGS.PERSIST_CHECKPOINT) !== 0) {
-        const hp = intMatrixView[baseOffset + SOA_LAYOUT.HEALTH];
+        const hp =
+          this.mode === "planar-soa"
+            ? planar.hp[entityIndex]
+            : intMatrixView[baseOffset + SOA_LAYOUT.HEALTH];
         return this.persistQueue.enqueue({
           kind: PERSIST_TX_KIND.ENTITY_CHECKPOINT,
           sabIndex: entityIndex,
@@ -424,7 +548,7 @@ export class SimWorkerRuntime {
     // 2. Call Native C++ Simulation Step directly on SharedArrayBuffer views
     if (this.mode === "planar-soa") {
       const p = this.views.planar;
-      this.kernel.stepSimulationSoA(
+      this.kernel.stepSimulationSoABitset(
         p.px,
         p.py,
         p.pz,
@@ -432,9 +556,13 @@ export class SimWorkerRuntime {
         p.vy,
         p.vz,
         p.hp,
+        p.aliveBitset,
         this.entityCapacity,
         dt,
       );
+      if (this.enableSpatialIndex) {
+        this.spatialIndex.rebuildFromSoA(p, this.entityCapacity);
+      }
     } else if (this.mode === "fused-intents") {
       this.kernel.applyIntentsAndStep(
         this.views.floatMatrixView,
@@ -442,8 +570,16 @@ export class SimWorkerRuntime {
         dt,
         this.baseSpeed,
       );
+      if (this.enableSpatialIndex) {
+        syncMatrixToPlanar(this.views, this.entityCapacity);
+        this.spatialIndex.rebuildFromSoA(this.views.planar, this.entityCapacity);
+      }
     } else {
       this.kernel.stepSimulation(this.views.floatMatrixView, this.entityCapacity, dt);
+      if (this.enableSpatialIndex) {
+        syncMatrixToPlanar(this.views, this.entityCapacity);
+        this.spatialIndex.rebuildFromSoA(this.views.planar, this.entityCapacity);
+      }
     }
 
     // 3. Enforce Frame Budget & Update Lockless Telemetry
@@ -598,6 +734,10 @@ if (isSimWorkerEntrypoint) {
     decodeMovementIntents: workerData.decodeMovementIntents,
     baseSpeed: workerData.baseSpeed,
     useBatchDrain: workerData.useBatchDrain,
+    enableSpatialIndex:
+      typeof workerData.enableSpatialIndex === "boolean"
+        ? workerData.enableSpatialIndex
+        : undefined,
     logRingSab: workerData.logRingSab instanceof SharedArrayBuffer ? workerData.logRingSab : undefined,
     logRingCapacity: typeof workerData.logRingCapacity === "number" ? workerData.logRingCapacity : undefined,
   });

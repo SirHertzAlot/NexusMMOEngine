@@ -40,6 +40,8 @@ export type ItemAction =
   | { kind: "item"; action: "equip"; item: number }
   | { kind: "item"; action: "use"; item: number }
   | { kind: "item"; action: "move"; item: number; x: number; y: number; rot?: boolean }
+  | { kind: "item"; action: "split"; item: number; count: number; x?: number; y?: number; rot?: boolean }
+  | { kind: "item"; action: "combine"; from: number; into: number }
   | { kind: "item"; action: "unequip"; hand: "main" | "off" }
   | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 
@@ -60,6 +62,10 @@ export interface ItemView {
   slot?: string;
   /** The composed stats (power, armour, crit, …). */
   stats: Record<string, number>;
+  /** Stack count when > 1 (CF6); 1 / absent for single items or unstackables. */
+  count?: number;
+  /** Max units per stack when stackable (CF6); 1 / absent for unstackables. */
+  maxStack?: number;
   /** In a grid bag (CF6): where it lies and the cells it covers once turned. Absent in a plain slot bag. */
   at?: { x: number; y: number; rot: boolean; w: number; h: number };
   /** Uses left before it breaks. */

@@ -53,9 +53,12 @@ export const BreakableSchema = z.object({
   minStrength: z.number().min(0).optional(),
   /** Multipliers by the kind of damage a blow does (a barrel is weak to "blunt", a tree to "slash"); a kind not named counts 1. */
   damageMultipliers: z.record(z.string(), z.number().min(0)).optional(),
+  /** Optional descending health-fraction thresholds where damage wear steps to the next stage (DE1, e.g. [0.66, 0.33]). */
+  stages: z.array(z.number().gt(0).lt(1)).max(8).optional(),
   /** What mending it takes once it stands broken (`into: "variant"`): `count` of a pouch `material`, over `castSeconds`. Without it a broken prop stays broken. */
   repair: z.object({ material: z.string().min(1), count: z.number().int().min(1), castSeconds: z.number().min(0).default(4) }).optional(),
-}).refine((b) => b.into !== "debris" || b.debris !== undefined, { message: "into debris needs a debris archetype", path: ["debris"] });
+}).refine((b) => b.into !== "debris" || b.debris !== undefined, { message: "into debris needs a debris archetype", path: ["debris"] })
+  .refine((b) => !b.stages || b.stages.every((v, i) => i === 0 || v < b.stages![i - 1]!), { message: "stages must be strictly descending", path: ["stages"] });
 export type Breakable = z.infer<typeof BreakableSchema>;
 
 export const SpawnArchetypeSchema = z.object({

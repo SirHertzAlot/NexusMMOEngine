@@ -531,6 +531,7 @@ function MirrorWorld({
     const ambience = instance ? new DungeonAmbience(scene) : null;
     const layer = new EntityLayer(scene, camera, assets, terrain, { pcg, workers, ...(ambience ? { materialFor: ambience.materialFor } : {}) });
     if (ambience) layer.matte();
+    layer.setDamageStages(client.damageStages);
     const world = client.world;
     const map = world ? decodeWorldMap(world.map) : null;
     terrain.setWorld(world && map ? { map, bounds: world.bounds, seaLevel: world.seaLevel ?? null } : null);
@@ -843,7 +844,13 @@ function MirrorWorld({
     for (const o of latest.current.observers?.() ?? []) {
       seen.add(o);
       let ol = r.observerLayers.get(o);
-      if (!ol) r.observerLayers.set(o, (ol = new EntityLayer(scene, camera, assets, new TerrainRenderer(16), pcg ? { pcg } : {})));
+      if (!ol) {
+        ol = new EntityLayer(scene, camera, assets, new TerrainRenderer(16), pcg ? { pcg } : {});
+        ol.setDamageStages(o.damageStages);
+        r.observerLayers.set(o, ol);
+      } else {
+        ol.setDamageStages(o.damageStages);
+      }
       ol.sync(o.state, o.interpolator, alpha, null, { tick: o.serverTick, tickHz: o.tickHz || 30 }, o.names);
     }
     for (const [o, ol] of r.observerLayers) {
