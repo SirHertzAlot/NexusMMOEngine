@@ -411,3 +411,53 @@ describe("ItemService economy verbs (viewport authoring)", () => {
     assert.equal(small.grantItem(1, 1), false, "bag is full");
   });
 });
+
+describe("stacking, combine and split (CF6)", () => {
+  function stackSvc(): { items: ItemService; BREAD: number; SWORD: number } {
+    const r = engineDefaults();
+    r.items.bases.sword = { ...RULES.items.bases.sword! };
+    r.items.bases.bread = { ...r.items.fallback, maxStack: 5, footprint: [1, 1], models: [] };
+    const pool = [poolItem("s1", "sword", "common", "mob", 1), poolItem("b1", "bread", "common", "drop", 2, { nourish: 25 })];
+    const defs = new ItemDefs(pool, r);
+    const items = new ItemService({ defs, loot: { ownershipSeconds: 30, despawnSeconds: 300, pickupRange: 2.5, bagSlots: 4, bagColumns: 2, maxGroundItems: 100 }, tickHz: 30 });
+    return { items, BREAD: 1, SWORD: 0 };
+  }
+
+  it("auto-stacks stackables on give, decrements on consume, and counts/takes stacks cleanly", () => {
+    const { items, BREAD } = stackSvc();
+    assert.equal(items.give(1, BREAD, 3).ok, true);
+    assert.equal(items.give(1, BREAD, 4).ok, true);
+    assert.equal(items.countBase(1, "bread"), 7);
+    const bag = items.inventoryOf(1).bag.filter((i): i is NonNullable<typeof i> => i !== null);
+    assert.equal(bag.length, 2, "stacked into 5 + 2 rather than 7 slots");
+    assert.deepEqual(bag.map((i) => i.count ?? 1).sort((x, y) => y - x), [5, 2]);
+    assert.equal(bag[0]!.maxStack, 5);
+
+    // Eating one decrements the stack instead of destroying all 5.
+    const stackId = bag[0]!.id;
+    assert.equal(items.consume(1, stackId, () => true).ok, true);
+    assert.equal(items.countBase(1, "bread"), 6);
+    assert.equal(items.store.countOf(stackId), (bag[0]!.count ?? 1) - 1);
+
+    // Splitting takes N units out into a free cell.
+    const splitRes = items.split(1, bag.find((i) => i.count === 5)?.id ?? stackId, 2);
+    assert.equal(splitRes.ok, true);
+    assert.equal(items.countBase(1, "bread"), 6);
+
+    // Dropping a stack onto another via move combines them.
+    const afterSplit = items.inventoryOf(1).bag.filter((i): i is NonNullable<typeof i> => i !== null);
+    const twoStacks = afterSplit.filter((i) => (i.count ?? 1) <= 2);
+    assert.ok(twoStacks.length >= 2);
+    const [src, dst] = twoStacks;
+    const moved = items.move(1, src!.id, { x: dst!.at!.x, y: dst!.at!.y, rot: false });
+    assert.equal(moved.ok, true);
+    assert.equal(items.countBase(1, "bread"), 6);
+
+    // takeBase removes 1 unit at a time cleanly, and take(c, id, count) removes partial counts.
+    assert.equal(items.takeBase(1, "bread"), true);
+    assert.equal(items.countBase(1, "bread"), 5);
+    const rem = items.inventoryOf(1).bag.find((i): i is NonNullable<typeof i> => i !== null)!;
+    assert.equal(items.take(1, rem.id, 2), true);
+    assert.equal(items.countBase(1, "bread"), 3);
+  });
+});

@@ -20,6 +20,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import { moveSpeedFactor, CHARACTER_CAPSULE } from "../systems.js";
 import { Locomotion, NavAgent, NavAgentState, PlayerIntent, Transform } from "../components.js";
 import type { CrowdBackend } from "./backend.js";
@@ -33,6 +34,19 @@ const AGENT_HEIGHT = 2 * (CHARACTER_CAPSULE.halfHeight + CHARACTER_CAPSULE.radiu
 
 export class CrowdSystem implements SimSystem {
   readonly name = "crowd";
+  readonly access: SystemAccess = {
+    system: "crowd",
+    reads: [
+      "Locomotion",
+      "PlayerIntent",
+      { component: "NavAgent", fields: ["seq", "speed", "tx", "ty", "tz"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "NavAgent", fields: ["state"] },
+      { component: "PlayerIntent", fields: ["lookYaw", "mx", "mz"] },
+    ],
+  };
   /** Agents in the crowd: wire id -> the speed it was added with. */
   private readonly members = new Map<bigint, number>();
   /** The NavAgent.seq each steering agent's current target came from. */

@@ -55,7 +55,9 @@ import { ANIMAL_LOD_RADIUS, AnimalRig, AnimalTemplate, animalIsFar } from "@mmo-
 import { CorpseProxy } from "./animal/corpse-proxy.js";
 import { shadeWorldObject } from "./shading/shading.js";
 import { DEPLETED_HEIGHT } from "./resource-nodes.js";
-import { DamageWatch, stageBrightness } from "./damage-stage.js";
+import { DamageWatch, stageBrightness, thresholdsFor } from "./damage-stage.js";
+import { CrackOverlays } from "./crack-overlays.js";
+import { CollapseWatch } from "./collapse-fx.js";
 import { DustPuffs } from "./dust-puffs.js";
 import { puffsFor } from "./dust-sim.js";
 import { DebrisPieces } from "./debris-pieces.js";
@@ -110,6 +112,8 @@ interface TrackedMesh {
   headRest?: THREE.Vector3;
   /** Half-height from BodyConfig for body-part raycast normalization. */
   halfY?: number;
+  /** Original material diffuse colors for non-instanced breakable darkening (DE1). */
+  baseColors?: Map<THREE.MeshStandardMaterial, THREE.Color>;
 }
 
 /**
@@ -277,11 +281,18 @@ export class EntityLayer {
   /** Live corpses: wire id -> the drawn body. The animal is hidden while its corpse exists. */
   private readonly corpseProxies = new Map<bigint, CorpseProxy>();
   private nextCorpseKey = 1;
-  /** Wear on breakable props (DE1): health changes become a darker look and a dust puff. */
+  /** Wear on breakable props (DE1): health changes become a darker look, cracks, and a dust puff. */
   private readonly damage = new DamageWatch();
+  private readonly damageBright = new Map<bigint, number>();
+  private damageStages: Readonly<Record<string, readonly number[]>> | null = null;
+  private cracks: CrackOverlays | null = null;
   private readonly dust: DustPuffs;
   /** Break pieces (DE2): thrown when a prop that was just hit breaks or vanishes. */
   private readonly debris: DebrisPieces;
+  /** Structural collapse FX tracker (DE5): release crumble, falling trail, landing impact. */
+  private readonly collapse = new CollapseWatch();
+  /** All currently visible static breakables so one-shot kills still emit debris on vanish (DE2). */
+  private readonly breakables = new Map<bigint, { x: number; y: number; z: number; hx: number; hy: number; hz: number; color: number; maxHealth: number; currentHealth: number }>();
   /** The props hit lately: where and how big they are, so a break can throw pieces after the entity is gone. */
   private readonly lastHit = new Map<bigint, { x: number; y: number; z: number; hx: number; hy: number; hz: number; color: number; at: number; burst: boolean }>();
   private readonly corpsePose = new Float32Array(RAGDOLL_PARTS * 7);
@@ -524,6 +535,16 @@ export class EntityLayer {
     this.depleted = ids;
   }
 
+  /** Per-asset or per-asset:maxHealth damage stage thresholds sent by the server in Welcome (DE1). */
+  setDamageStages(stages: Readonly<Record<string, readonly number[]>> | null): void {
+    this.damageStages = stages;
+  }
+
+  private ensureCracks(): CrackOverlays {
+    if (!this.cracks) this.cracks = new CrackOverlays(this.group.parent ?? this.group);
+    return this.cracks;
+  }
+
   /** The rows a prop is drawn with: as sent, or lowered while it is a worked-out resource node or broken (BROKEN_VARIANT). */
   /**
    * Far LOD for an animal (WL2): past the radius (with a band, animal/far-lod.ts) its own posed mesh
@@ -546,24 +567,78 @@ export class EntityLayer {
     const hit = this.lastHit.get(wid);
     // A prop that stays broken loses its health row: the lowered variant is the break.
     if (hit && !hit.burst && e.asset?.variant === BROKEN_VARIANT) this.throwPieces(hit);
+    if (e.asset?.variant === BROKEN_VARIANT) this.cracks?.remove(wid);
     if (!e.health || !e.transform || !isStaticProp(e.body, e.asset)) return;
-    const change = this.damage.observe(wid, e.health.current, e.health.max);
-    if (!change) return;
-    this.props.setBrightness(wid, stageBrightness(change.stage));
-    if (change.lost <= 0) {
-      if (change.stage === 0) this.lastHit.delete(wid); // mended
-      return;
-    }
     const t = e.transform;
-    this.dust.emit(t.px, t.py + 0.4, t.pz, puffsFor(change.lost));
     const b = e.body;
     const r = b && b.radius > 0 ? b.radius : 0;
     const hx = Math.max(0.15, (b && b.halfX > 0 ? b.halfX : r) * t.sx);
     const hy = Math.max(0.15, (b && b.halfY > 0 ? b.halfY : r) * t.sy);
     const hz = Math.max(0.15, (b && b.halfZ > 0 ? b.halfZ : r) * t.sz);
-    const rec = { x: t.px, y: t.py - hy, z: t.pz, hx, hy, hz, color: placeholderColor(wid).getHex(), at: performance.now() / 1000, burst: false };
+    const color = placeholderColor(wid).getHex();
+    this.breakables.set(wid, { x: t.px, y: t.py - hy, z: t.pz, hx, hy, hz, color, maxHealth: e.health.max, currentHealth: e.health.current });
+
+    const thresholds = thresholdsFor(this.damageStages, e.asset?.assetHash, e.health.max);
+    const change = this.damage.observe(wid, e.health.current, e.health.max, thresholds);
+    if (!change) return;
+    const bright = stageBrightness(change.stage, change.totalStages);
+    if (bright < 1) this.damageBright.set(wid, bright);
+    else this.damageBright.delete(wid);
+    this.props.setBrightness(wid, bright);
+    const tracked = this.meshes.get(wid);
+    if (tracked && !tracked.character && !tracked.animal) tintTrackedBrightness(tracked, bright);
+    if (change.stage >= 1 && e.asset?.variant !== BROKEN_VARIANT) {
+      this.ensureCracks().set(wid, t, b, change.stage, change.totalStages);
+    } else {
+      this.cracks?.remove(wid);
+    }
+    if (change.lost <= 0) {
+      if (change.stage === 0) this.lastHit.delete(wid); // mended
+      return;
+    }
+    this.dust.emit(t.px, t.py + 0.4, t.pz, puffsFor(change.lost));
+    const rec = { x: t.px, y: t.py - hy, z: t.pz, hx, hy, hz, color, at: performance.now() / 1000, burst: false };
     this.lastHit.set(wid, rec);
     if (e.health.current <= 0) this.throwPieces(rec);
+  }
+
+  private watchCollapse(wid: bigint, e: EntityMirror, now: number): void {
+    if (!e.transform) return;
+    const staticNow = isStaticProp(e.body, e.asset);
+    const groundY = this.terrain.heightAt(e.transform.px, e.transform.pz) ?? 0;
+    const ev = this.collapse.observe(wid, e.transform, e.body, staticNow, e.velocity, now, groundY);
+    if (!ev) return;
+    const color = placeholderColor(wid).getHex();
+    if (ev.release) {
+      this.dust.emit(ev.release.x, ev.release.y + ev.release.hy, ev.release.z, 6);
+      this.debris.burst(ev.release.x, ev.release.y, ev.release.z, ev.release.hx, ev.release.hy, ev.release.hz, Math.min(8, piecesFor(ev.release.hx, ev.release.hy, ev.release.hz)), color);
+      this.cracks?.remove(wid);
+    }
+    if (ev.trail) {
+      this.dust.emit(ev.trail.x, ev.trail.y, ev.trail.z, 2);
+    }
+    if (ev.impact) {
+      this.dust.emit(ev.impact.x, ev.impact.y + 0.25, ev.impact.z, 8);
+      this.debris.burst(ev.impact.x, ev.impact.y, ev.impact.z, ev.impact.hx, ev.impact.hy, ev.impact.hz, piecesFor(ev.impact.hx, ev.impact.hy, ev.impact.hz), color);
+      this.cracks?.remove(wid);
+    }
+  }
+
+  private flushOneShotBreaks(state: MirrorState, playerWireId: bigint | null): void {
+    const playerT = playerWireId !== null ? state.entities.get(playerWireId)?.transform : undefined;
+    const px = playerT?.px ?? this.lastPlayerPos.x;
+    const pz = playerT?.pz ?? this.lastPlayerPos.z;
+    const teleported = playerT !== undefined && this.lastPlayerPos.lengthSq() > 0 && Math.hypot(playerT.px - this.lastPlayerPos.x, playerT.py - this.lastPlayerPos.y, playerT.pz - this.lastPlayerPos.z) > 20;
+    for (const [wid, rec] of this.breakables) {
+      if (state.entities.has(wid)) continue;
+      this.breakables.delete(wid);
+      if (this.lastHit.has(wid) || teleported) continue;
+      const near = Math.hypot(rec.x - px, rec.z - pz) <= 14;
+      if (rec.currentHealth < rec.maxHealth || near) {
+        this.debris.burst(rec.x, rec.y, rec.z, rec.hx, rec.hy, rec.hz, piecesFor(rec.hx, rec.hy, rec.hz), rec.color);
+        this.dust.emit(rec.x, rec.y + rec.hy, rec.z, 8);
+      }
+    }
   }
 
   /** Throw a prop's pieces, once. */
@@ -630,7 +705,11 @@ export class EntityLayer {
     for (const wid of this.props.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.props.remove(wid);
     gone.length = 0;
+    this.flushOneShotBreaks(state, playerWireId);
     this.damage.prune((wid) => state.entities.has(wid));
+    for (const wid of this.damageBright.keys()) if (!state.entities.has(wid)) this.damageBright.delete(wid);
+    this.cracks?.prune((wid) => state.entities.has(wid));
+    this.collapse.prune((wid) => state.entities.has(wid));
     this.settleHits(state, performance.now() / 1000);
     for (const wid of this.roads.wireIds()) if (!state.entities.has(wid)) gone.push(wid);
     for (const wid of gone) this.roads.remove(wid);
@@ -656,6 +735,7 @@ export class EntityLayer {
         continue;
       }
       this.watchDamage(wid, e);
+      this.watchCollapse(wid, e, now);
       // A far animal is one stand-in in the instanced batch (WL2 far LOD): see gateFarAnimal.
       const animalMesh = this.meshes.get(wid);
       if (animalMesh?.animal && e.transform) this.gateFarAnimal(wid, animalMesh, e.transform, e.body ?? null);
@@ -675,11 +755,15 @@ export class EntityLayer {
         if (!model && isStaticProp(e.body, e.asset)) {
           // Scenery: no spawn portal (a streamed ring brings hundreds at once).
           this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null, e.asset), placeholderColor(wid), propAsset(e.asset));
+          const b0 = this.damageBright.get(wid);
+          if (b0 !== undefined) this.props.setBrightness(wid, b0);
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
         this.group.add(obj);
         tracked = { object: obj, shaped: e.body !== undefined, halfY: e.body?.halfY };
+        const bMesh = this.damageBright.get(wid);
+        if (bMesh !== undefined) tintTrackedBrightness(tracked, bMesh);
         this.meshes.set(wid, tracked);
         this.pickMap.set(obj, wid);
         // Spawn portal for newly-spawned entities; one that only came
@@ -698,6 +782,8 @@ export class EntityLayer {
           this.detachWeapons(tracked);
           this.meshes.delete(wid);
           this.props.add(wid, ...this.shown(wid, e.transform, e.body ?? null, e.asset), placeholderColor(wid), propAsset(e.asset));
+          const b1 = this.damageBright.get(wid);
+          if (b1 !== undefined) this.props.setBrightness(wid, b1);
           continue;
         }
         const obj = this.makeBodyMesh(wid, e.body, model);
@@ -705,6 +791,9 @@ export class EntityLayer {
         tracked.object = obj;
         tracked.shaped = true;
         tracked.halfY = e.body.halfY;
+        tracked.baseColors = undefined;
+        const bMesh2 = this.damageBright.get(wid);
+        if (bMesh2 !== undefined && !tracked.character && !tracked.animal) tintTrackedBrightness(tracked, bMesh2);
         this.pickMap.set(obj, wid);
       }
 
@@ -823,6 +912,7 @@ export class EntityLayer {
     this.fx.setPlayerPos(this.player);
 
     this.fx.update(dt, now);
+    this.cracks?.sync();
     this.dust.update(dt);
     this.debris.update(dt, (x, z) => this.terrain.heightAt(x, z) ?? 0);
     this.showcase.update(now, dt);
@@ -910,6 +1000,8 @@ export class EntityLayer {
     this.corpseWorld = null;
     this.corpses = null;
     this.fx.dispose();
+    this.cracks?.dispose();
+    this.cracks = null;
     this.dust.dispose(this.group.parent ?? this.group);
     this.debris.dispose(this.group.parent ?? this.group);
     this.showcase.dispose();
@@ -1097,6 +1189,20 @@ function colorize(obj: THREE.Object3D, color: THREE.Color): void {
     const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
     if (mat && "color" in mat) mat.color.copy(color);
   });
+}
+
+function tintTrackedBrightness(tracked: TrackedMesh, factor: number): void {
+  let base = tracked.baseColors;
+  if (!base) {
+    base = new Map();
+    tracked.baseColors = base;
+    tracked.object.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+      if (mat && "color" in mat) base!.set(mat, mat.color.clone());
+    });
+  }
+  for (const [mat, orig] of base) mat.color.copy(orig).multiplyScalar(factor);
 }
 
 const HIGHLIGHT = { player: 0x224422, hover: 0x444422, hit: 0x661111, none: 0x000000 } as const;

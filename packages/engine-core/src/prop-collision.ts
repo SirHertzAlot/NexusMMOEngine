@@ -45,6 +45,7 @@ import {
 } from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 
 /** XZ footprint circle + Y interval of one body. */
 interface Footprint {
@@ -196,6 +197,18 @@ function ascending(a: number, b: number): number {
 
 export class PropCollisionSystem implements SimSystem {
   readonly name = "prop-collision";
+  readonly access: SystemAccess = {
+    system: "prop-collision",
+    reads: [
+      "Noclip",
+      "Velocity",
+      { component: "BodyConfig", fields: ["halfX", "halfY", "halfZ", "motionType", "radius", "shapeKind"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qx", "qy", "qz"] },
+    ],
+    writes: [
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+  };
   private readonly movers = defineQuery([Transform, Velocity, BodyConfig]);
   private readonly obstacles = defineQuery([Transform, BodyConfig]);
   private readonly foot: Footprint = { radius: 0, y0: 0, y1: 0 };

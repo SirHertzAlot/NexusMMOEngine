@@ -63,42 +63,10 @@ export const SYSTEM_ROLES: Readonly<Record<string, SystemRole>> = {
 };
 
 /**
- * H3 ratchet allowlist: existing simulation systems that do not yet declare
- * `SimSystem.access` (or module `system-access.json`).
- *
- * Each future slice porting `access` declarations MUST remove ported systems
- * from this list and decrease `MAX_UNANNOTATED_SIM_SYSTEMS`. Any newly added
- * unannotated simulation system immediately fails the ratchet check.
+ * H3 ratchet allowlist: empty once every simulation system explicitly declares
+ * `SimSystem.access`. Any newly added unannotated simulation system fails validation.
  */
-export const INFERRED_SIM_ALLOWLIST: readonly string[] = [
-  "abilities",
-  "animation",
-  "body",
-  "bots",
-  "breaks",
-  "character-bridge",
-  "chests",
-  "collapse",
-  "combat",
-  "creatures",
-  "crowd",
-  "death",
-  "duels",
-  "gathering",
-  "items",
-  "magic",
-  "mastery",
-  "navigation",
-  "needs",
-  "obstacles",
-  "prop-collision",
-  "residents",
-  "stamina",
-  "stats",
-  "status",
-  "telegraphs",
-  "vendor",
-];
+export const INFERRED_SIM_ALLOWLIST: readonly string[] = [];
 
 /** Maximum permitted unannotated simulation systems under the H3 ratchet. */
 export const MAX_UNANNOTATED_SIM_SYSTEMS = INFERRED_SIM_ALLOWLIST.length;

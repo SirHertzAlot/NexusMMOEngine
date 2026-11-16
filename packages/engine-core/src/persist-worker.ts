@@ -167,6 +167,12 @@ export class PersistenceWorkerRuntime {
   private readonly dbUser: string;
   private readonly dbPass: string;
 
+  /** Pre-allocated dirty-bitset & scratch buffers for zero-allocation flush coalescing (PATCH-04). */
+  private readonly checkpointBitWords: number;
+  private readonly seenCheckpoints: Uint32Array;
+  private readonly batchScratch: PersistTransaction[] = [];
+  private readonly checkpointIndicesScratch: Int32Array;
+
   private timer: ReturnType<typeof setInterval> | null = null;
   private draining = false;
   private connected = false;
@@ -179,6 +185,11 @@ export class PersistenceWorkerRuntime {
     this.persistQueue = new AtomicSPSCTransactionQueue(
       config.sharedMemory,
       this.views.offsets.PERSIST_RING,
+      config.persistRingCapacity ?? DEFAULT_PERSIST_RING_CAPACITY,
+    );
+    this.checkpointBitWords = Math.ceil(this.views.entityCapacity / 32);
+    this.seenCheckpoints = new Uint32Array(this.checkpointBitWords);
+    this.checkpointIndicesScratch = new Int32Array(
       config.persistRingCapacity ?? DEFAULT_PERSIST_RING_CAPACITY,
     );
     this.db = new Surreal({
@@ -317,10 +328,28 @@ export class PersistenceWorkerRuntime {
     Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.PERSIST_COMMITTED, 1);
   }
 
+  /** Execute a vectorized SurrealQL group-commit batch for deduplicated ENTITY_CHECKPOINT indices (PATCH-04). */
+  private async executeCheckpointBatch(indices: Int32Array, count: number): Promise<void> {
+    if (count <= 0) return;
+    if (!this.connected) {
+      await this.init();
+    }
+    const items: Array<{ eid: RecordId; sabIndex: number }> = [];
+    for (let i = 0; i < count; i++) {
+      const sabIndex = indices[i];
+      items.push({ eid: this.entityRecordId(sabIndex), sabIndex });
+    }
+    await this.db.query(
+      `FOR $item IN $items { UPSERT $item.eid CONTENT { sab_index: $item.sabIndex, checkpointed_at: time::now() }; };`,
+      { items },
+    );
+    Atomics.add(this.views.telemetryView, TELEMETRY_SLOTS.PERSIST_COMMITTED, count);
+  }
+
   /**
    * Drains pending persistence transactions, coalescing redundant ENTITY_CHECKPOINT
-   * mutations for the same sabIndex via a bitset, committing checkpoints and
-   * ACID ledger transactions (PATCH-04).
+   * mutations for the same sabIndex via a pre-allocated bitset, committing checkpoints
+   * in one vectorized SurrealQL query and ACID ledger transactions in order (PATCH-04).
    */
   public async flushOnce(maxBatch = 256): Promise<number> {
     return this.drainPendingTransactions(maxBatch);
@@ -335,7 +364,8 @@ export class PersistenceWorkerRuntime {
     let processed = 0;
     try {
       if (this.closed) return 0;
-      const batch: PersistTransaction[] = [];
+      const batch = this.batchScratch;
+      batch.length = 0;
       while (batch.length < maxBatch) {
         const tx = this.persistQueue.dequeue();
         if (tx === null) break;
@@ -346,23 +376,41 @@ export class PersistenceWorkerRuntime {
         return 0;
       }
 
-      const bitWords = Math.ceil(this.views.entityCapacity / 32);
-      const seenCheckpoints = new Uint32Array(bitWords);
+      const bitWords = this.checkpointBitWords;
+      const seenCheckpoints = this.seenCheckpoints;
+      seenCheckpoints.fill(0);
+      const checkpointIndices = this.checkpointIndicesScratch;
+      let uniqueCheckpoints = 0;
 
-      for (const tx of batch) {
+      for (let i = 0; i < batch.length; i++) {
+        const tx = batch[i];
         if (tx.kind === PERSIST_TX_KIND.ENTITY_CHECKPOINT) {
           const w = tx.sabIndex >>> 5;
           const b = 1 << (tx.sabIndex & 31);
-          if (w < bitWords && (seenCheckpoints[w] & b) !== 0) {
-            processed++;
-            continue;
+          if (w < bitWords && (seenCheckpoints[w] & b) === 0) {
+            seenCheckpoints[w] |= b;
+            if (uniqueCheckpoints === checkpointIndices.length) {
+              await this.executeCheckpointBatch(checkpointIndices, uniqueCheckpoints);
+              uniqueCheckpoints = 0;
+            }
+            checkpointIndices[uniqueCheckpoints++] = tx.sabIndex;
           }
-          if (w < bitWords) seenCheckpoints[w] |= b;
         }
-        await this.executeTransaction(tx);
+      }
+
+      if (uniqueCheckpoints > 0) {
+        await this.executeCheckpointBatch(checkpointIndices, uniqueCheckpoints);
+      }
+
+      for (let i = 0; i < batch.length; i++) {
+        const tx = batch[i];
+        if (tx.kind !== PERSIST_TX_KIND.ENTITY_CHECKPOINT) {
+          await this.executeTransaction(tx);
+        }
         processed++;
       }
     } finally {
+      this.batchScratch.length = 0;
       this.draining = false;
     }
     return processed;

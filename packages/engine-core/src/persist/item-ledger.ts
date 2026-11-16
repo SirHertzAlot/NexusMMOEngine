@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS item_events (
   slot INTEGER NOT NULL,
   durability REAL NOT NULL,
   x REAL NOT NULL,
-  z REAL NOT NULL
+  z REAL NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS item_events_item ON item_events (item_id, seq);
 -- EA17: materialized latest-state cache. Updated on every flush; load()
@@ -45,7 +46,8 @@ CREATE TABLE IF NOT EXISTS item_latest (
   slot INTEGER NOT NULL,
   durability REAL NOT NULL,
   x REAL NOT NULL,
-  z REAL NOT NULL
+  z REAL NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1
 );
 `;
 
@@ -80,6 +82,8 @@ export interface LedgerEventRow {
   durability: number;
   x: number;
   z: number;
+  /** Units in stack (CF6; defaults to 1 in legacy rows). */
+  count?: number;
 }
 
 /** An item as of its latest event. */
@@ -94,6 +98,8 @@ export interface ItemRow {
   durability: number;
   x: number;
   z: number;
+  /** Units in stack (CF6; absent on legacy synthetic rows, defaults to 1). */
+  count?: number;
 }
 
 const INITIAL_EVENTS = 256;
@@ -131,6 +137,7 @@ export class ItemLedger {
   private durs = new Float32Array(INITIAL_EVENTS);
   private xs = new Float32Array(INITIAL_EVENTS);
   private zs = new Float32Array(INITIAL_EVENTS);
+  private counts = new Uint16Array(INITIAL_EVENTS);
 
   /**
    * Open region.db by path, or borrow an open connection. `autoCheckpoint:
@@ -148,42 +155,48 @@ export class ItemLedger {
       this.db = db;
     }
     this.db.exec(DDL);
+    for (const table of ["item_events", "item_latest"] as const) {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === "count")) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN count INTEGER NOT NULL DEFAULT 1`);
+      }
+    }
     this.insertStmt = this.db.prepare(
-      "INSERT INTO item_events (item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO item_events (item_id, tick, committed_at, kind, def, owner, slot, durability, x, z, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     this.liveStmt = this.db.prepare(
-      `SELECT item_id AS id, kind, def, owner, slot, durability, x, z FROM item_latest ORDER BY item_id`,
+      `SELECT item_id AS id, kind, def, owner, slot, durability, x, z, count FROM item_latest ORDER BY item_id`,
     );
     this.maxIdStmt = this.db.prepare("SELECT COALESCE(MAX(item_id), 0) AS id FROM item_events");
     this.countStmt = this.db.prepare("SELECT COUNT(*) AS n FROM item_events");
     // EA17: keep item_latest in sync on every flush.
     this.latestUpsertStmt = this.db.prepare(
-      `INSERT INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z, count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(item_id) DO UPDATE SET
          tick = excluded.tick, kind = excluded.kind, def = excluded.def,
          owner = excluded.owner, slot = excluded.slot, durability = excluded.durability,
-         x = excluded.x, z = excluded.z`,
+         x = excluded.x, z = excluded.z, count = excluded.count`,
     );
     this.latestDeleteStmt = this.db.prepare("DELETE FROM item_latest WHERE item_id = ?");
     this.maxSeqRowStmt = this.db.prepare(
-      `SELECT kind, tick, def, owner, slot, durability, x, z FROM item_events
+      `SELECT kind, tick, def, owner, slot, durability, x, z, count FROM item_events
        WHERE item_id = ? ORDER BY seq DESC LIMIT 1`,
     );
     // EA17: backfill item_latest from item_events on open (existing DBs).
     this.db.exec(`
-      INSERT OR IGNORE INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z)
-      SELECT e.item_id, e.tick, e.kind, e.def, e.owner, e.slot, e.durability, e.x, e.z
+      INSERT OR IGNORE INTO item_latest (item_id, tick, kind, def, owner, slot, durability, x, z, count)
+      SELECT e.item_id, e.tick, e.kind, e.def, e.owner, e.slot, e.durability, e.x, e.z, e.count
       FROM item_events e
       WHERE e.kind != ${LedgerKind.Destroy}
         AND e.seq = (SELECT MAX(seq) FROM item_events WHERE item_id = e.item_id)
     `);
     this.eventsAfterStmt = this.db.prepare(
-      `SELECT seq, item_id AS itemId, tick, committed_at AS committedAt, kind, def, owner, slot, durability, x, z
+      `SELECT seq, item_id AS itemId, tick, committed_at AS committedAt, kind, def, owner, slot, durability, x, z, count
        FROM item_events WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
     );
     this.importStmt = this.db.prepare(
-      "INSERT OR IGNORE INTO item_events (seq, item_id, tick, committed_at, kind, def, owner, slot, durability, x, z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR IGNORE INTO item_events (seq, item_id, tick, committed_at, kind, def, owner, slot, durability, x, z, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     this.importTx = this.db.transaction((rows: readonly LedgerEventRow[]): number => {
       let inserted = 0;
@@ -201,6 +214,7 @@ export class ItemLedger {
           row.durability,
           row.x,
           row.z,
+          Math.max(1, Math.min(0xffff, row.count ?? 1)),
         );
         if (Number(info.changes) > 0) {
           inserted += Number(info.changes);
@@ -214,7 +228,7 @@ export class ItemLedger {
       // not necessarily the imported one: a newer local event wins).
       for (const itemId of affected) {
         const latest = this.maxSeqRowStmt.get(itemId) as
-          | { kind: LedgerKindCode; tick: number; def: number; owner: number; slot: number; durability: number; x: number; z: number }
+          | { kind: LedgerKindCode; tick: number; def: number; owner: number; slot: number; durability: number; x: number; z: number; count: number }
           | undefined;
         if (!latest) continue;
         if (latest.kind === LedgerKind.Destroy) {
@@ -230,6 +244,7 @@ export class ItemLedger {
             latest.durability,
             latest.x,
             latest.z,
+            latest.count,
           );
         }
       }
@@ -248,6 +263,7 @@ export class ItemLedger {
           this.durs[i],
           this.xs[i],
           this.zs[i],
+          this.counts[i] || 1,
         );
         // EA17: mirror the latest state into item_latest.
         if (this.kinds[i] === LedgerKind.Destroy) {
@@ -263,6 +279,7 @@ export class ItemLedger {
             this.durs[i],
             this.xs[i],
             this.zs[i],
+            this.counts[i] || 1,
           );
         }
       }
@@ -284,6 +301,7 @@ export class ItemLedger {
     durability: number,
     x = 0,
     z = 0,
+    count = 1,
   ): void {
     if (this.n === this.capacity) this.grow();
     const i = this.n++;
@@ -296,6 +314,7 @@ export class ItemLedger {
     this.durs[i] = durability;
     this.xs[i] = x;
     this.zs[i] = z;
+    this.counts[i] = Math.max(1, Math.min(0xffff, Math.trunc(count)));
   }
 
   /** Write every recorded event in one transaction. Returns how many. */
@@ -354,7 +373,7 @@ export class ItemLedger {
 
   private grow(): void {
     const cap = this.capacity * 2;
-    const g = <T extends Uint8Array | Uint32Array | Float64Array | Int16Array | Float32Array>(
+    const g = <T extends Uint8Array | Uint16Array | Uint32Array | Float64Array | Int16Array | Float32Array>(
       a: T,
       make: (n: number) => T,
     ): T => {
@@ -371,6 +390,7 @@ export class ItemLedger {
     this.durs = g(this.durs, (n) => new Float32Array(n));
     this.xs = g(this.xs, (n) => new Float32Array(n));
     this.zs = g(this.zs, (n) => new Float32Array(n));
+    this.counts = g(this.counts, (n) => new Uint16Array(n));
     this.capacity = cap;
   }
 }

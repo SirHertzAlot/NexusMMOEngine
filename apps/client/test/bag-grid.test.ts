@@ -1,10 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { ItemView } from "@mmo-engine/protocol";
-import { dropVerdict, occupancyOf } from "../src/ui/bag-grid.js";
+import { dropCombineTarget, dropVerdict, occupancyOf } from "../src/ui/bag-grid.js";
 
 const G = { columns: 4, rows: 3, slots: 10 };
-const item = (id: number, x: number, y: number, w: number, h: number, rot = false): ItemView => ({ id, def: "d", name: "n", base: "b", rank: "common", color: "#fff", hand: "none", stats: {}, durability: 1, model: "", at: { x, y, rot, w, h } });
+const item = (id: number, x: number, y: number, w: number, h: number, rot = false, extra: Partial<ItemView> = {}): ItemView => ({ id, def: "d", name: "n", base: "b", rank: "common", color: "#fff", hand: "none", stats: {}, durability: 1, model: "", at: { x, y, rot, w, h }, ...extra });
 
 describe("bag grid", () => {
   it("marks every covered cell, and closes the cells past the last slot", () => {
@@ -18,5 +18,14 @@ describe("bag grid", () => {
     assert.equal(dropVerdict(G, c, [2, 2], { x: 2, y: 0, rot: false }, 1), null);
     assert.equal(dropVerdict(G, c, [2, 2], { x: 1, y: 0, rot: false }, 2), "occupied");
     assert.equal(dropVerdict(G, c, [2, 2], { x: 1, y: 0, rot: false }, 1), null, "its own cells do not block it");
+  });
+  it("identifies a compatible partial stack target for combine drop preview", () => {
+    const a = item(1, 0, 0, 1, 1, false, { def: "bread", count: 3, maxStack: 20 });
+    const b = item(2, 1, 0, 1, 1, false, { def: "bread", count: 4, maxStack: 20 });
+    const full = item(3, 2, 0, 1, 1, false, { def: "bread", count: 20, maxStack: 20 });
+    const c = occupancyOf([a, b, full], G);
+    assert.equal(dropCombineTarget(G, c, [a, b, full], a, [1, 1], { x: 1, y: 0, rot: false }), 2);
+    assert.equal(dropCombineTarget(G, c, [a, b, full], a, [1, 1], { x: 2, y: 0, rot: false }), null, "full stack cannot absorb");
+    assert.equal(dropCombineTarget(G, c, [a, b, full], a, [1, 1], { x: 3, y: 0, rot: false }), null, "empty cell");
   });
 });

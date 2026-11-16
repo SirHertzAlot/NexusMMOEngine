@@ -159,13 +159,13 @@ describe("EA13: migrated tool modules", () => {
   });
   it("all complete-modularity panel modules are enabled by default in content/modules.json", async () => {
     const { readEnabledSet } = await import("@mmo-engine/modules");
-    const set = readEnabledSet(new URL("content/modules.json", repo).pathname);
+    const set = readEnabledSet(fileURLToPath(new URL("content/modules.json", repo)));
     assert.deepEqual(set.problems, []);
     for (const m of MIGRATED2) assert.ok(set.modules.includes(m.name), `${m.name} must be enabled by default`);
   });
   it("no workspace keeps a hardcoded panel view in App.tsx", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync(new URL("../../src/ui/App.tsx", import.meta.url).pathname, "utf8");
+    const src = readFileSync(fileURLToPath(new URL("../../src/ui/App.tsx", import.meta.url)), "utf8");
     // The WORKSPACES table must not construct panel elements inline anymore;
     // panels arrive through the module registry. (The tab bar below still
     // references panel components directly — that is navigation, not the

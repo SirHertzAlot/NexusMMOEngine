@@ -13,7 +13,7 @@
  * `restore` rebuilds an item from its ledger row after a restart.
  */
 
-import { NOT_A_CELL, checkPlace, firstFit, gridFor, packPlacement, stamp, unpackPlacement, type Footprint, type GridSize, type PlaceRefusal, type Placement } from "@mmo-engine/protocol";
+import { NOT_A_CELL, checkPlace, firstFit, gridFor, occupantAt, packPlacement, stamp, unpackPlacement, type Footprint, type GridSize, type PlaceRefusal, type Placement } from "@mmo-engine/protocol";
 import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
 
 export const ItemWhere = {
@@ -46,6 +46,8 @@ export interface BagLayout {
   columns?: number;
   /** An item definition's footprint in cells; absent: one cell each. */
   footprintOf?: (def: number) => Footprint;
+  /** Max units per stack for a definition (CF6); absent: 1 (unstackable). */
+  maxStackOf?: (def: number) => number;
 }
 
 export class ItemStore {
@@ -56,6 +58,8 @@ export class ItemStore {
   /** Character id holding it (bag), or that the drop belongs to (ground); 0: nobody. */
   owner: Float64Array;
   durability: Float32Array;
+  /** Units in this stack, indexed by slot (CF6; >= 1 for live items). */
+  counts: Uint16Array;
 
   private capacity: number;
   private readonly freeSlots: number[] = [];
@@ -76,6 +80,7 @@ export class ItemStore {
   /** Whether the bag was given a layout (columns): the inventory then says where each item lies. */
   readonly spatial: boolean;
   private readonly footprintOf: (def: number) => Footprint;
+  private readonly maxStackOf: (def: number) => number;
   /** Item id held in each hand ([main, off]; 0: empty), per character. */
   private readonly handsOf = new Map<number, Uint32Array>();
   /** Item id worn in each armour slot (ARMOUR_SLOTS order; 0: empty), per character. */
@@ -91,12 +96,14 @@ export class ItemStore {
     this.grid = gridFor(bagSlots, layout.columns ?? bagSlots);
     // Footprints only mean something in a grid: a plain slot bag is one cell per item, whatever the rules say.
     this.footprintOf = this.spatial ? (layout.footprintOf ?? (() => ONE)) : () => ONE;
+    this.maxStackOf = layout.maxStackOf ?? (() => 1);
     this.capacity = capacity;
     this.ids = new Uint32Array(capacity);
     this.defs = new Uint32Array(capacity);
     this.where = new Uint8Array(capacity);
     this.owner = new Float64Array(capacity);
     this.durability = new Float32Array(capacity);
+    this.counts = new Uint16Array(capacity);
   }
 
   /** Items that exist. */
@@ -104,19 +111,32 @@ export class ItemStore {
     return this.used;
   }
 
+  /** Stack count of a live item, or 0. */
+  countOf(id: number): number {
+    const slot = this.slotOf.get(id);
+    return slot === undefined ? 0 : this.counts[slot] || 1;
+  }
+
+  /** Max units per stack for `def`. */
+  maxStackFor(def: number): number {
+    return this.maxStackOf(def);
+  }
+
   /** Make a new item of definition `def`; returns its id. */
-  create(def: number, durability: number): number {
+  create(def: number, durability: number, count = 1): number {
     const slot = this.freeSlots.length > 0 ? this.freeSlots.pop()! : this.top++;
     if (slot >= this.capacity) this.grow();
     const id = this.nextId++;
+    const n = Math.max(1, Math.min(0xffff, Math.trunc(count)));
     this.ids[slot] = id;
     this.defs[slot] = def;
     this.where[slot] = ItemWhere.Free;
     this.owner[slot] = 0;
     this.durability[slot] = durability;
+    this.counts[slot] = n;
     this.slotOf.set(id, slot);
     this.used++;
-    this.ledger?.record(LedgerKind.Create, id, def, 0, 0, durability);
+    this.ledger?.record(LedgerKind.Create, id, def, 0, 0, durability, 0, 0, n);
     return id;
   }
 
@@ -131,6 +151,7 @@ export class ItemStore {
     this.ids[slot] = row.id;
     this.defs[slot] = row.def;
     this.durability[slot] = row.durability;
+    this.counts[slot] = Math.max(1, Math.min(0xffff, Math.trunc(row.count ?? 1)));
     this.owner[slot] = row.owner;
     this.slotOf.set(row.id, slot);
     this.used++;
@@ -166,11 +187,12 @@ export class ItemStore {
     const slot = this.slotOf.get(id);
     if (slot === undefined) return;
     this.takeFromWherever(slot, id);
-    this.ledger?.record(LedgerKind.Destroy, id, this.defs[slot], this.owner[slot], 0, this.durability[slot]);
+    this.ledger?.record(LedgerKind.Destroy, id, this.defs[slot], this.owner[slot], 0, this.durability[slot], 0, 0, this.counts[slot]);
     this.slotOf.delete(id);
     this.ids[slot] = 0;
     this.where[slot] = ItemWhere.Free;
     this.owner[slot] = 0;
+    this.counts[slot] = 0;
     this.freeSlots.push(slot);
     this.used--;
   }
@@ -190,7 +212,7 @@ export class ItemStore {
     this.takeFromWherever(slot, id);
     this.where[slot] = ItemWhere.Ground;
     this.owner[slot] = owner;
-    this.ledger?.record(LedgerKind.Ground, id, this.defs[slot], owner, 0, this.durability[slot], x, z);
+    this.ledger?.record(LedgerKind.Ground, id, this.defs[slot], owner, 0, this.durability[slot], x, z, this.counts[slot]);
   }
 
   /**
@@ -203,12 +225,70 @@ export class ItemStore {
     // Where it fits (its own cells, when it is already in this bag, do not block it).
     const at = firstFit(this.grid, this.cells(character), f, id);
     if (!at) return -1;
+    this.placeInBagAt(character, id, slot, f, at);
+    return at.y * this.grid.columns + at.x;
+  }
+
+  /** Stamp an item into `character`'s bag at a validated placement and record the ledger row. */
+  private placeInBagAt(character: number, id: number, slot: number, f: Footprint, at: Placement): void {
     this.takeFromWherever(slot, id);
     this.lay(character, id, f, at);
     this.where[slot] = ItemWhere.Bag;
     this.owner[slot] = character;
-    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, at), this.durability[slot]);
-    return at.y * this.grid.columns + at.x;
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, at), this.durability[slot], 0, 0, this.counts[slot] || 1);
+  }
+
+  /** Update a bagged item's stack count and record the updated state in the ledger. */
+  setBagCount(character: number, id: number, count: number): boolean {
+    if (!this.inBagOf(character, id)) return false;
+    const slot = this.mustSlot(id);
+    const at = this.placementOf(character, id);
+    if (!at) return false;
+    const n = Math.max(1, Math.min(0xffff, Math.trunc(count)));
+    this.counts[slot] = n;
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, at), this.durability[slot], 0, 0, n);
+    return true;
+  }
+
+  /**
+   * Merge up to `count` units of `def` into existing partial stacks in `character`'s bag
+   * (excluding `exclude`, e.g. the incoming stack itself). Returns the unmerged remainder.
+   */
+  mergeIntoBag(character: number, def: number, count: number, exclude = 0): number {
+    const maxS = this.maxStackOf(def);
+    if (maxS <= 1 || count <= 0) return count;
+    let left = count;
+    const bag = this.bag(character);
+    for (let i = 0; i < bag.length && left > 0; i++) {
+      const id = bag[i];
+      if (id === 0 || id === exclude) continue;
+      const s = this.mustSlot(id);
+      if (this.defs[s] !== def) continue;
+      const have = this.counts[s] || 1;
+      if (have >= maxS) continue;
+      const add = Math.min(left, maxS - have);
+      this.setBagCount(character, id, have + add);
+      left -= add;
+    }
+    return left;
+  }
+
+  /**
+   * Place a live item `id` into `character`'s bag, topping up partial stacks of the same stackable
+   * definition first and destroying `id` if completely absorbed. Caller checks `canFit` first.
+   */
+  bagStackOrPlace(character: number, id: number): { ok: boolean; absorbed: boolean } {
+    const slot = this.mustSlot(id);
+    const def = this.defs[slot];
+    const count = this.counts[slot] || 1;
+    if (!this.canFit(character, [def], [], [count])) return { ok: false, absorbed: false };
+    const left = this.mergeIntoBag(character, def, count, id);
+    if (left === 0) {
+      this.destroy(id);
+      return { ok: true, absorbed: true };
+    }
+    this.counts[slot] = left;
+    return { ok: this.putInBag(character, id) >= 0, absorbed: false };
   }
 
   /**
@@ -224,8 +304,68 @@ export class ItemStore {
     if (refusal) return refusal;
     this.takeFromBag(character, id);
     this.lay(character, id, f, to);
-    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, to), this.durability[slot]);
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, to), this.durability[slot], 0, 0, this.counts[slot] || 1);
     return null;
+  }
+
+  /** If `to` covers exactly one other item in `character`'s bag (for stack-on-drop combine), return its id; else 0/null. */
+  occupantInBag(character: number, id: number, to: Placement): number | null {
+    if (!this.inBagOf(character, id)) return null;
+    const f = this.footprintOf(this.defs[this.mustSlot(id)]);
+    return occupantAt(this.grid, this.cells(character), f, to, id);
+  }
+
+  /**
+   * Combine `fromId` into `intoId` inside `character`'s bag (up to `maxStack`).
+   * Destroys `fromId` if emptied, otherwise leaves the overflow on `fromId`.
+   */
+  combineInBag(character: number, fromId: number, intoId: number): "ok" | "not-yours" | "incompatible" | "full" {
+    if (fromId === intoId || !this.inBagOf(character, fromId) || !this.inBagOf(character, intoId)) return "not-yours";
+    const sFrom = this.mustSlot(fromId);
+    const sInto = this.mustSlot(intoId);
+    const def = this.defs[sFrom];
+    const maxS = this.maxStackOf(def);
+    if (def !== this.defs[sInto] || maxS <= 1) return "incompatible";
+    const haveInto = this.counts[sInto] || 1;
+    if (haveInto >= maxS) return "full";
+    const haveFrom = this.counts[sFrom] || 1;
+    const delta = Math.min(haveFrom, maxS - haveInto);
+    this.setBagCount(character, intoId, haveInto + delta);
+    if (delta === haveFrom) this.destroy(fromId);
+    else this.setBagCount(character, fromId, haveFrom - delta);
+    return "ok";
+  }
+
+  /**
+   * Split `amount` units out of stacked item `id` in `character`'s bag into a new stack
+   * at `to` (or the first free fit when omitted).
+   */
+  splitInBag(
+    character: number,
+    id: number,
+    amount: number,
+    to?: Placement,
+  ): { ok: true; id: number } | { ok: false; error: PlaceRefusal | "not-yours" | "cannot-split" | "no-room" } {
+    if (!this.inBagOf(character, id)) return { ok: false, error: "not-yours" };
+    const slot = this.mustSlot(id);
+    const have = this.counts[slot] || 1;
+    if (!Number.isInteger(amount) || amount < 1 || amount >= have) return { ok: false, error: "cannot-split" };
+    const def = this.defs[slot];
+    const f = this.footprintOf(def);
+    let target: Placement;
+    if (to) {
+      const refusal = checkPlace(this.grid, this.cells(character), f, to);
+      if (refusal) return { ok: false, error: refusal };
+      target = to;
+    } else {
+      const fit = firstFit(this.grid, this.cells(character), f);
+      if (!fit) return { ok: false, error: "no-room" };
+      target = fit;
+    }
+    this.setBagCount(character, id, have - amount);
+    const created = this.create(def, this.durability[slot], amount);
+    this.placeInBagAt(character, created, this.mustSlot(created), f, target);
+    return { ok: true, id: created };
   }
 
   /** Where an item lies in a character's bag (anchor and turn), or null when it is not there. */
@@ -244,19 +384,49 @@ export class ItemStore {
   /**
    * Whether items of these definitions would all fit in a character's bag, one after another, once the items in
    * `removing` (in that bag now, about to leave it) are gone: the check before a swap or a pickup.
+   * For stackable definitions (`maxStack > 1`), existing partial stacks in the bag absorb units first.
    */
-  canFit(character: number, defs: readonly number[], removing: readonly number[] = []): boolean {
+  canFit(character: number, defs: readonly number[], removing: readonly number[] = [], counts?: readonly number[]): boolean {
     const cells = Uint32Array.from(this.cells(character));
+    const removed = removing.length > 0 ? new Set(removing) : null;
     for (const id of removing) {
       const at = this.placementOf(character, id);
       if (at) stamp(this.grid, cells, this.footprintOf(this.defs[this.mustSlot(id)]), at, 0);
     }
+    const spare = new Map<number, number>();
+    const bag = this.bag(character);
+    for (let i = 0; i < bag.length; i++) {
+      const id = bag[i];
+      if (id === 0 || (removed && removed.has(id))) continue;
+      const s = this.mustSlot(id);
+      const def = this.defs[s];
+      const maxS = this.maxStackOf(def);
+      if (maxS <= 1) continue;
+      const free = maxS - (this.counts[s] || 1);
+      if (free > 0) spare.set(def, (spare.get(def) ?? 0) + free);
+    }
     let n = 0;
-    for (const def of defs) {
-      const f = this.footprintOf(def);
-      const at = firstFit(this.grid, cells, f);
-      if (!at) return false;
-      stamp(this.grid, cells, f, at, ++n); // any non-zero mark will do
+    for (let i = 0; i < defs.length; i++) {
+      const def = defs[i];
+      const maxS = Math.max(1, this.maxStackOf(def));
+      let need = counts ? counts[i] : 1;
+      if (maxS > 1) {
+        const room = spare.get(def) ?? 0;
+        if (room > 0) {
+          const take = Math.min(need, room);
+          need -= take;
+          spare.set(def, room - take);
+        }
+      }
+      while (need > 0) {
+        const f = this.footprintOf(def);
+        const at = firstFit(this.grid, cells, f);
+        if (!at) return false;
+        stamp(this.grid, cells, f, at, ++n); // any non-zero mark will do
+        const put = Math.min(need, maxS);
+        need -= put;
+        if (maxS > put) spare.set(def, (spare.get(def) ?? 0) + (maxS - put));
+      }
     }
     return true;
   }
@@ -298,7 +468,7 @@ export class ItemStore {
     this.lay(character, id, f, to);
     this.where[slot] = ItemWhere.Bag;
     this.owner[slot] = character;
-    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, to), this.durability[slot]);
+    this.ledger?.record(LedgerKind.Bag, id, this.defs[slot], character, packPlacement(this.grid, to), this.durability[slot], 0, 0, this.counts[slot] || 1);
     return true;
   }
 
@@ -309,7 +479,7 @@ export class ItemStore {
     this.hands(character)[hand] = id;
     this.where[slot] = ItemWhere.Held;
     this.owner[slot] = character;
-    this.ledger?.record(LedgerKind.Hold, id, this.defs[slot], character, hand, this.durability[slot]);
+    this.ledger?.record(LedgerKind.Hold, id, this.defs[slot], character, hand, this.durability[slot], 0, 0, this.counts[slot] || 1);
   }
 
   /** A character's hands: item id held in each ([main, off]; 0: empty). Created empty on first use. */
@@ -326,7 +496,7 @@ export class ItemStore {
     this.worn(character)[slot] = id;
     this.where[at] = ItemWhere.Worn;
     this.owner[at] = character;
-    this.ledger?.record(LedgerKind.Wear, id, this.defs[at], character, slot, this.durability[at]);
+    this.ledger?.record(LedgerKind.Wear, id, this.defs[at], character, slot, this.durability[at], 0, 0, this.counts[at] || 1);
   }
 
   /** A character's worn armour: item id per ARMOUR_SLOTS index, 0 when empty. Created empty on first use. */
@@ -409,6 +579,9 @@ export class ItemStore {
     const dur = new Float32Array(cap);
     dur.set(this.durability);
     this.durability = dur;
+    const counts = new Uint16Array(cap);
+    counts.set(this.counts);
+    this.counts = counts;
     this.capacity = cap;
   }
 }

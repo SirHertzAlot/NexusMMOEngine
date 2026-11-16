@@ -23,6 +23,7 @@
 
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 
 export interface StatMod {
   /** The stat this touches ("power", "armour", "speed" — the rules' names). */
@@ -84,6 +85,11 @@ const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round
 
 export class StatusSystem implements SimSystem {
   readonly name = "status";
+  readonly access: SystemAccess = {
+    system: "status",
+    reads: [],
+    writes: [],
+  };
   private readonly defs = new Map<string, StatusDef>();
   private readonly entities = new Map<number, Map<string, Active>>();
   private changes: StatusChange[] = [];

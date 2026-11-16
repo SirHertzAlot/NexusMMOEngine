@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ARMOUR_SLOT_NAMES, type ArmourSlotName, type ItemView } from "@mmo-engine/protocol";
-import { dropVerdict, occupancyOf } from "./bag-grid.js";
+import { dropCombineTarget, dropVerdict, occupancyOf } from "./bag-grid.js";
 import { t, tName } from "../i18n.js";
 /** Stats in a fixed, readable order; anything else follows alphabetically. */
 const STAT_ORDER = ["power", "armour", "block", "spell", "speed", "crit", "reach", "health", "stagger"];
@@ -35,13 +35,16 @@ export function statLines(stats: Record<string, number>): Array<[string, number]
 const handLabel = (hand: ItemView["hand"]): string => (hand === "none" ? "" : t(`item.hand.${hand}`));
 
 export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
+  const count = item.count ?? 1;
   return (
     <div className="text-sm">
       <div className="font-semibold" style={{ color: item.color }}>
         {item.name}
+        {count > 1 && <span className="ml-1 text-xs text-muted-foreground tabular-nums">×{count}</span>}
       </div>
       <div className="text-xs text-muted-foreground">
         {item.rank} {item.base}
+        {item.maxStack && item.maxStack > 1 && <> · {t("bag.stackOf", { count, max: item.maxStack })}</>}
         {handLabel(item.hand) && <> · {handLabel(item.hand)}</>}
         {item.hand === "none" && item.slot && item.slot !== "none" && <> · {tName("slot", item.slot)}</>}
       </div>
@@ -161,14 +164,17 @@ function ItemTooltip({ item, hands, worn, top }: { item: ItemView; hands: Hands;
 const CELL_PX = 30;
 
 /** A grid bag (CF6): items stand at their footprint; drag one to move it (it snaps to cells), R turns it, green or red shows whether the server would take it. */
-function GridBag({ bag, grid, onMove, onFocus, onEquip }: { bag: Array<ItemView | null>; grid: { columns: number; rows: number; slots: number }; onMove: (item: number, x: number, y: number, rot: boolean) => void; onFocus: (id: number) => void; onEquip: (id: number) => void }): React.ReactElement {
+function GridBag({ bag, grid, onMove, onCombine, onFocus, onEquip }: { bag: Array<ItemView | null>; grid: { columns: number; rows: number; slots: number }; onMove: (item: number, x: number, y: number, rot: boolean) => void; onCombine?: (from: number, into: number) => void; onFocus: (id: number) => void; onEquip: (id: number) => void }): React.ReactElement {
   const items = bag.filter((i): i is ItemView => i !== null && i.at !== undefined);
   const el = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ id: number; rot: boolean; x: number; y: number } | null>(null);
   const cells = occupancyOf(items, grid);
   const held = drag ? items.find((i) => i.id === drag.id) : undefined;
   const footprint: [number, number] | null = held?.at ? [held.at.rot ? held.at.h : held.at.w, held.at.rot ? held.at.w : held.at.h] : null;
-  const verdict = drag && footprint ? dropVerdict(grid, cells, footprint, { x: drag.x, y: drag.y, rot: drag.rot }, drag.id) : null;
+  const placement = drag ? { x: drag.x, y: drag.y, rot: drag.rot } : null;
+  const verdict = drag && footprint && placement ? dropVerdict(grid, cells, footprint, placement, drag.id) : null;
+  const combineTarget = drag && held && footprint && placement && verdict === "occupied" ? dropCombineTarget(grid, cells, items, held, footprint, placement) : null;
+  const canLand = verdict === null || combineTarget !== null;
   const cellAt = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
     const r = el.current!.getBoundingClientRect();
     return { x: Math.floor((e.clientX - r.left) / CELL_PX), y: Math.floor((e.clientY - r.top) / CELL_PX) };
@@ -189,7 +195,14 @@ function GridBag({ bag, grid, onMove, onFocus, onEquip }: { bag: Array<ItemView 
       aria-label={t("bag.slots")}
       onPointerMove={(e) => drag && setDrag({ ...drag, ...cellAt(e) })}
       onPointerUp={() => {
-        if (drag && verdict === null) onMove(drag.id, drag.x, drag.y, drag.rot);
+        if (drag) {
+          if (combineTarget !== null) {
+            if (onCombine) onCombine(drag.id, combineTarget);
+            else onMove(drag.id, drag.x, drag.y, drag.rot);
+          } else if (verdict === null) {
+            onMove(drag.id, drag.x, drag.y, drag.rot);
+          }
+        }
         setDrag(null);
       }}
       onPointerLeave={() => setDrag(null)}
@@ -199,13 +212,14 @@ function GridBag({ bag, grid, onMove, onFocus, onEquip }: { bag: Array<ItemView 
       ))}
       {items.map((it) => {
         const a = it.at!;
+        const count = it.count ?? 1;
         return (
           <button
             key={it.id}
             type="button"
             className="absolute flex items-center justify-center overflow-hidden rounded border bg-background/70 p-0.5 text-center text-[9px] leading-tight"
             style={{ left: a.x * CELL_PX, top: a.y * CELL_PX, width: a.w * CELL_PX, height: a.h * CELL_PX, borderColor: it.color, color: it.color, opacity: drag?.id === it.id ? 0.4 : 1, touchAction: "none" }}
-            aria-label={it.name}
+            aria-label={count > 1 ? `${it.name} ×${count}` : it.name}
             onPointerDown={(e) => {
               onFocus(it.id);
               setDrag({ id: it.id, rot: a.rot, ...cellAt(e) });
@@ -213,13 +227,14 @@ function GridBag({ bag, grid, onMove, onFocus, onEquip }: { bag: Array<ItemView 
             onDoubleClick={() => onEquip(it.id)}
           >
             {it.base}
+            {count > 1 && <span className="pointer-events-none absolute right-0.5 bottom-0 text-[8px] font-semibold tabular-nums text-foreground">×{count}</span>}
           </button>
         );
       })}
       {drag && footprint && (
         <div
           className="pointer-events-none absolute rounded border-2"
-          style={{ left: drag.x * CELL_PX, top: drag.y * CELL_PX, width: (drag.rot ? footprint[1] : footprint[0]) * CELL_PX, height: (drag.rot ? footprint[0] : footprint[1]) * CELL_PX, borderColor: verdict === null ? "#22c55e" : "#ef4444", background: verdict === null ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)" }}
+          style={{ left: drag.x * CELL_PX, top: drag.y * CELL_PX, width: (drag.rot ? footprint[1] : footprint[0]) * CELL_PX, height: (drag.rot ? footprint[0] : footprint[1]) * CELL_PX, borderColor: canLand ? "#22c55e" : "#ef4444", background: canLand ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)" }}
         />
       )}
     </div>
@@ -235,6 +250,8 @@ export function BagPanel({
   onUnequip,
   grid = null,
   onMove,
+  onSplit,
+  onCombine,
   gold = null,
   onUse,
   hotkeyDef = null,
@@ -249,6 +266,10 @@ export function BagPanel({
   /** A grid bag (CF6): cells across and down; items then show at their footprint and can be dragged, snapped and turned. */
   grid?: { columns: number; rows: number; slots: number } | null;
   onMove?: (item: number, x: number, y: number, rot: boolean) => void;
+  /** Split `count` units off a stacked bag item (CF6). */
+  onSplit?: (item: number, count: number) => void;
+  /** Combine two matching bag stacks (CF6). */
+  onCombine?: (from: number, into: number) => void;
   /** The wallet balance (0x21); null hides the line (the server runs no economy). */
   gold?: number | null;
   /** Eat or drink an item; with onHotkey, the item the E key uses is marked. */
@@ -258,11 +279,16 @@ export function BagPanel({
 }): React.ReactElement {
   const [focus, setFocus] = useState<number | null>(null);
   const [hover, setHover] = useState<{ id: number; top: number } | null>(null);
+  const [splitInput, setSplitInput] = useState<{ id: number; amount: number } | null>(null);
   // What is being dragged: dragover can't read dataTransfer's data, so the
   // drop targets check this instead.
   const dragging = useRef<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const shown = focus !== null ? bag.find((i) => i?.id === focus) ?? null : null;
+  const shownCount = shown?.count ?? 1;
+  const splitAmount = shown && shownCount > 1
+    ? Math.max(1, Math.min(shownCount - 1, splitInput?.id === shown.id ? splitInput.amount : Math.floor(shownCount / 2)))
+    : 1;
   const hovered = hover !== null ? bag.find((i) => i?.id === hover.id) ?? null : null;
   const used = bag.filter((i) => i !== null).length;
   const totals = statLines(sumStats([hands.main, hands.off, ...ARMOUR_SLOT_NAMES.map((s) => worn[s])]));
@@ -379,9 +405,10 @@ export function BagPanel({
           ))}
         </div>
       )}
-      {grid && onMove && <GridBag bag={bag} grid={grid} onMove={onMove} onFocus={setFocus} onEquip={(id) => { onEquip(id); setFocus(null); }} />}
+      {grid && onMove ? (
+        <GridBag bag={bag} grid={grid} onMove={onMove} onCombine={onCombine} onFocus={setFocus} onEquip={(id) => { onEquip(id); setFocus(null); }} />
+      ) : (
       <div
-        hidden={!!grid && !!onMove}
         className="grid grid-cols-6 gap-1 rounded"
         style={over === "bag" ? { outline: "2px solid currentColor" } : undefined}
         aria-label={t("bag.slots")}
@@ -402,39 +429,44 @@ export function BagPanel({
           endDrag();
         }}
       >
-        {bag.map((item, i) => (
-          <button
-            key={i}
-            type="button"
-            className="flex aspect-square items-center justify-center overflow-hidden rounded border bg-background/60 p-0.5 text-center text-[9px] leading-tight focus:outline-none focus:ring-1 focus:ring-ring"
-            style={item ? { borderColor: item.color, color: item.color } : undefined}
-            aria-label={item ? item.name : t("bag.empty")}
-            disabled={!item}
-            draggable={!!item && slotFor(item) !== null}
-            onMouseEnter={(e) => item && setHover({ id: item.id, top: e.currentTarget.offsetTop })}
-            onMouseLeave={() => setHover(null)}
-            onFocus={() => item && setFocus(item.id)}
-            onClick={() => item && setFocus(item.id)}
-            onDoubleClick={() => {
-              if (item && slotFor(item) !== null) {
-                onEquip(item.id);
-                setFocus(null);
-              }
-            }}
-            onDragStart={(e) => {
-              if (!item) return;
-              dragging.current = `bag:${item.id}`;
-              setHover(null);
-              e.dataTransfer.setData(DRAG_TYPE, dragging.current);
-              e.dataTransfer.effectAllowed = "move";
-            }}
-            onDragEnd={endDrag}
-          >
-            {item ? item.base : ""}
-            {item && hotkeyDef === item.def ? " ★" : ""}
-          </button>
-        ))}
+        {bag.map((item, i) => {
+          const count = item?.count ?? 1;
+          return (
+            <button
+              key={i}
+              type="button"
+              className="relative flex aspect-square items-center justify-center overflow-hidden rounded border bg-background/60 p-0.5 text-center text-[9px] leading-tight focus:outline-none focus:ring-1 focus:ring-ring"
+              style={item ? { borderColor: item.color, color: item.color } : undefined}
+              aria-label={item ? (count > 1 ? `${item.name} ×${count}` : item.name) : t("bag.empty")}
+              disabled={!item}
+              draggable={!!item && slotFor(item) !== null}
+              onMouseEnter={(e) => item && setHover({ id: item.id, top: e.currentTarget.offsetTop })}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => item && setFocus(item.id)}
+              onClick={() => item && setFocus(item.id)}
+              onDoubleClick={() => {
+                if (item && slotFor(item) !== null) {
+                  onEquip(item.id);
+                  setFocus(null);
+                }
+              }}
+              onDragStart={(e) => {
+                if (!item) return;
+                dragging.current = `bag:${item.id}`;
+                setHover(null);
+                e.dataTransfer.setData(DRAG_TYPE, dragging.current);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={endDrag}
+            >
+              {item ? item.base : ""}
+              {item && hotkeyDef === item.def ? " ★" : ""}
+              {item && count > 1 && <span className="pointer-events-none absolute right-0.5 bottom-0 text-[8px] font-semibold tabular-nums text-foreground">×{count}</span>}
+            </button>
+          );
+        })}
       </div>
+      )}
       {gold !== null && (
         <div className="mt-2 flex items-baseline justify-between text-xs" aria-label={t("bag.gold")}>
           <span className="text-muted-foreground">{t("bag.gold")}</span>
@@ -473,6 +505,26 @@ export function BagPanel({
                   </button>
                 )}
               </>
+            )}
+            {onSplit && shownCount > 1 && (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={shownCount - 1}
+                  value={splitAmount}
+                  aria-label={t("bag.splitHint", { count: splitAmount })}
+                  onChange={(e) => setSplitInput({ id: shown.id, amount: Number(e.target.value) || 1 })}
+                  className="w-11 rounded border bg-background/60 px-1 py-0.5 text-xs tabular-nums text-foreground"
+                />
+                <button
+                  type="button"
+                  className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => onSplit(shown.id, splitAmount)}
+                >
+                  {t("bag.split")}
+                </button>
+              </div>
             )}
             <button
               type="button"

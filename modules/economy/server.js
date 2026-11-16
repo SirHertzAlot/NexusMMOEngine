@@ -53,6 +53,7 @@ export function createSystems(ctx) {
     },
     defOf: bagItems.defOf,
     nameOf: bagItems.nameOf,
+    countOf: (item) => itemsOf().store.countOf(item),
   });
   // Auction house: listings keep the item in the seller's bag (no escrow
   // limbo on restart); settlement moves it bag-to-bag.

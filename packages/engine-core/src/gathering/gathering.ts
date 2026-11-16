@@ -19,6 +19,7 @@ import type { GatheringRules } from "@mmo-engine/rules";
 import type { PouchMaterial, PouchMessage, ResourceNodeView } from "@mmo-engine/protocol";
 import { Transform } from "../components.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 
 export interface GatheringStore {
@@ -88,6 +89,13 @@ export function materialName(id: string): string {
 
 export class GatheringSystem implements SimSystem {
   readonly name = "gathering";
+  readonly access: SystemAccess = {
+    system: "gathering",
+    reads: [
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: [],
+  };
   private readonly nodes = new Map<number, Node>();
   private readonly pouches = new Map<number, Map<string, number>>();
   private readonly lastGather = new Map<number, number>();

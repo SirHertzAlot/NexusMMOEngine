@@ -15,8 +15,15 @@ import {
   readEntityStateFromSAB,
   setEntityAliveBit,
   AtomicMPSCQueue,
+  AtomicSPSCTransactionQueue,
   PersistenceWorkerRuntime,
   PERSIST_TX_KIND,
+  SimWorkerRuntime,
+  HybridDataPlaneServer,
+  packCommandToken,
+  INTENT_FLAGS,
+  TELEMETRY_SLOTS,
+  DT,
 } from "../src/index.js";
 
 test("PATCH-02: Morton 2D bit interleaving and invertibility", () => {
@@ -185,4 +192,131 @@ test("PATCH-04: PersistenceWorkerRuntime flushOnce coalescing", async () => {
   assert.equal(entityRec.sab_index, 3);
 
   await runtime.stop();
+});
+
+test("PATCH-01/02/05 runtime: SimWorkerRuntime planar-soa integrates via stepSimulationSoABitset and updates MortonSpatialIndex", () => {
+  const sab = createSharedMemoryPlane(128, 1);
+  const sim = new SimWorkerRuntime({
+    sharedMemory: sab,
+    entityCapacity: 128,
+    mode: "planar-soa",
+    decodeMovementIntents: true,
+    useBatchDrain: true,
+  });
+
+  const h0 = sim.allocateEntity({ px: 0, pz: 0, vx: 3, vz: 0, hp: 100 });
+  const h1 = sim.allocateEntity({ px: 4, pz: 3, vx: 0, vz: 0, hp: 100 });
+  const h2 = sim.allocateEntity({ px: 1000, pz: 1000, vx: 6, vz: 0, hp: 100 });
+  assert.equal(sim.isEntityHandleValid(h1), true);
+
+  // Free middle slot and confirm ABA guard + cleared aliveBitset skips integration
+  assert.equal(sim.freeEntity(h1), true);
+  assert.equal(sim.isEntityHandleValid(h1), false);
+  const idx1 = unpackEntityHandle(h1).index;
+  sim.views.planar.vx[idx1] = 500;
+  assert.equal(sim.views.planar.aliveBitset[idx1 >>> 5] & (1 << (idx1 & 31)), 0);
+
+  // Enqueue movement token through shared MPSC ring for slot 0
+  const idx0 = unpackEntityHandle(h0).index;
+  const idx2 = unpackEntityHandle(h2).index;
+  assert.equal(sim.inputQueue.enqueue(packCommandToken(idx0, INTENT_FLAGS.FORWARD)), true);
+
+  const metrics = sim.tick(DT);
+  assert.equal(metrics.commandsProcessed, 1);
+
+  // Entity 0 moved via MPSC decoded FORWARD (+5 m/s in Z) and kept vx=0
+  assert.ok(Math.abs(sim.views.planar.pz[idx0] - 5 * DT) < 1e-5);
+  // Freed entity 1 did not integrate despite residual velocity (remains at pre-free px=4)
+  assert.equal(sim.views.planar.px[idx1], 4);
+  // Distant alive entity 2 integrated X velocity cleanly
+  assert.ok(Math.abs(sim.views.planar.px[idx2] - (1000 + 6 * DT)) < 1e-4);
+
+  // MortonSpatialIndex was rebuilt during planar-soa tick: radius 20 around origin finds only idx0
+  const nearby = new Uint16Array(8);
+  const found = sim.queryEntitiesInRadius(0, 0, 20, nearby);
+  assert.equal(found, 1);
+  assert.equal(nearby[0], idx0);
+});
+
+test("PATCH-03 runtime: HybridDataPlaneServer and multiple attached MPSC producers share SAB token ring across laps", () => {
+  const server = new HybridDataPlaneServer({
+    entityCapacity: 128,
+    heapMegabytes: 1,
+    inputRingCapacity: 16,
+    spawnWorkers: false,
+    spawnPersistWorker: false,
+  });
+
+  const secondProducer = AtomicMPSCQueue.attachTokenRing(
+    server.masterMemoryArena,
+    server.views.offsets.MPSC_INPUT_RING,
+    16,
+  );
+  const sim = new SimWorkerRuntime({
+    sharedMemory: server.masterMemoryArena,
+    entityCapacity: 128,
+    inputRingCapacity: 16,
+    mode: "planar-soa",
+  });
+
+  const hA = server.allocateEntity({ px: 1, pz: 1, hp: 100 });
+  const hB = server.allocateEntity({ px: 2, pz: 2, hp: 100 });
+  assert.equal(server.isEntityHandleValid(hA), true);
+  assert.equal(server.isEntityHandleValid(hB), true);
+
+  // Fill multiple laps across two producers attached to the same SAB offset
+  for (let lap = 0; lap < 3; lap++) {
+    for (let i = 0; i < 6; i++) {
+      assert.equal(server.gatewayInputQueue.enqueue(packCommandToken(0, lap * 10 + i)), true);
+      assert.equal(secondProducer.enqueue(packCommandToken(1, lap * 10 + i + 100)), true);
+    }
+    assert.equal(sim.inputQueue.size(), 12);
+    const out = new Int32Array(12);
+    const drained = sim.inputQueue.drainTo(out, 12);
+    assert.equal(drained, 12);
+    assert.equal(sim.inputQueue.size(), 0);
+  }
+});
+
+test("PATCH-04 runtime: vectorized SurrealQL group commit deduplicates multi-entity checkpoints without extra per-flush allocations", async () => {
+  const sab = createSharedMemoryPlane(64, 1);
+  const runtime = new PersistenceWorkerRuntime({
+    sharedMemory: sab,
+    entityCapacity: 64,
+    persistRingCapacity: 64,
+    dbUrl: "mem://",
+    namespace: "test_patch04_vec",
+    database: "test_db",
+  });
+  await runtime.init();
+
+  try {
+    const q = new AtomicSPSCTransactionQueue(sab, runtime.views.offsets.PERSIST_RING, 64);
+    for (let i = 0; i < 5; i++) {
+      q.enqueue({ kind: PERSIST_TX_KIND.ENTITY_CHECKPOINT, sabIndex: 2, paramA: i, paramB: 0 });
+    }
+    for (let i = 0; i < 3; i++) {
+      q.enqueue({ kind: PERSIST_TX_KIND.ENTITY_CHECKPOINT, sabIndex: 9, paramA: i, paramB: 0 });
+    }
+    q.enqueue({ kind: PERSIST_TX_KIND.ENTITY_CHECKPOINT, sabIndex: 14, paramA: 0, paramB: 0 });
+    q.enqueue({ kind: PERSIST_TX_KIND.INVENTORY_INIT, sabIndex: 2, paramA: 12, paramB: 0 });
+    q.enqueue({ kind: PERSIST_TX_KIND.INVENTORY_ADD_ITEM, sabIndex: 2, paramA: 901, paramB: 0 });
+
+    const processed = await runtime.flushOnce(32);
+    assert.equal(processed, 11);
+    assert.equal(Atomics.load(runtime.views.telemetryView, TELEMETRY_SLOTS.PERSIST_COMMITTED), 5);
+
+    const e2 = await runtime.getEntityBySabIndex(2);
+    const e9 = await runtime.getEntityBySabIndex(9);
+    const e14 = await runtime.getEntityBySabIndex(14);
+    assert.equal(e2?.sab_index, 2);
+    assert.equal(e9?.sab_index, 9);
+    assert.equal(e14?.sab_index, 14);
+
+    const inv2 = await runtime.getOwnedInventory(2);
+    assert.equal(inv2.length, 1);
+    assert.deepEqual(inv2[0].items, ["item_901"]);
+  } finally {
+    await runtime.stop();
+  }
 });

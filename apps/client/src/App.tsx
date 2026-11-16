@@ -1053,7 +1053,7 @@ function welcomeTimeoutMs(): number | undefined {
           </HudSlot>
         )}
         {bagOpen && bag && (
-          <HudSlot id="bag-panel" className="z-10">
+          <HudSlot id="bag-panel" className="z-20">
             <div>
             <PouchPanel materials={pouch} />
             <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.bag")}</div>}>
@@ -1064,6 +1064,8 @@ function welcomeTimeoutMs(): number | undefined {
                 gold={gold}
                 grid={bagGrid}
                 onMove={(id, x, y, rot) => client?.moveItem(id, x, y, rot)}
+                onSplit={(id, count) => client?.splitItem(id, count)}
+                onCombine={(from, into) => client?.combineItem(from, into)}
                 onDrop={(id) => client?.dropItem(id)}
                 onEquip={(id) => client?.equip(id)}
                 onUnequip={(slot) => client?.unequip(slot)}

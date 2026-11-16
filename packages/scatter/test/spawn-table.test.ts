@@ -68,6 +68,24 @@ test("resolveSpawns maps records to entity spawns", () => {
   }
 });
 
+test("BreakableSchema validates descending stages thresholds (DE1)", () => {
+  const valid = parseSpawnTableJSON({
+    version: 1,
+    archetypes: {
+      crate: { asset: "crate", breakable: { health: 40, stages: [0.75, 0.5, 0.25] } },
+    },
+  });
+  assert.deepEqual(valid.archetypes.crate?.breakable?.stages, [0.75, 0.5, 0.25]);
+  assert.throws(() =>
+    parseSpawnTableJSON({
+      version: 1,
+      archetypes: {
+        bad: { asset: "bad", breakable: { health: 40, stages: [0.3, 0.7] } },
+      },
+    }),
+  );
+});
+
 test("resolveSpawns throws on asset missing from the table", () => {
   const table = loadTable();
   assert.throws(

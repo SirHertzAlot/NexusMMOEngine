@@ -427,6 +427,8 @@ export const ItemBaseRulesSchema = z.strictObject({
   hand: Hand.default("none"),
   /** Cells it takes in a bag laid out as a grid (CF6): width across, height down. One cell unless the rules say. */
   footprint: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]).default([1, 1]),
+  /** Units one slot/item stack can hold (CF6); 1 means unstackable. */
+  maxStack: z.number().int().min(1).max(9999).default(1),
   /** Armour slot it is worn in (U10); "none" for held items. */
   slot: ArmourSlot.default("none"),
   /** The technique a plain attack with it uses (a combat.json technique). */

@@ -23,6 +23,7 @@
 import { defineQuery, enterQuery, exitQuery } from "bitecs";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import { BodyConfig, MotionType, ShapeKind, Transform } from "../components.js";
 import type { TileCacheBackend } from "./backend.js";
 
@@ -60,6 +61,14 @@ interface Obstacle {
 
 export class NavObstacleSystem implements SimSystem {
   readonly name = "nav-obstacles";
+  readonly access: SystemAccess = {
+    system: "nav-obstacles",
+    reads: [
+      { component: "BodyConfig", fields: ["halfX", "halfY", "halfZ", "motionType", "radius", "shapeKind"] },
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qx", "qy", "qz"] },
+    ],
+    writes: [],
+  };
   /** By entity id (bitECS eid): the obstacle its body makes. */
   private readonly byEid = new Map<number, Obstacle>();
   private readonly waiting: Obstacle[] = [];

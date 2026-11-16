@@ -37,6 +37,7 @@ import {
   type InspectEntity,
   type TelemetrySnapshot,
 } from "./backend-models.js";
+import { parseLiveEntityOverlay, type LiveEntityOverlay } from "./ecs-graph-model.js";
 
 /** Minimal surface BackendClient drives (MirrorClient satisfies it). */
 export interface ClientLike {
@@ -257,6 +258,12 @@ export class BackendClient {
   async inspectEntity(entity: string = "me"): Promise<InspectEntity> {
     const res = await this.inspect(entity);
     return parseInspectEntity(BackendClient.assertAdminOk(res));
+  }
+
+  /** H4 selection-scoped JSON inspect with bounded per-field `lastWriter` + `buildCommit`. */
+  async inspectLive(entity: string = "me"): Promise<LiveEntityOverlay> {
+    const res = await this.must().admin("inspect", { entity, format: "json" });
+    return parseLiveEntityOverlay(BackendClient.assertAdminOk(res));
   }
 
   // ---------------------------------------------------------- lifecycle

@@ -20,6 +20,7 @@ import { defineQuery, hasComponent } from "bitecs";
 import { God, Health, Transform } from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 
 export type TelegraphShape =
   | { kind: "circle"; x: number; z: number; r: number }
@@ -84,6 +85,17 @@ export function inShape(shape: TelegraphShape, x: number, z: number): boolean {
 
 export class TelegraphSystem implements SimSystem {
   readonly name = "telegraph";
+  readonly access: SystemAccess = {
+    system: "telegraph",
+    reads: [
+      "God",
+      { component: "Health", fields: ["current"] },
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: [
+      { component: "Health", fields: ["current"] },
+    ],
+  };
   private readonly query = defineQuery([Transform, Health]);
   private readonly live = new Map<number, Live>();
   private nextId = 1;

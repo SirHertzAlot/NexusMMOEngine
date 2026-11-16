@@ -147,6 +147,22 @@ describe("content/structures.json", () => {
     }
     assert.ok(kinds.has("farmhouse"));
     for (const p of PARTS) assert.ok(kinds.has(p), p);
+    assert.deepEqual(kinds.get("house")?.stages, [0.66, 0.33]);
+    assert.deepEqual(kinds.get("chapel")?.stages, [0.75, 0.5, 0.25]);
+    assert.deepEqual(kinds.get("wall")?.stages, [0.7, 0.35]);
+  });
+
+  it("collects custom damage stages by assetHash:health without colliding across structure sizes (DE1)", () => {
+    const sim = world();
+    const kinds = loadStructureBreakables(fileURLToPath(new URL("../../../../../content/structures.json", import.meta.url)));
+    const breaks = new BreakSystem(new Map());
+    const h = building(sim, 0, 0);
+    const c = building(sim, 20, 0); // same AssetRef.assetHash (5), different structure max health
+    breaks.register(sim, h, "t/house", kinds.get("house")!);
+    breaks.register(sim, c, "t/chapel", kinds.get("chapel")!);
+    const stages = breaks.damageStages();
+    assert.deepEqual(stages?.["5:300"], [0.66, 0.33]);
+    assert.deepEqual(stages?.["5:800"], [0.75, 0.5, 0.25]);
   });
 });
 

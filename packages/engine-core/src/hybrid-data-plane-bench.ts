@@ -29,8 +29,12 @@ export interface KernelBenchRow {
   cppMatrixMs: number;
   cppFusedMs: number;
   cppPlanarSimdMs: number;
+  cppBitsetSimdMs: number;
+  cppBitsetSparse10Ms: number;
   speedupMatrixVsJs: number;
   speedupPlanarVsJs: number;
+  speedupBitsetVsJs: number;
+  speedupSparse10VsJs: number;
   speedupPlanarVsMatrix: number;
 }
 
@@ -222,14 +226,74 @@ function benchmarkKernels(): KernelBenchRow[] {
     }
     const cppPlanarSimdMs = (performance.now() - tSoa0) / iterations;
 
+    const tBit0 = performance.now();
+    for (let it = 0; it < iterations; it++) {
+      kernel.stepSimulationSoABitset(
+        planar.px,
+        planar.py,
+        planar.pz,
+        planar.vx,
+        planar.vy,
+        planar.vz,
+        planar.hp,
+        planar.aliveBitset,
+        entityCount,
+        DT,
+      );
+    }
+    const cppBitsetSimdMs = (performance.now() - tBit0) / iterations;
+
+    // 10% clustered alive population to measure hierarchical 64-entity zero-word skipping (PATCH-01)
+    const sparseActive = Math.max(1, Math.floor(entityCount * 0.1));
+    const sparseHp = new Int32Array(entityCount);
+    const sparseBitset = new Uint32Array(planar.aliveBitset.length);
+    for (let i = 0; i < sparseActive; i++) {
+      sparseHp[i] = 100;
+      sparseBitset[i >>> 5] |= 1 << (i & 31);
+    }
+    for (let w = 0; w < 25; w++) {
+      kernel.stepSimulationSoABitset(
+        planar.px,
+        planar.py,
+        planar.pz,
+        planar.vx,
+        planar.vy,
+        planar.vz,
+        sparseHp,
+        sparseBitset,
+        entityCount,
+        DT,
+      );
+    }
+    const tSparse0 = performance.now();
+    for (let it = 0; it < iterations; it++) {
+      kernel.stepSimulationSoABitset(
+        planar.px,
+        planar.py,
+        planar.pz,
+        planar.vx,
+        planar.vy,
+        planar.vz,
+        sparseHp,
+        sparseBitset,
+        entityCount,
+        DT,
+      );
+    }
+    const cppBitsetSparse10Ms = (performance.now() - tSparse0) / iterations;
+
     rows.push({
       entityCount,
       jsMs: Number(jsMs.toFixed(4)),
       cppMatrixMs: Number(cppMatrixMs.toFixed(4)),
       cppFusedMs: Number(cppFusedMs.toFixed(4)),
       cppPlanarSimdMs: Number(cppPlanarSimdMs.toFixed(4)),
+      cppBitsetSimdMs: Number(cppBitsetSimdMs.toFixed(4)),
+      cppBitsetSparse10Ms: Number(cppBitsetSparse10Ms.toFixed(4)),
       speedupMatrixVsJs: Number((jsMs / cppMatrixMs).toFixed(2)),
       speedupPlanarVsJs: Number((jsMs / cppPlanarSimdMs).toFixed(2)),
+      speedupBitsetVsJs: Number((jsMs / cppBitsetSimdMs).toFixed(2)),
+      speedupSparse10VsJs: Number((jsMs / cppBitsetSparse10Ms).toFixed(2)),
       speedupPlanarVsMatrix: Number((cppMatrixMs / cppPlanarSimdMs).toFixed(2)),
     });
   }
