@@ -10,3 +10,10 @@
 export function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+/** Canonicalize -0.0 -> 0.0 and NaN/Infinity -> 0.0 for deterministic float encoding. */
+export function canonF32(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  const f = Math.fround(v);
+  return f === 0 ? 0 : f;
+}
