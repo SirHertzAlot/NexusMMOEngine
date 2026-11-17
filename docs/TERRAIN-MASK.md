@@ -62,9 +62,15 @@ app (the dev server serving it next to the assets) is not wired yet.
 - **Inputs:** survey height (slope = gradient), moisture, log-normalised flow,
   and biome. The base channel is half noise, half the biome's ground type. The
   golden hashes were repinned for this; rock, wet and path bytes did not change.
-- **Path channel is empty.** The terrain bake routes no roads. Roads come from
-  the settlement stage (`onSurvey` hook), which runs after the terrain bake, so
-  there is no road data at mask time. Fixing it means either running road routing
-  before the masks, or a second mask pass after settlements. That is an
-  ordering decision, recorded here rather than made.
+- **Path channel: a second pass after the settlements.** The survey carries no
+  roads; the settlement stage (`onSurvey`) routes them. The world bake takes a
+  `roads` callback, asked for after the main mask pass, that returns road
+  polylines in world metres; `bakeWorldPathMask` then bakes only the path
+  channel from them (3 m wide by default, `roadWidthMetres`, then the spec's
+  feather). Each chunk is padded by the feather, so roads stay continuous
+  across chunk seams, and chunks no road reaches cost nothing. Base, rock and wet
+  are byte-identical with or without roads. `bake-world` passes each fortified
+  settlement's approach road. Roads from other sources (towns, trails) plug into
+  the same callback. With no callback the channel is empty, as before. Not run
+  when the survey is skipped as unchanged: the stored `mask_path` stands.
 - **Visual check** of the blend is owed to a human on a GPU.
