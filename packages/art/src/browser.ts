@@ -10,6 +10,10 @@
  */
 export * from "./manifest.js";
 export * from "./provider.js";
+export * from "./baked-geometry.js";
+export * from "./baked-provider.js";
+export * from "./baked-chunk-streaming.js";
+export * from "./baked-clips.js";
 export * from "./credits.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";

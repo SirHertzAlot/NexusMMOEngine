@@ -18,6 +18,9 @@ import { applyTerrainFx } from "./terrain-fx.js";
 export type { AssetProvider };
 export {
   ManifestAssetProvider,
+  BakedAssetProvider,
+  bakedAssetHash32,
+  type BakedChunkManifest,
   type AssetManifest,
   type AssetLoadStatus,
 } from "@mmo-engine/art/browser";

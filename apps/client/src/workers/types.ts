@@ -30,6 +30,8 @@ export interface TaskPayloadMap {
   assetDecode: AssetDecodeTaskPayload;
   /** WX1: advance the coarse weather field simulation by a batch of steps. */
   weather: WeatherTaskPayload;
+  /** Baked Asset Store B3: decode baked SoA chunk records directly into a SharedArrayBuffer arena. */
+  bakedPlace: BakedPlaceTaskPayload;
   // Extend this interface to add new task types
 }
 
@@ -101,7 +103,70 @@ export interface TerrainBlockResultPayload {
   index: Uint16Array | Uint32Array;
 }
 
-export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload | TerrainBlockResultPayload | AssetDecodeResultPayload | WeatherResultPayload;
+export interface BakedPlaceAssetSlice {
+  id: string;
+  canonicalId: string;
+  assetHash: number;
+  byteOffset: number;
+  byteLength: number;
+  forShape?: string;
+}
+
+export interface BakedPlaceTaskPayload {
+  chunkId: string;
+  /** Encoded `.chunk` binary payload (transferred to worker). */
+  chunk: ArrayBuffer;
+  /** Records within `chunk` to decode & place as SoA columns in `sab`. */
+  assets: BakedPlaceAssetSlice[];
+  /** Destination SharedArrayBuffer formatted as `SabArena`. */
+  sab: SharedArrayBuffer;
+}
+
+export interface BakedPlaceColumnSlice {
+  byteOffset: number;
+  length: number;
+}
+
+export interface BakedPlaceMaterialGroup {
+  start: number;
+  count: number;
+  colorRgba: number;
+  roughness: number;
+  metalness: number;
+}
+
+export interface BakedPlaceBoundingSphere {
+  cx: number;
+  cy: number;
+  cz: number;
+  radius: number;
+}
+
+export interface BakedPlacedAsset {
+  id: string;
+  canonicalId: string;
+  assetHash: number;
+  forShape?: string;
+  positions: BakedPlaceColumnSlice;
+  normals: BakedPlaceColumnSlice;
+  uvs: BakedPlaceColumnSlice;
+  indices: BakedPlaceColumnSlice;
+  groups: BakedPlaceMaterialGroup[];
+  boundingSphere: BakedPlaceBoundingSphere;
+}
+
+export type BakedPlaceResultPayload =
+  | {
+      chunkId: string;
+      assets: BakedPlacedAsset[];
+      totalBytes: number;
+    }
+  | {
+      overflow: true;
+      neededBytes: number;
+    };
+
+export type ResultPayload = TerrainResultPayload | PcgResultPayload | BvhResultPayload | TerrainBlockResultPayload | AssetDecodeResultPayload | WeatherResultPayload | BakedPlaceResultPayload;
 
 /** WX1: the updated field arrays. `moisture`/`temperature` hold the state
  *  after `steps` steps; the climatology arrays are returned unchanged so the
@@ -149,6 +214,7 @@ export interface WorkerResponse<T extends keyof TaskPayloadMap = keyof TaskPaylo
     T extends 'chunkDecompose' ? TerrainTile[] :
     T extends 'assetDecode' ? AssetDecodeResultPayload :
     T extends 'weather' ? WeatherResultPayload :
+    T extends 'bakedPlace' ? BakedPlaceResultPayload :
     never;
   error?: string;
 }

@@ -106,7 +106,7 @@ function chunkCoords(chunkId: bigint): { cx: number; cz: number } {
 }
 
 /** Procedural stand-in for a body: sphere for Sphere, box otherwise. */
-function placeholderBodyMesh(body: BodyConfigRow): THREE.Mesh {
+export function placeholderBodyMesh(body: BodyConfigRow): THREE.Mesh {
   const geometry: THREE.BufferGeometry =
     body.shapeKind === ShapeKind.Sphere
       ? new THREE.SphereGeometry(Math.max(body.radius, 0.05), 24, 18)
@@ -121,6 +121,32 @@ function placeholderBodyMesh(body: BodyConfigRow): THREE.Mesh {
     metalness: 0.1,
   });
   return new THREE.Mesh(geometry, material);
+}
+
+/** Procedural chunk terrain plane with optional heightfield displacement and texture map. */
+export function placeholderTerrainMesh(chunk: ChunkRow, worldSize: number, map?: THREE.Texture): THREE.Mesh {
+  const { cx, cz } = chunkCoords(chunk.chunkId);
+  const S = 16;
+  const size = worldSize;
+  const geometry = new THREE.PlaneGeometry(size, size, S - 1, S - 1);
+  geometry.rotateX(-Math.PI / 2);
+  const h = chunk.heights;
+  if (h !== null && h.length === S * S) {
+    const pos = geometry.attributes.position as THREE.BufferAttribute;
+    for (let v = 0; v < S * S; v++) pos.setY(v, h[v]);
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+  }
+  const material = new THREE.MeshStandardMaterial({
+    ...(map !== undefined ? { map } : { color: new THREE.Color(0x3d6b35) }),
+    roughness: 1,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(cx * worldSize + size / 2, 0, cz * worldSize + size / 2);
+  return mesh;
 }
 
 /**
@@ -223,32 +249,7 @@ export class ManifestAssetProvider implements AssetProvider {
   }
 
   terrainMesh(chunk: ChunkRow, worldSize: number): THREE.Object3D {
-    const { cx, cz } = chunkCoords(chunk.chunkId);
-    // Heightfield-displaced terrain (slice 4.1): see the client's
-    // ClientAssetProvider.terrainMesh for the vertex↔sample mapping.
-    // The 16 samples span the full 16-unit chunk (no gaps between tiles).
-    const S = 16;
-    const size = worldSize;
-    const geometry = new THREE.PlaneGeometry(size, size, S - 1, S - 1);
-    geometry.rotateX(-Math.PI / 2);
-    const h = chunk.heights;
-    if (h !== null && h.length === S * S) {
-      const pos = geometry.attributes.position as THREE.BufferAttribute;
-      for (let v = 0; v < S * S; v++) pos.setY(v, h[v]);
-      pos.needsUpdate = true;
-      geometry.computeVertexNormals();
-    }
-    const map = this.terrainTexture();
-    const material = new THREE.MeshStandardMaterial({
-      ...(map !== undefined ? { map } : { color: new THREE.Color(0x3d6b35) }),
-      roughness: 1,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.92,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(cx * worldSize + size / 2, 0, cz * worldSize + size / 2);
-    return mesh;
+    return placeholderTerrainMesh(chunk, worldSize, this.terrainTexture());
   }
 
   /**
