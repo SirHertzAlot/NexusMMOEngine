@@ -1,9 +1,9 @@
 /**
  * The world's terrain material masks, baked from the survey the terrain bake
  * already computes: height (slope is its gradient), moisture, flow, biome.
- * Road data is not in the survey: roads are routed by the settlement stage,
- * which runs after the terrain bake, so the path channel is empty here until
- * that ordering changes (docs/TERRAIN-MASK.md).
+ * Road data is not in the survey: roads are routed by the settlement stage.
+ * The path channel is baked by a second, path-only pass (`bakeWorldPathMask`)
+ * once the settlements have routed their roads (docs/TERRAIN-MASK.md).
  *
  * The bake works on plain arrays (`MaskSource`) so it can run in worker
  * threads. Rows of chunks are split across workers; each worker returns its
@@ -15,7 +15,7 @@
 import { type TerrainMaskSpec, TERRAIN_MASK_CHANNELS, type TerrainMaskChannel } from "@mmo-engine/art/browser";
 import { Worker } from "node:worker_threads";
 import type { Survey } from "./survey.js";
-import { bakeTerrainMask, maskHash, type TerrainMaskInputs } from "./terrain-mask.js";
+import { bakeTerrainMask, blur, maskHash, type TerrainMaskInputs } from "./terrain-mask.js";
 import { detAtan, detLog1p } from "@mmo-engine/placement";
 
 /** The survey's fields the mask needs, as plain arrays (structured-clone safe). */
@@ -212,6 +212,84 @@ export async function bakeWorldMasksParallel(
     ),
   );
   return assembleMasks(src, maskSpec, bounds, slabs);
+}
+
+/** A road as a world-space polyline, [x, z] metres. */
+export type RoadPolyline = ReadonlyArray<readonly [number, number]>;
+
+/** Distance from (px, pz) to the segment a-b. */
+function segmentDistance(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 === 0 ? 0 : Math.min(1, Math.max(0, ((px - ax) * dx + (pz - az) * dz) / len2));
+  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+}
+
+/**
+ * The path channel alone, from road polylines in world metres: a second pass
+ * that runs after the settlements have routed their roads. Each chunk
+ * rasterises the roads within half a width of its samples, then applies the
+ * spec's feather (the same box blur the full bake uses). The chunk is padded
+ * by the feather so the blur sees the neighbours' roads and chunk seams
+ * match. Chunks no road reaches stay zero. Returns width × width bytes laid
+ * out like `WorldMasks.channels.path`.
+ */
+export function bakeWorldPathMask(
+  chunkWorldSize: number,
+  maskSpec: TerrainMaskSpec,
+  bounds: { minChunk: number; maxChunk: number },
+  roads: ReadonlyArray<RoadPolyline>,
+  widthMetres: number,
+): Uint8Array {
+  const res = maskSpec.resolution;
+  const feather = maskSpec.path.featherCells;
+  const chunks = bounds.maxChunk - bounds.minChunk + 1;
+  const width = chunks * res;
+  const out = new Uint8Array(width * width);
+  const cell = chunkWorldSize / res;
+  const half = widthMetres / 2;
+  const segs: number[][] = [];
+  for (const line of roads) {
+    for (let i = 0; i + 1 < line.length; i++) segs.push([line[i][0], line[i][1], line[i + 1][0], line[i + 1][1]]);
+  }
+  if (segs.length === 0) return out;
+
+  const pad = feather;
+  const n = res + 2 * pad;
+  const reach = half + (feather + 1) * cell;
+  for (let cz = bounds.minChunk; cz <= bounds.maxChunk; cz++) {
+    for (let cx = bounds.minChunk; cx <= bounds.maxChunk; cx++) {
+      const x0 = cx * chunkWorldSize, z0 = cz * chunkWorldSize;
+      const near = segs.filter(
+        (s) =>
+          Math.max(s[0], s[2]) >= x0 - reach && Math.min(s[0], s[2]) <= x0 + chunkWorldSize + reach &&
+          Math.max(s[1], s[3]) >= z0 - reach && Math.min(s[1], s[3]) <= z0 + chunkWorldSize + reach,
+      );
+      if (near.length === 0) continue;
+      let field: Float32Array<ArrayBuffer> = new Float32Array(n * n);
+      for (let z = 0; z < n; z++) {
+        for (let x = 0; x < n; x++) {
+          const wx = x0 + (x - pad + 0.5) * cell;
+          const wz = z0 + (z - pad + 0.5) * cell;
+          for (const s of near) {
+            if (segmentDistance(wx, wz, s[0], s[1], s[2], s[3]) <= half) {
+              field[z * n + x] = 1;
+              break;
+            }
+          }
+        }
+      }
+      for (let p = 0; p < feather; p++) field = blur(field, n);
+      const ox = (cx - bounds.minChunk) * res;
+      const oz = (cz - bounds.minChunk) * res;
+      for (let z = 0; z < res; z++) {
+        for (let x = 0; x < res; x++) {
+          out[(oz + z) * width + ox + x] = Math.round(Math.min(1, Math.max(0, field[(z + pad) * n + x + pad])) * 255);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /** Hash of every channel, in channel order (for golden tests). */
