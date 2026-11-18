@@ -21,8 +21,8 @@ import { AnimationMachine, LinearBlendTree } from "animouse";
 import { createGltfLoader } from "../gltf-loader.js";
 import { FootIk } from "./foot-ik.js";
 import {
-  DEFAULT_LOCOMOTION, crossfadeWeights, manifestLocomotion, pickLocomotion, playhead,
-  type AnimationClipInfo, type AnimationManifest, type ClipPlan, type LocomotionGraph,
+  DEFAULT_LOCOMOTION, BakedClipManifestSchema, crossfadeWeights, decodeBakedClipsFromChunk, manifestLocomotion, pickLocomotion, playhead,
+  type AnimationClipInfo, type AnimationManifest, type BakedClipManifest, type ClipPlan, type LocomotionGraph,
 } from "@mmo-engine/art/browser";
 import { DEFAULT_KIT_URL, kitBase } from "./character-kit.js";
 
@@ -60,6 +60,43 @@ export class AnimationLibrary {
       new Map(info.map((c) => [c.name, c])),
       { version: 2, sources: [], clips: info },
     );
+  }
+
+  /**
+   * Build an `AnimationLibrary` directly from a B2 baked clip manifest and `.chunk` bytes
+   * (zero runtime GLB parse), plugging identically into `CharacterAnimator`.
+   */
+  static fromBakedManifest(
+    rawManifest: BakedClipManifest,
+    chunkBytes: Uint8Array,
+    locomotion?: LocomotionGraph,
+  ): AnimationLibrary {
+    const decoded = decodeBakedClipsFromChunk(rawManifest, chunkBytes);
+    const clipInfoMap = new Map(decoded.info.map((i) => [i.name, i]));
+    const baseManifest: AnimationManifest = locomotion
+      ? { version: 3, sources: [], clips: decoded.info, locomotion }
+      : { version: 2, sources: [], clips: decoded.info };
+    return new AnimationLibrary(
+      new Map(decoded.clips.map((c) => [c.name, c])),
+      clipInfoMap,
+      baseManifest,
+    );
+  }
+
+  /** Fetch `<baseUrl>/<manifestFile>` and its paired `.chunk` payload into `AnimationLibrary`. */
+  static async loadBaked(
+    baseUrl: string,
+    manifestFile = "clips.baked.json",
+    locomotion?: LocomotionGraph,
+  ): Promise<AnimationLibrary> {
+    const normBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    const mRes = await fetch(`${normBase}${manifestFile.replace(/^\/+/, "")}`);
+    if (!mRes.ok) throw new Error(`baked clips manifest HTTP ${mRes.status}`);
+    const manifest = BakedClipManifestSchema.parse(await mRes.json());
+    const cRes = await fetch(`${normBase}${manifest.chunkFile.replace(/^\/+/, "")}`);
+    if (!cRes.ok) throw new Error(`baked clips chunk HTTP ${cRes.status}`);
+    const chunkBytes = new Uint8Array(await cRes.arrayBuffer());
+    return AnimationLibrary.fromBakedManifest(manifest, chunkBytes, locomotion);
   }
 
   get names(): string[] {

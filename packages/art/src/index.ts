@@ -59,4 +59,10 @@ export {
 } from "./vfx-schema.js";
 export { vfxToQuarks, vfxToQuarksJson } from "./vfx-convert.js";
 export * from "./baked-store.js";
+export * from "./baked-geometry.js";
+export * from "./baked-provider.js";
+export * from "./baked-chunk-streaming.js";
+export * from "./baked-geometry-bake.js";
+export * from "./baked-clips.js";
+export * from "./baked-clips-bake.js";
 export * from "./cinematics/index.js";

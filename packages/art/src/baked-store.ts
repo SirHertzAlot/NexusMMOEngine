@@ -20,7 +20,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { z } from "zod";
@@ -398,7 +398,18 @@ type ParsedCatalog = z.infer<typeof CatalogSchema>;
 type ParsedCatalogPack = z.infer<typeof CatalogPackSchema>;
 type ParsedCatalogModel = z.infer<typeof CatalogModelSchema>;
 
-function compareCodepoint(a: string, b: string): number {
+export function writeFileAtomic(targetPath: string, data: Uint8Array | string): void {
+  const tmp = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  writeFileSync(tmp, data);
+  try {
+    renameSync(tmp, targetPath);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+export function compareCodepoint(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -417,7 +428,7 @@ function canonicalJson(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
 }
 
-function sha256Hex(bytes: Uint8Array | string): string {
+export function sha256Hex(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
@@ -435,7 +446,7 @@ function assertSafeRelativePosixPath(relPath: string, label: string): void {
   }
 }
 
-function resolveContainedFile(rootDir: string, relPath: string, label: string): string {
+export function resolveContainedFile(rootDir: string, relPath: string, label: string): string {
   assertSafeRelativePosixPath(relPath, label);
   const resolvedRoot = resolve(rootDir);
   const resolvedFile = resolve(resolvedRoot, relPath);
@@ -448,7 +459,7 @@ function resolveContainedFile(rootDir: string, relPath: string, label: string): 
   return resolvedFile;
 }
 
-function validateChunkId(chunkId: string): ChunkKind {
+export function validateChunkId(chunkId: string): ChunkKind {
   if (chunkId === "base") return "base";
   if (chunkId.startsWith("kit:") && chunkId.length > 4) return chunkId as `kit:${string}`;
   if (chunkId.startsWith("region:") && chunkId.length > 7) return chunkId as `region:${string}`;
@@ -748,7 +759,7 @@ function loadJsonFile(filePath: string, label: string): unknown {
   }
 }
 
-interface ResolvedAssetInput {
+export interface ResolvedAssetInput {
   id: string;
   kind: AssetKind;
   file: string;
@@ -760,7 +771,7 @@ interface ResolvedAssetInput {
   knobValues?: Record<string, unknown>;
 }
 
-interface ResolvedBlobSlot {
+export interface ResolvedBlobSlot {
   hash: string;
   byteLength: number;
   chunkId: ChunkKind;
@@ -978,19 +989,19 @@ function collectClipInputs(
   return out.sort((a, b) => compareCodepoint(a.id, b.id));
 }
 
-interface ChunkToInsert {
+export interface ChunkToInsert {
   id: ChunkKind;
   hash: string;
   bytes: number;
   kind: ChunkKind;
 }
 
-interface HashedAssetRecord extends ResolvedAssetInput {
+export interface HashedAssetRecord extends ResolvedAssetInput {
   hash: string;
   byteLength: number;
 }
 
-interface ClipToInsert {
+export interface ClipToInsert {
   id: string;
   assetId: string;
   family: string;
@@ -1383,14 +1394,18 @@ function persistBakedStoreTransaction(
   }
 }
 
-/**
- * Build a deterministic, content-addressed, licence-validated Baked Asset Store SQLite index
- * from `manifest.json`, optional `catalog.json`, optional `credits.json`, and files on disk.
- *
- * Fail-closed: rejects invalid manifests, missing files, path escapes, licence-lane violations,
- * and unresolvable variant references before touching `dbPath`.
- */
-export function buildBakedAssetIndex(options: BuildBakedAssetIndexOptions): BuildBakedAssetIndexResult {
+export interface PreparedBakedStoreInputs {
+  target: BakeTarget;
+  assetsRoot: string;
+  manifest: AssetManifest;
+  converterVersion: number | undefined;
+  resolvedAssets: ResolvedAssetInput[];
+  knobsToInsert: BakedKnobInput[];
+  resolvedClips: ClipToInsert[];
+}
+
+/** Validate manifest/catalog/credits + classify asset licences without hashing files yet. */
+export function prepareBakedStoreInputs(options: BuildBakedAssetIndexOptions): PreparedBakedStoreInputs {
   const target: BakeTarget = options.target ?? "own-game";
   const assetsRoot = resolve(options.assetsRoot);
   const overwrite = options.overwrite ?? true;
@@ -1410,39 +1425,57 @@ export function buildBakedAssetIndex(options: BuildBakedAssetIndexOptions): Buil
     creditIndex,
   );
   const resolvedClips = collectClipInputs(options, assetsRoot, creditIndex);
-
-  validateBakeLicences(
-    [
-      ...resolvedAssets.map((a) => ({ id: a.id, kind: a.kind, classification: a.classification })),
-      ...resolvedClips.map((c) => ({ id: c.id, kind: "clip" as const, classification: c.classification })),
-    ],
+  return {
     target,
+    assetsRoot,
+    manifest,
+    converterVersion: catalog?.converterVersion,
+    resolvedAssets,
+    knobsToInsert,
+    resolvedClips,
+  };
+}
+
+/** Write pre-hashed chunk + asset slots + variants into an atomic SQLite BakedAssetStore. */
+export function commitBakedStoreDatabase(params: {
+  dbPath: string;
+  target: BakeTarget;
+  manifest: AssetManifest;
+  converterVersion: number | undefined;
+  chunksToInsert: readonly ChunkToInsert[];
+  assetsWithHashes: readonly HashedAssetRecord[];
+  slotByHash: ReadonlyMap<string, ResolvedBlobSlot>;
+  resolvedClips: readonly ClipToInsert[];
+  knobsToInsert: readonly BakedKnobInput[];
+  explicitVariants?: readonly BakedVariantInput[];
+}): BuildBakedAssetIndexResult {
+  const variantsToInsert = buildCollapsedVariants(
+    params.assetsWithHashes,
+    params.slotByHash,
+    params.explicitVariants ?? [],
   );
 
-  const { assetsWithHashes, slotByHash, chunksToInsert } = hashAndDedupeAssets(assetsRoot, resolvedAssets);
-  const variantsToInsert = buildCollapsedVariants(assetsWithHashes, slotByHash, options.variants ?? []);
-
-  const isMemory = options.dbPath === ":memory:";
+  const isMemory = params.dbPath === ":memory:";
   const stagingPath = isMemory
     ? ":memory:"
-    : `${options.dbPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    : `${params.dbPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   if (!isMemory) {
-    mkdirSync(dirname(resolve(options.dbPath)), { recursive: true });
+    mkdirSync(dirname(resolve(params.dbPath)), { recursive: true });
   }
 
   const db = new DatabaseSync(stagingPath);
   try {
     persistBakedStoreTransaction(db, {
-      target,
-      manifest,
-      converterVersion: catalog?.converterVersion,
-      chunksToInsert,
-      assetsWithHashes,
-      slotByHash,
+      target: params.target,
+      manifest: params.manifest,
+      converterVersion: params.converterVersion,
+      chunksToInsert: params.chunksToInsert,
+      assetsWithHashes: params.assetsWithHashes,
+      slotByHash: params.slotByHash,
       variantsToInsert,
-      resolvedClips,
-      knobsToInsert,
+      resolvedClips: params.resolvedClips,
+      knobsToInsert: params.knobsToInsert,
     });
 
     let store: BakedAssetStore;
@@ -1450,16 +1483,16 @@ export function buildBakedAssetIndex(options: BuildBakedAssetIndexOptions): Buil
       store = new BakedAssetStore(db, ":memory:", false);
     } else {
       db.close();
-      renameSync(stagingPath, options.dbPath);
-      store = openBakedAssetStore(options.dbPath, { readOnly: true });
+      renameSync(stagingPath, params.dbPath);
+      store = openBakedAssetStore(params.dbPath, { readOnly: true });
     }
 
     return {
       store,
-      target,
-      assetCount: assetsWithHashes.length,
-      clipCount: resolvedClips.length,
-      chunkCount: chunksToInsert.length,
+      target: params.target,
+      assetCount: params.assetsWithHashes.length,
+      clipCount: params.resolvedClips.length,
+      chunkCount: params.chunksToInsert.length,
       dedupeReport: store.dedupeReport(),
       licenceCoverageReport: store.licenceCoverageReport(),
     };
@@ -1468,6 +1501,42 @@ export function buildBakedAssetIndex(options: BuildBakedAssetIndexOptions): Buil
     if (!isMemory) rmSync(stagingPath, { force: true });
     throw err;
   }
+}
+
+/**
+ * Build a deterministic, content-addressed, licence-validated Baked Asset Store SQLite index
+ * from `manifest.json`, optional `catalog.json`, optional `credits.json`, and files on disk.
+ *
+ * Fail-closed: rejects invalid manifests, missing files, path escapes, licence-lane violations,
+ * and unresolvable variant references before touching `dbPath`.
+ */
+export function buildBakedAssetIndex(options: BuildBakedAssetIndexOptions): BuildBakedAssetIndexResult {
+  const prepared = prepareBakedStoreInputs(options);
+
+  validateBakeLicences(
+    [
+      ...prepared.resolvedAssets.map((a) => ({ id: a.id, kind: a.kind, classification: a.classification })),
+      ...prepared.resolvedClips.map((c) => ({ id: c.id, kind: "clip" as const, classification: c.classification })),
+    ],
+    prepared.target,
+  );
+
+  const { assetsWithHashes, slotByHash, chunksToInsert } = hashAndDedupeAssets(
+    prepared.assetsRoot,
+    prepared.resolvedAssets,
+  );
+  return commitBakedStoreDatabase({
+    dbPath: options.dbPath,
+    target: prepared.target,
+    manifest: prepared.manifest,
+    converterVersion: prepared.converterVersion,
+    chunksToInsert,
+    assetsWithHashes,
+    slotByHash,
+    resolvedClips: prepared.resolvedClips,
+    knobsToInsert: prepared.knobsToInsert,
+    explicitVariants: options.variants,
+  });
 }
 
 /**

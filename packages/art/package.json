@@ -24,7 +24,9 @@
     "import:glb": "node dist/src/convert/import-glb-packs.js",
     "convert:modular": "node dist/src/convert/convert-modular.js",
     "convert:animations": "node dist/src/convert/convert-animations.js",
-    "placeholder:wildlife": "node dist/src/convert/placeholder-cli.js"
+    "placeholder:wildlife": "node dist/src/convert/placeholder-cli.js",
+    "bake:geometry": "node dist/src/convert/bake-geometry-cli.js",
+    "bake:clips": "node dist/src/convert/bake-clips-cli.js"
   },
   "type": "module",
   "types": "dist/src/index.d.ts",

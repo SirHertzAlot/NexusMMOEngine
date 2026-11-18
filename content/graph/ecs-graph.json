@@ -58739,7 +58739,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "4167f8c619def2d4f7fcbc40f7c7fc9f2b268571",
+    "builtFromCommit": "d7d7c1cd01e143c40f5e2ec690fa0f7e7f63145e",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 37,
@@ -58908,7 +58908,7 @@
       "packages/engine-core/src/auth/sessions.ts": "88ec5917fad73fc67156713a0f2b178155e2fb9834d94394095458d34bd5b875",
       "packages/engine-core/src/auth/sqlite-session-store.ts": "b684c4ffa83ac3071005c71d9b188f31bce6a1e7a76176f8c8c2beed0e9df100",
       "packages/engine-core/src/auth/world-credentials.ts": "75aed8d078a5a8aa28ebccceb5cad55fca1f970e969d394a68e28e90ae33f54a",
-      "packages/engine-core/src/bake-world.ts": "0fca40a95d74d68793ad06bc7d576674323619e7edf25c53d75af89414dc38fc",
+      "packages/engine-core/src/bake-world.ts": "b0e0b760809f9712996cb7eea28ea4212e835119df6c1b0f3dc9e5af8139ebb8",
       "packages/engine-core/src/body.ts": "bdd522527d05a0a579751564f34d4ccb400351301d8e36af0c1ff95830c2530a",
       "packages/engine-core/src/bots.ts": "5ac455102ab97b45b9feaa9735dd8975c1aefc5571d2eb9836e701058764f3b7",
       "packages/engine-core/src/channel-server.ts": "017126113f3126272ba8babf63e23e12c0c2fc5791f78f25a73dcad76bfa9a93",
@@ -59083,7 +59083,7 @@
       "packages/engine-core/src/terrain/grid-ops.ts": "0e8ccbd31894235b37daaf31ae188149b09eaa3875c88faef7dc63c9c9dc3489",
       "packages/engine-core/src/terrain/hydrology.ts": "132a246c606d257f3784d47472b398296b2a4296c44a7f642e5e5bdf3f81a58b",
       "packages/engine-core/src/terrain/landmass.ts": "f6264904ffae13049ac0acd75823ebdb70aff50430842f1e95199ba1c59d3d5e",
-      "packages/engine-core/src/terrain/mask-bake.ts": "9d91ca0a76c33d87f286f0c42a51427df32b63fb8ccb1267bc0c7d49283dee6b",
+      "packages/engine-core/src/terrain/mask-bake.ts": "fd7b687f49a1773ee8e434468d3b0690a796b1fb285ba52344e4abc25bf2c6c6",
       "packages/engine-core/src/terrain/mask-worker.ts": "44cc55e14aa04ebf58a04bd5208dd23434d587c21a538a7dc66351f55a9d317e",
       "packages/engine-core/src/terrain/plains.ts": "e7a605fb3f64964d33dc11965b70f6a87cdc6cd6ffc3349ad293b024e22cb71d",
       "packages/engine-core/src/terrain/reach.ts": "f52870e3a294cb43798fd03bd79034662b3eaf7d6ab22d203b4ecbb8c7cf67b4",
@@ -59093,10 +59093,10 @@
       "packages/engine-core/src/terrain/roads.ts": "f86deadab5c473bb9326ad23b75af305565f6bda5845538d313d6996e769941a",
       "packages/engine-core/src/terrain/sun.ts": "e2315abb07125ca5836c8b283537321421c701571262772b86e5407149c75de4",
       "packages/engine-core/src/terrain/survey.ts": "8a8962316a9dcf40d8c7b2a0877a4a1bfeffbce813267fdaf2700a48a62045a3",
-      "packages/engine-core/src/terrain/terrain-mask.ts": "82c443e36869729aace0edfa205d1496c07fdf0fec9826f983854580b0b6d6c9",
+      "packages/engine-core/src/terrain/terrain-mask.ts": "bd0418099321f6868a66d7a82e4399b1369f80ed7c8c5435f9cb3e3b9d04743c",
       "packages/engine-core/src/terrain/tile-worker.ts": "a5fa7dd57c1ac522eb11e0fd976a4823afe09e00c3da132c560487c608446876",
       "packages/engine-core/src/terrain/water-surface.ts": "8d632cba18a7b50b5b4ec13a859702eb85ce676f5b40255b5bc3c4474517b048",
-      "packages/engine-core/src/terrain/world-bake.ts": "2d5b763f10f555711463171a3d6cfc821ae540eb1ed1d8e4b5977d6fb17c2501",
+      "packages/engine-core/src/terrain/world-bake.ts": "a41f3b7af8d3e5f8d0a71508c7620f943d3fbef6c1ae8b764cfa3c9b2bcf5d03",
       "packages/engine-core/src/terrain/world-heights.ts": "b43b9aacaa0fbbd33f3637a1eb81d2e21a78ea5d9c571e76b40a9a56402550ea",
       "packages/engine-core/src/terrain/world-info.ts": "e550c52deb368136f15df025d3df6802de3c1e84ebb15f74544008a1298ac1cf",
       "packages/engine-core/src/terrain/world-spec.ts": "7ab149f41d6ed3ad36452969d7b9ef2bdcd95ba23cc2c9bef64f20720e74c509",

@@ -28,7 +28,7 @@ import { surrealkvUrl, writeWorldCatalog, type CatalogChunk } from "../persist/w
 import { LAND, surveyWorld, type Survey } from "./survey.js";
 import { WorldHeights } from "./world-heights.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
-import { bakeWorldMasksParallel, maskSourceOf } from "./mask-bake.js";
+import { bakeWorldMasksParallel, bakeWorldPathMask, maskSourceOf, type RoadPolyline } from "./mask-bake.js";
 import { DEFAULT_TERRAIN_MASK_SPEC, TERRAIN_MASK_CHANNELS, encodeTerrainMaskAsset, type DetailLayer, type TerrainMaskSpec } from "@mmo-engine/art/browser";
 import { placeDetail, terrainSamples } from "@mmo-engine/placement";
 
@@ -89,6 +89,13 @@ export interface TerrainBakeOptions {
   /** Terrain material masks (after the survey, before scatter): the spec to
    *  bake with, or false to skip them. Default: DEFAULT_TERRAIN_MASK_SPEC. */
   masks?: TerrainMaskSpec | false;
+  /** Road polylines in world metres, asked for after the survey (so the
+   *  settlement stage has run in `onSurvey`). When it returns any, a path-only
+   *  second pass bakes them into the `path` channel; without it the channel
+   *  is empty. Not called when the survey is skipped as unchanged. */
+  roads?: () => ReadonlyArray<RoadPolyline>;
+  /** Road width in metres for the path pass (default 3). */
+  roadWidthMetres?: number;
   /** Write the masks as a binary asset the client loads (encodeTerrainMaskAsset). */
   maskAssetPath?: string;
   /** Overworld detail layers (surface "terrain", each naming a mask channel). Placed after the masks; stored as detail_<id> maps. */
@@ -541,6 +548,11 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     if (opts.masks !== false) {
       const t = performance.now();
       const masks = await bakeWorldMasksParallel(maskSourceOf(survey), opts.masks ?? DEFAULT_TERRAIN_MASK_SPEC, { minChunk, maxChunk }, workers);
+      const maskSpec = opts.masks ?? DEFAULT_TERRAIN_MASK_SPEC;
+      const roads = opts.roads?.() ?? [];
+      if (roads.length > 0) {
+        masks.channels.path = bakeWorldPathMask(survey.spec.chunkWorldSize, maskSpec, { minChunk, maxChunk }, roads, opts.roadWidthMetres ?? 3);
+      }
       maskMs = performance.now() - t;
       for (const c of TERRAIN_MASK_CHANNELS) {
         store.putMap(`mask_${c}`, { width: masks.width, depth: masks.depth, cell: masks.cell, originX: masks.originX, originZ: masks.originZ, data: masks.channels[c] });
