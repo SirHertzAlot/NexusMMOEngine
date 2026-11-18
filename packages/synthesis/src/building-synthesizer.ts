@@ -294,12 +294,21 @@ function generateRoomPoses(room: DecomposedRoom, anchorBounds?: BoundsData): Can
   return poses;
 }
 
+function hasFloorUnderXZ(box: BoxXZ, floorBoxes: readonly BoxXZ[]): boolean {
+  if (floorBoxes.length === 0) return true;
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const pt: BoxXZ = { minX: cx, maxX: cx, minZ: cz, maxZ: cz };
+  return floorBoxes.some((fb) => boxContainsXZ(fb, pt, 0.1));
+}
+
 function appendPrototypeDressing(
   room: DecomposedRoom,
   partMap: DecompositionLibrary["ruleSet"]["parts"],
   walkZones: BoxXZ[],
   occupied: BoxXZ[],
   placements: SynthesizedPlacement[],
+  floorBoxes: readonly BoxXZ[] = [],
 ): void {
   for (const dp of room.parts) {
     if (dp.layer !== "dressing") continue;
@@ -307,6 +316,7 @@ function appendPrototypeDressing(
     const pBounds = dp.bounds ?? partMap[dp.partId]?.bounds;
     const mode = colliderModeFor(detailed);
     const bx = worldBoxXZ(dp.transform.pos, dp.transform.rot, dp.transform.scale, pBounds);
+    if (!hasFloorUnderXZ(bx, floorBoxes)) continue;
     if (mode === "solid" && walkZones.some((wz) => boxesOverlapXZ(wz, bx))) continue;
     if (mode === "solid") occupied.push(bx);
     placements.push({
@@ -332,6 +342,7 @@ function synthesizeRoomInterior(
   library: DecompositionLibrary,
   density: number,
   seed: number,
+  floorBoxes: readonly BoxXZ[] = [],
 ): { placements: SynthesizedPlacement[]; vignettesPlaced: string[] } {
   const partMap = library.ruleSet.parts;
   const roomArea = Math.max(2, room.bounds.size[0] * room.bounds.size[2]);
@@ -364,7 +375,7 @@ function synthesizeRoomInterior(
   const vignettesPlaced: string[] = [];
 
   if (chosen.length === 0) {
-    appendPrototypeDressing(room, partMap, walkZones, occupied, placements);
+    appendPrototypeDressing(room, partMap, walkZones, occupied, placements, floorBoxes);
     return { placements, vignettesPlaced };
   }
 
@@ -393,7 +404,7 @@ function synthesizeRoomInterior(
       const anchorPos: Vec3Tuple = [pose.pos[0], anchorY, pose.pos[2]];
       const anchorBox = worldBoxXZ(anchorPos, anchorQ, anchorScale, anchorBounds);
 
-      if (!boxContainsXZ(roomBox, anchorBox, -0.02)) continue;
+      if (!boxContainsXZ(roomBox, anchorBox, -0.02) || !hasFloorUnderXZ(anchorBox, floorBoxes)) continue;
       if (walkZones.some((wz) => boxesOverlapXZ(wz, anchorBox))) continue;
       if (occupied.some((ob) => boxesOverlapXZ(ob, anchorBox, 0.15))) continue;
 
@@ -418,7 +429,7 @@ function synthesizeRoomInterior(
         const cBox = worldBoxXZ(childPos, childRot, item.scale, childBounds);
 
         const isBlockingCollider = cMode === "solid";
-        const outside = !boxContainsXZ(roomBox, cBox, 0.02);
+        const outside = !boxContainsXZ(roomBox, cBox, 0.02) || !hasFloorUnderXZ(cBox, floorBoxes);
         const hitsWalk = isBlockingCollider && walkZones.some((wz) => boxesOverlapXZ(wz, cBox));
         const hitsObs = isBlockingCollider && occupied.some((ob) => boxesOverlapXZ(ob, cBox, 0.12));
 
@@ -475,7 +486,7 @@ function synthesizeRoomInterior(
   }
 
   if (placements.length === 0) {
-    appendPrototypeDressing(room, partMap, walkZones, occupied, placements);
+    appendPrototypeDressing(room, partMap, walkZones, occupied, placements, floorBoxes);
   }
   return { placements, vignettesPlaced };
 }
@@ -591,7 +602,25 @@ export function synthesizeBuilding(
     let vignettesPlaced: string[] = [];
 
     if (synthesizeInteriors) {
-      const res = synthesizeRoomInterior(scaledRoom, plannedType, opts.archetype, library, density, opts.seed + i * 131);
+      const floorBoxes: BoxXZ[] =
+        scaledRoom.storey > 0
+          ? rawPlacements
+              .filter(
+                (p) =>
+                  (p.category === "floor" || p.category === "ceiling") &&
+                  Math.abs(p.transform.pos[1] - scaledRoom.elevationY) <= 0.85,
+              )
+              .map((p) => worldBoxXZ(p.transform.pos, p.transform.rot, p.transform.scale, p.pivotBounds))
+          : [];
+      const res = synthesizeRoomInterior(
+        scaledRoom,
+        plannedType,
+        opts.archetype,
+        library,
+        density,
+        opts.seed + i * 131,
+        floorBoxes,
+      );
       rawPlacements.push(...res.placements);
       vignettesPlaced = res.vignettesPlaced;
     } else {

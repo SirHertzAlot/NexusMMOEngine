@@ -54730,287 +54730,287 @@
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.halfX"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.halfY"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.halfZ"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.lz"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:AssetRef.assetHash"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:AssetRef.variant"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.friction"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.halfX"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.halfY"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.halfZ"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.layer"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.mass"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.motionType"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.radius"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.restitution"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:BodyConfig.shapeKind"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.sx"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.sy"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Transform.sz"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.ax"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.ay"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.az"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "declared",
       "from": "system:collapse",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/collapse.ts:155",
+      "source": "packages/engine-core/src/interact/collapse.ts:158",
       "to": "field:Velocity.lz"
     },
     {
@@ -58739,7 +58739,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "f3740a25712878a16a5bbde81a28b25b2581d762",
+    "builtFromCommit": "4167f8c619def2d4f7fcbc40f7c7fc9f2b268571",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 37,
@@ -58820,7 +58820,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "e7a76dd9bc3b3966fd7561b3979fe0f10e28ef430be7a4ce2488162aa2279173",
+    "graphHash": "4d8fe782a4cab8a5000cbe11eaaaf3d86e35642da43574b8a03ccf86fccd5fde",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -58954,7 +58954,7 @@
       "packages/engine-core/src/index.ts": "bd0dd3de6f9b5a717935da9177fdfe88fc39d1b198f0f51dd9602c95009e99ba",
       "packages/engine-core/src/interact/breaks.ts": "f3c1d3f87d2e08bbeced2005d3f454a4acd26c87f90dbb0a65202157d5682eb3",
       "packages/engine-core/src/interact/chests.ts": "c1591399fb82b2b03759c06287533be5162b64cf3d30e08de88fb97459a43b21",
-      "packages/engine-core/src/interact/collapse.ts": "4adf28d94baa292a5a5e528de6237e699f04bf73fcefffc2cbbc09173d2efe9e",
+      "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
       "packages/engine-core/src/interact/index.ts": "62c594f5f3cdb4bc6d6420906ae8f792c303b1e275dad62bf9787694773c1788",
       "packages/engine-core/src/interact/places-store.ts": "821758c3491eac0aa6046d2cde2b9e7461bec469b70a8e4db868a93730524640",
       "packages/engine-core/src/interact/structures.ts": "e36b7dee7086d1e3e2c9d17bc1184c6e148d26b1bb05743053916e400d3fbcb7",
@@ -59048,7 +59048,7 @@
       "packages/engine-core/src/sab-probe-worker.ts": "9cc4eb16d205be55fa6e6f6d38603921888030607d4925d08b3e017864e2aa8a",
       "packages/engine-core/src/sab-store.ts": "4dc6d4fbf0150dac83d9acc558f589d23f36ca91f410b66344c798794b7d57d4",
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
-      "packages/engine-core/src/scene-spawn.ts": "c398b9b7e5ff7431f4905a86a312ddcf90e8947d5f222c3ab3c38e607ce05dea",
+      "packages/engine-core/src/scene-spawn.ts": "0c9002f0aa75dc79c28ed8a1f0e9d6b468858a4acef96e18a4bb8b335cfd41a1",
       "packages/engine-core/src/server-settings.ts": "644264d10ee891ef74170c742cab78b7fe35012fa962129e7e2127b7a1c69236",
       "packages/engine-core/src/server.ts": "729a00a7decc7dd832367202d69776e640896474da1935d18f92e70f25267a64",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
@@ -129271,7 +129271,7 @@
       "name": "collapse",
       "role": "simulation",
       "simName": "collapse",
-      "source": "packages/engine-core/src/interact/collapse.ts:153",
+      "source": "packages/engine-core/src/interact/collapse.ts:156",
       "tickIndex": 5
     },
     {

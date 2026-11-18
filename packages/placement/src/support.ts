@@ -120,6 +120,7 @@ export function buildSupportGraph(parts: readonly SupportPart[], o: SupportOptio
   const dependents: number[][] = parts.map(() => []);
   const grounded = boxes.map((b) => b.min[1] <= groundY + groundTol);
   const fixture = parts.map((p) => isAttached(p, attachedRe));
+  const prop = parts.map((p, i) => !fixture[i] && /^prop$/i.test(p.category));
   for (let i = 0; i < n; i++) {
     if (grounded[i]) continue;
     const a = boxes[i]!;
@@ -127,9 +128,9 @@ export function buildSupportGraph(parts: readonly SupportPart[], o: SupportOptio
       if (i === j) continue;
       const b = boxes[j]!;
       if (fixture[i]) {
-        // A fixture hangs from any structural part it touches (never from another fixture).
-        if (!fixture[j] && touches(a, b, BOND_GAP_M)) supporters[i]!.push({ to: j, kind: "attached" });
-      } else if (!fixture[j] && b.max[1] >= a.min[1] - vTol && b.min[1] < a.min[1] && b.max[1] < a.max[1]) {
+        // A fixture hangs from any structural part it touches (never from another fixture or loose prop).
+        if (!fixture[j] && !prop[j] && touches(a, b, BOND_GAP_M)) supporters[i]!.push({ to: j, kind: "attached" });
+      } else if (!fixture[j] && (prop[i] || !prop[j]) && b.max[1] >= a.min[1] - vTol && b.min[1] < a.min[1] && b.max[1] < a.max[1]) {
         // Rests on what lies below it: its top reaches the part's underside (or runs into it: modules interpenetrate).
         const contact = footprintOverlap(a, b, minOverlap);
         if (contact) supporters[i]!.push({ to: j, kind: "rests", contact });
@@ -137,12 +138,12 @@ export function buildSupportGraph(parts: readonly SupportPart[], o: SupportOptio
     }
     // Resting on nothing, or on contacts that do not explain why it stands (a pitched roof tile, a floor on beams):
     // bonded to whatever it touches, so a gap or an odd shape does not leave it hanging in the model. The
-    // centre-over-supports rule then only judges parts it holds for at rest.
+    // centre-over-supports rule then only judges parts it holds for at rest. Loose props never bond sideways.
     const tol = o.stabilityTol ?? 0.1;
     const centre: Pt = [(a.min[0] + a.max[0]) / 2, (a.min[2] + a.max[2]) / 2];
     const explained = supporters[i]!.length > 0 && insideHull(hull(supporters[i]!.flatMap((l) => (l.contact ? corners(l.contact) : []))), centre, tol);
-    if (!fixture[i] && !explained) {
-      for (let j = 0; j < n; j++) if (j !== i && !fixture[j] && touches(a, boxes[j]!, BOND_GAP_M)) supporters[i]!.push({ to: j, kind: "bonded" });
+    if (!fixture[i] && !prop[i] && !explained) {
+      for (let j = 0; j < n; j++) if (j !== i && !fixture[j] && !prop[j] && touches(a, boxes[j]!, BOND_GAP_M)) supporters[i]!.push({ to: j, kind: "bonded" });
     }
   }
   for (let i = 0; i < n; i++) for (const s of supporters[i]!) dependents[s.to]!.push(i);

@@ -128,4 +128,18 @@ describe("parts the data leaves hanging", () => {
     assert.deepEqual(g.stands, [false, false, false, true], "nothing grounds the ring, so it floats in the data");
     assert.deepEqual(collapseFrom(g, [3]), [], "and does not fall: it was never up");
   });
+  it("never bonds a loose prop sideways to a wall, and never lets a prop carry structural walls", () => {
+    const ps = [
+      part("floor", [0, 0.15, 0], [4, 0.3, 4]),
+      part("wall", [0, 1.8, -1.9], [4, 3, 0.2]),
+      // A floating chair touching the exterior face of the wall at y=2.0 with no floor under it:
+      part("prop", [0, 2.0, -2.25], [0.6, 1.0, 0.6]),
+      // A ground barrel under an upper wall with no other support:
+      part("prop", [10, 0.5, 0], [1, 1, 1]),
+      part("wall", [10, 2.0, 0], [1, 2, 1]),
+    ];
+    const g = buildSupportGraph(ps, { groundY: 0 });
+    assert.equal(g.stands[2], false, "floating prop beside a wall does not glue itself sideways");
+    assert.equal(g.stands[4], false, "a loose prop cannot hold up a structural wall");
+  });
 });

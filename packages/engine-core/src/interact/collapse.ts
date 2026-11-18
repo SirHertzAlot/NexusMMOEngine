@@ -24,7 +24,7 @@
  * mid-fall at shutdown simply falls again.
  */
 
-import { addComponent } from "bitecs";
+import { addComponent, hasComponent, removeComponent } from "bitecs";
 import { buildSupportGraph, collapseFrom, type SupportGraph, type SupportOptions, type SupportPart } from "@mmo-engine/placement";
 import { fnv1a32 } from "@mmo-engine/scatter";
 import { AssetRef, BodyConfig, MotionType, ShapeKind, Transform, Velocity } from "../components.js";
@@ -108,6 +108,9 @@ interface Building {
   parts: PartState[];
   /** Broken or already scheduled to fall: what the graph treats as gone. */
   gone: Set<number>;
+  cx: number;
+  cz: number;
+  groundY: number;
 }
 
 interface Queued {
@@ -197,9 +200,9 @@ export class CollapseSystem implements SimSystem {
   private readonly density: number;
 
   constructor(private readonly opts: CollapseOptions = {}) {
-    this.maxActive = opts.maxActive ?? 64;
-    this.perTick = opts.perTick ?? 8;
-    this.waveDelayS = opts.waveDelayS ?? 0.25;
+    this.maxActive = opts.maxActive ?? 256;
+    this.perTick = opts.perTick ?? 32;
+    this.waveDelayS = opts.waveDelayS ?? 0.08;
     this.settleS = opts.settleS ?? 1.5;
     this.maxAgeS = opts.maxAgeS ?? 12;
     this.density = opts.density ?? 250;
@@ -233,10 +236,23 @@ export class CollapseSystem implements SimSystem {
   /** Register a building: its parts' entities and boxes. Builds its support graph once. */
   registerBuilding(sim: SimWorld, key: string, specs: readonly CollapsePartSpec[], o: SupportOptions = {}): SupportGraph {
     const graph = buildSupportGraph(specs.map((s) => s.part), o);
+    let sumX = 0;
+    let sumZ = 0;
+    let minBottom = Infinity;
+    for (const s of specs) {
+      sumX += s.part.pos[0];
+      sumZ += s.part.pos[2];
+      minBottom = Math.min(minBottom, s.part.pos[1] - Math.abs(s.part.size[1]) / 2);
+    }
+    const n = Math.max(1, specs.length);
+    const groundY = o.groundY ?? (Number.isFinite(minBottom) ? minBottom : 0);
     const b: Building = {
       key,
       graph,
       gone: new Set(),
+      cx: sumX / n,
+      cz: sumZ / n,
+      groundY,
       parts: specs.map((s) => ({
         wid: s.wire ?? sim.wireId(s.eid),
         colliders: s.colliderWires ? [...s.colliderWires] : s.colliders.map((c) => sim.wireId(c)),
@@ -249,6 +265,14 @@ export class CollapseSystem implements SimSystem {
     this.buildings.set(key, b);
     b.parts.forEach((part, index) => this.of.set(part.wid, { building: b, index }));
     this.restore(sim, b, specs);
+    // Universal gravity: any part that has no support at rest (floating in mid-air) falls immediately.
+    for (let i = 0; i < b.parts.length; i++) {
+      if (!b.graph.stands[i] && !b.gone.has(i)) {
+        this.dropColliders(sim, b.parts[i]!);
+        b.gone.add(i);
+        this.queue.push({ building: b, index: i, dueAt: this.now });
+      }
+    }
     return graph;
   }
 
@@ -287,6 +311,8 @@ export class CollapseSystem implements SimSystem {
   }
 
   private dropColliders(sim: SimWorld, part: PartState): void {
+    const ve = sim.resolveWireId(part.wid);
+    if (ve >= 0 && hasComponent(sim.ecs, BodyConfig, ve)) removeComponent(sim.ecs, BodyConfig, ve);
     for (const c of part.colliders) {
       const ce = sim.resolveWireId(c);
       if (ce >= 0) sim.despawn(ce);
@@ -320,9 +346,10 @@ export class CollapseSystem implements SimSystem {
   }
 
   /** Work out what each building with broken parts lost, and queue it wave by wave. */
-  private resolve(): void {
+  private resolve(sim: SimWorld): void {
     for (const building of this.dirty) {
       for (const f of collapseFrom(building.graph, building.gone)) {
+        this.dropColliders(sim, building.parts[f.index]!);
         building.gone.add(f.index);
         this.queue.push({ building, index: f.index, dueAt: this.now + f.wave * this.waveDelayS });
       }
@@ -332,7 +359,7 @@ export class CollapseSystem implements SimSystem {
 
   step(sim: SimWorld, dtSeconds: number): void {
     this.now += dtSeconds;
-    this.resolve();
+    this.resolve(sim);
     this.release(sim);
     this.follow(sim);
     this.settle(sim);
@@ -353,11 +380,8 @@ export class CollapseSystem implements SimSystem {
       const part = q.building.parts[q.index]!;
       const visual = sim.resolveWireId(part.wid);
       if (visual < 0) continue; // broken and gone meanwhile
-      for (const c of part.colliders) {
-        const ce = sim.resolveWireId(c);
-        if (ce >= 0) sim.despawn(ce);
-      }
-      const carrier = this.spawnCarrier(sim, part, visual, true);
+      this.dropColliders(sim, part);
+      const carrier = this.spawnCarrier(sim, part, visual, true, undefined, q.building, q.index);
       this.falling.push({ building: q.building, index: q.index, visual: part.wid, carrier: sim.wireId(carrier), offset: part.offset, tilt: part.tilt, size: part.size, since: this.now, slowSince: null });
       this.fallen++;
       this.opts.onFall?.(sim, q.building.key, visual);
@@ -366,7 +390,15 @@ export class CollapseSystem implements SimSystem {
   }
 
   /** A body-only entity at the part's middle: dynamic while it falls, static where it comes to rest. */
-  private spawnCarrier(sim: SimWorld, part: { size: readonly [number, number, number]; centre: readonly [number, number, number]; tilt: Quat }, visual: number, dynamic: boolean, pose?: { px: number; py: number; pz: number; qx: number; qy: number; qz: number; qw: number }): number {
+  private spawnCarrier(
+    sim: SimWorld,
+    part: { size: readonly [number, number, number]; centre: readonly [number, number, number]; tilt: Quat },
+    visual: number,
+    dynamic: boolean,
+    pose?: { px: number; py: number; pz: number; qx: number; qy: number; qz: number; qw: number },
+    building?: Building,
+    index?: number,
+  ): number {
     const e = sim.spawn();
     addComponent(sim.ecs, Transform, e);
     const T = Transform;
@@ -385,6 +417,18 @@ export class CollapseSystem implements SimSystem {
     addComponent(sim.ecs, Velocity, e);
     Velocity.lx[e] = Velocity.ly[e] = Velocity.lz[e] = 0;
     Velocity.ax[e] = Velocity.ay[e] = Velocity.az[e] = 0;
+    if (dynamic && building && building.parts.length > 10 && index !== undefined) {
+      const dx = T.px[e]! - building.cx;
+      const dz = T.pz[e]! - building.cz;
+      const baseAngle = Math.atan2(dz, dx);
+      const spreadAngle = baseAngle + ((index % 11) - 5) * 0.28;
+      const speed = 1.0 + (index % 5) * 0.32;
+      Velocity.lx[e] = Math.cos(spreadAngle) * speed;
+      Velocity.lz[e] = Math.sin(spreadAngle) * speed;
+      Velocity.ly[e] = -1.5;
+      Velocity.ax[e] = Math.sin(spreadAngle) * 2.6;
+      Velocity.az[e] = -Math.cos(spreadAngle) * 2.6;
+    }
     addComponent(sim.ecs, BodyConfig, e);
     const B = BodyConfig;
     B.shapeKind[e] = ShapeKind.Box;
@@ -417,6 +461,13 @@ export class CollapseSystem implements SimSystem {
     const c = sim.resolveWireId(f.carrier);
     if (v < 0 || c < 0) return;
     const T = Transform;
+    const minY = f.building.groundY + Math.max(0.05, Math.min(f.size[0], f.size[1], f.size[2]) / 2);
+    if (T.py[c]! < minY) {
+      T.py[c] = minY;
+      if (Velocity.ly[c]! < 0) Velocity.ly[c] = 0;
+      Velocity.lx[c] = Velocity.lx[c]! * 0.8;
+      Velocity.lz[c] = Velocity.lz[c]! * 0.8;
+    }
     this.placeAt(sim, v, f.offset, { px: T.px[c]!, py: T.py[c]!, pz: T.pz[c]!, qx: T.qx[c]!, qy: T.qy[c]!, qz: T.qz[c]!, qw: T.qw[c]! }, f.tilt);
   }
 
