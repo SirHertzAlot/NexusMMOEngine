@@ -42,7 +42,7 @@ function ramp(v: number, from: number, to: number): number {
 const SALT = { base: 0x1111, rock: 0x2222, wet: 0x3333 } as const;
 
 /** One 3×3 box-blur pass over a 0..1 field (edges clamp). */
-function blur(field: Float32Array<ArrayBuffer>, n: number): Float32Array<ArrayBuffer> {
+export function blur(field: Float32Array<ArrayBuffer>, n: number): Float32Array<ArrayBuffer> {
   const out = new Float32Array(field.length);
   for (let z = 0; z < n; z++) {
     for (let x = 0; x < n; x++) {

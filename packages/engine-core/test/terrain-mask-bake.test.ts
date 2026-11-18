@@ -136,3 +136,73 @@ describe("overworld detail layers through the world bake", () => {
     for (let i = 0; i < grid.length; i++) if (grid[i]) assert.ok(wetBytes[i] / 255 >= 0.3, "placed only where the wet channel passes the band");
   });
 });
+
+describe("path channel: the second pass after the settlements", () => {
+  // A road across the tiny world (world metres; the world spans -64..64 on both axes).
+  const ROAD: Array<[number, number]> = [[-40, -20], [0, -5], [30, 10]];
+  const res = DEFAULT_TERRAIN_MASK_SPEC.resolution;
+
+  async function bakeWith(extra: Parameters<typeof bakeWorldTerrain>[1] extends infer O ? Partial<O> : never) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-mask-road-"));
+    const dbPath = path.join(dir, "region.db");
+    await bakeWorldTerrain(TINY, { dbPath, catalogDir: null, log: () => {}, terrainVersion: 1, workers: 1, ...extra });
+    const store = new TerrainTileStore(dbPath);
+    const maps: Record<string, { width: number; depth: number; cell: number; originX: number; originZ: number; data: Uint8Array }> = {};
+    for (const c of CHANNELS) maps[c] = store.getMap(`mask_${c}`) as never;
+    return maps;
+  }
+
+  it("bakes the roads into the path channel and leaves the other three byte-identical", async () => {
+    const without = await bakeWith({});
+    const withRoad = await bakeWith({ roads: () => [ROAD] });
+    for (const c of ["base", "rock", "wet"] as const) assert.equal(maskHash(new Uint8Array(withRoad[c].data)), maskHash(new Uint8Array(without[c].data)), `${c} unchanged`);
+    const p = withRoad.path;
+    const at = (x: number, z: number) => new Uint8Array(p.data)[Math.floor((z - p.originZ) / p.cell) * p.width + Math.floor((x - p.originX) / p.cell)];
+    assert.ok(at(0, -5) > 200, "on the road");
+    assert.ok(at(-20, -12.5) > 200, "on the first leg");
+    assert.equal(at(-50, 50), 0, "far from the road");
+    assert.ok(new Uint8Array(p.data).some((b) => b > 0 && b < 255), "the feather gives soft edges");
+    assert.notEqual(maskHash(new Uint8Array(p.data)), maskHash(new Uint8Array(without.path.data)));
+  });
+
+  it("is deterministic", async () => {
+    const a = await bakeWith({ roads: () => [ROAD] });
+    const b = await bakeWith({ roads: () => [ROAD] });
+    assert.equal(maskHash(new Uint8Array(a.path.data)), maskHash(new Uint8Array(b.path.data)));
+  });
+
+  it("an empty road list changes nothing", async () => {
+    const without = await bakeWith({});
+    const none = await bakeWith({ roads: () => [] });
+    assert.equal(maskHash(new Uint8Array(none.path.data)), maskHash(new Uint8Array(without.path.data)));
+  });
+
+  it("a wider road covers more samples", async () => {
+    const narrow = await bakeWith({ roads: () => [ROAD], roadWidthMetres: 2 });
+    const wide = await bakeWith({ roads: () => [ROAD], roadWidthMetres: 6 });
+    const sum = (m: { data: Uint8Array }) => new Uint8Array(m.data).reduce((a, b) => a + b, 0);
+    assert.ok(sum(wide.path) > sum(narrow.path));
+  });
+
+  it("chunk seams agree: a road across a chunk edge is continuous", async () => {
+    const { bakeWorldPathMask } = await import("../src/terrain/mask-bake.js");
+    const bounds = { minChunk: -4, maxChunk: 3 };
+    const whole = bakeWorldPathMask(16, DEFAULT_TERRAIN_MASK_SPEC, bounds, [[[-60, 0.3], [60, 0.3]]], 3);
+    const n = 8 * res;
+    // Walk the row through the road's middle: no sample may jump more than one feather step from its neighbour.
+    const row = Math.floor((0.3 + 64) / (16 / res));
+    let worst = 0;
+    for (let x = 10; x < n - 10; x++) worst = Math.max(worst, Math.abs(whole[row * n + x] - whole[row * n + x - 1]));
+    assert.ok(worst < 40, `no seam step across chunk edges (worst ${worst})`);
+    // And down a column crossing the road: the profile is the same in every chunk column it passes.
+    const colA = [], colB = [];
+    for (let z = 0; z < n; z++) { colA.push(whole[z * n + 3 * res + 5]); colB.push(whole[z * n + 5 * res + 5]); }
+    assert.deepEqual(colA, colB, "the cross-section is identical in different chunk columns");
+  });
+
+  it("a road outside the world bakes nothing", async () => {
+    const { bakeWorldPathMask } = await import("../src/terrain/mask-bake.js");
+    const out = bakeWorldPathMask(16, DEFAULT_TERRAIN_MASK_SPEC, { minChunk: -4, maxChunk: 3 }, [[[500, 500], [600, 520]]], 3);
+    assert.equal(out.reduce((a, b) => a + b, 0), 0);
+  });
+});

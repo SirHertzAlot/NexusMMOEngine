@@ -184,6 +184,8 @@ async function main(): Promise<void> {
       // below, next to the spawn point. (When the survey is skipped as
       // unchanged, onSurvey never fires and the stored settlements
       // from the previous bake stand.)
+      // Their approach roads then bake into the mask's path channel.
+      roads: () => fortifiedSettlements.map((s) => s.approach.polyline),
       onSurvey: (survey) => {
         fortifiedSettlements = bakeSettlementFortifications(survey, {
           log: (l) => console.log(l),
