@@ -77,6 +77,18 @@ describe("Interpolator.sample", () => {
     assert.equal(i.sample(E, 0.5), undefined);
   });
 
+  it("holds the latest row once a newer tick omits the entity (stopped / post-teleport)", () => {
+    const i = new Interpolator();
+    pushAt(i, 1, 0);
+    pushAt(i, 2, 25);
+    // Empty or unrelated delta tick 3 means entity E stayed at 25.
+    i.push(3, []);
+
+    assert.equal(i.sample(E, 0)?.px, 25);
+    assert.equal(i.sample(E, 0.5)?.px, 25);
+    assert.equal(i.sample(E, 1)?.px, 25);
+  });
+
   it("clear() resets all history (fresh snapshot / reconnect)", () => {
     const i = new Interpolator();
     pushAt(i, 1, 0);

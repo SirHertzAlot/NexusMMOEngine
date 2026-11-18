@@ -50,8 +50,7 @@ Tick time is break + collapse + physics for the whole 16k-entity world (a quiet 
    spawn could name another entity (the 21 broken parts came back after the restart); the scene now records wire ids
    and poses at spawn time. Run it with `PERSIST=1 SCENE=... node scripts/collapse-playtest.mjs`.
 8. **Open: `valgrind:perf`** was not run (needs WSL and Linux addon builds).
-9. **Not seen in the client.** The carriers are hidden like colliders; whether the falling models look right (rotation
-   about the pivot, parts passing through each other, dust and pieces from DE1/DE2) needs a session with art.
+9. **Checked in the live client (`DE5` / `DE4c`, 2026-11-17).** Verified in headless Chromium against a live server spawning a 182-part synthesized `struct_12_Preset_House_06` (`315` scene nodes, `162` breakable parts) on loaded terrain colliders: manual `Mouse0` melee from ground level hits a grounded wall (`wall 125`, pivot `py = 1.32 m`, `HP 200 → 199.15`), damaging ground supports to 25% HP renders stage-3 `CrackOverlays` (`29` instances) + darkened stone + `DustPuffs`, and breaking the `29` ground supports cascades `76/133` upper parts (`> 0.5 m` drop, `maxFinalDrop = 11.34 m`, `minY = 0.07 m`, `0` parts below terrain) with mid-fall dust/debris trails and settled tilted rubble. Uncovered and fixed three client bugs along the way: `Interpolator.sample` holding `curr` when a newer tick omits a stopped/teleported entity (`currTick < latestTick`), `PostFx` unmounting `EffectComposer` when `!quality.effects` so `autoClearGuard` releases `gl.autoClear`, and `Trail.push` breaking movement ribbons across `> 6 m` teleports.
 
 ## The DE3b finding, for the record
 

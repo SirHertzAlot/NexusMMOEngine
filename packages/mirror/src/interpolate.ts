@@ -54,6 +54,7 @@ export type PushListener = (tick: number, rows: readonly TransformRow[]) => void
 export class Interpolator {
   private readonly frames = new Map<bigint, Frame>();
   private readonly listeners = new Set<PushListener>();
+  private latestTick = -1;
 
   /**
    * Hears every push, for a reader that keeps more history than the two
@@ -72,6 +73,7 @@ export class Interpolator {
    * frames with the same row (no interpolation until the next tick).
    */
   push(tick: number, rows: TransformRow[]): void {
+    if (tick > this.latestTick) this.latestTick = tick;
     for (const row of rows) {
       const f = this.frames.get(row.wireId);
       if (f && f.currTick !== tick) {
@@ -100,6 +102,7 @@ export class Interpolator {
   /** Clear all history (e.g. on a fresh snapshot / reconnect). */
   clear(): void {
     this.frames.clear();
+    this.latestTick = -1;
   }
 
   /** Sample the interpolated transform for one entity. */
@@ -107,7 +110,8 @@ export class Interpolator {
     const f = this.frames.get(wireId);
     if (!f) return undefined;
     const t = clamp01(alpha);
-    if (f.prevTick === f.currTick || t === 1) {
+    // An entity omitted from newer delta ticks did not move since currTick: hold curr instead of re-lerping prev -> curr.
+    if (f.prevTick === f.currTick || f.currTick < this.latestTick || t === 1) {
       const c = f.curr;
       return {
         px: c.px, py: c.py, pz: c.pz,
