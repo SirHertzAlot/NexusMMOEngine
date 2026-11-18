@@ -121,3 +121,21 @@ test("a part the break system removes while the scene spawns is registered as go
   assert.equal(col.length, 1);
   assert.ok(sim.resolveWireId(col[0]!) >= 0, "and its collider, spawned after, is its own live entity");
 });
+
+test("registers floor, stair step, and doorway jamb/lintel colliders alongside -col nodes", () => {
+  const h = house("h1", 0, 4);
+  h.children.push(
+    col("h1-p0-floor", 0, 0, 0) as never,
+    col("h1-p2-step-0", 2, 0, 0) as never,
+    col("h1-p2-step-1", 2, 0.3, 0) as never,
+    col("h1-p3-jamb-l", 3, 0, 0) as never,
+    col("h1-p3-jamb-r", 3, 0, 0) as never,
+    col("h1-p3-lintel", 3, 2, 0) as never,
+  );
+  const { got } = run([h]);
+  const parts = got[0]!.parts;
+  assert.equal(parts[0]!.colliderWires?.length, 1, "floor collider attached to part 0");
+  assert.equal(parts[1]!.colliderWires?.length, 1, "wall -col attached to part 1");
+  assert.equal(parts[2]!.colliderWires?.length, 2, "stair step colliders attached to part 2");
+  assert.equal(parts[3]!.colliderWires?.length, 3, "doorway jamb/lintel colliders attached to part 3");
+});

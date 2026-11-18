@@ -249,4 +249,22 @@ describe("CollapseSystem", () => {
     run(1);
     assert.equal(sys.stats.fallen, 0);
   });
+
+  it("immediately queues any part that has no support at rest when the building is registered", () => {
+    const sim = new SimWorld();
+    const sys = new CollapseSystem();
+    const floating = p("prop", [0, 8, 0], [1, 1, 1]);
+    const parts = [...HOUSE, floating];
+    const visuals = parts.map((h) => visual(sim, h.pos));
+    const floatCol = collider(sim, floating);
+    const floatColWire = sim.wireId(floatCol);
+    const specs: CollapsePartSpec[] = visuals.map((eid, i) => ({
+      eid,
+      colliders: i === parts.length - 1 ? [floatCol] : [],
+      part: parts[i]!,
+    }));
+    sys.registerBuilding(sim, "house-float", specs, { groundY: 0 });
+    assert.equal(sys.stats.queued, 1, "floating part is queued immediately on registration");
+    assert.equal(sim.resolveWireId(floatColWire), -1, "its static collider is dropped immediately");
+  });
 });

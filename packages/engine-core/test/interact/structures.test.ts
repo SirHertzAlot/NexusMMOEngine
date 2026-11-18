@@ -131,7 +131,7 @@ describe("buildings", () => {
 
 describe("content/structures.json", () => {
   // The parts a modular building is made of (DE4): they break away for good, and the building falls round the gap.
-  const PARTS = new Set(["wall", "pillar", "floor", "ceiling", "stairs", "railing", "structure"]);
+  const PARTS = new Set(["wall", "pillar", "floor", "ceiling", "stairs", "railing", "structure", "prop"]);
   it("parses, and every building kind stays broken until mended, every part kind breaks away", () => {
     const kinds = loadStructureBreakables(fileURLToPath(new URL("../../../../../content/structures.json", import.meta.url)));
     assert.ok(kinds.size > 20);

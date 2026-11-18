@@ -42,6 +42,7 @@
     "ceiling": {"health":120,"into":"remove","minStrength":14,"stages":[0.7,0.35]},
     "stairs": {"health":200,"into":"remove","minStrength":14,"stages":[0.7,0.35]},
     "railing": {"health":40,"into":"remove","minStrength":14,"stages":[0.7,0.35]},
-    "structure": {"health":150,"into":"remove","minStrength":14,"stages":[0.7,0.35]}
+    "structure": {"health":150,"into":"remove","minStrength":14,"stages":[0.7,0.35]},
+    "prop": {"health":60,"into":"remove","minStrength":10,"stages":[0.66,0.33]}
   }
 }

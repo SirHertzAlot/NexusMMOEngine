@@ -597,7 +597,7 @@ function registerCollapsibleBuildings(
       parts.set(group, g);
       continue;
     }
-    const col = /^(.*)-p(\d+)-col/.exec(r.id);
+    const col = /^(.*)-p(\d+)-(?:col|floor|step-|jamb-|lintel)/.exec(r.id);
     const wire = colliderWires.get(r.id);
     if (col && wire !== undefined) {
       const g = colliders.get(group) ?? new Map();
