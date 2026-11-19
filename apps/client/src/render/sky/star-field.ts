@@ -13,6 +13,7 @@
  */
 
 import * as THREE from "three";
+import { lerp, smooth01 } from "../../motion/primitives.js";
 
 export interface StarFieldOptions {
   /** Stars in each of the two Milky Way bands. */
@@ -69,9 +70,7 @@ function valueNoise(x: number, y: number, z: number): number {
     return (h >>> 0) / 4294967296;
   };
   const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-  const fade = (t: number): number => t * t * (3 - 2 * t);
-  const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi);
-  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+  const u = smooth01(x - xi), v = smooth01(y - yi), w = smooth01(z - zi);
   const c = (i: number, j: number, k: number): number => hash(xi + i, yi + j, zi + k);
   return lerp(
     lerp(lerp(c(0, 0, 0), c(1, 0, 0), u), lerp(c(0, 1, 0), c(1, 1, 0), u), v),

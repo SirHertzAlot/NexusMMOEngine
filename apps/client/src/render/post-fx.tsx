@@ -40,7 +40,7 @@ export interface PostFxProps {
   children?: React.ReactNode;
 }
 
-export function PostFx({ quality, screen, children }: PostFxProps): React.ReactElement {
+export function PostFx({ quality, screen, children }: PostFxProps): React.ReactElement | null {
   const underwater = useMemo(() => new UnderwaterEffect(), []);
   const toneMap = useMemo(() => new GTToneMapEffect(), []);
 
@@ -48,8 +48,13 @@ export function PostFx({ quality, screen, children }: PostFxProps): React.ReactE
     underwater.amount = screen.current.underwater;
   });
 
+  // Unmount EffectComposer when effects are disabled ("low" preset / software GPU):
+  // keeping <EffectComposer enabled={false}> leaves autoClearGuard holding gl.autoClear = false,
+  // which prevents R3F's default renderer from clearing color/depth buffers between frames.
+  if (!quality.effects) return null;
+
   return (
-    <EffectComposer enabled={quality.effects} multisampling={quality.msaa}>
+    <EffectComposer enabled multisampling={quality.msaa}>
       {quality.ao ? (
         <N8AO aoRadius={1.6} distanceFalloff={0.6} intensity={2.2} quality={quality.ao.quality} halfRes={quality.ao.halfRes} depthAwareUpsampling />
       ) : (

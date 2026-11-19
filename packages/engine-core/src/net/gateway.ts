@@ -116,6 +116,7 @@ import * as C from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
+import { EntityFieldTracker, projectEntityOverlay, resolveBuildCommit } from "../admin/live-overlay.js";
 import { applySet, SetArgsSchema } from "../admin/set.js";
 import { findEntities, FindArgsSchema } from "../admin/find.js";
 import { parseAppearanceArgs, applyAppearanceEdit } from "../admin/appearance.js";
@@ -196,7 +197,7 @@ import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
-import { AtomicSPSCQueue, packCommandToken } from "../lockless-ring.js";
+import { type DataPlaneCommandQueue, packCommandToken } from "../lockless-ring.js";
 import {
   LogProducer,
   LogProducerClient,
@@ -276,12 +277,13 @@ export interface GatewayOptions {
    */
   chatRules?: ChatRules;
   /**
-   * Lockless SPSC intent queue to the 30Hz Simulation Worker (PR #430 / Phase 2 data-plane topology).
+   * Lockless command queue to the 30Hz Simulation Worker (PR #430 / Phase 2 data-plane topology,
+   * upgraded to Dmitry Vyukov MPSC ring in PATCH-03).
    * When provided, validated player intent messages are packed into 32-bit tokens
    * (entity index + action code) and enqueued directly to the worker thread without
    * heap allocations.
    */
-  dataPlaneQueue?: AtomicSPSCQueue;
+  dataPlaneQueue?: DataPlaneCommandQueue;
   /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
   logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
@@ -363,6 +365,8 @@ export interface GatewayOptions {
    * EG9). Absent: the built-in constants. setSocial replaces them live.
    */
   social?: SocialRules;
+  /** Custom breakable damage stage thresholds keyed by assetHash or `assetHash:maxHealth` (DE1). */
+  damageStages?: Record<string, number[]> | (() => Record<string, number[]> | undefined);
   /** Needs rules: how long eating and drinking take (a cast; 0 at once). */
   needs?: { eatSeconds: number };
   /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
@@ -551,6 +555,8 @@ export interface GatewayOptions {
    * absent = every client gets the whole region (today's path).
    */
   interest?: InterestRadii;
+  /** Optional git SHA identifying the build running on this server (Graphify H4 staleness check). */
+  buildCommit?: string | null;
 }
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
@@ -896,11 +902,16 @@ export class Gateway {
       | "respawnAnchors"
       | "dataPlaneQueue"
       | "logger"
+      | "damageStages"
+      | "buildCommit"
     >
   > & { port: number };
+  readonly buildCommit: string | null;
+  readonly overlayTracker = new EntityFieldTracker();
   public readonly logger: LogProducerClient;
   private readonly systems: SimSystem[];
-  public readonly dataPlaneQueue?: AtomicSPSCQueue;
+  private readonly damageStages: GatewayOptions["damageStages"];
+  public readonly dataPlaneQueue?: DataPlaneCommandQueue;
   private dataPlaneEnqueuedIntents = 0;
   private dataPlaneDroppedIntents = 0;
   private readonly clock: () => number;
@@ -1038,6 +1049,7 @@ export class Gateway {
       admins: opts.admins ?? parseAdminList(process.env.MMO_ADMINS),
       devServer: opts.devServer ?? process.env.MMO_DEV_SERVER === "1",
     };
+    this.damageStages = opts.damageStages;
     if (!Number.isInteger(this.opts.startTick) || this.opts.startTick < 1) {
       throw new RangeError(
         `gateway: startTick must be an integer >= 1 (got ${opts.startTick})`,
@@ -1104,6 +1116,7 @@ export class Gateway {
     this.transportKind = opts.transport;
     this.sectorBroadcast = opts.sectorBroadcast ?? true;
     this.interest = opts.interest ?? null;
+    this.buildCommit = opts.buildCommit !== undefined ? opts.buildCommit : resolveBuildCommit();
     this.authSessions = new SessionManager({
       ttlMs: opts.sessionTtlMs,
       clock: this.clock,
@@ -1424,11 +1437,15 @@ export class Gateway {
     const dt = STEP_MS / 1000;
     // Each system's cost feeds the editor's Debug workspace (tick timings).
     const timings = this.tickTimings;
+    const overlay = this.overlayTracker;
     for (const s of this.systems) {
       const t0 = performance.now();
+      if (overlay.hasWatches) overlay.beforeSystem(sim, s.access);
       s.step(sim, dt);
+      if (overlay.hasWatches) overlay.afterSystem(sim, s.name, s.access);
       timings.recordSystem(s.name, performance.now() - t0);
     }
+    if (overlay.hasWatches) overlay.pruneExpired(tick);
     sim.emitTick(tick);
     const hits = this.sendHits(sim, tick);
     const life = this.sendLife(sim, tick);
@@ -3648,11 +3665,18 @@ export class Gateway {
   private runInspect(s: ClientSession, args: unknown): AdminResult {
     const parsed = InspectArgsSchema.safeParse(args ?? {});
     if (!parsed.success) {
-      return { kind: "admin", command: "inspect", ok: false, message: "usage: inspect {entity: <u64> | me}" };
+      return { kind: "admin", command: "inspect", ok: false, message: "usage: inspect {entity: <u64> | me, format?: text|json}" };
     }
     const target = this.resolveTarget(s, parsed.data.entity);
     if ("error" in target) {
       return { kind: "admin", command: "inspect", ok: false, message: target.error };
+    }
+    if (parsed.data.format === "json") {
+      const overlay = projectEntityOverlay(this.world, target.wireId, this.buildCommit, this.overlayTracker);
+      if (overlay === null) {
+        return { kind: "admin", command: "inspect", ok: false, message: `unknown entity ${parsed.data.entity}` };
+      }
+      return { kind: "admin", command: "inspect", ok: true, message: JSON.stringify(overlay) };
     }
     const dump = inspectEntity(this.world, target.wireId);
     if (dump === null) {
@@ -5047,6 +5071,7 @@ export class Gateway {
   }
 
   private sendWelcome(s: ClientSession): void {
+    const damageStages = typeof this.damageStages === "function" ? this.damageStages() : this.damageStages;
     const welcome: WelcomeMessage = {
       protocol: PROTOCOL_VERSION,
       player_entity: (s.playerEntity as bigint).toString(),
@@ -5057,6 +5082,7 @@ export class Gateway {
       ...(this.worldInfo ? { world: this.worldInfo } : {}),
       ...(this.dayClock ? { day: this.dayClock } : {}),
       weather: this.weatherOverride,
+      ...(damageStages ? { damageStages } : {}),
       ...(s.character ? { character: s.character } : {}),
     };
     this.sendEnvelope(s, MessageType.Welcome, encodeControl(welcome));
@@ -5535,7 +5561,7 @@ export class Gateway {
         this.sendError(s, 4005, "not enough gold");
         return;
       }
-      if (!this.items || !this.items.store.hasRoom(meChar)) {
+      if (!this.items || !this.items.store.canFit(meChar, [def])) {
         this.sendError(s, 4005, "your bag is full");
         return;
       }
@@ -6146,6 +6172,13 @@ export class Gateway {
       result = hands?.some((h) => this.body!.armFactor(this.world, avatar, h) === 0)
         ? { ok: false as const, error: "that hand can't hold anything" }
         : this.items.equip(holder, a.item);
+    } else if (a.action === "move") {
+      result = this.items.move(holder, a.item, { x: a.x, y: a.y, rot: a.rot === true });
+    } else if (a.action === "split") {
+      const to = a.x !== undefined && a.y !== undefined ? { x: a.x, y: a.y, rot: a.rot === true } : undefined;
+      result = this.items.split(holder, a.item, a.count, to);
+    } else if (a.action === "combine") {
+      result = this.items.combine(holder, a.from, a.into);
     } else {
       result = this.items.unequip(holder, "hand" in a ? a.hand : a.slot);
     }

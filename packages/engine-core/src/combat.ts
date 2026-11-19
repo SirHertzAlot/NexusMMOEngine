@@ -58,6 +58,7 @@ import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velo
 import { blowRng, type BodySystem } from "./body.js";
 import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 
 /** What a striker swings: the rules technique, the item's physics and its reach (m). */
@@ -125,12 +126,25 @@ export interface CombatSkills {
 /** How hard a fight is taken to be for training, by default (combat.json `resolution.fightDifficulty`). */
 export const FIGHT_DIFFICULTY = DEFAULT_COMBAT_TUNING.resolution.fightDifficulty;
 
+/** A target's body for hitting: its middle, and how far its box reaches from it. */
+export interface HitBody {
+  x: number;
+  y: number;
+  z: number;
+  /** Half its width/depth, metres: the reach is measured to its edge, not its middle. */
+  rx: number;
+  /** Half its height, metres. */
+  ry: number;
+}
+
 export interface CombatDamage {
   hooks: RuleHooks;
   /** The weapon an entity holds; null or absent means fists. */
   weaponOf?: (e: number) => Weapon | null;
   /** The share of a blow the target's worn armour lets through (0..1); absent means 1. */
-  armourOf?: (target: number) => number;
+  armourOf?: (target: number, kind?: "cut" | "blunt" | "thrust") => number;
+  /** Damage kind (`cut`, `blunt`, `thrust`) for a technique id so per-kind armour mitigation applies. */
+  techniqueKind?: (technique: string) => "cut" | "blunt" | "thrust" | undefined;
   /** Skills behind power and defence; absent means skill 0 and no training. */
   skills?: CombatSkills;
   /** Body parts (M2): blows land on parts; absent means whole-body Health. */
@@ -149,6 +163,13 @@ export interface CombatDamage {
   damageScale?: (source: number, target: number) => number;
   /** What the kind of a blow does to its target (a breakable prop weak or proof against it). Absent means 1. */
   kindScale?: (target: number, kind: string) => number;
+  /**
+   * Where a target really is, when its `Transform` is not it (DE4c): a modular building part is placed at its model's
+   * pivot (the top of a wall, 2.5 m up), so reach, cone and height are measured to its middle, and a long wall is
+   * reached anywhere along it (`rx`: its horizontal half-size; `ry`: its vertical half-size). Absent or undefined for
+   * a target: its Transform, as a point.
+   */
+  hitBody?: (target: number) => HitBody | undefined;
   /** The rules a blow is resolved by, read each strike (a reload applies at once); absent: the engine defaults. */
   tuning?: () => CombatTuning;
 }
@@ -202,6 +223,24 @@ export function aimFromLookPitch(
 
 export class CombatSystem implements SimSystem {
   readonly name = "combat";
+  readonly access: SystemAccess = {
+    system: "combat",
+    reads: [
+      "God",
+      "Stamina",
+      { component: "Action", fields: ["move", "seq", "started", "yaw"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "PlayerIntent", fields: ["buttons", "lookPitch", "lookYaw", "mx", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move", "seq", "started", "yaw"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+  };
   private readonly query = defineQuery([PlayerIntent, Velocity, Action]);
   /** Buttons held last tick, per entity (presses are the new bits). */
   private readonly held = new Map<number, number>();
@@ -360,10 +399,11 @@ export class CombatSystem implements SimSystem {
       const t = ids[i] as number;
       if (t === e || Health.current[t] <= 0) continue;
       if (dmg.canHit && !dmg.canHit(e, t)) continue; // PvP gate: duels and hostile pairs only
-      const dx = Transform.px[t] - Transform.px[e];
-      const dz = Transform.pz[t] - Transform.pz[e];
+      const hb = dmg.hitBody?.(t);
+      const dx = (hb ? hb.x : Transform.px[t]) - Transform.px[e];
+      const dz = (hb ? hb.z : Transform.pz[t]) - Transform.pz[e];
       const d = Math.hypot(dx, dz);
-      if (d > reach || Math.abs(Transform.py[t] - Transform.py[e]) > res.maxHeightDifferenceM) continue;
+      if (d - (hb?.rx ?? 0) > reach || Math.abs((hb ? hb.y : Transform.py[t]) - Transform.py[e]) - (hb?.ry ?? 0) > res.maxHeightDifferenceM) continue;
       if (d > 1e-4 && (dx * fx + dz * fz) / d < coneCos) continue;
       let outcome: HitEvent["outcome"] = "hit";
       let amount = 0;
@@ -390,7 +430,8 @@ export class CombatSystem implements SimSystem {
           ? dmg.hooks.resolveLanding({ aim: aimedPart, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
           : "torso";
         const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
-        const armourFactor = dmg.armourOf?.(t) ?? 1;
+        const kind = dmg.techniqueKind?.(w.technique);
+        const armourFactor = dmg.armourOf?.(t, kind) ?? 1;
         const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, armourFactor, familiarity });
         if (w.family) sk?.useFamily?.(e, w.family);
         amount = blow.amount * arm;

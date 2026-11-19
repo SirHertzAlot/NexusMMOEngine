@@ -91,9 +91,18 @@ The licensed art lives in `/assets/`, which is never committed.
 | `npm run editor:test` | The editor's tests |
 | `npm run test:gateway -w @mmo-engine/engine-core` | The gateway and network tests |
 | `npm run test:perf -w @mmo-engine/engine-core` | The save-latency budget test |
-| `npm run test:addon-<name>` | One native addon's tests: `geometry`, `navigation`, `physics`, `picg`, `procgen` |
+| `npm run test:addon-<name>` | One native addon's tests: `fanout`, `geometry`, `navigation`, `physics`, `picg`, `procgen` |
+| `npm run test:scripts` | The tests for the repo's own scripts (`scripts/test/`) |
+| `npm run lint` | The no-console guard: diagnostics go through the logging ring, and `console.*` outside the allowed boot and fatal lines fails the check (budgets live in `scripts/lint-no-console.mjs`) |
+| `npm run smoke:editor-load` | Starts the editor's dev server, opens it in headless Chromium and fails on a page error, a React hooks-order warning or a toolbar that never renders |
 | `npm run valgrind:memcheck [-- <addon> ...]` | Every addon's tests under valgrind memcheck. Fails on our memory errors and leaks |
 | `npm run valgrind:perf [-- --check \| --update]` | Instruction counts for the headless workloads against `perf/callgrind-baseline.json` |
+| `npm run valgrind:check [-- --threshold 3]` | A gate over the results already in `valgrind-out/` (it runs nothing): fails on new engine errors or a workload slower than the baseline |
+| `npm run valgrind:record [-- --promote]` | Snapshots the current valgrind results into the local history; `--promote` writes them to `perf/history.json`, which does not exist until someone promotes a run |
+| `npm run valgrind:dashboard` | A local dashboard (loopback only) for memcheck, callgrind and history results |
+| `npm run valgrind:build-debug` | Debug builds of the addons so valgrind reports file and line |
+| `npm run valgrind:helgrind` | The threaded addons under Helgrind (data races) |
+| `npm run valgrind:tsan` | ThreadSanitizer run (not in CI) |
 
 A native addon change needs the addon rebuilt (`npx node-gyp rebuild` in
 its folder) before engine-core's tests use it.
@@ -107,6 +116,12 @@ its folder) before engine-core's tests use it.
 | `npm run bench:transport -w @mmo-engine/engine-core -- [clients…] [--seconds 8]` | uWebSockets.js against ws under game load |
 | `npm run bench:e5 [-- B1 B4]` | The edge/core split benchmarks B1 to B6 (about 15 minutes). Writes `docs/EDGE-SPLIT-RESULTS.md` |
 | `npm run stress:world [-- --window 30 --sweep 1,2,4,6,8 --entities 500 --players 40]` | World-server stress: regions per box until a stop condition breaks |
+| `npm run bench:persist` | The persistence save benchmark |
+| `npm run bench:ragdoll` | The ragdoll cost gate on the physics benchmark harness (see [RAGDOLL-COST-GATE.md](RAGDOLL-COST-GATE.md)) |
+| `npm run bench:ragdoll:addon` | The same through the addon, with the contact cap |
+| `npm run bench:sleep:addon` | The sleep-threshold comparison through the addon |
+| `npm run bench:threads:addon` | The ragdoll step with the thread pool, against one thread |
+| `npm run bench:contact-cap:addon` | The contact cap's effect through the addon |
 
 ## Other servers
 
@@ -136,6 +151,14 @@ channel. `curl localhost:3000/health` reports the link
 
 Prometheus and Grafana configs for `/metrics` are in `docs/prometheus/`
 and `docs/grafana/`.
+
+## Other tools
+
+| Command | What it does |
+|---|---|
+| `npm run deploy:local [-- --port <n>]` | Deploys the local package (EA19) |
+| `npm run settlement:region -- --world <file>` | Plans a region of towns from a world file (see [SETTLEMENTS.md](SETTLEMENTS.md)) |
+| `npm run crawler:improvements` | Crawls research sources (OpenAlex, Crossref, arXiv) for data and memory management ideas relevant to the engine |
 
 ## Server environment
 
@@ -197,6 +220,18 @@ arguments as JSON (`teleport {"x":10,"z":-4}`), or `me` for yourself
 | `vendor` | `{sub, ...}` | Shops: `define {id, name?, buyback?}`, `stock {id, def\|name, price, qty?}`, `spawn {id, x?, z?}`, `attach {id, target}`, `detach {target}`, `disable\|enable {id}`, `remove {id}`, `list` |
 | `time` | `{scale?}` / `{hour?}` | Time controls (see `help`) |
 | `weather` | `{kind?}` | Weather controls (see `help`) |
+| `god` | `{on, entity?}` | Godhood on or off: every skill peaked; switching it off keeps what was learned |
+| `noclip` | `{on, entity?}` | Walk through the world on or off |
+| `addcomponent` | `{entity, component}` | Give an entity a component it lacks, set to its defaults. Refused if it is present or has no defaults |
+| `removecomponent` | `{entity, component}` | Take a component off an entity (not the God and Noclip tags, which their toggles own) |
+| `appearance` | `{entity, args}` | View and edit a character's look live; parts and colours are checked against the character catalog |
+| `find` | `{query}` | Entities matching a wire-id prefix, a component name or a creature name |
+| `interest` | `{mode}` | `"all"` shows you everything, `"near"` what a player would see (the debugger's view switch) |
+| `bots` | `{count, ...}` | Spawn 1 to 1000 bot clients |
+| `residents` | `{npc?}` | Where a named resident stands; with no name, a summary of the town |
+| `loglevel` | `{producer?, level}` | Change the log level while running (`trace`, `debug`, `info`, `warn`, `error`); errors are never masked |
+| `pause`, `resume` | | Stop and restart the tick |
+| `step` | | Run one tick while paused (refused unless paused) |
 
 Worked examples for placing and managing everything in-game:
 [ADMIN-COOKBOOK.md](ADMIN-COOKBOOK.md).

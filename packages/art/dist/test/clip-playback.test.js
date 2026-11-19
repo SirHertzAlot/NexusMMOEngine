@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { ClipId } from "@mmo-engine/protocol";
-import { DEFAULT_CLIP_MAP, LAYER_BASE, LAYER_UPPER, checkClipMap, clampRate, crossfadeWeights, indexClipMap, layersOf, nextClipId, parseClipMap, planClip, playhead, secondsSince, } from "../src/character/index.js";
+import { DEFAULT_CLIP_MAP, LAYER_BASE, LAYER_UPPER, animationUpdateRate, checkClipMap, clampRate, crossfadeWeights, indexClipMap, layersOf, nextClipId, parseClipMap, planClip, playhead, secondsSince, } from "../src/character/index.js";
 const map = indexClipMap(DEFAULT_CLIP_MAP);
 const row = (over = {}) => ({
     clipId: ClipId.Walk,
@@ -95,6 +95,13 @@ describe("planClip", () => {
         const a = planClip(row({ clipId: ClipId.AttackSwordA, startTick: 100 }), map, 101, 30);
         const b = planClip(row({ clipId: ClipId.AttackSwordA, startTick: 130 }), map, 131, 30);
         assert.notEqual(a.key, b.key);
+    });
+});
+describe("animation LOD update rate", () => {
+    it("scales animation update rate with the resident tier", () => {
+        assert.equal(animationUpdateRate("full", { fullHz: 30 }), 30);
+        assert.equal(animationUpdateRate("coarse", { coarseHz: 10 }), 10);
+        assert.equal(animationUpdateRate("none"), 0);
     });
 });
 describe("playhead", () => {

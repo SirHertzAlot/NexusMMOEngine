@@ -35,7 +35,7 @@ import {
 /** How many block rows a town beside water may grow to make up for its wet parcels. */
 const MAX_EXTRA_BLOCKS = 3;
 
-export const GENERATOR_VERSION = "settlement-gen/0.8.0";
+export const GENERATOR_VERSION = "settlement-gen/0.9.0";
 export const MANIFEST_FORMAT = "mmo-settlement/1";
 
 export interface SettlementRequest {

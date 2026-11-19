@@ -1,7 +1,6 @@
 # Dungeons, creatures, loot and crafting: generation by WFC
 
-Status: **design**. Only D1 is built so far (the dungeon generator and `npm run dungeon:bake`,
-`packages/dungeon`). Everything else here is a proposal to review.
+Status: **built, kept as the design record.** Every slice in §9 is done: the WFC solver and formations (W1 to W3), dungeon layouts, dressing, furnishing, the editor view and instances (D1 to D4, DF1 to DF3), species (S1), ranks and the composer (R1, R2), the loot pool and its drops (L1 to L3), crafting (C1) and quests and dialog (P1). See the [roadmap](ROADMAP.md). Where this document's proposals differ from the repo, the repo is right; §8 says where.
 
 This covers:
 
@@ -22,11 +21,11 @@ it; ours is one configuration of it.
 | Terrain bake: survey, erosion, rivers, biomes, climate | built (`bake-world.ts`, `terrain/`) |
 | Ecology: layered, noise-driven scenery placement (groves, scree, flower patches) | built (`procgen/ecology.ts`, `content/ecology/`) |
 | Scatter: PCG graph cooking; the C++ addon is the runtime authority | built (`packages/scatter`, `packages/addons/scatter`) |
-| Region ↔ world server: registry, migration, async batch reports | spec + slice A (`docs/WORLD-SERVER-SPEC.md`, `packages/world-server`) |
+| Region ↔ world server: registry, migration, async batch reports | built (`docs/WORLD-SERVER-SPEC.md`, `packages/world-server`) |
 | Combat, bots, characters, rules and hooks | built (`combat.ts`, `bots.ts`, `characters/`, M0 rules) |
-| Dungeon layouts + bake | **D1, built** (`packages/dungeon`) |
-| WFC | **none yet**: the terrain uses the climate survey and ecology layers, not WFC |
-| Species, ranks, items, loot, crafting | none yet |
+| Dungeon layouts, dressing, furnishing, instances, editor view | built (`packages/dungeon`; D1 to D4, DF1 to DF3) |
+| WFC | built (`packages/wfc`, `packages/placement`): the settlement and formation generators use it. The terrain bake itself still uses the climate survey and ecology layers, not WFC |
+| Species, ranks, items, loot, crafting | built (`packages/species`, `packages/compose`, `packages/crafting`) |
 
 ## 2. The generation stack
 
@@ -432,6 +431,8 @@ Materials, recipes and ranks are data (`content/items/`, `content/materials/`,
 
 ## 8. Data layout (proposed)
 
+*This is the layout as proposed. The repo's `content/` differs: species live in `content/species/`, materials in `content/materials/`, recipes in `content/crafting/recipes.json`, dungeons in `content/dungeons/`, and the loot pool and items are baked output, so there are no `content/items/` or `content/recipes/` folders.*
+
     content/
       rules/            M0 (built)
       ecology/          scenery plans (built); gains creature and camp layers
@@ -445,7 +446,7 @@ Materials, recipes and ranks are data (`content/items/`, `content/materials/`,
 
 ## 9. Build order
 
-Each item is its own PR.
+Each item was its own PR. **All of these are built (2026-11-11).**
 
 1. **D1: dungeon layouts + `dungeon:bake`.** Built.
 2. **W1: `packages/wfc`.** The graph solver (entropy, propagation, budgets, pins,

@@ -9,6 +9,16 @@
  */
 
 import { validateScene, type SceneDoc, type SceneNode } from "@mmo-engine/scene";
+import {
+  DRESSED_KINDS,
+  buildingToSceneNodes,
+  checkSettlementScene,
+  dressGarden,
+  isOpenKind,
+  synthesizeBuildingForParcel,
+  type DecompositionLibrary,
+  type GardenModels,
+} from "@mmo-engine/synthesis";
 import type { SettlementManifest } from "./generate.js";
 import { scaledLayout, townCentreMm } from "./layout.js";
 import { buildingHeightM, type SettlementRules } from "./rules.js";
@@ -23,6 +33,8 @@ function pick(id: string, n: number): number {
 
 /** Space left between a building and its parcel's edge, each side, metres. */
 const MARGIN_M = BUILDING_MARGIN_MM / 1000;
+/** The scene format's smallest footprint, metres: a thin prop (a fence) at a large building scale is authored no thinner. */
+const MIN_SIZE_M = 0.1;
 /** A paved street's paving, metres thick. */
 const PAVING_M = 0.1;
 /** The town square's paving, metres thick. */
@@ -37,6 +49,27 @@ export interface SceneOptions {
   origin: [number, number];
   /** Art model ids per structure kind (`buildArtMap`); a structure takes one by its id, a kind with none stays a box. */
   art?: Record<string, string[]>;
+  /** Optional Unity scene DecompositionLibrary: replaces coarse placeholder boxes with enterable multi-part WFC structures. */
+  synthesis?: DecompositionLibrary;
+  /**
+   * Models to dress gardens and churchyards with (`pickGardenModels`): a formal layout of equal planters, plants and
+   * ornamental trees instead of a stand-in box. Open ground is never grown through the building synthesis.
+   */
+  gardens?: GardenModels;
+}
+
+/** Unsigned 32-bit FNV-1a hash used as deterministic synthesis seed per parcel. */
+function fnvSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0 || 1;
+}
+
+function defaultVendorForArchetype(archetype: string): string {
+  const a = archetype.toLowerCase();
+  if (a === "smithy" || a === "forge" || a === "workshop") return "blacksmith";
+  if (a === "tavern" || a === "inn") return "innkeeper";
+  return "general-store";
 }
 
 export function settlementScene(manifest: SettlementManifest, rules: SettlementRules, opts: SceneOptions): SceneDoc {
@@ -57,11 +90,44 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
   const children: SceneNode[] = manifest.structures.map((s) => {
     const p = parcels.get(s.parcel)!;
     const a = rules.archetypes[s.archetype]!;
+    const pos: [number, number, number] = [(p.center.x - cx) / 1000, raised.get(p.id) ?? 0, (p.center.z - cz) / 1000];
+    if (opts.gardens && DRESSED_KINDS.has(s.archetype)) {
+      return dressGarden({
+        id: s.id,
+        kind: s.archetype as "garden" | "churchyard",
+        widthM: Math.max(2, pw / 1000 - 2 * MARGIN_M),
+        depthM: Math.max(2, pd / 1000 - 2 * MARGIN_M),
+        models: opts.gardens,
+        seed: fnvSeed(`${manifest.settlementId}:${s.id}:${s.archetype}`),
+        position: pos,
+        yawDeg: p.facing,
+      });
+    }
+    // Open ground (a garden, a churchyard, a park, a lot) is not a building: never grown through the enclosed templates.
+    if (opts.synthesis && !openGround.has(s.archetype) && !isOpenKind(s.archetype) && opts.synthesis.structures.length > 0) {
+      const plotW = Math.max(2, pw / 1000 - 2 * MARGIN_M);
+      const plotD = Math.max(2, pd / 1000 - 2 * MARGIN_M);
+      const bld = synthesizeBuildingForParcel(
+        opts.synthesis,
+        s.archetype,
+        plotW,
+        plotD,
+        0,
+        fnvSeed(`${manifest.settlementId}:${s.id}:${s.archetype}`),
+      );
+      return buildingToSceneNodes(bld, {
+        id: s.id,
+        archetype: s.archetype,
+        position: pos,
+        yawDeg: p.facing,
+        vendorTemplate: defaultVendorForArchetype(s.archetype),
+      });
+    }
     // The building turns to face its street; its width runs along the street (the parcel's frontage).
     return {
       id: s.id,
       name: s.archetype,
-      transform: { position: [(p.center.x - cx) / 1000, raised.get(p.id) ?? 0, (p.center.z - cz) / 1000], rotation: [0, p.facing, 0] },
+      transform: { position: pos, rotation: [0, p.facing, 0] },
       components: {
         Structure: { kind: s.archetype, asset: asset(s.id, s.archetype), width: (pw / 1000 - 2 * MARGIN_M) / f, depth: (pd / 1000 - 2 * MARGIN_M) / f, height: buildingHeightM(a, rules.architecture), entrances: a.entrances ?? 1, capacity: a.capacity ?? 0 },
         // Parks and empty lots are open ground: walked through, not round.
@@ -143,7 +209,7 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       }
       continue;
     }
-    children.push({ id: p.id, name: p.kind, transform: { position: pos(p.center.x, p.center.z, (p.yMm ?? 0) / 1000), rotation: [0, p.yawDeg, 0] }, components: { Structure: { kind: p.kind, asset: asset(p.id, p.kind), width: p.sizeMm[0] / 1000 / f, depth: p.sizeMm[1] / 1000 / f, height: p.heightMm / 1000 } } });
+    children.push({ id: p.id, name: p.kind, transform: { position: pos(p.center.x, p.center.z, (p.yMm ?? 0) / 1000), rotation: [0, p.yawDeg, 0] }, components: { Structure: { kind: p.kind, asset: asset(p.id, p.kind), width: Math.max(MIN_SIZE_M, p.sizeMm[0] / 1000 / f), depth: Math.max(MIN_SIZE_M, p.sizeMm[1] / 1000 / f), height: p.heightMm / 1000 } } });
   }
   // What players gather round the town: each node a Structure for its look (a fishing spot is walked over, on the
   // water) and a ResourceNode for what it gives.
@@ -159,12 +225,15 @@ export function settlementScene(manifest: SettlementManifest, rules: SettlementR
       },
     });
   }
-  const scene: SceneDoc = {
+  const built: SceneDoc = {
     version: 1,
     name: `settlement-${manifest.settlementId}`,
     kind: "world",
     nodes: [{ id: `settlement-${manifest.settlementId}`, name: `Settlement ${manifest.settlementId}`, transform: { position: [opts.origin[0], 0, opts.origin[1]] }, children }],
   };
+  // A synthesized building keeps only its connected, grounded parts: one touching nothing or hanging in the air goes,
+  // with its collider (open ground is dressed on its own and left alone).
+  const scene = opts.synthesis ? checkSettlementScene(built, { stripOpen: false }).scene : built;
   const issues = validateScene(scene);
   if (issues.length) throw new Error(`settlement ${manifest.settlementId} is not a valid scene: ${issues.map((i) => `${i.path || "(scene)"} ${i.message}`).join("; ")}`);
   return scene;

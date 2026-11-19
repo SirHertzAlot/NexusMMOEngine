@@ -6,6 +6,7 @@
  */
 
 import type { HitMessage, LifeMessage, TelegraphMessage } from "@mmo-engine/protocol";
+import { CombatNumbers } from "./combat-numbers.js";
 
 /** How long a struck body glows red, seconds. */
 export const FLASH_SECONDS = 0.15;
@@ -17,6 +18,8 @@ export class CombatFeedback {
   readonly flashUntil = new Map<bigint, number>();
   /** Telegraph messages (0x1e) not yet drawn; the frame loop drains it. */
   readonly telegraphs: TelegraphMessage[] = [];
+  /** Floating damage numbers (CF2); the frame loop updates and draws them. */
+  readonly numbers = new CombatNumbers();
 
   /**
    * A blow landed. Hits and blocks flash the target; a blow between the
@@ -25,6 +28,7 @@ export class CombatFeedback {
   hit(h: HitMessage, player: bigint | null, now = performance.now() / 1000): void {
     const source = BigInt(h.source);
     const target = BigInt(h.target);
+    this.numbers.hit(h, player, performance.now());
     if (h.outcome !== "dodged") this.flashUntil.set(target, now + FLASH_SECONDS);
     if (player === null) return;
     if (source === player && target !== player) this.target = target;

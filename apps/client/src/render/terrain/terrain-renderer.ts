@@ -24,6 +24,7 @@ import { chunkNormals, SIDE } from "./terrain-mesh.js";
 import { BLOCK, blockGeometry, blockOf, buildBlockGeometry, chunkCost, ringOf, strideForRing, type LodChunk } from "./terrain-lod.js";
 import { createTerrainMaterial, createTerrainUniforms, NO_SEA, NO_SNOW } from "./terrain-material.js";
 import { surfaceLayerMap, type Surfaces } from "./surfaces.js";
+import { decodeTerrainMaskAsset } from "@mmo-engine/art/browser";
 
 /** Decode chunk (cx, cz) from the chunkId u64 (see spawnChunk/chunkIdFor). */
 export function chunkCoords(chunkId: bigint): { cx: number; cz: number } {
@@ -87,6 +88,7 @@ export class TerrainRenderer {
   private camChunk: { cx: number; cz: number } | null = null;
   private far: THREE.Mesh | null = null;
   private ground: THREE.DataTexture | null = null;
+  private terrainMaskTexture: THREE.DataTexture | null = null;
   private mask: LoadedMask | null = null;
   private maskDirty = false;
   private readonly spacing: number;
@@ -95,6 +97,51 @@ export class TerrainRenderer {
   private layerMap: THREE.DataTexture | null = null;
 
   /** `workers`: build block meshes off the main thread; without, update() builds them inline. */
+  /**
+   * Fetch the baked terrain mask (terrain-mask.bin, encodeTerrainMaskAsset)
+   * and blend it over the ground. A missing file (404, or no fetch) clears the
+   * mask and returns false: the terrain draws as before.
+   */
+  async loadTerrainMask(url: string, fetchFn: typeof fetch = fetch): Promise<boolean> {
+    try {
+      const res = await fetchFn(url);
+      if (!res.ok) {
+        this.clearTerrainMask();
+        return false;
+      }
+      const asset = decodeTerrainMaskAsset(new Uint8Array(await res.arrayBuffer()));
+      const tex = new THREE.DataTexture(asset.rgba, asset.width, asset.depth, THREE.RGBAFormat);
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearFilter;
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.needsUpdate = true;
+      this.terrainMaskTexture?.dispose();
+      this.terrainMaskTexture = tex;
+      this.setTerrainMask(tex, asset.originX, asset.originZ, asset.width, asset.depth, asset.cell);
+      return true;
+    } catch (e) {
+      console.info(`[terrain] mask not loaded: ${e instanceof Error ? e.message : String(e)}`);
+      this.clearTerrainMask();
+      return false;
+    }
+  }
+
+  /**
+   * Blend the baked terrain mask (packTerrainMask) over the ground. The
+   * texture covers the world rect (originX, originZ, width × cell, depth × cell).
+   */
+  setTerrainMask(texture: THREE.Texture, originX: number, originZ: number, width: number, depth: number, cell: number): void {
+    this.uniforms.uMask.value = texture;
+    this.uniforms.uMaskRect.value.set(originX, originZ, width * cell, depth * cell);
+    this.uniforms.uHasMask.value = 1;
+  }
+
+  /** Stop blending the mask (the ground colour and cel shading are unchanged). */
+  clearTerrainMask(): void {
+    this.uniforms.uMask.value = null;
+    this.uniforms.uHasMask.value = 0;
+  }
+
   constructor(private readonly chunkWorldSize: number, private readonly workers?: WorkerRequester) {
     this.spacing = chunkWorldSize / (SIDE - 1);
     this.group.name = "terrain";

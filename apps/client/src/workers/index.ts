@@ -9,6 +9,7 @@ import { terrainBlockHandler } from './handlers/terrain-block.js';
 import { chunkDecomposeHandler } from './handlers/chunk-decompose.js';
 import { assetDecodeHandler } from './handlers/asset-decode.js';
 import { weatherHandler } from './handlers/weather.js';
+import { bakedPlaceHandler } from './handlers/baked-place.js';
 
 const runtime = new WorkerRuntime({
   maxRetries: 3,
@@ -24,5 +25,6 @@ runtime.registerHandler('terrainBlock', terrainBlockHandler);
 runtime.registerHandler('chunkDecompose', chunkDecomposeHandler);
 runtime.registerHandler('assetDecode', assetDecodeHandler);
 runtime.registerHandler('weather', weatherHandler);
+runtime.registerHandler('bakedPlace', bakedPlaceHandler);
 
 console.log('[Worker] Terrain/PCG/BVH/AssetDecode/Weather worker ready');

@@ -307,6 +307,25 @@ the resolver now refuses on it, falling back exactly as before. Both
 builtins are expressed in the new shape. Rendering the shell from the
 resolved template is T2; template documents on disk are T3.
 
+**T2 — the shell renders from the pin (2026-11-11).** The shell slot is
+live. `INTERFACE_COMPONENTS` gains the shell-chrome types (menu bar,
+workspace navigation, tool bar, view tabs, workspace stage, dock with a
+`side` in its config, status bar); the built-in registry registers
+`current-shell` v1 — a regions tree mirroring App.tsx's arrangement
+exactly — and `legacy-shell` v1, a minimal menu-bar/stage/status-bar
+frame. The resolver's legacy fallback is per slot, so a refused shell
+pin falls back to `legacy-shell` instead of throwing. `composeShell`
+(`ui/shell-composition.ts`) walks the resolved definition into a mount
+list; App.tsx gates every surface on it (MenuBar, the workspace tab
+strip, Toolbar, the three docks and their dividers, the view tabs, the
+stage, the status bar), with the shell bootstrap in
+`ui/shell-presentation.ts` mirroring the authoring slot's. The default
+pin is `current-shell`, so the shipped UI is unchanged; the tab bar is
+now a template artifact — a shell template that omits workspace
+navigation renders without it, and rollback is a pin move. Dock
+visibility/sizes remain layout-store state: templates decide
+composition, not geometry.
+
 - **Version immutability.** Published versions never change. An edit
   creates the next version as a draft; the earlier published version is
   byte-identical afterwards.

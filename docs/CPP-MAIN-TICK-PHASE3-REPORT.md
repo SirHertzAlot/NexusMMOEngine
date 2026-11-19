@@ -71,7 +71,7 @@ Per `docs/CPP-MAIN-TICK-SPEC.md` §5 Phase 3:
 
 ## Parity Verification Proof
 
-The test suite [`packages/engine-core/test/native-systems-parity.test.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/test/native-systems-parity.test.ts) evaluates exact simulation equality between TypeScript baseline systems and native implementations over 1,000 entities across 50 simulation steps.
+The test suite [`packages/engine-core/test/native-systems-parity.test.ts`](../packages/engine-core/test/native-systems-parity.test.ts) evaluates exact simulation equality between TypeScript baseline systems and native implementations over 1,000 entities across 50 simulation steps.
 
 ```
 ▶ Phase 3: System-by-System Migration & Parity Verification
@@ -100,7 +100,7 @@ The test suite [`packages/engine-core/test/native-systems-parity.test.ts`](file:
 
 ## Benchmark Telemetry & Performance Analysis
 
-Measurements recorded on local host using [`packages/engine-core/test/bench/phase3-systems.bench.mjs`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/test/bench/phase3-systems.bench.mjs) with 100 warm iterations per measurement.
+Measurements recorded on local host using [`packages/engine-core/test/bench/phase3-systems.bench.mjs`](../packages/engine-core/test/bench/phase3-systems.bench.mjs) with 100 warm iterations per measurement.
 
 ### 1. Benchmark Results Table
 

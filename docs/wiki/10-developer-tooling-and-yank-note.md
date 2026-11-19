@@ -23,7 +23,7 @@ To fulfill these requirements, **Yank Note** (`purocean/yn`) is incorporated int
 | Feature | Developer Benefit | In-Engine Application |
 | :--- | :--- | :--- |
 | **Monaco Editor Kernel** | VS Code editing experience with multi-cursor, syntax highlighting, and code folding. | Seamless editing of engine wiki documents and FlatBuffers schemas. |
-| **Runnable Code Blocks** | In-note execution of Node.js, Python, and shell scripts with inline output display. | 1-click execution of test suites (`npm test -w @mmo-engine/protocol`) and benchmarks directly from docs. |
+| **Runnable Code Blocks** | In-note execution of Node.js, Python, and shell scripts with inline output display. | 1-click execution of test suites (`npm test -w @mmo-engine/protocol`, which builds first) and benchmarks directly from docs. |
 | **HTML Applets & Reveal.js** | Embeds interactive web components, custom HTML/JS widgets, and presentations. | Embedding real-time simulation visualizers and telemetry monitors. |
 | **Plugin Architecture** | Thin, powerful JavaScript plugin API via `window.registerPlugin`. | Custom engine inspector plugins, webrpc schema browsers, and build shortcuts. |
 | **Document Encryption** | Frontend client-side encryption for `.c.md` files. | Safely keeping private staging configs, production keys, and deployment profiles locally. |
@@ -33,64 +33,51 @@ To fulfill these requirements, **Yank Note** (`purocean/yn`) is incorporated int
 
 ## 3. Architecture: Interactive Telemetry & Data Apps
 
-Using the `/building-data-apps` paradigm, Yank Note's HTML applet support allows technical designers and live-ops engineers to embed rich data apps directly inside documentation notes:
+Yank Note's HTML applet support lets technical designers and live-ops engineers embed data apps in documentation notes. The engine's live numbers are served by the **edge** as a Prometheus scrape (`GET :3000/metrics`, see [OPERATIONS.md](../OPERATIONS.md)) and its health at `GET :3000/health`. There is no WebSocket telemetry stream: an applet polls.
 
 ```mermaid
 flowchart LR
-    subgraph EngineCore["Authoritative Engine Core (30 Hz)"]
-        SIM["Simulation Worker (C++ SAB Plane)"]
-        GATEWAY["uWebSockets.js Gateway"]
-        TELEM["Telemetry Broadcaster (/telemetry)"]
-        SIM --> GATEWAY
-        GATEWAY --> TELEM
+    subgraph Engine["Engine (npm start)"]
+        CORE["Core (30 Hz tick)"]
+        EDGE["Edge"]
+        CORE -- "framed channel (loopback)" --> EDGE
     end
 
-    subgraph YankNote["Yank Note Environment (purocean/yn)"]
+    subgraph YankNote["Yank Note (purocean/yn)"]
         WIKI["Engine Wiki (docs/wiki/*.md)"]
-        APPLET["Interactive Data Applet (React/ECharts or HTML5)"]
-        PLUGIN["Custom Engine Plugin (window.registerPlugin)"]
-        
+        APPLET["HTML applet"]
+        PLUGIN["Custom plugin (window.registerPlugin)"]
         WIKI --> APPLET
         PLUGIN --> APPLET
     end
 
-    TELEM -- "WebSocket (JSON/Fast-Path)" --> APPLET
+    EDGE -- "HTTP: /metrics, /health" --> APPLET
 ```
 
-### 3.1 Embedding an Engine Telemetry Applet in a Note
-In any documentation note (e.g. `docs/wiki/05-networking-and-edge.md`), an interactive live-ops monitor can be embedded via an HTML applet block:
+### 3.1 Embedding a telemetry applet in a note
+
+An HTML block that polls `/metrics`, reads the core's tick counter (`mmo_core_tick`, relayed by the edge) and says whether the core's numbers are stale (`mmo_edge_core_metrics_stale`). The edge must be running (`npm start`), and the page may need the edge to allow the note's origin; if the browser blocks the request, use the plugin below, which runs outside the page sandbox.
 
 ````markdown
 ```html
-<div id="telemetry-card" style="padding: 16px; background: #161b22; color-scheme: dark; border-radius: 8px; color: #f0f6fc; font-family: sans-serif;">
-  <h3 style="margin-top: 0; color: #58a6ff;">Live Engine Telemetry</h3>
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px;">
-    <div style="background: #21262d; padding: 10px; border-radius: 6px;">
-      <small style="color: #8b949e;">Tick Rate</small>
-      <div id="metric-tick" style="font-size: 20px; font-weight: bold; color: #3fb950;">30.0 Hz</div>
-    </div>
-    <div style="background: #21262d; padding: 10px; border-radius: 6px;">
-      <small style="color: #8b949e;">Tick Duration (p99)</small>
-      <div id="metric-latency" style="font-size: 20px; font-weight: bold; color: #f0883e;">1.8 ms</div>
-    </div>
-    <div style="background: #21262d; padding: 10px; border-radius: 6px;">
-      <small style="color: #8b949e;">Active Entities</small>
-      <div id="metric-entities" style="font-size: 20px; font-weight: bold; color: #a371f7;">51,256</div>
-    </div>
-  </div>
-  <button onclick="connectTelemetry()" style="background: #238636; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Connect Telemetry Stream</button>
+<div id="telemetry-card" style="padding: 16px; background: #161b22; border-radius: 8px; color: #f0f6fc; font-family: sans-serif;">
+  <h3 style="margin-top: 0; color: #58a6ff;">Engine telemetry</h3>
+  <div>Core tick: <b id="m-tick">-</b></div>
+  <div>Core numbers stale: <b id="m-stale">-</b></div>
 </div>
-
 <script>
-function connectTelemetry() {
-  const ws = new WebSocket("ws://127.0.0.1:3000/telemetry");
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    document.getElementById("metric-tick").innerText = (data.hz || 30.0).toFixed(1) + " Hz";
-    document.getElementById("metric-latency").innerText = (data.p99 || 1.8).toFixed(1) + " ms";
-    document.getElementById("metric-entities").innerText = (data.entities || 0).toLocaleString();
-  };
+async function poll() {
+  try {
+    const text = await (await fetch("http://127.0.0.1:3000/metrics")).text();
+    const get = (name) => (text.match(new RegExp("^" + name + "(?:\\{[^}]*\\})?\\s+(\\S+)", "m")) || [])[1];
+    document.getElementById("m-tick").innerText = get("mmo_core_tick") ?? "n/a";
+    document.getElementById("m-stale").innerText = get("mmo_edge_core_metrics_stale") ?? "n/a";
+  } catch (e) {
+    document.getElementById("m-tick").innerText = "edge offline";
+  }
 }
+setInterval(poll, 2000);
+poll();
 </script>
 ```
 ````
@@ -99,41 +86,40 @@ function connectTelemetry() {
 
 ## 4. Custom Yank Note Plugin for Nexus MMO Engine
 
-Developers can install a custom engine integration plugin in Yank Note (`<home>/yank-note/plugins/plugin-nexus-engine.js`) to provide status-bar shortcuts, test triggers, and server health indicators:
+A plugin placed in Yank Note's plugins folder (`<home>/yank-note/plugins/plugin-nexus-engine.js`) can add a status-bar health indicator and a test shortcut. The edge's `/health` answers `{ "ok": true, "core": "up" | "down" | "unknown" }`. The Yank Note plugin API is Yank Note's own; check its documentation for the exact names, which this sketch uses as of this writing and which this repository does not test.
 
 ```javascript
 // plugin-nexus-engine.js - Nexus MMO Engine Integration Plugin for Yank Note
 window.registerPlugin({
   name: "nexus-mmo-engine",
   register: (ctx) => {
-    // 1. Status Bar Item for Engine Simulation State
+    // 1. Status bar item: is the core up, as the edge sees it?
     ctx.statusBar.tapMenus((menus) => {
       menus["nexus-status"] = {
         id: "nexus-status",
         position: "right",
-        title: "⚡ Nexus: Ready",
+        title: "Nexus: check",
         onClick: async () => {
           try {
             const res = await fetch("http://127.0.0.1:3000/health");
             const data = await res.json();
-            ctx.ui.useToast().show("info", `Engine Active: ${data.entities} entities, Tick: ${data.tick}`);
+            ctx.ui.useToast().show("info", `Edge ok, core ${data.core}`);
           } catch (e) {
-            ctx.ui.useToast().show("error", "Engine Gateway Offline (port 3000)");
+            ctx.ui.useToast().show("error", "Edge offline (port 3000)");
           }
         },
       };
     });
 
-    // 2. Editor Action: Quick Run Active Test File
+    // 2. Editor action: run the active test file
     ctx.editor.addCommand({
       id: "nexus-run-test",
       label: "Nexus: Run Active Test File",
       keybindings: [ctx.monaco.KeyMod.CtrlCmd | ctx.monaco.KeyCode.F9],
-      run: (editor) => {
+      run: () => {
         const filePath = ctx.editor.getCurrentFilePath();
         if (filePath && filePath.endsWith(".test.ts")) {
           ctx.terminal.sendText(`npx tsx --test "${filePath}"\n`);
-          ctx.ui.useToast().show("info", `Executing ${filePath}...`);
         } else {
           ctx.ui.useToast().show("warning", "Current file is not a *.test.ts document.");
         }
@@ -150,7 +136,7 @@ window.registerPlugin({
 1. **Install Yank Note:**
    - Download the prebuilt release for Windows / macOS / Linux from [github.com/purocean/yn/releases](https://github.com/purocean/yn/releases).
 2. **Open Engine Repository as Workspace:**
-   - In Yank Note, select **File $\to$ Open Folder...** and choose `c:/Users/user/Downloads/mmo-engine-full/docs`.
+   - In Yank Note, select **File $\to$ Open Folder...** and choose the repository's `docs` folder.
    - All documentation chapters, decision logs, and roadmaps will appear in the native navigation sidebar.
 3. **Configure Executable Code Snippets:**
    - Navigate to **Settings $\to$ Extensions $\to$ Code Runner**.

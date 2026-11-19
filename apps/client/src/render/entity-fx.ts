@@ -134,7 +134,12 @@ class Trail {
   }
 
   push(p: THREE.Vector3): void {
-    if (!Number.isNaN(this.lastPush.x) && this.lastPush.distanceToSquared(p) < 0.09) return;
+    if (!Number.isNaN(this.lastPush.x)) {
+      const d2 = this.lastPush.distanceToSquared(p);
+      if (d2 < 0.09) return;
+      // Break the trail across teleports (>6 m in a single frame) instead of stretching a ribbon across the world.
+      if (d2 > 36) this.points.length = 0;
+    }
     this.lastPush.copy(p);
     this.points.unshift(p.clone());
     if (this.points.length > this.max) this.points.pop();

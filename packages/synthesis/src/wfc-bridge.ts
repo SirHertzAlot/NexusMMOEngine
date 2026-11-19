@@ -7,9 +7,21 @@
  * Implements specifications from MODEL-SYNTHESIS-MAP.md §8 (Hybrid Synthesis Pattern).
  */
 
-import type { ModuleVariationDef, FaceSockets, ModuleGrid3DResult } from "@mmo-engine/wfc";
+import {
+  solve,
+  type ModuleVariationDef,
+  type FaceSockets,
+  type ModuleGrid3DResult,
+  type WfcCount,
+  type WfcEdge,
+  type WfcOption,
+} from "@mmo-engine/wfc";
 import type {
+  DecompositionLibrary,
+  DecorationGrouping,
   LearnedRuleSet,
+  RoomType,
+  StructurePrototype,
   SynthesisProblem,
   SynthesisOutput,
   TransformData,
@@ -145,4 +157,217 @@ export function decorateWfcDungeonWithSynthesis(
   };
 
   return synthesizeAssembly(problem);
+}
+
+const GROUND_ROOM_TYPES = new Set<RoomType>([
+  "taproom", "dining_hall", "living_hall", "kitchen_hearth", "smithy_forge",
+  "chapel_nave", "study_library", "workshop", "guard_post", "stable_bay",
+  "storage_cellar", "entryway", "corridor", "bedroom", "unknown",
+]);
+
+const UPPER_ROOM_TYPES = new Set<RoomType>([
+  "bedroom", "study_library", "attic_loft", "war_room", "living_hall",
+  "storage_cellar", "dining_hall", "guard_post", "corridor", "unknown",
+]);
+
+const PRIMARY_ARCHETYPE_ROOM: Record<string, RoomType> = {
+  tavern: "taproom",
+  inn: "taproom",
+  smithy: "smithy_forge",
+  forge: "smithy_forge",
+  bakery: "kitchen_hearth",
+  chapel: "chapel_nave",
+  church: "chapel_nave",
+  library: "study_library",
+  stables: "stable_bay",
+  guardhouse: "guard_post",
+  barracks: "guard_post",
+};
+
+/**
+ * Use @mmo-engine/wfc `solve()` to assign coherent RoomTypes across all rooms of
+ * a decomposed StructurePrototype, constrained by storey level, archetype priors,
+ * and room-graph adjacency.
+ */
+export function solveBuildingRoomPlan(
+  prototype: StructurePrototype,
+  library: DecompositionLibrary,
+  archetype: string,
+  seed: number,
+  pinRooms?: readonly RoomType[],
+): RoomType[] {
+  const rooms = prototype.rooms;
+  if (rooms.length === 0) return [];
+
+  const typeSet = new Set<RoomType>();
+  for (const r of rooms) typeSet.add(r.roomType);
+  for (const k of Object.keys(library.archetypeRoomPriors[archetype] ?? {})) {
+    typeSet.add(k as RoomType);
+  }
+  if (pinRooms) {
+    for (const p of pinRooms) typeSet.add(p);
+  }
+  const primary = PRIMARY_ARCHETYPE_ROOM[archetype.toLowerCase()];
+  if (primary) typeSet.add(primary);
+  typeSet.add("living_hall");
+  typeSet.add("bedroom");
+
+  const roomTypes = [...typeSet];
+  const indexOf = new Map<RoomType, number>(roomTypes.map((rt, i) => [rt, i]));
+  const options: WfcOption[] = roomTypes.map((id) => ({ id, weight: 1 }));
+
+  const n = rooms.length;
+  const k = options.length;
+  const weights = new Float64Array(n * k);
+  const domains: number[][] = [];
+  const pins = new Map<number, number>();
+  const priors = library.archetypeRoomPriors[archetype] ?? {};
+  const priorSum = Math.max(1, Object.values(priors).reduce((s, v) => s + v, 0));
+  let largestGroundIdx = -1;
+  let largestGroundArea = -1;
+  rooms.forEach((rm, idx) => {
+    if (rm.storey === 0) {
+      const area = rm.bounds.size[0] * rm.bounds.size[2];
+      if (area > largestGroundArea) {
+        largestGroundArea = area;
+        largestGroundIdx = idx;
+      }
+    }
+  });
+
+  for (let i = 0; i < n; i++) {
+    const rm = rooms[i];
+    const allowedSet = rm.storey > 0 ? UPPER_ROOM_TYPES : GROUND_ROOM_TYPES;
+    const dom: number[] = [];
+
+    for (let o = 0; o < k; o++) {
+      const rt = roomTypes[o];
+      const pinnedHere = pinRooms?.[i] === rt;
+      if (!allowedSet.has(rt) && !pinnedHere && rm.roomType !== rt) continue;
+      dom.push(o);
+      let w = 0.15;
+      if (rm.roomType === rt) w += 4.5;
+      if (priors[rt]) w += 1.5 * (priors[rt] / priorSum);
+      if (i === largestGroundIdx && primary === rt) w += 4.0;
+      weights[i * k + o] = w;
+    }
+
+    if (dom.length === 0) {
+      const fallbackIdx = indexOf.get(rm.roomType) ?? 0;
+      dom.push(fallbackIdx);
+      weights[i * k + fallbackIdx] = 1;
+    }
+    domains.push(dom);
+
+    if (pinRooms?.[i]) {
+      const pid = indexOf.get(pinRooms[i]);
+      if (pid !== undefined) pins.set(i, pid);
+    }
+  }
+
+  const roomIdxById = new Map(rooms.map((r, i) => [r.id, i]));
+  const edges: WfcEdge[] = [];
+  for (const edge of prototype.roomGraph) {
+    const a = roomIdxById.get(edge.fromRoomId);
+    const b = roomIdxById.get(edge.toRoomId);
+    if (a !== undefined && b !== undefined && a !== b) {
+      edges.push({ a, b, rule: "room-adj" });
+    }
+  }
+
+  try {
+    const sol = solve(
+      {
+        options,
+        slots: n,
+        domains,
+        weights,
+        edges,
+        pins,
+        rules: {
+          "room-adj": (x, y) => {
+            if ((x.id === "smithy_forge" && y.id === "bedroom") || (x.id === "bedroom" && y.id === "smithy_forge")) {
+              return false;
+            }
+            if ((x.id === "stable_bay" && y.id === "kitchen_hearth") || (x.id === "kitchen_hearth" && y.id === "stable_bay")) {
+              return false;
+            }
+            return true;
+          },
+        },
+      },
+      { seed, maxBacktracks: 400, maxRestarts: 2 },
+    );
+    return sol.ids as RoomType[];
+  } catch {
+    return rooms.map((r, i) => pinRooms?.[i] ?? r.roomType);
+  }
+}
+
+const UNIQUE_VIGNETTE_KINDS = new Set([
+  "bar_service",
+  "hearth_station",
+  "forge_station",
+  "war_table_cluster",
+]);
+
+/**
+ * Use @mmo-engine/wfc `solve()` to choose complementary interior DecorationGroupings
+ * for a single room without duplicating unique centerpieces like bars or hearths.
+ */
+export function solveRoomVignetteSlots(
+  roomType: RoomType,
+  candidates: readonly DecorationGrouping[],
+  maxSlots: number,
+  seed: number,
+): DecorationGrouping[] {
+  if (candidates.length === 0 || maxSlots <= 0) return [];
+
+  const options: WfcOption[] = [
+    { id: "__empty", weight: 0.04 },
+    ...candidates.map((v) => ({
+      id: v.id,
+      weight: Math.max(0.1, (v.observedCount || 1) * (v.roomTypes.includes(roomType) ? 4.5 : 0.7)),
+    })),
+  ];
+
+  const uniqueByKind = new Map<string, number[]>();
+  candidates.forEach((v, idx) => {
+    if (!UNIQUE_VIGNETTE_KINDS.has(v.kind)) return;
+    if (!uniqueByKind.has(v.kind)) uniqueByKind.set(v.kind, []);
+    uniqueByKind.get(v.kind)!.push(idx + 1);
+  });
+
+  const counts: WfcCount[] = [...uniqueByKind.values()].map((opts) => ({
+    options: opts,
+    max: 1,
+  }));
+
+  const slots = Math.min(maxSlots, Math.max(1, candidates.length));
+  const edges: WfcEdge[] = [];
+  for (let i = 0; i < slots - 1; i++) {
+    edges.push({ a: i, b: i + 1, rule: "no-adjacent-dup" });
+  }
+
+  try {
+    const sol = solve(
+      {
+        options,
+        slots,
+        edges,
+        counts,
+        rules: {
+          "no-adjacent-dup": (x, y) => {
+            if (x.id === "__empty" || y.id === "__empty") return true;
+            return x.id !== y.id || !candidates.some((c) => c.id === x.id && UNIQUE_VIGNETTE_KINDS.has(c.kind));
+          },
+        },
+      },
+      { seed, maxBacktracks: 200, maxRestarts: 2 },
+    );
+    const byId = new Map(candidates.map((c) => [c.id, c]));
+    return sol.ids.map((id) => byId.get(id)).filter((v): v is DecorationGrouping => v !== undefined);
+  } catch {
+    return candidates.slice(0, maxSlots);
+  }
 }

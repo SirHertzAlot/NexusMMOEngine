@@ -15,6 +15,7 @@ import { ClipId, Move, LocomotionMode } from "@mmo-engine/protocol";
 import * as C from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 
 /** Combat move → clip. */
 export const MOVE_CLIPS: Record<number, number> = {
@@ -56,6 +57,19 @@ const animated = defineQuery([C.Animation]);
 
 export class AnimationSystem implements SimSystem {
   readonly name = "AnimationSystem";
+  readonly access: SystemAccess = {
+    system: "AnimationSystem",
+    reads: [
+      { component: "Animation", fields: ["clipId", "startTick"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Action", fields: ["move", "started"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+    writes: [
+      { component: "Animation", fields: ["clipId", "startTick", "rate", "layerMask"] },
+    ],
+  };
 
   step(world: SimWorld, _dt: number): void {
     const tick = world.currentTick;

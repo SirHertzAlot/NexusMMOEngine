@@ -1,0 +1,17 @@
+{
+  "name": "nexus-site-build",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Builds the docs section of the Nexus site from the repo's Markdown. Not part of the engine workspaces.",
+  "type": "module",
+  "scripts": {
+    "build": "node build-docs.mjs"
+  },
+  "dependencies": {
+    "highlight.js": "11.10.0",
+    "katex": "0.16.47",
+    "markdown-it": "14.3.3",
+    "markdown-it-anchor": "9.2.0",
+    "markdown-it-texmath": "1.0.0"
+  }
+}

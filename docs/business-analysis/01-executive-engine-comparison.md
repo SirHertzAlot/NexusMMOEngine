@@ -10,7 +10,7 @@ The table below contrasts the fundamental technical architectural pillars across
 
 | Capability / Dimension | **Nexus MMO Engine** | **Unreal Engine 5 (Lyra / EOS)** | **Unity (DOTS / Netcode)** | **Bevy / Rust** | **SpatialOS (Improbable)** | **Legacy / Bespoke MMOs (WoW, EVE)** | **Godot 4** |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Primary Language & Runtime** | Hybrid: TypeScript / Node.js + C++20 N-API + SharedArrayBuffer | C++20 + Blueprint VM | C# (Burst, Jobs, Unsafe native memory) | Rust (Native compiled) | Heterogeneous workers (C++, C#, Java) | C++ (WoW) / Stackless Python (EVE) | GDScript + C++ / C# |
+| **Primary Language & Runtime** | Hybrid: TypeScript / Node.js + C++17 N-API + SharedArrayBuffer | C++20 + Blueprint VM | C# (Burst, Jobs, Unsafe native memory) | Rust (Native compiled) | Heterogeneous workers (C++, C#, Java) | C++ (WoW) / Stackless Python (EVE) | GDScript + C++ / C# |
 | **Data Plane & Wire Format** | Zero-copy FlatBuffers (`.fbs`), byte-aligned structs, zero GC allocation | Bit-packed `NetSerialize`, heavy `UObject` reflection | Binary Netcode buffers, `NativeArray<T>` | Bitcode / bincode / postcard | Protobuf / gRPC schema bridge | Bespoke binary bit-stream protocols | Variant dictionary serialization, High-level MP |
 | **ECS & Simulation Density** | bitECS + C++ SIMD kernels (**100k entities in 0.20ms**, $2.02\text{ns}$/entity) | Mass Gameplay Framework (experimental) / `AActor` (~0.5–2ms for 5k) | Unity Entities + Burst (~0.15–0.3ms for 100k simple entities) | Archetypal Bevy ECS (~0.12–0.25ms for 100k entities) | Entity component registry across worker nodes | Spatial cell array (WoW) / Solar system queues (EVE) | Node tree hierarchy (low simulation ceiling) |
 | **Server Topology & Scaling** | **Edge/Core Split**: Edge I/O nodes ($< 1\text{ms}$ ping, 64k req/s) + Core 30Hz lock-free sim | Monolithic dedicated server (typically 50–150 players/instance) | Client-hosted or dedicated headless servers (100–500 players) | Standalone servers (requires custom clustering) | Distributed spatial worker mesh (seamless, but high op cost) | Cell-based border zoning (WoW) / Time Dilation node (EVE) | Single-instance dedicated server (50–100 players) |
@@ -27,7 +27,7 @@ The table below contrasts the fundamental technical architectural pillars across
 
 ### 1. The Raw Throughput Moat
 While general-purpose commercial engines like Unreal Engine 5 excel in high-end photorealistic rendering, their core architectures remain constrained by decades of legacy object-oriented assumptions (`UObject` reflection, pointer chasing, garbage collection passes). In contrast, the Nexus MMO Engine treats simulation as a high-throughput numerical stream:
-- **Zero GC on the tick:** Utilizing `bitECS` typed arrays and C++20 SIMD kernels, 100,000 entities solve in **$0.20\text{ms}$** ($2.02\text{ns}$/entity), leaving **99.4%** of the 30 Hz tick budget open.
+- **Zero GC on the tick:** Utilizing `bitECS` typed arrays and C++17 SIMD kernels, 100,000 entities solve in **$0.20\text{ms}$** ($2.02\text{ns}$/entity), leaving **99.4%** of the 30 Hz tick budget open.
 - **AVX2 Native Codec:** Per-client delta encoding takes $0.81\text{ms}$ for 10,000 entities, completely bypassing V8 object allocation traps.
 
 ### 2. Operational Cost-Efficiency
@@ -52,7 +52,7 @@ By maintaining a strict **thin client mirror** architecture where zero game logi
 ### Unity (DOTS / Netcode for Entities)
 - **Strengths:** Pure data-oriented tech stack (Burst compiler, C# Jobs system, Entity Component System) delivering excellent raw performance on CPU.
 - **Weaknesses for MMOs:** Splintered ecosystem between DOTS and GameObject workflows; managed C# memory still suffers from garbage collection spikes when interacting with UI, third-party assets, or high-level gameplay scripts. Server clustering must be built custom.
-- **Nexus Advantage:** Native C++20 SIMD kernels combined with an out-of-the-box Edge/Core distributed architecture and zero-copy `SharedArrayBuffer` memory pipelines.
+- **Nexus Advantage:** Native C++17 SIMD kernels combined with an out-of-the-box Edge/Core distributed architecture and zero-copy `SharedArrayBuffer` memory pipelines.
 
 ### Bevy / Rust
 - **Strengths:** Ergonomic, high-speed archetypal ECS written in memory-safe native Rust; extremely lightweight footprint.

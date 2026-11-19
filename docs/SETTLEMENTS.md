@@ -1,6 +1,6 @@
 # Settlements: procedural towns, baked offline
 
-Status: **SG1 built** (the first vertical slice) and **SG3 spawning** in the world (this branch). SG2, SG3b and SG4 are planned; see
+Status: **built** (2026-11-11). The generator (SG1), site selection and roads (SG2), spawning in the world (SG3), occupancy (SG3b), structures and the town plan (SG4, SG5), homesteads and roadside places (SG7, SG8) and the residents who live in them (RS1 to RS7) are done; see
 the [roadmap](ROADMAP.md) §4. The full design this follows is the
 Procedural Settlement Engine specification (sections referenced as §n below).
 
@@ -100,10 +100,10 @@ and props, not a settlement-specific loader.
   the spawner's refusal protects it.
 - Entities are remembered per boot like every scene's, so a restart does not
   duplicate the town.
-- Not spawned yet: roads (SG2 brings engineered roads) and the residents. The
-  occupancy (households, npcs, shops) is in the manifest as data; putting people
-  in the world needs a generic simulated-agent path in the engine, which is its own
-  slice (the server has creatures and quest givers, not hundreds of idle villagers).
+- Roads came with SG2b (below), and the people with the residents slices (RS1 to RS7): the
+  occupancy (households, npcs, shops) in the manifest is what the engine's `ResidentSystem`
+  turns into people standing and walking in the world, near players only. How they behave is
+  in [GAMEPLAY.md](GAMEPLAY.md#the-people-of-the-towns-residents).
 
 ## Choosing where a town stands (SG2a)
 
@@ -207,7 +207,7 @@ vertical profile, drainage, earthwork and junction-as-editor come after):
 Units stay in settlement mm and are scaled at spawn like `Structure` nodes, so roads
 follow buildings without a wire-format change. A standalone render of settlement
 `0003` (44 junctions / 68 edges) draped over a survey is in the PR. The vertical
-profile is the next slice: `road-router.ts` walks each edge with A* over the
+profile is built in `road-router.ts`, which walks each edge with A* over the
 heightfield (mirroring `planPlaces`'s `walkRoute`), blocking cells at or below the
 water level and steering around steps steeper than a cart grade (`maxGrade`, default
 8%), so a road bends around a lake or a mountain face instead of cutting through it —

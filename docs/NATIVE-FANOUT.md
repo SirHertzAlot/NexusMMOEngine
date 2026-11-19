@@ -48,7 +48,7 @@ Sessions whose envelope would be byte-identical share one assembled envelope. Th
 | `off` | one per session (the rollback) |
 | `publish` | experimental: non-replace sessions subscribe to a topic named by the group key and each group is sent with one uWS `publish` |
 
-Measured in `perf/shared-fanout-2026-11-03.md` (1,000 players, towns, paired exclusive-phase runs): assemble 10.3 -> 0.86 ms, send 26.3 -> 22.5 ms, tick mean 73.2 -> 62.5 ms, ticks/s 12.0 -> 14.1. `publish` gave no further gain (the cost moved into the publish calls), so it is not the default. Tests: every envelope shadow-checked against the JS encoding in a live Gateway for default, assembly and publish, and every client-received DeltaSet is one built for that client's session.
+Measured in `perf/shared-fanout-2026-11-03.md` (1,000 players, towns, paired exclusive-phase runs; **that file is not in the repository, so these figures cannot be re-checked from it**): assemble 10.3 -> 0.86 ms, send 26.3 -> 22.5 ms, tick mean 73.2 -> 62.5 ms, ticks/s 12.0 -> 14.1. `publish` gave no further gain (the cost moved into the publish calls), so it is not the default. Tests: every envelope shadow-checked against the JS encoding in a live Gateway for default, assembly and publish, and every client-received DeltaSet is one built for that client's session.
 
 The arena view is shared by a group's sessions for the tick; it is valid until the next tick's `begin()`, as before. A closed socket still gets a `slice()` copy.
 

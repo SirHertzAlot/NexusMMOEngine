@@ -5,7 +5,7 @@
 ---
 
 ## 1. Overview
-The client application in [`apps/client`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client) acts as a decoupled visual mirror of the authoritative server world.
+The client application in [`apps/client`](../../apps/client) acts as a decoupled visual mirror of the authoritative server world.
 
 ---
 
@@ -31,7 +31,7 @@ Entity Layer (Three.js InstancedMesh & SkinnedMesh)
 Post-Processing Pass (GT Tonemapping, Outlines, Water, FX)
             │
             ▼
-Canvas Output (WebGL2 / WebGPU)
+Canvas Output (WebGL2)
 ```
 
 - **Chunk Streaming**: Terrain chunks stream dynamically into view based on distance.
@@ -42,20 +42,20 @@ Canvas Output (WebGL2 / WebGPU)
 
 ## 4. Biomechanical First-Person Rig & Viewmodel
 
-The client features an articulated first-person viewmodel and arms rig ([`FirstPersonRig`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client/src/render/first-person-rig.ts)):
+The client features an articulated first-person viewmodel and arms rig ([`FirstPersonRig`](../../apps/client/src/render/first-person-rig.ts)):
 
 - **Biomechanical Camera Coupling**:
   - Lissajous idle breathing harmonics ($0.40\text{Hz}$).
   - Stride-frequency head bobbing for walk, jog, sprint, and swimming gaits with lateral banking roll tilt.
   - Spring-damper landing dip upon hitting the ground from falls.
 - **Visual Weapon Swing Trails**: Dynamic ribbon trails emit from blade edges during attack combo windows and fade smoothly.
-- **Pitch-Driven Anatomical Aiming**: Reticle raycasts map look pitch directly to target anatomy (head, torso, legs) for server-authoritative combat strikes.
+- **Aiming**: the T key cycles the body part you aim at, and R cycles the technique of your blows. The server decides whether a blow lands there (by precision) and how hard it hits; the client only asks.
 
 ---
 
 ## 5. WebGPU Modernization Roadmap
 
-The client architecture is prepared for migration to **WebGPU**:
+**WebGPU is not used today**: the client renders with WebGL2 through React Three Fiber. A migration is a possible future direction, not built, and the reasons for it would be:
 - **Why WebGPU?** Unlike legacy WebGL2 single-threaded draw calls, WebGPU exposes general-purpose GPU compute shaders (WGSL) and indirect multi-draws.
 - **Compute Pipelines**: Simulates 100,000 weather particles, crowd skinning, and GPU frustum culling directly on the graphics card.
 

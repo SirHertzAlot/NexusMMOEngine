@@ -32,25 +32,173 @@ export interface ExtractorOptions {
   adjacencyThreshold?: number;
   /** Radius for spatial room/cluster segmentation in metres (default 30m). */
   clusterRadius?: number;
+  /** Optional catalog / GLB pivot-relative bounds lookup per partId or assetRef. */
+  partBounds?: Map<string, BoundsData> | Record<string, BoundsData>;
 }
 
-/** Categorize a part name into an architectural role. */
+/**
+ * Fine-grained architectural + furnishing category used for hierarchical
+ * building/room/vignette decomposition.
+ */
+export type DetailedPartCategory =
+  | "plinth"
+  | "floor"
+  | "ceiling"
+  | "wall"
+  | "wall_door"
+  | "door_leaf"
+  | "wall_window"
+  | "wall_peak"
+  | "wall_cut"
+  | "roof"
+  | "roof_cap"
+  | "roof_trim"
+  | "stairs"
+  | "ladder"
+  | "railing"
+  | "beam"
+  | "pillar"
+  | "chimney"
+  | "furniture_table"
+  | "furniture_seat"
+  | "furniture_bed"
+  | "furniture_bar"
+  | "furniture_storage"
+  | "furniture_chest"
+  | "fixture_hearth"
+  | "lighting"
+  | "decor_rug"
+  | "decor_wall"
+  | "clutter_tabletop"
+  | "clutter_floor"
+  | "trap"
+  | "puzzle"
+  | "rubble"
+  | "rock"
+  | "nature"
+  | "structure";
+
+/** Categorize a modular architectural or dressing part into a rich semantic role. */
+export function categorizeDetailedPart(partId: string): DetailedPartCategory {
+  const p = partId.toLowerCase();
+
+  // Plinths and roofs BEFORE generic tile/floor/wall keywords (fixes Roof_Tile matching "tile"!)
+  if (p.includes("base_wall") || p.includes("base_corner") || p.includes("foundation")) return "plinth";
+  if (p.includes("stairs") && (p.includes("block") || p.includes("stone_base"))) return "plinth";
+  if (p.includes("roof") && (p.includes("cap") || p.includes("gable_end"))) return "roof_cap";
+  if (p.includes("roof") && (p.includes("edge") || p.includes("trim") || p.includes("stick") || p.includes("dormer") || p.includes("cover"))) return "roof_trim";
+  if (p.includes("roof")) return "roof";
+  if (p.includes("tile") || p.includes("floor") || p.includes("walkway")) return "floor";
+  if (p.includes("ceiling")) return "ceiling";
+
+  // Openings, railings & stairs before walls
+  if (p.endsWith("_door") || p.includes("door_0") || p.includes("door_double") || p.includes("door_single")) {
+    if (!p.includes("wall_")) return "door_leaf";
+  }
+  if (p.includes("wall") && (p.includes("door") || p.includes("archway") || p.includes("arch"))) return "wall_door";
+  if (p.includes("door") || p.includes("gate")) return "door_leaf";
+  if (p.includes("window") && p.includes("peak")) return "wall_peak";
+  if ((p.includes("wall") || p.includes("_tower_")) && p.includes("window")) return "wall_window";
+  if (p.includes("wall") && p.includes("peak")) return "wall_peak";
+  if (p.includes("wall") && p.includes("cut")) return "wall_cut";
+  if (p.includes("railing") || p.includes("fence")) return "railing";
+  if (p.includes("stair") || p.includes("ramp") || p.includes("slope")) return "stairs";
+  if (p.includes("ladder")) return "ladder";
+  if (p.includes("chimney")) return "chimney";
+  if (p.includes("wall") || p.includes("basement") || p.includes("_tower_")) return "wall";
+  if (p.includes("beam") || p.includes("supports") || p.includes("arch_0") || p.includes("plank")) return "beam";
+  if (p.includes("pillar") || p.includes("column")) return "pillar";
+
+  // Dungeon traps & puzzles preserved cleanly
+  if (p.includes("rune_pillar") || p.includes("lever") || p.includes("switch") || p.includes("dial") || p.includes("hatch")) return "puzzle";
+  if (p.includes("trap") || p.includes("spear") || p.includes("grinder") || p.includes("saw_rail") || p.includes("saw_") || p.includes("swing_blade")) return "trap";
+
+  // Interior furniture & fixtures (check workbench before generic "bench" -> seat)
+  if (p.includes("bar_") || p.includes("_bar")) return "furniture_bar";
+  if (p.includes("bed_") || p.includes("_bed")) return "furniture_bed";
+  if (p.includes("workbench")) return "furniture_table";
+  if (p.includes("table") && !p.includes("cloth") && !p.includes("setting")) return "furniture_table";
+  if (p.includes("desk") || p.includes("counter")) return "furniture_table";
+  if (p.includes("chair") || p.includes("stool") || p.includes("bench") || p.includes("pew") || p.includes("throne")) return "furniture_seat";
+  if (p.includes("bookcase") || p.includes("bookshelf") || p.includes("shelf") || p.includes("cabinet") || p.includes("dresser") || p.includes("cupboard") || p.includes("wardrobe")) {
+    return "furniture_storage";
+  }
+  if (p.includes("chest")) return "furniture_chest";
+  if (p.includes("stove") || p.includes("fireplace") || p.includes("forge") || p.includes("anvil") || p.includes("bellows") || p.includes("cauldron")) {
+    return "fixture_hearth";
+  }
+
+  // Lighting & surface decor
+  if (p.includes("candle") || p.includes("chandelier") || p.includes("torch") || p.includes("lantern") || p.includes("brazier") || p.includes("lamp")) {
+    return "lighting";
+  }
+  if (p.includes("rug") || p.includes("carpet")) return "decor_rug";
+  if (
+    p.includes("painting") ||
+    p.includes("banner") ||
+    p.includes("sign") ||
+    p.includes("bracket") ||
+    p.includes("mirror") ||
+    p.includes("shield") ||
+    p.includes("divider") ||
+    p.includes("animal_head") ||
+    p.includes("animal_pelt")
+  ) {
+    return "decor_wall";
+  }
+
+  // Small tabletop & floor clutter
+  if (
+    p.includes("book") ||
+    p.includes("parchment") ||
+    p.includes("scroll") ||
+    p.includes("bottle") ||
+    p.includes("mug") ||
+    p.includes("cup") ||
+    p.includes("plate") ||
+    p.includes("bowl") ||
+    p.includes("jar") ||
+    p.includes("jug") ||
+    p.includes("pot") ||
+    p.includes("kettle") ||
+    p.includes("ink") ||
+    p.includes("wargame") ||
+    p.includes("map") ||
+    p.includes("tablecloth") ||
+    p.includes("food") ||
+    p.includes("pig") ||
+    p.includes("herb") ||
+    p.includes("garlic")
+  ) {
+    return "clutter_tabletop";
+  }
+  if (p.includes("barrel") || p.includes("crate") || p.includes("sack") || p.includes("bucket") || p.includes("tub") || p.includes("batht")) {
+    return "clutter_floor";
+  }
+
+  if (p.includes("rubble") || p.includes("pebble")) return "rubble";
+  if (p.includes("rock") || p.includes("cave") || p.includes("stalactite") || p.includes("stalagmite")) return "rock";
+  if (p.includes("grass") || p.includes("mushroom") || p.includes("plant") || p.includes("ivy") || p.includes("tree") || p.includes("bush")) return "nature";
+  return "structure";
+}
+
+/** Categorize a part name into an architectural role (backwards-compatible coarse categories). */
 export function categorizePart(partId: string): string {
   const p = partId.toLowerCase();
+  if (p.includes("ceiling") || p.includes("roof")) return "ceiling";
   if (p.includes("tile") || p.includes("floor")) return "floor";
   if (p.includes("wall") || p.includes("basement")) return "wall";
-  if (p.includes("ceiling") || p.includes("roof")) return "ceiling";
   if (p.includes("rune_pillar")) return "puzzle";
   if (p.includes("pillar") || p.includes("column")) return "pillar";
-  if (p.includes("stair") || p.includes("ramp") || p.includes("slope")) return "stairs";
+  if (p.includes("stair") || p.includes("ramp") || p.includes("slope") || p.includes("ladder")) return "stairs";
   if (p.includes("door") || p.includes("gate")) return "door";
   if (p.includes("railing") || p.includes("fence")) return "railing";
   if (p.includes("trap") || p.includes("spear") || p.includes("grinder") || p.includes("saw_rail") || p.includes("saw_") || p.includes("swing_blade")) return "trap";
   if (p.includes("lever") || p.includes("switch") || p.includes("dial") || p.includes("hatch")) return "puzzle";
-  if (p.includes("prop") || p.includes("chest") || p.includes("barrel") || p.includes("crate") || p.includes("candle") || p.includes("torch")) return "prop";
+  if (p.includes("prop") || p.includes("item") || p.includes("chest") || p.includes("barrel") || p.includes("crate") || p.includes("candle") || p.includes("torch")) return "prop";
   if (p.includes("rubble") || p.includes("pebble")) return "rubble";
   if (p.includes("rock") || p.includes("cave") || p.includes("stalactite") || p.includes("stalagmite")) return "rock";
-  if (p.includes("grass") || p.includes("mushroom") || p.includes("plant")) return "nature";
+  if (p.includes("grass") || p.includes("mushroom") || p.includes("plant") || p.includes("ivy")) return "nature";
   return "structure";
 }
 
@@ -60,60 +208,68 @@ export function generatePartSockets(partId: string, category: string, bounds: Bo
   const hx = sx / 2;
   const hy = sy / 2;
   const hz = sz / 2;
+  const cx = (bounds.min[0] + bounds.max[0]) / 2;
+  const cy = (bounds.min[1] + bounds.max[1]) / 2;
+  const cz = (bounds.min[2] + bounds.max[2]) / 2;
+  const pt = (ox: number, oy: number, oz: number): Vec3Tuple => [
+    Math.round((cx + ox) * 1000) / 1000 || 0,
+    Math.round((cy + oy) * 1000) / 1000 || 0,
+    Math.round((cz + oz) * 1000) / 1000 || 0,
+  ];
   const sockets: SocketDef[] = [];
 
   if (category === "floor") {
-    sockets.push({ name: "edge_px", kind: "floor-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "edge_nx", kind: "floor-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "edge_pz", kind: "floor-edge", offset: [0, 0, hz], normal: [0, 0, 1] });
-    sockets.push({ name: "edge_nz", kind: "floor-edge", offset: [0, 0, -hz], normal: [0, 0, -1] });
-    sockets.push({ name: "top", kind: "surface-mount", offset: [0, hy, 0], normal: [0, 1, 0] });
-  } else if (category === "wall") {
-    sockets.push({ name: "edge_left", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "edge_px", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "edge_nx", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "bottom", kind: "wall-base", offset: [0, -hy, 0], normal: [0, -1, 0] });
-    sockets.push({ name: "top", kind: "wall-top", offset: [0, hy, 0], normal: [0, 1, 0] });
-    sockets.push({ name: "front", kind: "wall-face", offset: [0, 0, hz], normal: [0, 0, 1] });
+    sockets.push({ name: "edge_px", kind: "floor-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "edge_nx", kind: "floor-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_pz", kind: "floor-edge", offset: pt(0, 0, hz), normal: [0, 0, 1] });
+    sockets.push({ name: "edge_nz", kind: "floor-edge", offset: pt(0, 0, -hz), normal: [0, 0, -1] });
+    sockets.push({ name: "top", kind: "surface-mount", offset: pt(0, hy, 0), normal: [0, 1, 0] });
+  } else if (category === "wall" || category === "wall_window" || category === "plinth") {
+    sockets.push({ name: "edge_left", kind: "wall-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "wall-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "edge_px", kind: "wall-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "edge_nx", kind: "wall-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "bottom", kind: "wall-base", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+    sockets.push({ name: "top", kind: "wall-top", offset: pt(0, hy, 0), normal: [0, 1, 0] });
+    sockets.push({ name: "front", kind: "wall-face", offset: pt(0, 0, hz), normal: [0, 0, 1] });
   } else if (category === "pillar") {
-    sockets.push({ name: "bottom", kind: "pillar-base", offset: [0, -hy, 0], normal: [0, -1, 0] });
-    sockets.push({ name: "top", kind: "pillar-cap", offset: [0, hy, 0], normal: [0, 1, 0] });
-    sockets.push({ name: "side_px", kind: "pillar-side", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "side_nx", kind: "pillar-side", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "side_pz", kind: "pillar-side", offset: [0, 0, hz], normal: [0, 0, 1] });
-    sockets.push({ name: "side_nz", kind: "pillar-side", offset: [0, 0, -hz], normal: [0, 0, -1] });
-  } else if (category === "ceiling") {
-    sockets.push({ name: "edge_px", kind: "ceiling-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "edge_nx", kind: "ceiling-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "edge_pz", kind: "ceiling-edge", offset: [0, 0, hz], normal: [0, 0, 1] });
-    sockets.push({ name: "edge_nz", kind: "ceiling-edge", offset: [0, 0, -hz], normal: [0, 0, -1] });
-    sockets.push({ name: "bottom", kind: "ceiling-mount", offset: [0, -hy, 0], normal: [0, -1, 0] });
+    sockets.push({ name: "bottom", kind: "pillar-base", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+    sockets.push({ name: "top", kind: "pillar-cap", offset: pt(0, hy, 0), normal: [0, 1, 0] });
+    sockets.push({ name: "side_px", kind: "pillar-side", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "side_nx", kind: "pillar-side", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "side_pz", kind: "pillar-side", offset: pt(0, 0, hz), normal: [0, 0, 1] });
+    sockets.push({ name: "side_nz", kind: "pillar-side", offset: pt(0, 0, -hz), normal: [0, 0, -1] });
+  } else if (category === "ceiling" || category === "roof" || category === "roof_trim") {
+    sockets.push({ name: "edge_px", kind: "ceiling-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "edge_nx", kind: "ceiling-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_pz", kind: "ceiling-edge", offset: pt(0, 0, hz), normal: [0, 0, 1] });
+    sockets.push({ name: "edge_nz", kind: "ceiling-edge", offset: pt(0, 0, -hz), normal: [0, 0, -1] });
+    sockets.push({ name: "bottom", kind: "ceiling-mount", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
   } else if (category === "stairs") {
-    sockets.push({ name: "bottom", kind: "stairs-base", offset: [0, -hy, -hz], normal: [0, -1, 0] });
-    sockets.push({ name: "top", kind: "stairs-top", offset: [0, hy, hz], normal: [0, 0, 1] });
-    sockets.push({ name: "edge_left", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
+    sockets.push({ name: "bottom", kind: "stairs-base", offset: pt(0, -hy, -hz), normal: [0, -1, 0] });
+    sockets.push({ name: "top", kind: "stairs-top", offset: pt(0, hy, hz), normal: [0, 0, 1] });
+    sockets.push({ name: "edge_left", kind: "wall-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "wall-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
   } else if (category === "railing") {
-    sockets.push({ name: "edge_left", kind: "railing-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "edge_right", kind: "railing-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
-  } else if (category === "door") {
-    sockets.push({ name: "edge_left", kind: "wall-edge", offset: [-hx, 0, 0], normal: [-1, 0, 0] });
-    sockets.push({ name: "edge_right", kind: "wall-edge", offset: [hx, 0, 0], normal: [1, 0, 0] });
-    sockets.push({ name: "bottom", kind: "wall-base", offset: [0, -hy, 0], normal: [0, -1, 0] });
-    sockets.push({ name: "top", kind: "wall-top", offset: [0, hy, 0], normal: [0, 1, 0] });
+    sockets.push({ name: "edge_left", kind: "railing-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "railing-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "bottom", kind: "surface-contact", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+  } else if (category === "door" || category === "wall_door" || category === "door_leaf") {
+    sockets.push({ name: "edge_left", kind: "wall-edge", offset: pt(-hx, 0, 0), normal: [-1, 0, 0] });
+    sockets.push({ name: "edge_right", kind: "wall-edge", offset: pt(hx, 0, 0), normal: [1, 0, 0] });
+    sockets.push({ name: "bottom", kind: "wall-base", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+    sockets.push({ name: "top", kind: "wall-top", offset: pt(0, hy, 0), normal: [0, 1, 0] });
   } else if (category === "trap") {
-    sockets.push({ name: "bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
-    sockets.push({ name: "hazard", kind: "trap-hazard", offset: [0, hy, 0], normal: [0, 1, 0] });
-    sockets.push({ name: "top", kind: "ceiling-mount", offset: [0, hy, 0], normal: [0, 1, 0] });
+    sockets.push({ name: "bottom", kind: "surface-contact", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+    sockets.push({ name: "hazard", kind: "trap-hazard", offset: pt(0, hy, 0), normal: [0, 1, 0] });
+    sockets.push({ name: "top", kind: "ceiling-mount", offset: pt(0, hy, 0), normal: [0, 1, 0] });
   } else if (category === "puzzle") {
-    sockets.push({ name: "bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
-    sockets.push({ name: "back", kind: "wall-face", offset: [0, 0, -hz], normal: [0, 0, -1] });
+    sockets.push({ name: "bottom", kind: "surface-contact", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+    sockets.push({ name: "back", kind: "wall-face", offset: pt(0, 0, -hz), normal: [0, 0, -1] });
   } else {
     // Default prop / structure mount sockets
-    sockets.push({ name: "mount_bottom", kind: "surface-contact", offset: [0, -hy, 0], normal: [0, -1, 0] });
-    sockets.push({ name: "mount_top", kind: "surface-contact", offset: [0, hy, 0], normal: [0, 1, 0] });
+    sockets.push({ name: "mount_bottom", kind: "surface-contact", offset: pt(0, -hy, 0), normal: [0, -1, 0] });
+    sockets.push({ name: "mount_top", kind: "surface-contact", offset: pt(0, hy, 0), normal: [0, 1, 0] });
   }
 
   return sockets;
@@ -226,6 +382,60 @@ export function decomposeScene(scene: THREE.Object3D, opts: ExtractorOptions = {
   return assemblies;
 }
 
+function rotateVecByQuat(v: Vec3Tuple, q: readonly [number, number, number, number]): Vec3Tuple {
+  const [vx, vy, vz] = v;
+  const [qx, qy, qz, qw] = q;
+  const tx = 2 * (qy * vz - qz * vy);
+  const ty = 2 * (qz * vx - qx * vz);
+  const tz = 2 * (qx * vy - qy * vx);
+  return [
+    vx + qw * tx + (qy * tz - qz * ty),
+    vy + qw * ty + (qz * tx - qx * tz),
+    vz + qw * tz + (qx * ty - qy * tx),
+  ];
+}
+
+function quatYawDeg(q: readonly [number, number, number, number]): number {
+  const [qx, qy, qz, qw] = q;
+  const siny = 2 * (qw * qy + qx * qz);
+  const cosy = 1 - 2 * (qy * qy + qz * qz);
+  return (Math.atan2(siny, cosy) * 180) / Math.PI;
+}
+
+function wrapAngleDeg(deg: number): number {
+  let d = ((deg + 180) % 360 + 360) % 360 - 180;
+  if (d <= -180) d += 360;
+  return d === 0 ? 0 : d;
+}
+
+function partWorldCenter(part: PlacedPartInstance, bounds: BoundsData): Vec3Tuple {
+  const lc: Vec3Tuple = [
+    (bounds.min[0] + bounds.max[0]) / 2,
+    (bounds.min[1] + bounds.max[1]) / 2,
+    (bounds.min[2] + bounds.max[2]) / 2,
+  ];
+  if (lc[0] === 0 && lc[1] === 0 && lc[2] === 0) return part.transform.pos;
+  const [sx, sy, sz] = part.transform.scale;
+  const rotOff = rotateVecByQuat([lc[0] * sx, lc[1] * sy, lc[2] * sz], part.transform.rot);
+  return [
+    part.transform.pos[0] + rotOff[0],
+    part.transform.pos[1] + rotOff[1],
+    part.transform.pos[2] + rotOff[2],
+  ];
+}
+
+function resolveBoundsLookup(
+  lookup: Map<string, BoundsData> | Record<string, BoundsData> | undefined,
+  partId: string,
+  assetRef?: string,
+): BoundsData | undefined {
+  if (!lookup) return undefined;
+  if (lookup instanceof Map) {
+    return lookup.get(partId) ?? (assetRef ? lookup.get(assetRef) : undefined);
+  }
+  return lookup[partId] ?? (assetRef ? lookup[assetRef] : undefined);
+}
+
 /** Extract a LearnedRuleSet from decomposed example assemblies. */
 export function extractLearnedRuleSet(
   assemblies: ExampleAssembly[],
@@ -251,7 +461,8 @@ export function extractLearnedRuleSet(
       categoryDistribution[cat] = (categoryDistribution[cat] || 0) + 1;
 
       if (!partMap[p.partId]) {
-        // Approximate standard part size in metres by category
+        // Prefer caller-supplied or GLB-measured pivot bounds when present.
+        const measured = p.bounds ?? resolveBoundsLookup(opts.partBounds, p.partId, p.assetRef);
         let defaultSize: Vec3Tuple = [2.5, 2.5, 2.5];
         if (cat === "floor") defaultSize = [5.0, 0.2, 5.0];
         else if (cat === "wall") defaultSize = [5.0, 4.0, 0.5];
@@ -261,11 +472,17 @@ export function extractLearnedRuleSet(
         else if (cat === "door") defaultSize = [2.5, 4.0, 0.5];
         else if (cat === "prop" || cat === "rubble") defaultSize = [1.0, 1.0, 1.0];
 
-        const bounds: BoundsData = {
-          min: [-defaultSize[0] / 2, -defaultSize[1] / 2, -defaultSize[2] / 2],
-          max: [defaultSize[0] / 2, defaultSize[1] / 2, defaultSize[2] / 2],
-          size: defaultSize,
-        };
+        const bounds: BoundsData = measured
+          ? {
+              min: [...measured.min],
+              max: [...measured.max],
+              size: [...measured.size],
+            }
+          : {
+              min: [-defaultSize[0] / 2, -defaultSize[1] / 2, -defaultSize[2] / 2],
+              max: [defaultSize[0] / 2, defaultSize[1] / 2, defaultSize[2] / 2],
+              size: defaultSize,
+            };
 
         partMap[p.partId] = {
           id: p.partId,
@@ -282,14 +499,26 @@ export function extractLearnedRuleSet(
   for (const asm of assemblies) {
     const parts = asm.parts;
     const n = parts.length;
+    const centers: Vec3Tuple[] = new Array(n);
+    const yaws: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const def = partMap[parts[i].partId];
+      centers[i] = def ? partWorldCenter(parts[i], def.bounds) : parts[i].transform.pos;
+      yaws[i] = quatYawDeg(parts[i].transform.rot);
+    }
 
     for (let i = 0; i < n; i++) {
       const a = parts[i];
-      const [ax, ay, az] = a.transform.pos;
+      const [ax, ay, az] = centers[i];
+      const aDef = partMap[a.partId];
+      if (!aDef) continue;
 
       for (let j = i + 1; j < n; j++) {
         const b = parts[j];
-        const [bx, by, bz] = b.transform.pos;
+        const bDef = partMap[b.partId];
+        if (!bDef) continue;
+
+        const [bx, by, bz] = centers[j];
         const dx = bx - ax;
         const dy = by - ay;
         const dz = bz - az;
@@ -300,26 +529,23 @@ export function extractLearnedRuleSet(
           const dirY = dy / (dist || 1);
           const dirZ = dz / (dist || 1);
 
-          const aDef = partMap[a.partId];
-          const bDef = partMap[b.partId];
-          if (!aDef || !bDef) continue;
-
-          // Find socket on A pointing towards B
+          // Rotate each part's local socket normals into world space before dot-matching.
           let bestASock = aDef.sockets[0];
           let bestADot = -Infinity;
           for (const s of aDef.sockets) {
-            const dot = s.normal[0] * dirX + s.normal[1] * dirY + s.normal[2] * dirZ;
+            const wn = rotateVecByQuat(s.normal, a.transform.rot);
+            const dot = wn[0] * dirX + wn[1] * dirY + wn[2] * dirZ;
             if (dot > bestADot) {
               bestADot = dot;
               bestASock = s;
             }
           }
 
-          // Find socket on B pointing towards A
           let bestBSock = bDef.sockets[0];
           let bestBDot = -Infinity;
           for (const s of bDef.sockets) {
-            const dot = s.normal[0] * -dirX + s.normal[1] * -dirY + s.normal[2] * -dirZ;
+            const wn = rotateVecByQuat(s.normal, b.transform.rot);
+            const dot = wn[0] * -dirX + wn[1] * -dirY + wn[2] * -dirZ;
             if (dot > bestBDot) {
               bestBDot = dot;
               bestBSock = s;
@@ -331,6 +557,9 @@ export function extractLearnedRuleSet(
             continue;
           }
 
+          const yawAB = wrapAngleDeg(yaws[j] - yaws[i]);
+          const yawBA = wrapAngleDeg(yaws[i] - yaws[j]);
+
           // Forward rule (A -> B)
           const pairKeyAB = `${a.partId}:${bestASock.name}-->${b.partId}:${bestBSock.name}`;
           connectedSockets.add(`${a.partId}:${bestASock.name}`);
@@ -341,7 +570,7 @@ export function extractLearnedRuleSet(
           const statAB = pairStats.get(pairKeyAB)!;
           statAB.count++;
           statAB.offsets.push([dx, dy, dz]);
-          statAB.yawDeltas.push(0);
+          statAB.yawDeltas.push(yawAB);
 
           // Reverse symmetric rule (B -> A)
           const pairKeyBA = `${b.partId}:${bestBSock.name}-->${a.partId}:${bestASock.name}`;
@@ -351,7 +580,7 @@ export function extractLearnedRuleSet(
           const statBA = pairStats.get(pairKeyBA)!;
           statBA.count++;
           statBA.offsets.push([-dx, -dy, -dz]);
-          statBA.yawDeltas.push(0);
+          statBA.yawDeltas.push(yawBA);
         }
       }
     }
@@ -389,6 +618,18 @@ export function extractLearnedRuleSet(
     const sy = Math.sqrt(vy / stat.count);
     const sz = Math.sqrt(vz / stat.count);
 
+    let sumSin = 0;
+    let sumCos = 0;
+    for (const deg of stat.yawDeltas) {
+      const rad = (deg * Math.PI) / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+    }
+    const meanYawDeg =
+      stat.yawDeltas.length > 0
+        ? Math.round(wrapAngleDeg((Math.atan2(sumSin, sumCos) * 180) / Math.PI) * 100) / 100 || 0
+        : 0;
+
     adjacency.push({
       aPart,
       aSocket,
@@ -399,7 +640,7 @@ export function extractLearnedRuleSet(
       transformStats: {
         meanOffset: [Math.round(mx * 1000) / 1000, Math.round(my * 1000) / 1000, Math.round(mz * 1000) / 1000],
         spreadOffset: [Math.round(sx * 1000) / 1000, Math.round(sy * 1000) / 1000, Math.round(sz * 1000) / 1000],
-        relativeYawDeg: 0,
+        relativeYawDeg: meanYawDeg,
       },
     });
   }

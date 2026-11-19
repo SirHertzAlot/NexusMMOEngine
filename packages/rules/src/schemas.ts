@@ -110,7 +110,24 @@ export const CombatSchema = z.strictObject({
     .strictObject({ novice: z.number().min(0).default(0.4), masterBonus: z.number().min(0).default(1.6), curve: positive.default(1.5) })
     .prefault({}),
   /** damage = base × mass^massPower × fit_eff × power × part multiplier × armour factor. */
-  damage: z.strictObject({ base: positive.default(10), massPower: z.number().min(0).default(0.5), armourHalf: positive.default(10) }).prefault({}),
+  damage: z
+    .strictObject({
+      base: positive.default(10),
+      massPower: z.number().min(0).default(0.5),
+      /** Armour value K that halves incoming damage when no per-kind K is specified. */
+      armourHalf: positive.default(10),
+      /** Optional per-damage-kind K overrides (`cut`, `blunt`, `thrust`); unset kinds inherit `armourHalf`. */
+      armourHalfByKind: z
+        .strictObject({
+          cut: positive.optional(),
+          blunt: positive.optional(),
+          thrust: positive.optional(),
+        })
+        .prefault({}),
+      /** Linear tier/level scaling on K per level above 1: K_eff = K * (1 + armourHalfPerLevel * max(0, level - 1)). */
+      armourHalfPerLevel: z.number().min(0).default(0),
+    })
+    .prefault({}),
   /** Chance a blow lands on the aimed part: novice + masterBonus × m. */
   precision: z.strictObject({ novice: share.default(0.3), masterBonus: share.default(0.65) }).prefault({}),
   /**
@@ -408,6 +425,10 @@ export const ItemBaseRulesSchema = z.strictObject({
   /** Uses before it breaks. */
   durability: z.number().int().positive().default(100),
   hand: Hand.default("none"),
+  /** Cells it takes in a bag laid out as a grid (CF6): width across, height down. One cell unless the rules say. */
+  footprint: z.tuple([z.number().int().min(1).max(8), z.number().int().min(1).max(8)]).default([1, 1]),
+  /** Units one slot/item stack can hold (CF6); 1 means unstackable. */
+  maxStack: z.number().int().min(1).max(9999).default(1),
   /** Armour slot it is worn in (U10); "none" for held items. */
   slot: ArmourSlot.default("none"),
   /** The technique a plain attack with it uses (a combat.json technique). */
@@ -463,6 +484,11 @@ export const LootSchema = z.strictObject({
   pickupRange: positive.default(2.5),
   /** Bag slots per character. */
   bagSlots: z.number().int().min(1).max(256).default(24),
+  /**
+   * Cells across when the bag is a grid (CF6): items then take their base's `footprint` and can be moved and turned.
+   * Absent: the plain slot bag, one cell per item.
+   */
+  bagColumns: z.number().int().min(1).max(64).optional(),
   /** Most items lying on the ground in a region at once: past it, the oldest go. */
   maxGroundItems: z.number().int().min(1).max(65536).default(4096),
 });

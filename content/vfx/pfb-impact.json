@@ -1,0 +1,506 @@
+{
+  "authoredTier": "medium",
+  "blendMode": "additive",
+  "emitters": [
+    {
+      "bursts": [
+        {
+          "count": 18,
+          "interval": 1,
+          "repeat": 0,
+          "time": 0
+        }
+      ],
+      "color": {
+        "stops": [
+          {
+            "color": {
+              "a": 1,
+              "b": 1,
+              "g": 1,
+              "r": 1
+            },
+            "t": 0
+          },
+          {
+            "color": {
+              "a": 0,
+              "b": 0.3,
+              "g": 0.8,
+              "r": 1
+            },
+            "t": 1
+          }
+        ]
+      },
+      "direction": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "duration": 0.25,
+      "forces": [],
+      "lifetime": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.14
+          },
+          {
+            "t": 1,
+            "value": 0.2
+          }
+        ]
+      },
+      "looping": false,
+      "maxParticles": 18,
+      "name": "flash",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rate": 0,
+      "size": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.8
+          },
+          {
+            "t": 1,
+            "value": 1.4
+          }
+        ]
+      },
+      "spawnShape": {
+        "kind": "sphere",
+        "radius": 0.15
+      },
+      "speed": 0.5,
+      "spread": 0
+    },
+    {
+      "bursts": [
+        {
+          "count": 46,
+          "interval": 1,
+          "repeat": 0,
+          "time": 0
+        }
+      ],
+      "color": {
+        "stops": [
+          {
+            "color": {
+              "a": 1,
+              "b": 0.85,
+              "g": 0.98,
+              "r": 1
+            },
+            "t": 0
+          },
+          {
+            "color": {
+              "a": 0.9,
+              "b": 0.1,
+              "g": 0.55,
+              "r": 1
+            },
+            "t": 0.45
+          },
+          {
+            "color": {
+              "a": 0,
+              "b": 0.01,
+              "g": 0.08,
+              "r": 0.55
+            },
+            "t": 1
+          }
+        ]
+      },
+      "direction": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "duration": 0.9,
+      "forces": [
+        {
+          "acceleration": {
+            "x": 0,
+            "y": 1.5,
+            "z": 0
+          },
+          "kind": "gravity"
+        },
+        {
+          "coefficient": 2.2,
+          "kind": "drag"
+        }
+      ],
+      "lifetime": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.5
+          },
+          {
+            "t": 1,
+            "value": 0.8
+          }
+        ]
+      },
+      "looping": false,
+      "maxParticles": 46,
+      "name": "burst",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rate": 0,
+      "size": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.34
+          },
+          {
+            "t": 1,
+            "value": 0.06
+          }
+        ]
+      },
+      "spawnShape": {
+        "kind": "sphere",
+        "radius": 0.28
+      },
+      "speed": {
+        "points": [
+          {
+            "t": 0,
+            "value": 7
+          },
+          {
+            "t": 1,
+            "value": 2.5
+          }
+        ]
+      },
+      "spread": 1.35
+    },
+    {
+      "bursts": [
+        {
+          "count": 40,
+          "interval": 1,
+          "repeat": 0,
+          "time": 0
+        }
+      ],
+      "color": {
+        "stops": [
+          {
+            "color": {
+              "a": 1,
+              "b": 0.4,
+              "g": 0.85,
+              "r": 1
+            },
+            "t": 0
+          },
+          {
+            "color": {
+              "a": 0,
+              "b": 0.05,
+              "g": 0.35,
+              "r": 1
+            },
+            "t": 1
+          }
+        ]
+      },
+      "direction": {
+        "x": 0,
+        "y": 0.25,
+        "z": 0
+      },
+      "duration": 0.6,
+      "forces": [
+        {
+          "acceleration": {
+            "x": 0,
+            "y": -6,
+            "z": 0
+          },
+          "kind": "gravity"
+        },
+        {
+          "coefficient": 0.8,
+          "kind": "drag"
+        }
+      ],
+      "lifetime": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.35
+          },
+          {
+            "t": 1,
+            "value": 0.55
+          }
+        ]
+      },
+      "looping": false,
+      "maxParticles": 40,
+      "name": "spark-ring",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rate": 0,
+      "size": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.07
+          },
+          {
+            "t": 1,
+            "value": 0.02
+          }
+        ]
+      },
+      "spawnShape": {
+        "kind": "disc",
+        "normal": {
+          "x": 0,
+          "y": 1,
+          "z": 0
+        },
+        "radius": 0.1
+      },
+      "speed": {
+        "points": [
+          {
+            "t": 0,
+            "value": 6
+          },
+          {
+            "t": 1,
+            "value": 9
+          }
+        ]
+      },
+      "spread": 1.45
+    },
+    {
+      "bursts": [],
+      "color": {
+        "stops": [
+          {
+            "color": {
+              "a": 0.95,
+              "b": 0.12,
+              "g": 0.6,
+              "r": 1
+            },
+            "t": 0
+          },
+          {
+            "color": {
+              "a": 0,
+              "b": 0.01,
+              "g": 0.1,
+              "r": 0.6
+            },
+            "t": 1
+          }
+        ]
+      },
+      "direction": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "duration": 0.55,
+      "forces": [
+        {
+          "acceleration": {
+            "x": 0,
+            "y": 3.2,
+            "z": 0
+          },
+          "kind": "gravity"
+        },
+        {
+          "frequency": 3,
+          "intensity": 1.4,
+          "kind": "turbulence"
+        }
+      ],
+      "lifetime": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.4
+          },
+          {
+            "t": 1,
+            "value": 0.65
+          }
+        ]
+      },
+      "looping": false,
+      "maxParticles": 48,
+      "name": "tongues",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rate": 70,
+      "size": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.3
+          },
+          {
+            "t": 1,
+            "value": 0.05
+          }
+        ]
+      },
+      "spawnShape": {
+        "angle": 0.5,
+        "height": 0.3,
+        "kind": "cone",
+        "radius": 0.22
+      },
+      "speed": {
+        "points": [
+          {
+            "t": 0,
+            "value": 2.2
+          },
+          {
+            "t": 1,
+            "value": 3.4
+          }
+        ]
+      },
+      "spread": 0.2
+    },
+    {
+      "bursts": [
+        {
+          "count": 26,
+          "interval": 1,
+          "repeat": 0,
+          "time": 0.05
+        }
+      ],
+      "color": {
+        "stops": [
+          {
+            "color": {
+              "a": 1,
+              "b": 0.2,
+              "g": 0.7,
+              "r": 1
+            },
+            "t": 0
+          },
+          {
+            "color": {
+              "a": 0,
+              "b": 0.02,
+              "g": 0.15,
+              "r": 0.7
+            },
+            "t": 1
+          }
+        ]
+      },
+      "direction": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "duration": 1.1,
+      "forces": [
+        {
+          "acceleration": {
+            "x": 0,
+            "y": -7.5,
+            "z": 0
+          },
+          "kind": "gravity"
+        },
+        {
+          "coefficient": 0.5,
+          "kind": "drag"
+        }
+      ],
+      "lifetime": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.8
+          },
+          {
+            "t": 1,
+            "value": 1.3
+          }
+        ]
+      },
+      "looping": false,
+      "maxParticles": 26,
+      "name": "fall-embers",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "rate": 0,
+      "size": {
+        "points": [
+          {
+            "t": 0,
+            "value": 0.05
+          },
+          {
+            "t": 1,
+            "value": 0.02
+          }
+        ]
+      },
+      "spawnShape": {
+        "kind": "sphere",
+        "radius": 0.3
+      },
+      "speed": {
+        "points": [
+          {
+            "t": 0,
+            "value": 3
+          },
+          {
+            "t": 1,
+            "value": 5
+          }
+        ]
+      },
+      "spread": 2.6
+    }
+  ],
+  "id": "pfb-impact",
+  "name": "Pixel Fireball — Impact (Recipe)",
+  "texture": "vfx/soft-circle",
+  "version": 1
+}

@@ -19,6 +19,7 @@ import type { CoarseGrid } from "./survey.js";
 import { boxBlur } from "./grid-ops.js";
 import { coastFrame } from "./landmass.js";
 import { windVector, type WorldSpec } from "./world-spec.js";
+import { detExp, detPow } from "@mmo-engine/placement";
 
 /**
  * Mean temperature per cell, °C. `ventDistance` (metres to the nearest
@@ -47,7 +48,7 @@ export function temperature(
       const aspect = sun ? C.aspectWarmingC * Math.max(-1, Math.min(1, sun[i] - 1)) : 0;
       out[i] =
         C.seaTempC -
-        C.inlandCoolingC * Math.pow(1 - t, C.inlandCoolingCurve) -
+        C.inlandCoolingC * detPow(1 - t, C.inlandCoolingCurve) -
         (C.lapseCPerKm * Math.max(0, h[i] - sea)) / 1000 +
         heat +
         aspect;
@@ -81,8 +82,8 @@ export function rainfall(
   const step = 2 * grid.cell;
   const bx = (wind.x * step) / grid.cell;
   const bz = (wind.z * step) / grid.cell;
-  const flatFraction = 1 - Math.exp(-step / C.dryDistance);
-  const recharge = 1 - Math.exp(-step / SEA_RECHARGE_M);
+  const flatFraction = 1 - detExp(-step / C.dryDistance);
+  const recharge = 1 - detExp(-step / SEA_RECHARGE_M);
 
   const order = Uint32Array.from({ length: W * D }, (_, i) => i);
   const key = new Float64Array(W * D);
@@ -123,7 +124,7 @@ export function rainfall(
       continue;
     }
     const climb = Math.max(0, h[i] - hBack);
-    const fraction = 1 - Math.exp(-(step / C.dryDistance + C.orographic * climb));
+    const fraction = 1 - detExp(-(step / C.dryDistance + C.orographic * climb));
     const fall = qIn * fraction;
     q[i] = qIn - fall * (1 - C.recycling);
     rain[i] = (rainMm * fall) / flatFraction;

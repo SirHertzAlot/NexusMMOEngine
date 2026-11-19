@@ -46,7 +46,7 @@ export interface InstanceManagerOptions {
   partyOf: (name: string) => string[];
   weaponOf?: (characterId: number) => Weapon | null;
   /** The share of a blow a character's worn armour lets through. */
-  armourOf?: (characterId: number) => number;
+  armourOf?: (characterId: number, kind?: "cut" | "blunt" | "thrust") => number;
   lootPool?: () => readonly number[];
   chestPool?: () => readonly number[];
   /** Put item definition `def` in a character's bag; false when it couldn't. */

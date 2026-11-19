@@ -17,6 +17,7 @@ import { defineQuery, hasComponent } from "bitecs";
 import { BodyConfig, MotionType, Noclip, ShapeKind, Transform, Velocity } from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 import { clearOfStatics } from "./prop-collision.js";
 
 /** Walkers that move further than this in one tick are teleported. */
@@ -42,6 +43,18 @@ interface Bridged {
 
 export class CharacterBridgeSystem implements SimSystem {
   readonly name = "character-bridge";
+  readonly access: SystemAccess = {
+    system: "character-bridge",
+    reads: [
+      "Noclip",
+      "Velocity",
+      { component: "BodyConfig", fields: ["halfY", "motionType", "radius", "shapeKind"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+  };
   private readonly walkers = defineQuery([Transform, Velocity, BodyConfig]);
   private readonly bridged = new Map<number, Bridged>();
   private readonly seen = new Set<number>();

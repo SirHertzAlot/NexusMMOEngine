@@ -10,6 +10,10 @@
  */
 export * from "./manifest.js";
 export * from "./provider.js";
+export * from "./baked-geometry.js";
+export * from "./baked-provider.js";
+export * from "./baked-chunk-streaming.js";
+export * from "./baked-clips.js";
 export * from "./credits.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
@@ -20,5 +24,22 @@ export * from "./character/clip-playback.js";
 export * from "./media/index.js";
 export * from "./character/stand-in.js";
 export { loadParticleBudgets, budgetForTier, ParticleBudgets, DEFAULT_PARTICLE_BUDGETS, QUALITY_TIERS, type TierBudget, type QualityTier } from "./particle-budgets.js";
-export { VfxEffect, parseVfxEffect, type VfxEmitter, type VfxSpawnShape, type VfxForce, type VfxCurve, type VfxScalar, type VfxColor, type VfxColorGradient } from "./vfx-schema.js";
+export {
+  VfxEffect,
+  VfxBlendMode,
+  VfxTextureSampling,
+  VfxFlipbookLoop,
+  VfxFlipbook,
+  parseVfxEffect,
+  resolveFlipbookFrames,
+  resolveEmitterRenderSettings,
+  type VfxEmitter,
+  type VfxSpawnShape,
+  type VfxForce,
+  type VfxCurve,
+  type VfxScalar,
+  type VfxColor,
+  type VfxColorGradient,
+} from "./vfx-schema.js";
 export { vfxToQuarks } from "./vfx-convert.js";
+export * from "./cinematics/index.js";

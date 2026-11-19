@@ -277,6 +277,91 @@ export interface RetargetedClipValidation {
   issues: string[];
 }
 
+export interface ValidateRetargetedClipOptions {
+  /** Target skeleton root used to sample world-space planted-foot drift in metres. */
+  rig?: THREE.Object3D;
+  /** Optional blocking threshold (metres) above which `footSlide` fails validation. */
+  maxFootSlide?: number;
+  /** Vertical tolerance above each foot's minimum height considered planted (default 0.05 m). */
+  plantToleranceM?: number;
+}
+
+function cloneBoneHierarchy(root: THREE.Object3D): THREE.Object3D {
+  const clone = (root as THREE.Bone).isBone ? new THREE.Bone() : new THREE.Group();
+  clone.name = root.name;
+  clone.position.copy(root.position);
+  clone.quaternion.copy(root.quaternion);
+  clone.scale.copy(root.scale);
+  for (const child of root.children) {
+    clone.add(cloneBoneHierarchy(child));
+  }
+  return clone;
+}
+
+const FOOT_BONE_PATTERN = /^(Ankle|Ball|Toes?|Foot)_(L|R)$|foot|ankle|toe/i;
+
+/**
+ * Measure maximum planar horizontal drift (metres) of any planted foot bone across
+ * the clip. Returns `0` when no rig or foot bones are present.
+ */
+export function measureClipFootSlide(
+  clip: THREE.AnimationClip,
+  rig: THREE.Object3D,
+  plantToleranceM = 0.05,
+): number {
+  if (clip.duration <= 0 || clip.tracks.length === 0) return 0;
+  const sim = cloneBoneHierarchy(rig);
+  const feet: THREE.Object3D[] = [];
+  sim.traverse((obj) => {
+    if (FOOT_BONE_PATTERN.test(obj.name)) feet.push(obj);
+  });
+  if (feet.length === 0) return 0;
+
+  const mixer = new THREE.AnimationMixer(sim);
+  const action = mixer.clipAction(clip);
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+
+  const steps = Math.max(8, Math.min(240, Math.ceil(clip.duration * 30)));
+  const positions: THREE.Vector3[][] = feet.map(() => []);
+  const tmp = new THREE.Vector3();
+
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * clip.duration;
+    mixer.setTime(t);
+    sim.updateMatrixWorld(true);
+    for (let f = 0; f < feet.length; f++) {
+      feet[f].getWorldPosition(tmp);
+      positions[f].push(tmp.clone());
+    }
+  }
+
+  let maxSlide = 0;
+  for (const series of positions) {
+    let minY = Infinity;
+    for (const p of series) if (p.y < minY) minY = p.y;
+    const cutoffY = minY + plantToleranceM;
+
+    let anchor: THREE.Vector3 | null = null;
+    for (const p of series) {
+      if (p.y <= cutoffY) {
+        if (!anchor) {
+          anchor = p;
+        } else {
+          const drift = Math.hypot(p.x - anchor.x, p.z - anchor.z);
+          if (drift > maxSlide) maxSlide = drift;
+        }
+      } else {
+        anchor = null;
+      }
+    }
+  }
+
+  mixer.stopAllAction();
+  return +maxSlide.toFixed(4);
+}
+
 function retargetedClipIsLoop(name: string): boolean {
   return /_Loop$|Idle|_Hold(\.F)?$|(Run|Walk|Sprint|Strafe|Crouch)\w*0\d/i.test(name);
 }
@@ -291,8 +376,12 @@ function keyframesClose(a: ArrayLike<number>, b: ArrayLike<number>, isQuat: bool
   return d < 1e-4;
 }
 
-/** Validate a retargeted clip: loop continuity, bone budget, and motion sanity. Red clips block the library (Phase A2). */
-export function validateRetargetedClip(clip: THREE.AnimationClip, boneBudget: number): RetargetedClipValidation {
+/** Validate a retargeted clip: loop continuity, bone budget, and planted foot slide. Red clips block the library (Phase A2). */
+export function validateRetargetedClip(
+  clip: THREE.AnimationClip,
+  boneBudget: number,
+  options: ValidateRetargetedClipOptions = {},
+): RetargetedClipValidation {
   const issues: string[] = [];
   const boneNames = new Set<string>();
   for (const t of clip.tracks) {
@@ -304,15 +393,25 @@ export function validateRetargetedClip(clip: THREE.AnimationClip, boneBudget: nu
 
   let loopContinuous = true;
   if (retargetedClipIsLoop(clip.name) && clip.tracks.length > 0) {
-    const track = clip.tracks[0] as unknown as { sample: (time: number) => number[] };
-    const first = track.sample(0);
-    const last = track.sample(clip.duration);
-    const isQuat = clip.tracks[0] instanceof THREE.QuaternionKeyframeTrack;
-    if (!keyframesClose(first, last, isQuat)) loopContinuous = false;
+    for (const track of clip.tracks) {
+      const interp = (
+        track as unknown as { createInterpolant: () => { evaluate: (t: number) => ArrayLike<number> } }
+      ).createInterpolant();
+      const first = Array.from(interp.evaluate(0) as ArrayLike<number>);
+      const last = Array.from(interp.evaluate(clip.duration) as ArrayLike<number>);
+      const isQuat = track instanceof THREE.QuaternionKeyframeTrack;
+      if (!keyframesClose(first, last, isQuat)) {
+        loopContinuous = false;
+        break;
+      }
+    }
   }
   if (!loopContinuous) issues.push(`loop not continuous: ${clip.name}`);
 
-  const footSlide = 0;
+  const footSlide = options.rig ? measureClipFootSlide(clip, options.rig, options.plantToleranceM) : 0;
+  if (options.maxFootSlide !== undefined && footSlide > options.maxFootSlide) {
+    issues.push(`foot slide ${footSlide.toFixed(3)} m exceeds limit ${options.maxFootSlide} m`);
+  }
   if (issues.length > 0) {
     throw new Error(`[animations] ${clip.name}: validation failed — ${issues.join("; ")}`);
   }

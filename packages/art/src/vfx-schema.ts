@@ -136,6 +136,68 @@ export const VfxBurst = z.object({
 });
 export type VfxBurst = z.infer<typeof VfxBurst>;
 
+export const VfxBlendMode = z.enum(["normal", "additive", "multiply", "screen"]);
+export type VfxBlendMode = z.infer<typeof VfxBlendMode>;
+
+export const VfxTextureSampling = z.enum(["nearest", "linear"]);
+export type VfxTextureSampling = z.infer<typeof VfxTextureSampling>;
+
+export const VfxFlipbookLoop = z.enum(["loop", "once", "hold"]);
+export type VfxFlipbookLoop = z.infer<typeof VfxFlipbookLoop>;
+
+/**
+ * UV-grid sprite-sheet playback block for pixel/animated billboard emitters
+ * (PIXEL-FIREBALL-POC-SPEC §4 Version A extension).
+ */
+export const VfxFlipbook = z
+  .object({
+    columns: z.number().int().min(1),
+    rows: z.number().int().min(1),
+    frames: z.array(z.number().int().min(0)).min(1).optional(),
+    frameRange: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
+    fps: z.number().positive(),
+    loop: VfxFlipbookLoop.default("loop"),
+  })
+  .superRefine((f, ctx) => {
+    if (f.frames && f.frameRange) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["frameRange"],
+        message: "flipbook cannot specify both frames and frameRange",
+      });
+    }
+    const maxCell = f.columns * f.rows;
+    if (f.frameRange) {
+      const [start, end] = f.frameRange;
+      if (start > end) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["frameRange"],
+          message: `frameRange start (${start}) must be <= end (${end})`,
+        });
+      }
+      if (end >= maxCell) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["frameRange"],
+          message: `frameRange end (${end}) exceeds ${f.columns}x${f.rows} grid (${maxCell} cells)`,
+        });
+      }
+    }
+    if (f.frames) {
+      for (let i = 0; i < f.frames.length; i++) {
+        if (f.frames[i] >= maxCell) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["frames", i],
+            message: `frame index ${f.frames[i]} exceeds ${f.columns}x${f.rows} grid (${maxCell} cells)`,
+          });
+        }
+      }
+    }
+  });
+export type VfxFlipbook = z.infer<typeof VfxFlipbook>;
+
 export const VfxEmitter = z.object({
   /** Unique name within the effect. */
   name: z.string().min(1),
@@ -164,15 +226,20 @@ export const VfxEmitter = z.object({
   forces: z.array(VfxForce).default([]),
   /** Local offset from the effect origin. */
   position: VfxVec3.default({ x: 0, y: 0, z: 0 }),
+  /** Optional per-emitter texture override (v2 / Version A). */
+  texture: z.string().optional(),
+  /** Optional per-emitter blendMode override (v2 / Version A). */
+  blendMode: VfxBlendMode.optional(),
+  /** Optional per-emitter texture filter override ("nearest" for pixel sheets, default "linear"). */
+  textureSampling: VfxTextureSampling.optional(),
+  /** Optional UV-grid flipbook playback definition (v2 / Version A). */
+  flipbook: VfxFlipbook.optional(),
 });
 export type VfxEmitter = z.infer<typeof VfxEmitter>;
 
 // ---------------------------------------------------------------------------
 // Effect (engine-agnostic)
 // ---------------------------------------------------------------------------
-
-export const VfxBlendMode = z.enum(["normal", "additive", "multiply", "screen"]);
-export type VfxBlendMode = z.infer<typeof VfxBlendMode>;
 
 export const VfxEffect = z.object({
   /** Unique effect ID (e.g. "fireball", "heal", "muzzle-flash"). */
@@ -190,10 +257,43 @@ export const VfxEffect = z.object({
    * Omit for untextured (square) particles.
    */
   texture: z.string().optional(),
+  /** Default texture filtering mode for this effect (defaults to "linear" at runtime). */
+  textureSampling: VfxTextureSampling.optional(),
   /** Budget tier this effect was authored for. The runtime scales by the active tier. */
   authoredTier: z.enum(["low", "medium", "high", "ultra"]).default("medium"),
 });
 export type VfxEffect = z.infer<typeof VfxEffect>;
+
+/** Expand a flipbook block into the ordered list of UV grid cell indices to step through. */
+export function resolveFlipbookFrames(flipbook: VfxFlipbook): number[] {
+  if (flipbook.frames) return [...flipbook.frames];
+  if (flipbook.frameRange) {
+    const [start, end] = flipbook.frameRange;
+    const out: number[] = [];
+    for (let i = start; i <= end; i++) out.push(i);
+    return out;
+  }
+  const total = flipbook.columns * flipbook.rows;
+  return Array.from({ length: total }, (_, i) => i);
+}
+
+/** Resolved per-emitter render state honoring Version A emitter overrides over effect defaults. */
+export function resolveEmitterRenderSettings(
+  effect: Pick<VfxEffect, "blendMode" | "texture" | "textureSampling">,
+  emitter: Pick<VfxEmitter, "blendMode" | "texture" | "textureSampling" | "flipbook">,
+): {
+  blendMode: VfxBlendMode;
+  texture: string | undefined;
+  textureSampling: VfxTextureSampling;
+  flipbook: VfxFlipbook | undefined;
+} {
+  return {
+    blendMode: emitter.blendMode ?? effect.blendMode,
+    texture: emitter.texture ?? effect.texture,
+    textureSampling: emitter.textureSampling ?? effect.textureSampling ?? "linear",
+    flipbook: emitter.flipbook,
+  };
+}
 
 /**
  * Validate an unknown value as a VfxEffect. Throws on invalid.

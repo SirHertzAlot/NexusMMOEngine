@@ -20,6 +20,9 @@ export interface CatalogModel {
  */
 export const FORTIFICATION_KINDS = ["town_wall", "wall_tower", "town_gate"] as const;
 
+/** Kinds whose pieces must meet end to end: scale-fit sizes them to their footprint, not their height. */
+export const END_TO_END_KINDS = [...FORTIFICATION_KINDS, "fence"] as const;
+
 /** A model name that is part of a wall or a gate, whatever pattern it also matches. */
 export const FORTIFICATION_NAME = /(Wall|Gate|Gatehouse|Arch(way)?|Tower|Portcullis|Palisade|Rampart|Battlement)(_|$)/i;
 
@@ -37,46 +40,46 @@ export const DEFAULT_ART_PATTERNS: Record<string, string[]> = {
   tavern: ["Preset_Tavern_\[0-9]+_Optimized$"],
   chapel: ["Preset_Church_\[0-9]+_[AB]_Optimized$"],
   warehouse: ["Preset_Stables_\[0-9]+_Optimized$", "Preset_House_04_Optimized$"],
-  townhouse: ["Preset_House_1[1-9](_[A-C])?_Optimized$", "Preset_Townhouse_\[0-9]+_Optimized$"],
+  townhouse: ["Preset_House_1[1-9](_[A-C])?_Optimized$", "Preset_Townhouse_\[0-9]+_Optimized$", "Preset_House_(09_[A-C]|10)_Optimized$"],
   inn: ["Preset_Inn_\[0-9]+_Optimized$", "Preset_Tavern_\[0-9]+_Optimized$"],
-  theatre: ["Preset_Theat(re|er)_\[0-9]+_Optimized$", "Preset_Amphitheat(re|er)_\[0-9]+_Optimized$"],
-  bathhouse: ["Preset_Bath(house|s)?_\[0-9]+_Optimized$"],
-  town_hall: ["Preset_(Town_?Hall|Guild_?Hall|Manor)_\[0-9]+_Optimized$"],
-  guardhouse: ["Preset_(Guard_?House|Watch_?House|Guard_?Post)_\[0-9]+_Optimized$"],
-  barracks: ["Preset_Barracks_\[0-9]+_Optimized$"],
-  school: ["Preset_(School|Schoolhouse)_\[0-9]+_Optimized$"],
-  library: ["Preset_(Library|Archive)_\[0-9]+_Optimized$"],
-  parish_church: ["Preset_Church_\[0-9]+_[C-Z]_Optimized$", "Preset_Church_\[0-9]+_Optimized$"],
-  cathedral: ["Preset_Cathedral_\[0-9]+_Optimized$", "Preset_Basilica_\[0-9]+_Optimized$"],
-  churchyard: ["(Prop|Preset)_(Graveyard|Cemetery)(_\[0-9]+)?(_Optimized)?$"],
+  theatre: ["Preset_Theat(re|er)_\[0-9]+_Optimized$", "Preset_Amphitheat(re|er)_\[0-9]+_Optimized$", "Preset_House_(04|05|10)_Optimized$"],
+  bathhouse: ["Preset_Bath(house|s)?_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  town_hall: ["Preset_(Town_?Hall|Guild_?Hall|Manor)_\[0-9]+_Optimized$", "Preset_House_(09_[A-C]|10)_Optimized$"],
+  guardhouse: ["Preset_(Guard_?House|Watch_?House|Guard_?Post)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  barracks: ["Preset_Barracks_\[0-9]+_Optimized$", "Preset_Stables_\[0-9]+_Optimized$"],
+  school: ["Preset_(School|Schoolhouse)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  library: ["Preset_(Library|Archive)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  parish_church: ["Preset_Church_\[0-9]+_[C-Z]_Optimized$", "Preset_Church_\[0-9]+_Optimized$", "Preset_Church_01_[AB]_Optimized$"],
+  cathedral: ["Preset_Cathedral_\[0-9]+_Optimized$", "Preset_Basilica_\[0-9]+_Optimized$", "Preset_Church_01_B_Optimized$"],
+  churchyard: ["(Prop|Preset)_(Graveyard|Cemetery)(_\[0-9]+)?(_Optimized)?$", "(^|_)Gravestone(_|$)"],
   rectory: ["Preset_(Rectory|Vicarage|Parsonage)_\[0-9]+_Optimized$", "Preset_House_0[4-6]_Optimized$"],
-  hospital: ["Preset_(Hospital|Infirmary|Almshouse)_\[0-9]+_Optimized$"],
-  monastery: ["Preset_(Monastery|Abbey|Priory)_\[0-9]+_Optimized$"],
-  apothecary: ["Preset_(Apothecary|Herbalist|Alchemist)_\[0-9]+_Optimized$"],
+  hospital: ["Preset_(Hospital|Infirmary|Almshouse)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  monastery: ["Preset_(Monastery|Abbey|Priory)_\[0-9]+_Optimized$", "Preset_Church_01_[AB]_Optimized$"],
+  apothecary: ["Preset_(Apothecary|Herbalist|Alchemist)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
   tenement: ["Preset_(Tenement|House_1[1-9])(_[A-C])?_Optimized$", "Preset_House_0[2-3](_[A-C])?_Optimized$"],
   shop: ["Preset_(Shop|Store|Merchant)_\[0-9]+_Optimized$", "Preset_House_0[4-6]_Optimized$"],
-  watch_hq: ["Preset_(Watch_?House|Guard_?House|Barracks)_\[0-9]+_Optimized$"],
-  gaol: ["Preset_(Gaol|Jail|Prison|Dungeon)_\[0-9]+_Optimized$"],
-  garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$"],
-  park: ["(Prop|Preset)_(Park|Grove|Tree_?Cluster|Fountain)(_\[0-9]+)?(_Optimized)?$"],
+  watch_hq: ["Preset_(Watch_?House|Guard_?House|Barracks)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  gaol: ["Preset_(Gaol|Jail|Prison|Dungeon)_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  garden: ["(Prop|Preset)_(Garden|Orchard|Vegetable_?Patch)(_\[0-9]+)?(_Optimized)?$", "SM_Env_Bush_Flowers_0[1-6]$"],
+  park: ["(Prop|Preset)_(Park|Grove|Tree_?Cluster|Fountain)(_\[0-9]+)?(_Optimized)?$", "SM_Env_Tree_Round_0[1-4]$"],
   empty_lot: ["(Prop|Preset)_(Fence|Rubble|Ruin|Empty_?Lot)(_\[0-9]+)?(_Optimized)?$"],
   // A craft guild's hall (rules.industry.guild): a hall by the square, else a grand house.
-  guild_hall: ["Preset_(Guild_?Hall|Hall|Manor)_\[0-9]+_Optimized$", "Preset_House_1[1-9](_[A-C])?_Optimized$"],
+  guild_hall: ["Preset_(Guild_?Hall|Hall|Manor)_\[0-9]+_Optimized$", "Preset_House_1[1-9](_[A-C])?_Optimized$", "Preset_House_(09_[A-C]|10)_Optimized$"],
   // An industry's workplace (rules.industry).
-  sawmill: ["Preset_(Sawmill|Lumber_?Mill|Woodcutter|Lumberjack)_\[0-9]+_Optimized$", "Preset_Workshop_\[0-9]+_Optimized$"],
+  sawmill: ["Preset_(Sawmill|Lumber_?Mill|Woodcutter|Lumberjack)_\[0-9]+_Optimized$", "Preset_Workshop_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
   mine: ["(Prop|Preset)_(Mine|Mine_?Entrance|Mineshaft|Quarry)(_\[0-9]+)?(_Optimized)?$"],
   fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$", "Preset_Hut_\[0-9]+_Optimized$"],
   // A master's workplace looks like the trade's own.
   master_farmstead: ["Preset_Farm(house)?_\[0-9]+_Optimized$", "Preset_(Hut|Shelter|Stables)_\[0-9]+_Optimized$"],
   master_smithy: ["Preset_Blacksmith_\[0-9]+_Optimized$"],
-  master_workshop: ["Preset_Workshop_\[0-9]+_Optimized$"],
-  master_bakery: ["Preset_Bakery_\[0-9]+_Optimized$"],
-  master_fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$"],
+  master_workshop: ["Preset_Workshop_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  master_bakery: ["Preset_Bakery_\[0-9]+_Optimized$", "Preset_House_0[4-8]_Optimized$"],
+  master_fishery: ["Preset_(Fishery|Fish(ing)?_?(Hut|House|Market)|Boat_?House|Dock)_\[0-9]+_Optimized$", "Preset_Hut_\[0-9]+_Optimized$"],
   // The town square's well or fountain.
   town_well: ["(Prop|Preset)_(Well|Fountain)(_\[0-9]+)?(_Optimized)?$"],
   // The town wall: straight wall runs, towers, and the gate the road passes through.
   town_wall: ["(Castle|Town|City|Stone|Wood(en)?)_Wall(_Straight|_Long|_Mid)?_\[0-9]+$", "_Wall_(Straight|Long|Mid)_\[0-9]+$", "Palisade(_Wall|_Straight)?_\[0-9]+$"],
-  wall_tower: ["(Castle|Wall|Town|Guard|Watch)_Tower(_Round|_Square)?_\[0-9]+$", "Palisade_Tower_\[0-9]+$"],
+  wall_tower: ["(Castle|Wall|Town|Guard|Watch)_Tower(_Round|_Square)?_\[0-9]+$", "Palisade_Tower_\[0-9]+$", "Preset_Tower_[0-9]+_Optimized$"],
   town_gate: ["(Castle|Town|City|Wall|Palisade)_Gate(house)?(_Large|_Small)?_\[0-9]+$", "_Gatehouse_\[0-9]+$"],
 };
 
@@ -94,6 +97,34 @@ export const DEFAULT_DRESSING_PATTERNS: Record<string, string[]> = {
 };
 
 /**
+ * The places between the towns (places-scene.ts: a homestead's farmhouse, a roadside inn, a shack, a guard outpost, a
+ * camp site's clearing, a farm's field): whole preset names like the towns' buildings, so match them with
+ * `buildArtMap(models, DEFAULT_PLACE_PATTERNS)`. A camp site and a farm's field take the farm packs' dressing models
+ * (`PLACE_DRESSING_KINDS`). A kind with no match stays a box.
+ */
+export const DEFAULT_PLACE_PATTERNS: Record<string, string[]> = {
+  guard_outpost: ["Preset_House_0[6-8]_Optimized$", "Preset_Tower_[0-9]+_Optimized$"],
+  roadside_inn: ["Preset_Inn_\[0-9]+_Optimized$", "Preset_Tavern_\[0-9]+_Optimized$"],
+  // Models used by no town kind: a model has one scale for the whole world, so a shack must not shrink a home that shares its model.
+  shack: ["Preset_Outhouse_01_Optimized$"],
+  farmhouse: ["Preset_Hut_01_Optimized$", "Preset_Shelter_0[12]_Optimized$", "Preset_Farm(house)?_\[0-9]+_Optimized$"],
+};
+
+/** The places whose look is a farm-pack dressing model: place kind -> the DEFAULT_DRESSING_PATTERNS key. */
+export const PLACE_DRESSING_KINDS: Record<string, string> = { camp_site: "camp_props", farm_field: "farm_crops" };
+
+/**
+ * The art map for the places scene: the place patterns, the farm dressing under the names the places use (the yard's
+ * `farm_tools`, `farm_produce` and `farm_yard`, the field and the camp site), each a list of model ids.
+ */
+export function buildPlaceArtMap(models: readonly CatalogModel[]): Record<string, string[]> {
+  const dressing = buildArtMap(models, DEFAULT_DRESSING_PATTERNS, "i");
+  const out: Record<string, string[]> = { ...buildArtMap(models, DEFAULT_PLACE_PATTERNS), ...dressing };
+  for (const [kind, key] of Object.entries(PLACE_DRESSING_KINDS)) if (dressing[key]) out[kind] = dressing[key]!;
+  return out;
+}
+
+/**
  * Street furniture (rules.props, and the terraces' steps), for the packs' prop models: matched case-insensitively
  * (`buildArtMap(models, DEFAULT_PROP_PATTERNS, "i")`). Small props like the dressing, so they stay out of
  * DEFAULT_ART_PATTERNS too; a kind with no model stays its stand-in box.
@@ -105,7 +136,7 @@ export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
   statue: ["(^|_)statue(_[0-9]+)?$"],
   barrel: ["(^|_)barrel(_[0-9]+)?$"],
   crate: ["(^|_)(crate|box_wood(en)?)(_[0-9]+)?$"],
-  planter: ["(^|_)(planter|flower_?(box|pot))(_[0-9]+)?$"],
+  planter: ["(^|_)(planter|flower_?(box|pot))(_pedestal)?(_[0-9]+)?(_preset)?(_[0-9]+)?$"],
   stair_step: ["(^|_)(stone_)?(step|stairs?)(_[0-9]+)?$"],
   log_pile: ["(^|_)(log_?pile|logs|wood_?pile|lumber(_?pile)?)(_[0-9]+)?$"],
   ore_cart: ["(^|_)(ore_?cart|mine_?cart|minecart|cart_ore)(_[0-9]+)?$"],
@@ -114,6 +145,8 @@ export const DEFAULT_PROP_PATTERNS: Record<string, string[]> = {
   tree_stand: ["(^|_)(tree|trees|tree_?cluster|pine|oak|birch)(_[a-z]+)?(_[0-9]+)?$"],
   ore_vein: ["(^|_)(ore|ore_?vein|ore_?rock|rock_?ore|mineral_?rock|crystal_?rock)(_[a-z]+)?(_[0-9]+)?$"],
   fishing_spot: ["(^|_)(fishing_?spot|fish_?school|ripple|water_?ripple)(_[0-9]+)?$"],
+  // A property line's fence piece (rules.props.fences); scale-fit fits it to its piece's length like a wall (END_TO_END_KINDS).
+  fence: ["^SM_Prop_Fence_0[1-4]$"],
   guild_banner: ["(^|_)(banner|flag|pennant)(_?(pole|stand))?(_[0-9]+)?$"],
   grain_sacks: ["(^|_)(grain_?sacks?|sacks?(_grain|_flour)?|flour_?sacks?)(_[0-9]+)?$"],
 };

@@ -101,6 +101,7 @@ function toLedgerEvent(row: LedgerEventRow): LedgerEvent {
       durability: row.durability,
       x: row.x,
       z: row.z,
+      ...(row.count && row.count > 1 ? { count: row.count } : {}),
       committedAt: row.committedAt,
     },
   };

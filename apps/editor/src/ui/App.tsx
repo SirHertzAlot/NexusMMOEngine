@@ -5,6 +5,10 @@
  * play cluster, dockable left/center/right/bottom panels, status bar.
  * Every inspector panel below is mounted unchanged — the shell only
  * decides which existing panel is visible and wraps it in dock chrome.
+ * T2: WHICH of those surfaces mount at all is decided by the shell slot's
+ * pinned interface template (shell-presentation.ts / shell-composition.ts);
+ * the default pin is the current shell, so the arrangement is unchanged
+ * until a project pins a different shell template.
  * Workspaces without a panel yet render an EmptyState that names the
  * EA slice that will own them; nothing here edits simulation state.
  */
@@ -28,6 +32,8 @@ import { OwnedFiles } from "./owned-files.js";
 import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
 import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPanel, revertActive, screenshotViewport } from "./shell-actions.js";
+import { SHELL } from "./shell-composition.js";
+import { useShellComposition } from "./use-shell.js";
 import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import { requestNewScene } from "../open-scene.js";
 import { loadLastSetup, saveLastSetup, setupSummary, type PlaySetup } from "./play-setup.js";
@@ -46,6 +52,8 @@ import { QuestDetailsLive, QuestsTree } from "./quests-live.js";
 import { AssetLibraryTree } from "./asset-library-tree.js";
 import { AnimDetails, ClipList } from "./animation-library.js";
 import { applyDeepSelection, readDeepSelection, subscribeDeepSelection } from "./deep-selection.js";
+import { EcsFootprintSection } from "./ecs-footprint.js";
+import { serverLink, useServerLink } from "./server-gate.js";
 
 // ---------------------------------------------------------------- config
 
@@ -195,6 +203,7 @@ const VIEW_KEYWORDS: Record<string, string> = {
   tables: "tables rules items loot",
   rules: "rules editor combat death body",
   dungeons: "dungeon rooms layout",
+  bake: "dungeon bake paint layout rock floor pool portal theme layers shell triangles provenance",
   crafting: "crafting recipes units fittings rune stone reagent craft skill smithing",
   runs: "dungeon runs instances entrances party time limit traps chests loot rolls",
   towns: "towns settlements generator rules industry guilds resources",
@@ -249,6 +258,11 @@ export function App(): React.JSX.Element {
   const problemTotal = problemCount(diskProblems, problems);
   const [dialog, setDialog] = React.useState<"prefs" | "profile" | null>(null);
   const playing = pmState === "running" || pmState === "starting";
+
+  // T2: which shell surfaces mount comes from the shell slot's pinned
+  // template and follows the pin live — the layout state below only
+  // shows/hides and sizes the docks the composition includes.
+  const shell = useShellComposition();
 
   // Dock layout: visibility + sizes persist locally; named layouts snapshot all of it.
   const [docks, setDocks] = useLocalStorage("mmo-editor.docks", { left: true, right: true, bottom: true });
@@ -608,7 +622,8 @@ export function App(): React.JSX.Element {
         ...(playing ? { outline: "2px solid var(--m3-tertiary)", outlineOffset: -2 } : {}),
       }}
     >
-      <MenuBar
+      {shell.has(SHELL.menuBar) && (
+        <MenuBar
         workspace={workspace}
         onPick={pickWorkspace}
         onSearch={() => setPalette(true)}
@@ -617,8 +632,11 @@ export function App(): React.JSX.Element {
         onResetLayout={() => applyLayout(defaultLayout())}
         onGo={go}
         onDialog={setDialog}
-      />
-      <Toolbar
+        showWorkspaces={shell.has(SHELL.workspaceNav)}
+        />
+      )}
+      {shell.has(SHELL.toolBar) && (
+        <Toolbar
         playMenu={playMenu}
         onTogglePlayMenu={() => setPlayMenu((v) => !v)}
         onClosePlayMenu={() => setPlayMenu(false)}
@@ -641,7 +659,8 @@ export function App(): React.JSX.Element {
         })}
         onResetLayout={() => applyLayout(defaultLayout())}
         currentSnapshot={snapshot()}
-      />
+        />
+      )}
       {palette && (
         <CommandPalette
           onClose={() => setPalette(false)}
@@ -665,7 +684,7 @@ export function App(): React.JSX.Element {
       
         <div className="flex min-h-0 flex-1 gap-1.5 p-1.5">
         {/* left dock */}
-        
+        {shell.hasDock("left") && (
         <div
           ref={leftRef}
           className={`flex-none ${docks.left ? "hidden md:block" : "hidden"}`}
@@ -693,7 +712,8 @@ export function App(): React.JSX.Element {
             {leftTab === "content" ? <ContentTree onGo={go} /> : <LeftTree workspace={workspace} view={view} onView={setView} views={ws.views} onGo={go} />}
           </DockPanel>
         </div>
-        {docks.left && (
+        )}
+        {shell.hasDock("left") && docks.left && (
           <Divider
             vertical
             title="Drag to resize the left dock (double-click resets)"
@@ -707,6 +727,7 @@ export function App(): React.JSX.Element {
         
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           
+        {shell.has(SHELL.viewTabs) && (
         <div
             className="flex h-9 flex-none items-center gap-0.5 rounded-xl px-1.5"
             role="tablist"
@@ -740,8 +761,10 @@ export function App(): React.JSX.Element {
               <ViewportOptions />
             </span>
           </div>
+        )}
 
           
+        {shell.has(SHELL.stage) && (
         <div
             className="m3-scroll relative min-h-0 flex-1 overflow-auto rounded-xl p-3"
             style={{
@@ -754,8 +777,9 @@ export function App(): React.JSX.Element {
               <EmptyState icon={activeView.soon?.icon ?? "hourglass_empty"} title={activeView.soon?.title ?? "Coming soon"} body={activeView.soon?.body ?? ""} />
             )}
           </div>
+        )}
 
-          {docks.bottom && (
+          {shell.hasDock("bottom") && docks.bottom && (
             <Divider
               title="Drag to resize the bottom dock (double-click resets)"
               onLive={(dx, dy) => liveResize(bottomRef, "b", dx, dy)}
@@ -764,6 +788,7 @@ export function App(): React.JSX.Element {
             />
           )}
           
+        {shell.hasDock("bottom") && (
         <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
             <DockPanel
               tabs={[
@@ -789,9 +814,10 @@ export function App(): React.JSX.Element {
               <BottomPane tab={bottomTab} output={output} problems={problems} disk={diskProblems} />
             </DockPanel>
           </div>
+        )}
         </div>
 
-        {docks.right && (
+        {shell.hasDock("right") && docks.right && (
           <Divider
             vertical
             title="Drag to resize the right dock (double-click resets)"
@@ -801,7 +827,7 @@ export function App(): React.JSX.Element {
           />
         )}
         {/* right dock */}
-        
+        {shell.hasDock("right") && (
         <div
           ref={rightRef}
           className={`flex-none ${docks.right ? "hidden lg:block" : "hidden"}`}
@@ -840,9 +866,12 @@ export function App(): React.JSX.Element {
             )}
           </DockPanel>
         </div>
+        )}
       </div>
 
-      <StatusBar problems={problemTotal} onOpenProblems={() => { setBottomTab("problems"); setDocks((d) => ({ ...d, bottom: true })); }} />
+      {shell.has(SHELL.statusBar) && (
+        <StatusBar problems={problemTotal} onOpenProblems={() => { setBottomTab("problems"); setDocks((d) => ({ ...d, bottom: true })); }} />
+      )}
       {dialog === "prefs" && <PreferencesDialog onClose={() => setDialog(null)} />}
       {dialog === "profile" && <ProfileDialog onClose={() => setDialog(null)} />}
       <SnackbarHost />
@@ -950,7 +979,7 @@ function ViewportOptions(): React.JSX.Element {
 
 // ---------------------------------------------------------------- menu bar
 
-function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayout, onGo, onDialog }: {
+function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayout, onGo, onDialog, showWorkspaces = true }: {
   workspace: WorkspaceId;
   onPick: (id: WorkspaceId) => void;
   onSearch: () => void;
@@ -959,6 +988,8 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
   onResetLayout: () => void;
   onGo: (ws: WorkspaceId, view?: string) => void;
   onDialog: (d: "prefs" | "profile") => void;
+  /** T2: the workspace tab strip mounts only when the shell template includes workspace navigation. */
+  showWorkspaces?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = React.useState<string | null>(null);
   const [dialog, setDialog] = React.useState<"shortcuts" | "about" | null>(null);
@@ -1231,6 +1262,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
       )}
     </div>
     
+        {showWorkspaces && (
         <div
       className="flex h-10 flex-none items-center px-3"
       style={{ background: "var(--m3-surface-0)", borderTop: "1px solid var(--m3-surface-2)" }}
@@ -1262,6 +1294,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
         })}
       </nav>
     </div>
+        )}
     </>
   );
 }
@@ -2144,6 +2177,12 @@ function GameplayDetails(): React.JSX.Element {
 }
 
 function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typeof useEditorSelection>> }): React.JSX.Element {
+  const linkState = useServerLink();
+  const isWireId = /^\d+$/.test(selection.id);
+  const liveAdmin = React.useMemo(
+    () => (linkState.phase === "live" && isWireId ? { admin: (c: string, a?: unknown) => serverLink.admin(c, a) } : undefined),
+    [linkState.phase, isWireId],
+  );
   return (
     <div className="flex flex-col gap-3 text-xs">
       <div>
@@ -2172,6 +2211,12 @@ function SelectionDetails({ selection }: { selection: NonNullable<ReturnType<typ
           </section>
         ))
       )}
+      <EcsFootprintSection
+        componentNames={selection.components.map((c) => c.name)}
+        wireId={isWireId ? selection.id : undefined}
+        objectId={isWireId ? undefined : selection.id}
+        admin={liveAdmin}
+      />
     </div>
   );
 }

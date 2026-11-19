@@ -24,14 +24,19 @@
  */
 
 import * as THREE from "three";
-import type { ShadingComponentId, ShadingDoc, ShadingKind, ToonRowName } from "@mmo-engine/art/browser";
-import { applyToon, type ToonRow } from "../toon/toon-material.js";
+import type { ShadingComponentId, ShadingDoc, ShadingKind, ToonRowName, ShadingOutlineOptOutId } from "@mmo-engine/art/browser";
+import { applyToon, toonBand, type ToonRow } from "../toon/toon-material.js";
+import { addOutline, OutlineMaterial } from "../toon/outline.js";
 
 /** What a kind carries when the content says nothing: the cel look. */
 const DEFAULT_KINDS: Record<ShadingKind, readonly ShadingComponentId[]> = {
   model: ["toon"],
   placeholder: ["toon"],
   prefab: ["toon"],
+  terrain: ["toon"],
+  structure: ["toon"],
+  figure: ["toon"],
+  fallback: ["toon"],
 };
 
 /** The ramp row a kind uses when the content names none. */
@@ -39,12 +44,32 @@ const DEFAULT_ROWS: Record<ShadingKind, ToonRowName> = {
   model: "leather",
   placeholder: "leather",
   prefab: "cloth",
+  terrain: "leather",
+  structure: "leather",
+  figure: "cloth",
+  fallback: "cloth",
 };
+
+/** Feathered-edge width of the cel band (0: hard); set per quality tier. */
+let celFeather = 0;
+
+/** Set the cel band's feathered-edge width: the quality tier's `celFeather`. */
+export function setCelFeather(width: number): void {
+  celFeather = Math.max(0, width);
+}
+
+/** The cel band the patch starts from: the content's band, feathered by the tier, centred. */
+export function celBand(): [number, number] {
+  const [lo, hi] = toonBand();
+  const mid = (lo + hi) / 2;
+  const half = Math.max(hi - lo, celFeather) / 2;
+  return celFeather > 0 ? [mid - half, mid + half] : [mid, mid];
+}
 
 /** How each component shades a surface. */
 const COMPONENTS: Record<ShadingComponentId, (material: THREE.MeshStandardMaterial, kind: ShadingKind) => void> = {
   toon: (material, kind) => {
-    applyToon(material, { row: toonRowFor(kind) });
+    applyToon(material, { row: toonRowFor(kind), band: celBand() });
   },
   standard: () => {
     // three's own PBR: nothing to add.
@@ -87,4 +112,47 @@ export function applyShading(object: THREE.Object3D, kind: ShadingKind): void {
     if (Array.isArray(material)) material.forEach((m) => applyShadingToMaterial(m, kind));
     else if (material) applyShadingToMaterial(material, kind);
   });
+}
+
+/** Shade a material as its kind says and hand it back (for field initialisers). */
+export function shadedMaterial<M extends THREE.Material>(material: M, kind: ShadingKind): M {
+  applyShadingToMaterial(material, kind);
+  return material;
+}
+
+/** Whether the quality tier draws cel outlines on world geometry (quality.ts `outlines`). */
+let outlinesOn = false;
+
+/** Set by the world canvas with the tier: outlines cost a second draw per mesh. */
+export function setCelOutlines(on: boolean): void {
+  outlinesOn = on;
+}
+
+let worldOutline: OutlineMaterial | null = null;
+
+/** One outline material for every world mesh (its width and colour are the look's). */
+function sharedWorldOutline(): OutlineMaterial {
+  worldOutline ??= new OutlineMaterial({ width: 2 });
+  return worldOutline;
+}
+
+/**
+ * Shade a world object as its kind says, and draw its cel outline when the
+ * tier allows. Instanced meshes and terrain are outline opt-outs
+ * (art SHADING_OUTLINE_OPT_OUTS): they get the material shading only.
+ */
+export function shadeWorldObject(object: THREE.Object3D, kind: ShadingKind, outline: ShadingOutlineOptOutId | null = null): void {
+  applyShading(object, kind);
+  if (!outlinesOn || outline !== null || kind === "terrain") return;
+  const meshes: THREE.Mesh[] = [];
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.isMesh && !(mesh as THREE.InstancedMesh).isInstancedMesh && !mesh.name.endsWith(":outline")) meshes.push(mesh);
+  });
+  for (const mesh of meshes) addOutline(mesh, sharedWorldOutline());
+}
+
+/** Test seam: whether the world outline material exists yet. */
+export function worldOutlineMaterialForTests(): OutlineMaterial | null {
+  return worldOutline;
 }

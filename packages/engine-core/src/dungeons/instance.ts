@@ -119,7 +119,7 @@ export interface DungeonInstanceOptions {
   /** What a character swings (the region's items); none: fists. */
   weaponOf?: (characterId: number) => Weapon | null;
   /** The share of a blow a character's worn armour lets through; absent: 1. */
-  armourOf?: (characterId: number) => number;
+  armourOf?: (characterId: number, kind?: "cut" | "blunt" | "thrust") => number;
   /** Item definitions a kill may roll (the mob pool); empty: no loot. */
   lootPool?: readonly number[];
   /** Item definitions an opened chest may roll (the chest pool); empty: no loot. */
@@ -188,12 +188,18 @@ export class DungeonInstance {
       hasComponent(this.world.ecs, C.CharacterRef, e)
         ? (opts.weaponOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e]) ?? null)
         : this.creatures.weaponOf(e);
-    const armourOf = (e: number): number =>
+    const armourOf = (e: number, kind?: "cut" | "blunt" | "thrust"): number =>
       hasComponent(this.world.ecs, C.CharacterRef, e)
-        ? (opts.armourOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e]) ?? 1)
+        ? (opts.armourOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e], kind) ?? 1)
         : 1;
     const tuning = { resolution: rules.combat.resolution, unarmed: rules.items.unarmed };
-    const combat = new CombatSystem(30, stamina, { hooks: opts.game.hooks, weaponOf, armourOf, tuning: () => tuning });
+    const combat = new CombatSystem(30, stamina, {
+      hooks: opts.game.hooks,
+      weaponOf,
+      armourOf,
+      techniqueKind: (t) => rules.combat.techniques[t]?.damageKind,
+      tuning: () => tuning,
+    });
     const death: DeathSystem = new DeathSystem(
       opts.game.hooks,
       30,

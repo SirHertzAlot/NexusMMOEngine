@@ -189,6 +189,7 @@ function rowFromStoredEvent(e: StoredLedgerEvent): LedgerEventRow | null {
   const x = num("x");
   const z = num("z");
   const committedAt = num("committedAt");
+  const rawCount = typeof p.count === "number" && Number.isFinite(p.count) ? Math.trunc(p.count) : 1;
   if (
     [itemId, kind, def, owner, slot, durability, x, z, committedAt].some(
       (v) => !Number.isFinite(v),
@@ -208,6 +209,7 @@ function rowFromStoredEvent(e: StoredLedgerEvent): LedgerEventRow | null {
     durability,
     x,
     z,
+    ...(rawCount > 1 ? { count: rawCount } : {}),
   };
 }
 

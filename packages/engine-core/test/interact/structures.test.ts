@@ -130,15 +130,39 @@ describe("buildings", () => {
 });
 
 describe("content/structures.json", () => {
-  it("parses, and every kind is a building that stays broken until mended", () => {
+  // The parts a modular building is made of (DE4): they break away for good, and the building falls round the gap.
+  const PARTS = new Set(["wall", "pillar", "floor", "ceiling", "stairs", "railing", "structure", "prop"]);
+  it("parses, and every building kind stays broken until mended, every part kind breaks away", () => {
     const kinds = loadStructureBreakables(fileURLToPath(new URL("../../../../../content/structures.json", import.meta.url)));
     assert.ok(kinds.size > 20);
     for (const [kind, def] of kinds) {
-      assert.equal(def.into, "variant", kind);
       assert.equal(def.respawnS, null, kind);
-      assert.ok(def.repair && def.minStrength, kind);
+      assert.ok(def.minStrength, kind);
+      if (PARTS.has(kind)) {
+        assert.equal(def.into, "remove", kind);
+      } else {
+        assert.equal(def.into, "variant", kind);
+        assert.ok(def.repair, kind);
+      }
     }
     assert.ok(kinds.has("farmhouse"));
+    for (const p of PARTS) assert.ok(kinds.has(p), p);
+    assert.deepEqual(kinds.get("house")?.stages, [0.66, 0.33]);
+    assert.deepEqual(kinds.get("chapel")?.stages, [0.75, 0.5, 0.25]);
+    assert.deepEqual(kinds.get("wall")?.stages, [0.7, 0.35]);
+  });
+
+  it("collects custom damage stages by assetHash:health without colliding across structure sizes (DE1)", () => {
+    const sim = world();
+    const kinds = loadStructureBreakables(fileURLToPath(new URL("../../../../../content/structures.json", import.meta.url)));
+    const breaks = new BreakSystem(new Map());
+    const h = building(sim, 0, 0);
+    const c = building(sim, 20, 0); // same AssetRef.assetHash (5), different structure max health
+    breaks.register(sim, h, "t/house", kinds.get("house")!);
+    breaks.register(sim, c, "t/chapel", kinds.get("chapel")!);
+    const stages = breaks.damageStages();
+    assert.deepEqual(stages?.["5:300"], [0.66, 0.33]);
+    assert.deepEqual(stages?.["5:800"], [0.75, 0.5, 0.25]);
   });
 });
 

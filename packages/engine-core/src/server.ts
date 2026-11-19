@@ -250,7 +250,7 @@ import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { LivingSimSystem } from "./sim/living-sim-system.js";
 import { loadLessons } from "./residents/lessons.js";
-import { BreakSystem, breakDefsOf, ChestSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem, CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import {
@@ -849,7 +849,7 @@ async function main(): Promise<void> {
   const wildlifeSpeciesCount = Object.keys(wildlifeModels).length;
   const enemyKindsCount = Object.keys(parsedEnemyModels).length;
   if (wildlifeSpeciesCount > 0 || enemyKindsCount > 0) {
-    console.log(`[creatures] model mappings loaded: ${wildlifeSpeciesCount} wildlife species, ${enemyKindsCount} enemy kinds`);
+    logServerModuleLog(worldLog, `[creatures] model mappings loaded: ${wildlifeSpeciesCount} wildlife species, ${enemyKindsCount} enemy kinds`);
   }
   const wildlifeSettlements: RaidSettlement[] =
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
@@ -1049,7 +1049,8 @@ async function main(): Promise<void> {
   // bots and props wear nothing. armourFactor lives in @mmo-engine/rules
   // beside the formula it feeds. Dungeon runs ask through the same
   // function, by character id.
-  const wornFactor = (id: number): number => armourFactor(game.rules, itemsOf().armourTotal(id));
+  const wornFactor = (id: number, kind?: "cut" | "blunt" | "thrust"): number =>
+    armourFactor(game.rules, itemsOf().armourTotal(id), kind ? { kind } : undefined);
   // What a character swings: the item in the main hand, by the character's
   // id on its avatar. Bots and props hold nothing (fists).
   // Slice 2: items/itemDefs come from the items module during assembly.
@@ -1140,12 +1141,15 @@ async function main(): Promise<void> {
     return vs.attach(eid, template) ? null : "could not attach";
   };
   const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
+  // Buildings that fall when their parts break (DE4): parts stay static until one breaks.
+  const collapse = new CollapseSystem({ store: placesStore });
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
     store: placesStore,
     // Mending a building spends the pouch (gathered materials).
     materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
     killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
     onBreak: (s, ev) => {
+      collapse.partBroken(s, ev.eid);
       if (ev.loot === undefined) return;
       const killer = ev.killer;
       const owner = killer !== undefined && hasComponent(s.ecs, CharacterRef, killer) ? CharacterRef.idHi[killer] * 4294967296 + CharacterRef.idLo[killer] : 0;
@@ -1206,6 +1210,7 @@ async function main(): Promise<void> {
             }
           : undefined,
         breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
+        collapse: { registerBuilding: (s, key, parts, o) => collapse.registerBuilding(s, key, parts, o) },
         structureBreakable: (kind) => structureKinds.get(kind),
         vendors: { attach: attachVendor },
         quests: {
@@ -1250,7 +1255,7 @@ async function main(): Promise<void> {
       const d = itemsOf().defs;
       return { technique: d.technique[def], item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] }, reach: d.length[def], family: d.bases[def] };
     },
-    getArmourOf: (character: number) => wornFactor(character),
+    getArmourOf: (character: number, kind?: "cut" | "blunt" | "thrust") => wornFactor(character, kind),
     getLootPool: () => itemsOf().defs.ofSource("mob"),
     getChestPool: () => itemsOf().defs.ofSource("chest"),
     grantItem: (character: number, def: number) => itemsOf().grantItem(character, def),
@@ -1281,6 +1286,8 @@ async function main(): Promise<void> {
     // A building holds out against a blow from anyone below its minStrength (IX6).
     canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
     kindScale: (target: number, kind: string): number => breaks.kindScale(target, kind),
+    // A building part is hit at its middle, not at the pivot it is placed by (DE4c).
+    hitBody: (target: number) => collapse.hitBody(sim, target),
     rules: game.rules,
     hooks,
     combatSkills,
@@ -1358,6 +1365,7 @@ async function main(): Promise<void> {
         gathering,
         chests,
         breaks,
+        collapse,
       },
     },
     ctx: moduleCtx,
@@ -1534,6 +1542,7 @@ async function main(): Promise<void> {
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
     atomicOps: atomicOps ?? undefined,
+    damageStages: () => breaks.damageStages(),
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),

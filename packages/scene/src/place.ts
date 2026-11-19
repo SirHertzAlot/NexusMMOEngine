@@ -2,10 +2,12 @@
  * Placement helpers shared by the editor viewport (EA5), the server's
  * scene spawner (EA6) and "Keep" (live entity back into the scene).
  *
- * Conventions: positions are metres, +Y up; `rotation` is Euler degrees and
- * only its Y component (yaw, about +Y) is used by the game world; a child's
- * transform is relative to its parent's (position scaled and turned by the
- * parent's scale and yaw).
+ * Conventions: positions are metres, +Y up; `rotation` is Euler degrees
+ * [x, y, z] applied yaw (Y) first, then pitch (X), then roll (Z), three.js
+ * order "YXZ". The yaw turns a node and its children; the pitch and roll tilt
+ * only the node's own model (a beam laid on its side), not its children. A
+ * child's transform is relative to its parent's (position scaled and turned by
+ * the parent's scale and yaw).
  */
 
 import { addNode, findNode, setTransform, type SceneDoc, type SceneNode, type Vec3 } from "./index.js";
@@ -15,6 +17,8 @@ export interface WorldNode {
   parentId: string | null;
   position: Vec3;
   yawDeg: number;
+  /** The node's own pitch (about X) and roll (about Z), degrees, after its yaw. */
+  tiltDeg: [number, number];
   scale: Vec3;
 }
 
@@ -26,11 +30,13 @@ export function worldNodes(doc: SceneDoc): WorldNode[] {
   const walk = (list: SceneNode[], parent: WorldNode | null): void => {
     for (const node of list) {
       const p = node.transform?.position ?? [0, 0, 0];
-      const yaw = node.transform?.rotation?.[1] ?? 0;
+      const r = node.transform?.rotation ?? [0, 0, 0];
+      const yaw = r[1] ?? 0;
+      const tiltDeg: [number, number] = [r[0] ?? 0, r[2] ?? 0];
       const s = node.transform?.scale ?? [1, 1, 1];
       let w: WorldNode;
       if (!parent) {
-        w = { node, parentId: null, position: [...p] as Vec3, yawDeg: yaw, scale: [...s] as Vec3 };
+        w = { node, parentId: null, position: [...p] as Vec3, yawDeg: yaw, tiltDeg, scale: [...s] as Vec3 };
       } else {
         const lx = p[0] * parent.scale[0];
         const ly = p[1] * parent.scale[1];
@@ -43,6 +49,7 @@ export function worldNodes(doc: SceneDoc): WorldNode[] {
           // Rotation about +Y: x' = x cos + z sin, z' = -x sin + z cos.
           position: [parent.position[0] + lx * c + lz * sn, parent.position[1] + ly, parent.position[2] - lx * sn + lz * c],
           yawDeg: parent.yawDeg + yaw,
+          tiltDeg,
           scale: [parent.scale[0] * s[0], parent.scale[1] * s[1], parent.scale[2] * s[2]],
         };
       }

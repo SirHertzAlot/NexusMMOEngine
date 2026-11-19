@@ -21,6 +21,7 @@
 
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import * as C from "../components.js";
 import type { WalletSystem } from "./wallet.js";
 import type { ChestView } from "@mmo-engine/protocol";
@@ -35,6 +36,8 @@ export interface VendorItems {
   defOf(itemId: number): number;
   /** Human-readable name for a def, for the shop list. */
   nameOf(def: number): string;
+  /** Units in the stack of `itemId` (absent: 1). */
+  countOf?(itemId: number): number;
 }
 
 export interface VendorStock {
@@ -70,6 +73,13 @@ export const VENDOR_REACH = 4;
 
 export class VendorSystem implements SimSystem {
   readonly name = "vendor";
+  readonly access: SystemAccess = {
+    system: "vendor",
+    reads: [
+      { component: "Transform", fields: ["px", "pz"] },
+    ],
+    writes: [],
+  };
   private readonly defs = new Map<string, VendorDef>();
   /** Entity id -> vendor template id. */
   private readonly vendors = new Map<number, string>();
@@ -241,9 +251,10 @@ export class VendorSystem implements SimSystem {
     if (def < 0) return { error: "no such item" };
     const line = v.stock.find((s) => s.def === def);
     if (!line) return { error: "the vendor doesn't want that" };
-    const price = Math.floor(line.price * v.buybackRate);
-    if (price <= 0) return { error: "the vendor doesn't want that" };
-    return { vendorId: v.id, def, price };
+    const pricePerUnit = Math.floor(line.price * v.buybackRate);
+    if (pricePerUnit <= 0) return { error: "the vendor doesn't want that" };
+    const count = Math.max(1, this.items.countOf?.(itemId) ?? 1);
+    return { vendorId: v.id, def, price: pricePerUnit * count };
   }
 
   /**

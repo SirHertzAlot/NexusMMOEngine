@@ -180,4 +180,34 @@ describe("VendorSystem", () => {
     assert.equal(view.stock[0].name, "Test Item 1");
     assert.equal(view.stock[1].name, "Test Item 2");
   });
+
+  it("selling a stack pays buyback price multiplied by stack count (CF6)", () => {
+    const wallet = new WalletSystem();
+    const counts = new Map<number, number>();
+    const bags = new Map<number, number[]>();
+    const defOf = new Map<number, number>();
+    const vendor = new VendorSystem(wallet, {
+      give: () => true,
+      take: (c, item) => {
+        const bag = bags.get(c);
+        const i = bag?.indexOf(item) ?? -1;
+        if (!bag || i < 0) return false;
+        bag.splice(i, 1);
+        return true;
+      },
+      defOf: (item) => defOf.get(item) ?? -1,
+      nameOf: (def) => `Item ${def}`,
+      countOf: (item) => counts.get(item) ?? 1,
+    });
+    vendor.define({ id: "general", name: "General Goods", buybackRate: 0.3, stock: [{ def: 1, price: 50, quantity: -1 }] });
+    vendor.attach(VENDOR_E, "general");
+    bags.set(BUYER, [801]);
+    defOf.set(801, 1);
+    counts.set(801, 4);
+
+    assert.equal(vendor.sell(near, BUYER, BUYER_E, VENDOR_E, 801, 1), null);
+    // Unit buyback = round(50 * 0.3) = 15, x4 stack = 60 gold.
+    assert.equal(wallet.balanceOf(BUYER), 60);
+    assert.equal(bags.get(BUYER)?.length, 0);
+  });
 });

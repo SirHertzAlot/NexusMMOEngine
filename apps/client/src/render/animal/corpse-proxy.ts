@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { RAGDOLL_PARTS } from "../../physics/physics-world.js";
 import { RIG_PARTS } from "../../physics/ragdoll-rig.js";
+import { shadedMaterial } from "../shading/shading.js";
 
 const CORPSE_COLOUR = 0x6b5a48;
 
@@ -15,7 +16,7 @@ export class CorpseProxy {
   readonly group = new THREE.Group();
   private readonly parts: THREE.Mesh[] = [];
   private readonly geometries: THREE.BoxGeometry[] = [];
-  private readonly material = new THREE.MeshStandardMaterial({ color: CORPSE_COLOUR, roughness: 0.9 });
+  private readonly material = shadedMaterial(new THREE.MeshStandardMaterial({ color: CORPSE_COLOUR, roughness: 0.9 }), "figure");
   /** Set once the corpse has expired and its drawing is gone. */
   spent = false;
 

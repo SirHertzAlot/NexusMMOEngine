@@ -37,6 +37,7 @@ import { HAIR_COLOURS, SKIN_TONES, lookToJson, randomLook, type CharacterLook, t
 import * as C from "../components.js";
 import type { PlacesStore } from "../interact/places-store.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import type { LivingSimSystem } from "../sim/living-sim-system.js";
 
@@ -170,6 +171,24 @@ const WALK_LIMIT_S = 90;
 
 export class ResidentSystem implements SimSystem {
   readonly name = "residents";
+  readonly access: SystemAccess = {
+    system: "residents",
+    reads: [
+      "CharacterRef",
+      { component: "Health", fields: ["current"] },
+      { component: "NavAgent", fields: ["seq", "state"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move"] },
+      { component: "Health", fields: ["current", "max"] },
+      { component: "Locomotion", fields: ["abilities", "breath", "mode"] },
+      { component: "NavAgent", fields: ["seq", "speed", "tx", "ty", "tz"] },
+      "PlayerIntent",
+      { component: "Transform", fields: ["px", "py", "pz", "qw", "qx", "qy", "qz", "sx", "sy", "sz"] },
+      "Velocity",
+    ],
+  };
   private readonly maxEntities: number;
   private readonly tickHz: number;
   private readonly live = new Map<string, Live>();

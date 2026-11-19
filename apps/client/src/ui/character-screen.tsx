@@ -28,6 +28,7 @@ import {
 import { CharacterStage } from "../render/character/character-stage.js";
 import { Button, Input, Label } from "./components.js";
 import { t } from "../i18n.js";
+import { ChoreoMenu } from "./choreo-menu.js";
 
 export interface CharacterScreenProps {
   characters: CharacterEntry[];
@@ -287,19 +288,23 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
         {mode === "list" ? (
           <>
             <div className="font-semibold">{t("character.yours")}</div>
-            <div className="space-y-1">
-              {characters.map((c) => (
-                <button
-                  key={c.id}
-                  className={`w-full rounded-md border px-3 py-2 text-left text-sm ${c.id === selected ? "border-foreground bg-secondary" : "border-input"}`}
-                  onClick={() => setSelected(c.id)}
-                  onDoubleClick={() => void run(() => props.onEnter(c.id))}
-                >
-                  {c.name}
-                  <span className="ml-2 text-xs text-muted-foreground">{t(`character.gender.${c.look.gender}`)}</span>
-                </button>
-              ))}
-            </div>
+            <ChoreoMenu
+              aria-label={t("character.yours")}
+              className="space-y-1"
+              itemClass="w-full rounded-md border border-input px-3 py-2 text-left text-sm"
+              items={characters.map((c) => ({
+                key: c.id,
+                label: (
+                  <>
+                    {c.name}
+                    <span className="ml-2 text-xs text-muted-foreground">{t(`character.gender.${c.look.gender}`)}</span>
+                  </>
+                ),
+              }))}
+              focused={characters.findIndex((c) => c.id === selected)}
+              onFocus={(i) => setSelected(characters[i]!.id)}
+              onConfirm={(i) => void run(() => props.onEnter(characters[i]!.id))}
+            />
             <Button disabled={busy || selected === null} onClick={() => selected !== null && void run(() => props.onEnter(selected))}>
               {busy ? t("character.entering") : t("character.enter")}
             </Button>

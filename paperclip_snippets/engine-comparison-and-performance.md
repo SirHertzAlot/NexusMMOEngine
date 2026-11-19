@@ -33,6 +33,6 @@ Comprehensive technical disclosure covering the architectural identity of the Ne
 5. **P5: Native Memory Allocator (`mimalloc`/`jemalloc`)**: Eliminates heap lock contention and virtual memory fragmentation.
 
 ## Linked Documents
-- Comprehensive Report: `docs/ENGINE-COMPARISON-AND-PERFORMANCE.md`
+- Comprehensive Report: `docs/business-analysis/ENGINE-COMPARISON-AND-PERFORMANCE.md`
 - Decision Log: `docs/DECISIONS.md`
 - Roadmap: `docs/ROADMAP.md`

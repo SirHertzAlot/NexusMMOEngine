@@ -88,10 +88,9 @@ flowchart TD
     end
 
     subgraph EdgeTier ["Network Ingress Tier (apps/edge)"]
-        UWS["uWebSockets.js Gateway"]
-        Auth["Auth & Rate Limiting"]
-        Zod["Zod Packet Validation"]
-        MPSC["AtomicMPSCQueue (Lock-Free Ingress)"]
+        UWS["Game relay (ws)"]
+        Auth["Packet router (routes.json)"]
+        Zod["DeltaSet assembly"]
     end
 
     subgraph SimTier ["Authoritative Simulation Core (packages/engine-core)"]
@@ -104,30 +103,27 @@ flowchart TD
 
     subgraph WorldTier ["Persistence & World Tier (packages/world-server)"]
         Coord["World Coordinator"]
-        SPSC["AtomicSPSCQueue (Transaction Ledger)"]
         Surreal["Embedded SurrealDB / SQLite"]
     end
 
     ClientTier -->|"Binary WebSocket (Deltas & Intents)"| EdgeTier
-    EdgeTier --> MPSC
-    MPSC -->|"Zero-Copy Shared Memory"| SimTier
+    EdgeTier -->|"Framed TCP channel (loopback)"| SimTier
     SimTier <--> Addons
-    SimTier --> SPSC
-    SPSC --> WorldTier
+    SimTier <-->|"webrpc: leases, hand-offs, snapshots"| WorldTier
 ```
 
 ---
 
 ### 1.3 The 3-Tier Execution Architecture
 
-1. **Ingress & Networking Tier ([`apps/edge`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/edge))**:
-   - Manages client WebSocket connections over `uWebSockets.js`.
-   - Validates incoming packets before they enter the simulation boundary.
-   - Computes Area-of-Interest (AoI) sector visibility and serializes per-client binary deltas.
-2. **Authoritative Simulation Tier ([`packages/engine-core`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core))**:
+1. **Ingress & Networking Tier ([`apps/edge`](../apps/edge))**:
+   - Holds the players' WebSocket and HTTP connections (with the `ws` library) and relays them to the core over a framed channel.
+   - Routes packets by type and assembles each client's area-of-interest delta from the per-sector bytes the core encodes once.
+   - Authentication, rate limits and schema validation are in the core's gateway, not here.
+2. **Authoritative Simulation Tier ([`packages/engine-core`](../packages/engine-core))**:
    - Executes a deterministic 30 Hz fixed timestep loop ($33.33\text{ms}$ budget).
    - Manages entity lifecycles, transform updates, raycasting, physics integration, and module systems.
-3. **Persistence & World Tier ([`packages/world-server`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/world-server))**:
+3. **Persistence & World Tier ([`packages/world-server`](../packages/world-server))**:
    - Runs off the tick loop to ensure database queries never stall the active simulation.
    - Manages chunk ownership, regional leases, cross-region migration, and atomic transaction ledgers.
 
@@ -135,7 +131,7 @@ flowchart TD
 
 ## 2. Engine / Game Decoupling (The Blank Substrate)
 
-A defining feature of the Nexus MMO Engine is the **Engine / Game Split** (detailed in [`docs/engine-game-split/README.md`](file:///c:/Users/user/Downloads/mmo-engine-full/docs/engine-game-split/README.md)). The engine provides a pure, high-performance simulation platform rather than a pre-baked RPG template.
+A defining feature of the Nexus MMO Engine is the **Engine / Game Split** (detailed in [`docs/engine-game-split/README.md`](engine-game-split/README.md)). The engine provides a pure, high-performance simulation platform rather than a pre-baked RPG template.
 
 ### 2.1 Zero-Content Clean Boot
 - The core engine contains **no hardcoded gameplay, items, species, skills, or recipes**.
@@ -143,28 +139,29 @@ A defining feature of the Nexus MMO Engine is the **Engine / Game Split** (detai
 - Game rules, skill hierarchies, and combat formulas live outside the engine in data packs (`content/rules/`) loaded through explicit environment seams (`MMO_*`).
 
 ### 2.2 Modular System Architecture (`modules/`)
-Gameplay systems are decoupled into discrete, isolated packages located under [`modules/<name>/`](file:///c:/Users/user/Downloads/mmo-engine-full/modules). Each module declares its system order, dependencies, and extensions in a [`module.json`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/modules/src/index.ts#L31-L50) manifest:
+Gameplay systems are decoupled into discrete, isolated packages located under [`modules/<name>/`](../modules). Each module declares its system order, dependencies, and extensions in a [`module.json`](../packages/modules/src/index.ts#L31-L50) manifest:
 
 ```json
 {
   "name": "custom-propulsion",
   "version": "1.0.0",
+  "dependsOn": ["core"],
   "server": {
-    "entry": "dist/index.js",
+    "entry": "server/index.js",
     "systems": [
-      { "name": "ThrustSystem", "after": ["TransformSystem"] },
-      { "name": "AerodynamicDragSystem", "after": ["ThrustSystem"] }
+      { "name": "thrust", "after": "intent" },
+      { "name": "drag", "after": "thrust" }
     ]
   }
 }
 ```
 
-The active systems loaded by a region are defined in [`content/modules.json`](file:///c:/Users/user/Downloads/mmo-engine-full/content/modules.json). If a developer is creating a racing game or space flight simulator:
+The active systems loaded by a region are defined in [`content/modules.json`](../content/modules.json). If a developer is creating a racing game or space flight simulator:
 - They simply omit `combat`, `dungeons`, `quests`, and `crafting` from `content/modules.json`.
 - Omitted systems are **never compiled, allocated, or ticked**, incurring zero runtime memory or CPU overhead.
 
 ### 2.3 Data-Driven Rule Contracts (`packages/rules`)
-The [`packages/rules`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/rules) package validates all content rules at boot time using strict Zod schemas:
+The [`packages/rules`](../packages/rules) package validates all content rules at boot time using strict Zod schemas:
 - Missing rule files cause the engine to fall back to inert generic defaults.
 - Corrupted or malformed rule files halt the server immediately at startup, displaying precise file and line errors rather than allowing silent runtime failure.
 
@@ -175,14 +172,14 @@ The [`packages/rules`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/
    export MMO_RULES=my-game/rules
    export MMO_MODULES=my-game/modules.json
    ```
-3. Add custom game logic modules under `modules/` and declare their execution order relative to engine core systems (`TransformSystem`, `PhysicsSystem`).
+3. Add custom game logic modules under `modules/` and declare their execution order with `after` and `before` relative to the systems that exist (`intent`, `integrate`, `physics`, `combat` and so on; the real ids are in each `modules/*/module.json`). See [MODULES.md](MODULES.md).
 
 ---
 
 ## 3. Simulation & ECS Subsystem
 
 ### 3.1 The 30 Hz Fixed Timestep Loop
-The core simulation runs at a deterministic 30 Hz ($33.333\text{ms}$ per tick) driven by [`packages/engine-core/src/tick-loop.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/tick-loop.ts):
+The core simulation runs at a deterministic 30 Hz ($33.333\text{ms}$ per tick) driven by [`packages/engine-core/src/tick-loop.ts`](../packages/engine-core/src/tick-loop.ts):
 - Accumulates elapsed wall-clock time and steps the simulation world in discrete $dt = 1/30\text{s}$ increments.
 - Decouples simulation state from variable server frame rendering or network dispatch rates.
 
@@ -203,7 +200,7 @@ Inter-thread and inter-process communication avoids OS mutexes and thread conten
 - **`AtomicMPSCQueue`**: Dmitry Vyukov bounded Multi-Producer Single-Consumer queue featuring per-slot atomic sequence numbers for high-throughput command ingress.
 
 ### 3.5 Generational Handle Slab Allocator
-Entity IDs are protected against ABA recycling bugs through the [`GenerationalSlabAllocator`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/sab-store.ts):
+Entity IDs are protected against ABA recycling bugs through the [`GenerationalSlabAllocator`](../packages/engine-core/src/sab-store.ts):
 - 32-bit packed handle structure: `[16-bit Generation | 16-bit Index]`.
 - Freelist slot allocations update generation counts, ensuring that stale references from previous entities immediately fail validation.
 
@@ -211,7 +208,7 @@ Entity IDs are protected against ABA recycling bugs through the [`GenerationalSl
 
 ## 4. Native C++ Kernel Ecosystem (`packages/addons`)
 
-The engine offloads heavy mathematical and spatial operations to compiled C++20 N-API addons inside [`packages/addons/`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons).
+The engine offloads heavy mathematical and spatial operations to compiled C++17 N-API addons inside [`packages/addons/`](../packages/addons).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -269,7 +266,7 @@ The engine uses **`uWebSockets.js`** as its production network transport:
 
 ### 5.2 The Edge / Core Split Topology
 Network I/O is physically decoupled from authoritative simulation:
-- **Edge Processes (`apps/edge`)**: Terminate client TLS/WebSockets, perform rate limiting, and route packets.
+- **Edge Processes (`apps/edge`)**: Hold the players' WebSockets and HTTP and relay them to the core, route packets by type, assemble per-client deltas, and serve health and metrics. The core's gateway does authentication, rate limiting and validation.
 - **Core Sim (`packages/engine-core`)**: Dedicated exclusively to stepping the world.
 - Communication between Edge and Core flows across high-speed framed channels with automatic reconnect and state resynchronization.
 
@@ -279,7 +276,7 @@ The world is partitioned into a 2D grid of **64-meter sectors**:
 - Deltas are encoded once per active sector and broadcast natively using topic-based publish/subscribe fan-out.
 
 ### 5.4 State Serialization: Fast-Path vs. FlatBuffers
-The wire contract is defined by [`packages/schema/mmo_engine.fbs`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/schema/mmo_engine.fbs):
+The wire contract is defined by [`packages/schema/mmo_engine.fbs`](../packages/schema/mmo_engine.fbs):
 - **FlatBuffers**: Provides schema evolution and type safety for full entity snapshots, inventory changes, and combat events.
 - **Fast-Path Binary Codec (`fast-path.ts`)**: Encodes the hottest per-tick data (position and velocity) into fixed 32-byte records, achieving a 16× speedup and 3× smaller payload size than general-purpose delta serialization.
 
@@ -293,7 +290,7 @@ Large continuous worlds are divided into regional chunks handled by separate `en
 ## 6. Procedural Generation & Spatial Synthesis
 
 ### 6.1 Continuous Model Synthesis (`@mmo-engine/synthesis`)
-To eliminate repetitive tiling artifacts found in traditional grid-based modular builders, [`@mmo-engine/synthesis`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/synthesis) uses tileless continuous assembly:
+To eliminate repetitive tiling artifacts found in traditional grid-based modular builders, [`@mmo-engine/synthesis`](../packages/synthesis) uses tileless continuous assembly:
 - Assembles complex 3D environments from decomposed architectural assets.
 - Solves continuous spatial constraints in **5–15 ms** for 100–140 parts with zero garbage collection allocations.
 
@@ -302,7 +299,7 @@ To eliminate repetitive tiling artifacts found in traditional grid-based modular
 - Learns rotational alignments, translation offsets, and placement frequencies to automatically construct authentic architectural spaces (crypt halls, colonnades, boss arenas).
 
 ### 6.3 Universal Measurement System (UMS) & SI Standards
-The Universal Measurement System ([`packages/scene`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/scene)) enforces authentic scale across all procedural algorithms:
+The Universal Measurement System ([`packages/scene`](../packages/scene)) enforces authentic scale across all procedural algorithms:
 - Establishes human reference metrics ($1.80\text{m}$ height, $0.50\text{m}$ shoulder breadth, $0.25\text{m}$ step rise).
 - Calculates optical visual angles and perspective classification tiers (Intimate, Room, Monumental) to ensure procedural spaces feel authentic to the player camera.
 
@@ -320,7 +317,7 @@ Procedural generation applies strict physical sanity checks:
 ## 7. Client & Viewport Mirror
 
 ### 7.1 The Zero-Logic Thin Client Philosophy
-The client application ([`apps/client`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client)) is strictly a visualization mirror:
+The client application ([`apps/client`](../apps/client)) is strictly a visualization mirror:
 - Performs no authoritative simulation, physics resolution, or state reconciliation.
 - Unpacks server delta frames, updates visual transforms, and dispatches user input intents.
 
@@ -329,7 +326,7 @@ The client application ([`apps/client`](file:///c:/Users/user/Downloads/mmo-engi
 - Ensures smooth 60–144 FPS client rendering despite lower network update frequencies.
 
 ### 7.3 Biomechanical First-Person Rig & Viewmodel
-- Visible first-person arms and weapon rig ([`FirstPersonRig`](file:///c:/Users/user/Downloads/mmo-engine-full/apps/client/src/render/first-person-rig.ts)).
+- Visible first-person arms and weapon rig ([`FirstPersonRig`](../apps/client/src/render/first-person-rig.ts)).
 - Features Lissajous harmonic stride bobbing, lateral banking roll tilt, and critically damped spring-damper landing recovery.
 - Dynamic weapon swing ribbon trails and server-authoritative pitch raycasting for anatomical combat targeting.
 
@@ -381,12 +378,12 @@ To add a new gameplay mechanic:
      "name": "my-system",
      "version": "1.0.0",
      "server": {
-       "entry": "dist/index.js",
-       "systems": [{ "name": "CustomMovement", "after": ["TransformSystem"] }]
+       "entry": "server/index.js",
+       "systems": [{ "name": "custom-movement", "after": "intent" }]
      }
    }
    ```
-3. Export `createSystems(world)` in your entry script to operate over `bitECS` component stores.
+3. Export `createSystems(ctx)` from your entry script. It returns **an object with one system per name the manifest declares**, keyed by that name; a system is `{ name, step(sim, dt) }`, and `ctx.sim` is the `SimWorld` whose `bitECS` stores it operates over. The full contract is in [MODULES.md](MODULES.md).
 4. Add `"my-system"` to `content/modules.json`.
 
 ### 9.3 Authoring a Native C++ Addon

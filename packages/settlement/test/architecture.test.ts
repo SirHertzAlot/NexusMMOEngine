@@ -7,7 +7,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SCALE, resolveScale } from "@mmo-engine/scene";
-import { BUILTIN_RULES, SettlementRulesSchema, buildingHeightM, fitScale, scaleReport, settlementScene, generateSettlement, PROP_KINDS, type CatalogModel } from "../src/index.js";
+import { BUILTIN_RULES, SettlementRulesSchema, buildingHeightM, fitScale, scaleReport, settlementScene, generateSettlement, PROP_KINDS, fortificationSizesM, type CatalogModel } from "../src/index.js";
 
 const A = BUILTIN_RULES.architecture;
 
@@ -100,6 +100,16 @@ describe("fitScale", () => {
     const gate = doc.assets["p/Castle_Gate_01"]!;
     assert.ok(20 * gate <= (BUILTIN_RULES.layout.streetWidthMm + 2000) / 1000 + 1e-9, "a wide gate model shrinks to the opening");
     assert.equal(scaleReport(walls, { town_wall: ["_Wall_"], town_gate: ["_Gate_"] }, doc, BUILTIN_RULES).filter((r) => r.overflow).length, 0);
+  });
+  it("fits a tall, narrow tower to its piece, so the wall has no gap beside it", () => {
+    // Like the real tower: far taller than wide. Fitted to the wall's height it came out narrower than its piece.
+    const tower: CatalogModel[] = [{ id: "p/Watch_Tower_01", name: "Watch_Tower_01", skinned: false, size: [9, 21, 9] }];
+    const doc = fitScale(tower, { wall_tower: ["_Tower_"] }, BUILTIN_RULES);
+    const piece = fortificationSizesM(BUILTIN_RULES).wall_tower;
+    const width = 9 * doc.assets["p/Watch_Tower_01"]!;
+    assert.ok(width <= piece.lengthM + 1e-9, "never wider than its piece");
+    assert.ok(width >= piece.lengthM * 0.9, `fills its piece: ${width} of ${piece.lengthM}`);
+    assert.equal(scaleReport(tower, { wall_tower: ["_Tower_"] }, doc, BUILTIN_RULES).filter((r) => r.overflow).length, 0);
   });
   it("leaves the report with 0 overflows", () => {
     for (const bf of [1, 0.5, 2]) {

@@ -213,6 +213,8 @@ export class MirrorClient {
   day: DayClock | null = null;
   /** The weather override, from the welcome or a broadcast; auto follows the sky. */
   weatherOverride: WeatherOverride = "auto";
+  /** Custom breakable damage-stage thresholds from welcome (DE1). */
+  damageStages: Record<string, number[]> | null = null;
   lastError: ErrorMessage | null = null;
   closed = false;
   /** The account's characters, from the last account message (join()). */
@@ -450,6 +452,36 @@ export class MirrorClient {
   dropItem(item: number): void {
     if (!this.socket || this.closed) return;
     this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "drop", item })));
+  }
+
+  /** Ask to move a bag item to cell (x, y) of a grid bag, turned when `rot` (CF6, 0x13); the server checks it. */
+  moveItem(item: number, x: number, y: number, rot: boolean): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "move", item, x, y, rot })));
+  }
+
+  /** Ask to split `count` units off a bag stack (CF6, 0x13); `x`/`y`/`rot` optional in a grid bag. */
+  splitItem(item: number, count: number, x?: number, y?: number, rot?: boolean): void {
+    if (!this.socket || this.closed) return;
+    this.send(
+      this.socket,
+      encodeEnvelope(
+        MessageType.Item,
+        encodeControl({
+          kind: "item",
+          action: "split",
+          item,
+          count,
+          ...(x !== undefined && y !== undefined ? { x, y, ...(rot !== undefined ? { rot } : {}) } : {}),
+        }),
+      ),
+    );
+  }
+
+  /** Ask to combine two stacks of the same item in the bag (CF6, 0x13). */
+  combineItem(from: number, into: number): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Item, encodeControl({ kind: "item", action: "combine", from, into })));
   }
 
   /** Ask to hold a bag item (M3b, 0x13); swaps with what the hand held. */
@@ -1026,6 +1058,7 @@ export class MirrorClient {
     this.world = w.world ?? null;
     this.day = w.day ?? null;
     this.weatherOverride = w.weather ?? "auto";
+    this.damageStages = w.damageStages ?? null;
     this.events.onWelcome(w);
     this.settle({ kind: "welcome", welcome: w });
   }

@@ -15,7 +15,7 @@ The wiki is organized into focused, hierarchical chapters:
 
 ### ⚡ Simulation & Native Systems
 * **[03. Simulation & ECS Subsystem](03-ecs-and-simulation.md)**: `bitECS` Structure-of-Arrays (SoA) layout, SIMD vectorization, lock-free SPSC/MPSC queues, and generational slab allocation.
-* **[04. Native C++ Addon Ecosystem](04-native-addons.md)**: In-process C++20 N-API modules: Jolt Physics, Recast/Detour Navigation, FastNoise2/FastSIMD, Manifold 3D CSG, and SIMD Poisson scatter.
+* **[04. Native C++ Addon Ecosystem](04-native-addons.md)**: In-process C++17 N-API modules: Jolt Physics, Recast/Detour Navigation, FastNoise2/FastSIMD, Manifold 3D CSG, and SIMD Poisson scatter.
 
 ### 🌐 Networking & Scale
 * **[05. Networking & Distributed Scaling](05-networking-and-edge.md)**: `uWebSockets.js` native transport, Edge/Core split, 64m sector interest management, and binary fast-path delta serialization.
@@ -37,8 +37,8 @@ The wiki is organized into focused, hierarchical chapters:
 ---
 
 ## 🎯 Quick Reference Links
-- Master Wiki: [`docs/WIKI.md`](file:///c:/Users/user/Downloads/mmo-engine-full/docs/WIKI.md)
-- Getting Started Guide: [`docs/GETTING-STARTED.md`](file:///c:/Users/user/Downloads/mmo-engine-full/docs/GETTING-STARTED.md)
-- Wire Schema (`mmo_engine.fbs`): [`packages/schema/mmo_engine.fbs`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/schema/mmo_engine.fbs)
-- Engine Core: [`packages/engine-core`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core)
-- Native Addons: [`packages/addons`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/addons)
+- Master Wiki: [`docs/WIKI.md`](../WIKI.md)
+- Getting Started Guide: [`docs/GETTING-STARTED.md`](../GETTING-STARTED.md)
+- Wire Schema (`mmo_engine.fbs`): [`packages/schema/mmo_engine.fbs`](../../packages/schema/mmo_engine.fbs)
+- Engine Core: [`packages/engine-core`](../../packages/engine-core)
+- Native Addons: [`packages/addons`](../../packages/addons)

@@ -46,8 +46,37 @@ process — no IPC, no serialisation at the boundary beyond plain typed arrays:
 | `addon-procgen` | FastNoise2: deterministic terrain heightfields |
 | `addon-picg` | PCG: cooks `.pcg` node graphs into procedural meshes |
 | `addon-scatter` | the scatter lattice (bit-identical to the JS reference) |
-| `addon-integrate` | benchmark kernel (particle integration) |
+| `addon-integrate` | benchmark kernel (particle integration), and the native movement kernel of the data plane |
+| `addon-geometry` | mesh and polygon Booleans (manifold, Clipper2) for bakes such as dungeon shells |
+| `addon-terrain-kernel` | grid-level terrain math: tectonics and erosion on the heightfield |
+| `addon-fanout` | per-tick fan-out: assembles every session's delta envelope and picks the names each session still needs ([NATIVE-FANOUT.md](NATIVE-FANOUT.md)) |
 | `addon-template` | the addon skeleton, and a toolchain smoke test |
+
+## How it runs today
+
+The diagram above is the engine at its simplest: one process does everything. That is a core started alone (`npm run server`, the tests, the editor's play mode). **`npm start` runs it as an edge plus a core**, and the same code can run in two more shapes opted into with a flag. Every shape keeps the same rule: the browser mirrors, the server decides.
+
+| Shape | Turn it on | What changes |
+|---|---|---|
+| **Core alone** | `npm run server` | One process: gateway, tick loop, persistence. Simulation and sockets share the main thread, and the core's own gateway fans state out to players. |
+| **Edge and core** (what `npm start` runs) | `MMO_EDGE=1`, set by `npm start`, which also starts the edge on port 7777 | A separate edge process (`apps/edge`) holds the players' WebSockets and HTTP (with the `ws` library) and relays them to the core, routes packets by type, and assembles each player's delta from the sectors the core encoded once. Authentication, rate limits and validation stay in the core's gateway. The core drops its player listener and talks to the edge over a framed channel (`packages/channel`). In the edge drills (E5), a crash, restart or freeze on either side left no request hung. |
+| **Data plane** | `MMO_DATA_PLANE=1` | Three threads over one `SharedArrayBuffer`: the gateway pushes packed intents onto a lock-free ring, a 30 Hz sim worker drains them and steps native kernels, and a persistence worker drains a second ring into a durable ledger. If the sim worker dies, client sockets stay open. |
+| **Many regions** | `npm start -- --world`, plus a world server | Each region is its own process owning a range of chunks. A world server (`packages/world-server`) keeps the registry and leases and coordinates hand-offs when a player crosses a border. Player traffic never passes through it, and it never simulates. |
+
+Which of these you want depends on the player counts you plan for. [Performance and constraints](PERFORMANCE.md) has the measured cost and limits of each, and the [wiki's architecture chapter](wiki/01-architecture-overview.md) has the full diagrams.
+
+### Interest management
+
+A client should not be told about the whole region. The world is cut into **64 m sectors**. Each tick the core encodes **one delta per sector that changed**, once, and a client's message (`DeltaSet`, message `0x25`) is the concatenation of the sectors near it. The cost per client is copying bytes, not encoding them.
+
+| Rule | Value | Meaning |
+|---|---|---|
+| `enterM` | 96 m | A client's interest set is every sector within this distance of its avatar |
+| `leaveM` | 128 m | A sector stays in the set until it is past this, so walking along a border does not flicker |
+| `outerEvery` | 3 | Sectors kept only by that margin send a delta every third tick |
+| `farM` | 400 m | How far an entity marked far-visible (something large, such as a landmark) is seen |
+
+Terrain chunks and entities with no position live in a **global sector** (`g`) that every client receives. Interest management is **on by default**; `MMO_INTEREST=0` turns it off, so every client gets the whole region's delta, and dungeon instances always see everything. The values are `content/rules/interest.json`. What it saves, and what crowds still cost, is in [Performance and constraints](PERFORMANCE.md#network).
 
 ## Locked decisions
 
@@ -58,8 +87,11 @@ casual revision:
   and procgen. The benchmark ran the same C++ kernel over a bitECS world and
   a pure C++ world: even at 10k entities, bitECS is faster at 100k, both under
   1% of the tick. See [OPEN-WORLD-PLAN.md](OPEN-WORLD-PLAN.md).
-- **SQLite embedded in the Node process** for region state; **SurrealDB
-  embedded** for the world-level chunk catalog.
+- **SQLite embedded in the region process** (`region.db`, a hot cache) for region state, with the
+  **world server as the source of truth** for world-level records when `WORLD_URL` is set. The
+  world store is embedded SurrealDB (SurrealKV by default); the recommended durable shape is the
+  SurrealMX server, which is also where the data plane's ledger goes. See
+  [DECISIONS.md](DECISIONS.md) (2026-10-28 and 2026-11-02).
 - **FlatBuffers** is the C++ ↔ JS contract, owned by
   `packages/schema/mmo_engine.fbs`.
 - **30 Hz fixed sim tick.**
@@ -91,6 +123,14 @@ packages/engine-core the authoritative server: tick loop, world, net, persist.
 packages/world-server the region registry (world-level service).
 packages/channel     the edge↔core internal channel (framed TCP).
 packages/nethealth   network metrics helpers shared by edge and core.
+packages/logging     the SAB logging layer: lock-free rings, a code dictionary with generated
+                     producers, and the log worker every server process hosts (leaf package).
+packages/build       build and deploy: profiles, the input-hash stage cache, package manifest.
+packages/playtest    automated playtests: scenario documents, headless runner, replays.
+packages/animal-rig  procedural skeletons and gaits for static animal meshes (presentation only,
+                     shared by the client and the editor's rig view).
+packages/fortify     bake-time threat-driven fortification of settlements (deterministic per seed).
+packages/synthesis   bake-time model synthesis: inverse procedural modeling and seeded growth.
 packages/bench       the tick-budget benchmark harness.
 packages/addons/*    the C++ N-API addons.
 apps/client          the player-facing browser game client (React 19 + React
@@ -127,10 +167,9 @@ part) and reports all of them at once.
 `packages/rules` also exports the *hook registry* — `computeDamage`,
 `resolveLanding`, `skillGain`, `onInjury`, `onDeath`, `onRespawn` — where each
 hook has a default implementation derived from the rules and a game may
-override it as `(input, base) => …`. Be aware of the current wiring: on `main`
-the hooks are constructed at boot and then only the one-line summary is used,
-so the mechanics behind them are **specified and tested but not yet driven by
-the simulation**. [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md) is the
+override it as `(input, base) => …`. The simulation drives them: `CombatSystem` and the telegraph
+system call `computeDamage` (and `resolveLanding`), `BodySystem` calls `onInjury` and
+`resolveTreatment`, and `DeathSystem` calls `onDeath` and `onRespawn`. [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md) is the
 design; [content/rules/README.md](../content/rules/README.md) documents the
 files.
 
@@ -156,8 +195,7 @@ sequential and never skipped silently.
 
 Systems sit behind one narrow interface — `name` plus
 `step(world, dt)` — and never call each other. They communicate through
-component data and the world's intent queue. The order is declared in
-`server.ts`:
+component data and the world's intent queue. The order is not a list in one file now: **each module declares where its systems go with `after` and `before`, and the server resolves one order at boot** ([MODULES.md](MODULES.md)). The eight systems below are the original core of it, in their original order, and are still the spine:
 
 ```ts
 systems: [
@@ -171,6 +209,8 @@ systems: [
   navigation,                  // 8. Recast/Detour pathfinding
 ]
 ```
+
+Around them, other modules add `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, the creature, residents, settlement, gathering, chest and interaction systems, and more (34 modules ship). `modules/core/module.json` fixes only its own five (`reloader`, `streamer`, `gathering`, `chests`, `breaks`).
 
 Order is load-bearing:
 
@@ -207,6 +247,8 @@ per-entity allocation on the hot path.
 | 9 | `Locomotion` | swim/fly/walk state |
 | 10 | `Appearance` | character look |
 | 11 | `Action` | the current combat action/phase |
+
+The table is the first twelve. The registry in `components.ts` (`COMPONENT_IDS`) goes on: `Stamina` 12, `CharacterRef` 13, `Needs` 14, `God` 15, `Noclip` 16, `Animation` 17, `FlowRef` 18, `VfxEmitter` 19, `AudioEmitter` 20 and `Breakable` 23. Body, injury and many more (items, creatures, residents) are defined by their systems; `components.ts` and the system files are the source.
 
 Field names mirror the FlatBuffers schema so the mapping between SoA rows and
 wire tables is mechanical. Two details worth knowing:
@@ -282,7 +324,7 @@ path never sees them, because `SnapshotStore` collects separately.
 | `0x0d` | CreateCharacter | client → server |
 | `0x0e` | EnterWorld | client → server |
 
-`MESSAGE-CATALOG.md` has the payloads; the envelope and precise fields are in
+These are the first fourteen. The protocol is at version 29 and goes on to `0x27` (chat, combat, inventory, interaction, tile requests, the interest-managed `DeltaSet` and more); [MESSAGE-CATALOG.md](MESSAGE-CATALOG.md) has them all and the payloads; the envelope and precise fields are in
 the `.fbs`.
 
 Session lifecycle:
@@ -313,8 +355,7 @@ are batched into per-tick deltas the gateway fans out. No game logic lives in
 the gateway. It also owns an HTTP surface on the same port for the PCG asset
 service (`/rpc/Pcg`), authenticated by the same session tokens.
 
-**Phase 1 broadcasts the same delta stream to every client**; interest
-management is explicitly deferred until load demands it.
+**Interest management is built and on by default.** The early design broadcast one delta stream to every client; now each client is sent a `DeltaSet` (`0x25`) holding only the sectors it is near (see [Interest management](#interest-management)). `MMO_INTEREST=0` turns it off, and every client then sees everything, as in Phase 1.
 
 ## Persistence
 
@@ -329,6 +370,8 @@ scripts). All of it is gitignored.
 | `characters.db` | SQLite: each account's characters (name and look) |
 | `users.csv` | accounts: username and argon2id hash, written mode `0600` |
 | `surreal/` | the embedded SurrealDB chunk catalog (region, biome, height range, river) |
+
+The table lists the files this chapter covers. The full set (economy, social, parties, guilds, quests, gathering, places, instances and the admin log) is in [OPERATIONS.md](OPERATIONS.md#where-state-lives).
 
 Snapshots are written every 300 ticks and on shutdown, keeping the newest 6,
 and the heavy work runs off the tick thread through a checkpoint worker so

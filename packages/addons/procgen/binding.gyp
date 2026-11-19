@@ -8,6 +8,8 @@
 # The vendored trees are pinned (see third_party/*/VENDORING.md). If they
 # are ever updated, refresh the explicit source list below.
 #
+# Strict IEEE: no fast-math, no -march, FMA contraction off, so the noise is
+# the same bits on every runner (the CI AMD and local Intel runners differed).
 # SIMD note: upstream's CMake builds a multi-ISA dispatch library
 # (SSE2/AVX2/AVX512 runtime dispatch). Here we compile the baseline
 # FastSIMD translation unit directly — output is bit-identical for a
@@ -37,13 +39,13 @@
         "third_party/FastSIMD/include",
         "generated",
       ],
-      "cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell"],
+      "cflags_cc": ["-std=c++17", "-O2", "-fno-fast-math", "-ffp-contract=off"],
       # node-gyp disables C++ RTTI by default (-fno-rtti); FastNoise2's
       # Metadata machinery uses dynamic_cast, so re-enable it here.
       # (Exceptions stay disabled via NAPI_DISABLE_CPP_EXCEPTIONS.)
       "cflags_cc!": ["-fno-rtti"],
       "xcode_settings": {
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell"],
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-O2", "-fno-fast-math", "-ffp-contract=off"],
         "GCC_ENABLE_CPP_RTTI": "YES"
       },
       "msvs_settings": {
@@ -51,7 +53,7 @@
           # /MP: parallelize TU compilation across cores (Windows-only;
           # msvs_settings is ignored by the make generator elsewhere).
           "MultiProcessorCompilation": "true",
-          "AdditionalOptions": ["/std:c++17", "/EHsc-", "/O2", "/fp:fast", "/arch:AVX2"],
+          "AdditionalOptions": ["/std:c++17", "/EHsc-", "/O2", "/fp:precise"],
           "RuntimeTypeInfo": "true"
         }
       },

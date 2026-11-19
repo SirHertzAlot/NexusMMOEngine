@@ -1,0 +1,94 @@
+{
+  "authoredTier": "low",
+  "blendMode": "normal",
+  "emitters": [
+    {
+      "bursts": [],
+      "color": {
+        "stops": [
+          { "t": 0, "color": { "r": 0.28, "g": 0.18, "b": 0.34, "a": 0 } },
+          { "t": 0.25, "color": { "r": 0.38, "g": 0.16, "b": 0.28, "a": 0.72 } },
+          { "t": 0.75, "color": { "r": 0.2, "g": 0.11, "b": 0.22, "a": 0.4 } },
+          { "t": 1, "color": { "r": 0.12, "g": 0.08, "b": 0.14, "a": 0 } }
+        ]
+      },
+      "direction": { "x": 0, "y": 1, "z": 0 },
+      "duration": 0,
+      "forces": [
+        { "kind": "gravity", "acceleration": { "x": 0, "y": -0.25, "z": 0 } },
+        { "kind": "turbulence", "intensity": 0.65, "frequency": 1.8 },
+        { "kind": "drag", "coefficient": 0.7 }
+      ],
+      "lifetime": {
+        "points": [
+          { "t": 0, "value": 1.1 },
+          { "t": 1, "value": 1.9 }
+        ]
+      },
+      "looping": true,
+      "maxParticles": 20,
+      "name": "ash-spores",
+      "position": { "x": 0, "y": 0.6, "z": 0 },
+      "rate": 10,
+      "size": {
+        "points": [
+          { "t": 0, "value": 0.09 },
+          { "t": 1, "value": 0.22 }
+        ]
+      },
+      "spawnShape": { "kind": "sphere", "radius": 0.75 },
+      "speed": {
+        "points": [
+          { "t": 0, "value": 0.15 },
+          { "t": 1, "value": 0.45 }
+        ]
+      },
+      "spread": 1.2
+    },
+    {
+      "blendMode": "additive",
+      "bursts": [],
+      "color": {
+        "stops": [
+          { "t": 0, "color": { "r": 0.85, "g": 0.28, "b": 0.45, "a": 0.85 } },
+          { "t": 1, "color": { "r": 0.35, "g": 0.06, "b": 0.18, "a": 0 } }
+        ]
+      },
+      "direction": { "x": 0, "y": 1, "z": 0 },
+      "duration": 0,
+      "forces": [
+        { "kind": "gravity", "acceleration": { "x": 0, "y": 0.7, "z": 0 } },
+        { "kind": "turbulence", "intensity": 0.9, "frequency": 2.2 }
+      ],
+      "lifetime": {
+        "points": [
+          { "t": 0, "value": 0.6 },
+          { "t": 1, "value": 1.1 }
+        ]
+      },
+      "looping": true,
+      "maxParticles": 16,
+      "name": "heat-shimmer",
+      "position": { "x": 0, "y": 0.8, "z": 0 },
+      "rate": 12,
+      "size": {
+        "points": [
+          { "t": 0, "value": 0.04 },
+          { "t": 1, "value": 0.015 }
+        ]
+      },
+      "spawnShape": { "kind": "sphere", "radius": 0.45 },
+      "speed": {
+        "points": [
+          { "t": 0, "value": 0.3 },
+          { "t": 1, "value": 0.8 }
+        ]
+      },
+      "spread": 0.9
+    }
+  ],
+  "id": "corruption-bleed",
+  "name": "Corruption Bleed — Ledger Sign",
+  "texture": "vfx/soft-circle",
+  "version": 2
+}

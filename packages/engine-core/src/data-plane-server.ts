@@ -23,13 +23,15 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   DATA_PLANE_ENTITY_CAPACITY,
-  OFFSETS,
   TELEMETRY_SLOTS,
   attachSharedMemoryPlane,
   createSharedMemoryPlane,
+  GenerationalSlabAllocator,
+  MortonSpatialIndex,
+  type EntitySnapshot,
   type SharedMemoryPlaneViews,
 } from "./sab-store.js";
-import { AtomicSPSCQueue, packCommandToken } from "./lockless-ring.js";
+import { AtomicMPSCQueue, packCommandToken } from "./lockless-ring.js";
 import { loadUws } from "./net/transport.js";
 import {
   DEFAULT_INPUT_RING_CAPACITY,
@@ -93,6 +95,7 @@ export interface HybridDataPlaneOptions {
   simMode?: SimExecutionMode;
   decodeMovementIntents?: boolean;
   useBatchDrain?: boolean;
+  enableSpatialIndex?: boolean;
   dbUrl?: string;
   /** Root credentials for a remote ledger (`dbUrl` = ws://); ignored for embedded engines. */
   dbUser?: string;
@@ -132,8 +135,10 @@ function resolveWorkerScript(baseName: "sim-worker" | "persist-worker"): {
 export class HybridDataPlaneServer {
   public readonly masterMemoryArena: SharedArrayBuffer;
   public readonly views: SharedMemoryPlaneViews;
-  public readonly gatewayInputQueue: AtomicSPSCQueue;
+  public readonly gatewayInputQueue: AtomicMPSCQueue;
   public readonly entityCapacity: number;
+  public readonly slabAllocator: GenerationalSlabAllocator;
+  public readonly spatialIndex: MortonSpatialIndex;
 
   public simWorker: Worker | null = null;
   public persistWorker: Worker | null = null;
@@ -159,14 +164,56 @@ export class HybridDataPlaneServer {
       createSharedMemoryPlane(this.entityCapacity, opts.heapMegabytes ?? 32);
     this.views = attachSharedMemoryPlane(this.masterMemoryArena, this.entityCapacity);
 
-    const ringOffset =
-      this.entityCapacity === DATA_PLANE_ENTITY_CAPACITY
-        ? OFFSETS.RINGS
-        : this.views.offsets.RINGS;
-    this.gatewayInputQueue = new AtomicSPSCQueue(
+    this.gatewayInputQueue = AtomicMPSCQueue.attachTokenRing(
       this.masterMemoryArena,
-      ringOffset,
+      this.views.offsets.MPSC_INPUT_RING,
       opts.inputRingCapacity ?? DEFAULT_INPUT_RING_CAPACITY,
+    );
+    this.slabAllocator = new GenerationalSlabAllocator(this.entityCapacity);
+    this.spatialIndex = new MortonSpatialIndex(this.entityCapacity);
+  }
+
+  /** Allocate an ABA-safe entity slot in shared memory (Matrix + Planar SoA + aliveBitset). */
+  public allocateEntity(initialState: Partial<EntitySnapshot> = { hp: 100 }): number {
+    return this.slabAllocator.allocate(
+      this.views.floatMatrixView,
+      this.views.planar,
+      initialState,
+      this.views.intMatrixView,
+    );
+  }
+
+  /** Free an entity slot by generational handle and clear its SAB alive state. */
+  public freeEntity(handle: number): boolean {
+    return this.slabAllocator.free(
+      handle,
+      this.views.floatMatrixView,
+      this.views.planar,
+      this.views.intMatrixView,
+    );
+  }
+
+  /** Verify whether a packed 32-bit handle is still live and matches its generation. */
+  public isEntityHandleValid(handle: number): boolean {
+    return this.slabAllocator.isValid(handle);
+  }
+
+  /** Rebuild the Morton spatial index and write matching nearby entity indices into `outEntityIndices`. */
+  public queryEntitiesInRadius(
+    centerX: number,
+    centerZ: number,
+    radius: number,
+    outEntityIndices: Uint16Array,
+    worldHalfExtent: number = 4096,
+  ): number {
+    this.spatialIndex.rebuildFromSoA(this.views.planar, this.entityCapacity, worldHalfExtent);
+    return this.spatialIndex.queryRadius(
+      this.views.planar,
+      centerX,
+      centerZ,
+      radius,
+      outEntityIndices,
+      worldHalfExtent,
     );
   }
 
@@ -234,17 +281,7 @@ export class HybridDataPlaneServer {
     return enqueued;
   }
 
-  /**
-   * Restarts the simulation worker after a crash or manual kill drill.
-   * Attaches to the same shared memory arena, preserving live entity states.
-   */
-  public async restartSimWorker(): Promise<void> {
-    if (this.simWorker) {
-      try {
-        await this.simWorker.terminate();
-      } catch {}
-      this.simWorker = null;
-    }
+  private async spawnSimWorker(): Promise<void> {
     const { scriptPath, execArgv } = resolveWorkerScript("sim-worker");
     const worker = new Worker(scriptPath, {
       execArgv,
@@ -258,6 +295,7 @@ export class HybridDataPlaneServer {
         mode: this.opts.simMode ?? "matrix",
         decodeMovementIntents: this.opts.decodeMovementIntents ?? false,
         useBatchDrain: this.opts.useBatchDrain ?? false,
+        enableSpatialIndex: this.opts.enableSpatialIndex,
         // Shared with the main thread's LogRingBuffer (capacity must match
         // exactly; the MPSC header is validated against it on attach).
         logRingSab: this.logRingSab,
@@ -282,44 +320,26 @@ export class HybridDataPlaneServer {
     });
   }
 
+  /**
+   * Restarts the simulation worker after a crash or manual kill drill.
+   * Attaches to the same shared memory arena, preserving live entity states.
+   */
+  public async restartSimWorker(): Promise<void> {
+    if (this.simWorker) {
+      try {
+        await this.simWorker.terminate();
+      } catch {}
+      this.simWorker = null;
+    }
+    await this.spawnSimWorker();
+  }
+
   /** Spawn the Simulation Worker and (optionally) the Persistence Worker. */
   public async startWorkers(): Promise<void> {
     if (this.opts.spawnWorkers === false) return;
 
     if (!this.simWorker) {
-      const { scriptPath, execArgv } = resolveWorkerScript("sim-worker");
-      const worker = new Worker(scriptPath, {
-        execArgv,
-        workerData: {
-          workerRole: "sim",
-          sharedMemory: this.masterMemoryArena,
-          entityCapacity: this.entityCapacity,
-          inputRingCapacity: this.opts.inputRingCapacity ?? DEFAULT_INPUT_RING_CAPACITY,
-          persistRingCapacity: this.opts.persistRingCapacity ?? DEFAULT_PERSIST_RING_CAPACITY,
-          autoStart: this.opts.simAutoStart ?? true,
-          mode: this.opts.simMode ?? "matrix",
-          decodeMovementIntents: this.opts.decodeMovementIntents ?? false,
-          useBatchDrain: this.opts.useBatchDrain ?? false,
-          logRingSab: this.logRingSab,
-          logRingCapacity: this.logRingCapacity,
-        },
-      });
-      this.simWorker = worker;
-      await new Promise<void>((resolve, reject) => {
-        const onMsg = (msg: { type?: string }) => {
-          if (msg?.type === "ready") {
-            worker.off("message", onMsg);
-            worker.off("error", onErr);
-            resolve();
-          }
-        };
-        const onErr = (err: Error) => {
-          worker.off("message", onMsg);
-          reject(err);
-        };
-        worker.on("message", onMsg);
-        worker.once("error", onErr);
-      });
+      await this.spawnSimWorker();
     }
 
     if (this.opts.spawnPersistWorker !== false && !this.persistWorker) {

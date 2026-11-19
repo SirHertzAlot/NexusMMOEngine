@@ -1,0 +1,54 @@
+{
+  "authoredTier": "low",
+  "blendMode": "additive",
+  "emitters": [
+    {
+      "bursts": [],
+      "color": {
+        "stops": [
+          { "t": 0, "color": { "r": 1, "g": 0.96, "b": 0.78, "a": 0 } },
+          { "t": 0.3, "color": { "r": 1, "g": 0.84, "b": 0.42, "a": 0.9 } },
+          { "t": 0.75, "color": { "r": 0.55, "g": 0.82, "b": 0.45, "a": 0.6 } },
+          { "t": 1, "color": { "r": 0.45, "g": 0.7, "b": 0.4, "a": 0 } }
+        ]
+      },
+      "direction": { "x": 0, "y": 1, "z": 0 },
+      "duration": 0,
+      "forces": [
+        { "kind": "gravity", "acceleration": { "x": 0, "y": 0.18, "z": 0 } },
+        { "kind": "turbulence", "intensity": 0.35, "frequency": 0.9 },
+        { "kind": "drag", "coefficient": 0.4 }
+      ],
+      "lifetime": {
+        "points": [
+          { "t": 0, "value": 1.8 },
+          { "t": 1, "value": 3.0 }
+        ]
+      },
+      "looping": true,
+      "maxParticles": 24,
+      "name": "pollen-fireflies",
+      "position": { "x": 0, "y": 0.8, "z": 0 },
+      "rate": 8,
+      "size": {
+        "points": [
+          { "t": 0, "value": 0.05 },
+          { "t": 0.5, "value": 0.11 },
+          { "t": 1, "value": 0.03 }
+        ]
+      },
+      "spawnShape": { "kind": "sphere", "radius": 2.2 },
+      "speed": {
+        "points": [
+          { "t": 0, "value": 0.06 },
+          { "t": 1, "value": 0.16 }
+        ]
+      },
+      "spread": 1.6
+    }
+  ],
+  "id": "life-motes",
+  "name": "Life-Motes — Fabric Health Field",
+  "texture": "vfx/soft-circle",
+  "version": 1
+}

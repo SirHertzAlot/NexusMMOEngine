@@ -359,5 +359,45 @@ describe("familiarity and disarms (M4)", () => {
       for (const h of w.combat.drainHits()) assert.ok(!h.disarmed);
     }
   });
+
+  it("passes blow DamageKind through techniqueKind so per-kind armour K differentiates cut vs blunt", () => {
+    SimWorld.resetEntityCursorForTesting();
+    const sim = new SimWorld();
+    const spawnActor = (x: number, z: number) => {
+      const e = sim.spawn();
+      for (const c of [C.Transform, C.Velocity, C.PlayerIntent, C.Action, C.Health]) {
+        addComponent(sim.ecs, c, e);
+        for (const store of Object.values(c) as unknown as Array<{ [i: number]: number }>) store[e] = 0;
+      }
+      C.Transform.qw[e] = 1;
+      C.Transform.px[e] = x;
+      C.Transform.pz[e] = z;
+      C.Health.current[e] = C.Health.max[e] = 100;
+      return e;
+    };
+    const seenKinds: string[] = [];
+    const e = spawnActor(0, 0);
+    const t = spawnActor(0, 1);
+    const mace: Weapon = { technique: "bludgeon", item: { mass: 1.2, edge: 0.2, point: 0.2, hardness: 0.8 }, reach: 0.9 };
+    const combat = new CombatSystem(30, undefined, {
+      hooks,
+      weaponOf: () => mace,
+      techniqueKind: (tech) => (tech === "bludgeon" ? "blunt" : "cut"),
+      armourOf: (_target, kind) => {
+        if (kind) seenKinds.push(kind);
+        return kind === "blunt" ? 0.8 : 0.4;
+      },
+    });
+    const systems = [new IntentSystem(), combat, new IntegrateSystem()];
+    for (let tick = 1; tick <= hitTick(Move.SwordA); tick++) {
+      sim.queueIntent(e, { mx: 0, my: 0, mz: 0, lookYaw: 0, lookPitch: 0, jump: false, buttons: IntentButton.Attack });
+      sim.beginTick(tick);
+      for (const s of systems) s.step(sim, DT);
+      sim.endTick();
+    }
+    const hits = combat.drainHits();
+    assert.equal(hits.length, 1);
+    assert.deepEqual(seenKinds, ["blunt"]);
+  });
 });
 

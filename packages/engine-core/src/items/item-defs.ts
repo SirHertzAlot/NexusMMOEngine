@@ -55,6 +55,10 @@ export class ItemDefs {
   readonly durability: Float32Array;
   /** The composed `power` stat. */
   readonly power: Float32Array;
+  /** Cells it takes in a grid bag: width, height (CF6). */
+  readonly footprint: Array<readonly [number, number]>;
+  /** Maximum units per stack in one slot (CF6); 1 for unstackables. */
+  readonly maxStack: Uint16Array;
   /** HAND_CODE of the hand it is held in. */
   readonly hand: Uint8Array;
   /** Armour slot it is worn in ("none" for held items). */
@@ -89,6 +93,9 @@ export class ItemDefs {
     this.balance = new Float32Array(n);
     this.durability = new Float32Array(n);
     this.power = new Float32Array(n);
+    this.footprint = new Array<readonly [number, number]>(n).fill([1, 1]);
+    this.maxStack = new Uint16Array(n);
+    this.maxStack.fill(1);
     this.hand = new Uint8Array(n);
     this.byId = new Map();
     this.seeds = new Uint32Array(n);
@@ -137,6 +144,8 @@ export class ItemDefs {
     for (let i = 0; i < this.count; i++) {
       const phys: ItemBaseRules = rules.items.bases[this.bases[i]] ?? rules.items.fallback;
       slot[i] = phys.slot;
+      this.footprint[i] = phys.footprint;
+      this.maxStack[i] = phys.maxStack ?? 1;
       const model = phys.models.length > 0 ? phys.models[this.seeds[i] % phys.models.length] : "";
       models[i] = model;
       technique[i] = phys.technique;

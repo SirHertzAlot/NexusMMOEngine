@@ -1,4 +1,6 @@
 # PCG Spec — UE-style procedural content generation for the engine
+> **Note (2026-11-11):** the status below is from 2026-09-27. The work has continued since (the PICG graph editor, mesh cooking and the asset library); see roadmap §4 and [the procedural generation wiki chapter](wiki/07-procedural-generation.md) for the current state.
+
 
 Status: **slices 1–4 implemented** (2026-09-27):
 `packages/scatter/` — `.pcg.json` schemas, point model, node registry,

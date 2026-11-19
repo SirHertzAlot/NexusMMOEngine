@@ -32,7 +32,7 @@ flowchart TD
 
 ## 1. Fixed-Step Accumulator & Spiral-of-Death Guard
 
-In strict compliance with engine timekeeping invariants ([`packages/engine-core/src/tick-loop.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/src/tick-loop.ts)), `SimWorkerRuntime` implements native fixed-step time accumulation:
+In strict compliance with engine timekeeping invariants ([`packages/engine-core/src/tick-loop.ts`](../packages/engine-core/src/tick-loop.ts)), `SimWorkerRuntime` implements native fixed-step time accumulation:
 
 - **Timestep Invariant:** Fixed step interval $dt = \frac{1000}{30} \approx 33.333\text{ms}$.
 - **Clock Clamping:** Frame gaps exceeding $\text{MAX\_FRAME\_DELTA\_MS} = 250\text{ms}$ (e.g. system suspension, debugger attachment, process throttling) are clamped to prevent unbounded step bursts.
@@ -70,7 +70,7 @@ To maintain identical simulation trajectories across native C++ binaries (MSVC/C
 
 ## 3. SimWorker Crash Drill & Hot Reattachment
 
-The automated crash drill test ([`packages/engine-core/test/sim-worker-crash-drill.test.ts`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/test/sim-worker-crash-drill.test.ts)) validates that a catastrophic sim worker failure does not affect active network clients:
+The automated crash drill test ([`packages/engine-core/test/sim-worker-crash-drill.test.ts`](../packages/engine-core/test/sim-worker-crash-drill.test.ts)) validates that a catastrophic sim worker failure does not affect active network clients:
 
 1. **Active Ingress:** A client WebSocket connected to `/ws/sim` stream continuously pushed 4-byte movement packets.
 2. **Abrupt Worker Termination:** `server.simWorker.terminate()` executed mid-stream to simulate an unhandled C++ segmentation fault or thread panic.
@@ -82,7 +82,7 @@ The automated crash drill test ([`packages/engine-core/test/sim-worker-crash-dri
 
 ## 4. Owed B3 Load Test: 1,000 Real-Client Fan-Out at 51,000 Entities
 
-The benchmark suite ([`packages/engine-core/test/bench/b3-network-injected-load.bench.mjs`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/engine-core/test/bench/b3-network-injected-load.bench.mjs)) executed a full-scale 100-tick soak test combining target entity density with realistic network impairment profiles.
+The benchmark suite ([`packages/engine-core/test/bench/b3-network-injected-load.bench.mjs`](../packages/engine-core/test/bench/b3-network-injected-load.bench.mjs)) executed a full-scale 100-tick soak test combining target entity density with realistic network impairment profiles.
 
 ### 4.1 Injected Network Profile
 - **Base Round-Trip Latency:** $45\text{ms}$

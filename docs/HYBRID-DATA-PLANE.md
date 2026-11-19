@@ -20,7 +20,7 @@ The Hybrid Data Plane isolates high-frequency network ingestion, deterministic 3
    - Updates lockless atomic telemetry counters at `OFFSETS.TELEMETRY` (`TELEMETRY_SLOTS`).
 
 3. **Persistence Worker Thread (`persist-worker.ts` + `persist/schema.surrealql`)**:
-   - Writes the ledger to a SurrealMX server by default (`ws://127.0.0.1:8000/rpc`, started by `npm run db`, fsync per commit). `MMO_DATA_PLANE_STORE=rocksdb` restores the embedded RocksDB ledger; `MMO_DATA_PLANE_DB` overrides both (`mem://` is volatile).
+   - Writes the ledger to a SurrealMX server by default (`ws://127.0.0.1:8000/rpc`, started by `npm run db -w @mmo-engine/world-server`, fsync per commit). `MMO_DATA_PLANE_STORE=rocksdb` restores the embedded RocksDB ledger; `MMO_DATA_PLANE_DB` overrides both (`mem://` is volatile).
    - Applies `schema.surrealql` (`SCHEMAFULL` `entity` with unique `sab_index >= 0`, `inventory_slot` with `capacity > 0`, and `owns` graph relation `IN entity OUT inventory_slot` with unique `structural_ownership` index).
    - Asynchronously drains `AtomicSPSCTransactionQueue` at `OFFSETS.PERSIST_RING` to commit ACID checkpoints and inventory transfers off the simulation thread.
 

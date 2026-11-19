@@ -21,6 +21,7 @@
 
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
+import type { SystemAccess } from "./system-access.js";
 
 export interface AbilityDef {
   id: string;
@@ -59,6 +60,11 @@ const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round
 
 export class AbilitySystem implements SimSystem {
   readonly name = "abilities";
+  readonly access: SystemAccess = {
+    system: "abilities",
+    reads: [],
+    writes: [],
+  };
   private readonly defs = new Map<string, AbilityDef>();
   private readonly entities = new Map<number, EntityState>();
   private events: AbilityEvent[] = [];

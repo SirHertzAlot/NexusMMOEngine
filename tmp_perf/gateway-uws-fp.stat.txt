@@ -1,0 +1,10 @@
+
+ Performance counter stats for process id '63615':
+
+              0.11 msec task-clock                       #    0.000 CPUs utilized             
+                 2      context-switches                 #   18.283 K/sec                     
+                 1      cpu-migrations                   #    9.141 K/sec                     
+                 0      page-faults                      #    0.000 /sec                      
+
+      20.010677334 seconds time elapsed
+

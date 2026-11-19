@@ -35,7 +35,7 @@ function PlayerFrameImpl({ name, hp, maxHp, sp, maxSp, mana, needs, body }: Play
     <div className={`pointer-events-none flex ${hurt ? "w-72" : "w-64"} gap-2 rounded-lg border bg-card/90 p-3 text-card-foreground shadow-sm`}>
       <div className="min-w-0 flex-1">
         {name && <div className="mb-1 truncate text-sm font-semibold">{name}</div>}
-        <Bar label={t("stat.health")} value={hp} max={maxHp} tone="health" />
+        <Bar label={t("stat.health")} value={hp} max={maxHp} tone="health" readout />
         {sp !== null && maxSp !== null && (
           <div className="mt-1.5">
             <Bar label={t("stat.stamina")} value={sp} max={maxSp} tone="stamina" />

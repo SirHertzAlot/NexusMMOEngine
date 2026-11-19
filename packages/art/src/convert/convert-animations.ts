@@ -337,8 +337,8 @@ export function resolveBoneMapping(sourceBones: string[]): Record<string, string
   return map;
 }
 
-/** The CMU takes we use (subject_trial → what it is, from mocap.cs.cmu.edu). */
-const CMU_TAKES: Record<string, string> = {
+/** The CMU combat takes we use (subject_trial → what it is, from mocap.cs.cmu.edu). */
+export const CMU_TAKES: Record<string, string> = {
   "02_05": "PunchStrike", "02_07": "Swordplay", "02_08": "Swordplay", "02_09": "Swordplay",
   "13_17": "Boxing", "13_18": "Boxing", "14_01": "Boxing", "14_02": "Boxing", "14_03": "Boxing",
   "74_03": "Kick", "74_04": "Kick", "74_05": "Kick", "74_06": "Kick",
@@ -353,6 +353,45 @@ const CMU_TAKES: Record<string, string> = {
   "144_13": "LeftPunches", "144_14": "LeftPunches", "144_17": "Lunges", "144_18": "Lunges",
   "144_20": "Punches", "144_21": "Punches", "144_26": "RightBlocks", "144_27": "RightBlocks",
 };
+
+export type CmuTraversalVerb = "climb" | "step-up" | "vault" | "duck" | "roll";
+
+export interface CmuTraversalEntry {
+  label: string;
+  verb: CmuTraversalVerb;
+  rootMotionMode: "displacement-profile" | "in-place";
+}
+
+/**
+ * P1 Traversal CMU takes (CMU-IMPLEMENTATION-MAP.md §3.1 & §7):
+ * Ladders (13/14/143), step-ups (13/14), and obstacle vaults/ducks/rolls (127/128).
+ */
+export const CMU_P1_VERBS: Record<string, CmuTraversalEntry> = {
+  "13_33": { label: "ClimbLadder", verb: "climb", rootMotionMode: "displacement-profile" },
+  "13_34": { label: "ClimbLadder", verb: "climb", rootMotionMode: "displacement-profile" },
+  "13_35": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "13_36": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "13_37": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "13_38": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "14_21": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "14_22": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "14_23": { label: "Climb3Steps", verb: "step-up", rootMotionMode: "displacement-profile" },
+  "14_33": { label: "ClimbLadder", verb: "climb", rootMotionMode: "displacement-profile" },
+  "14_34": { label: "ClimbLadder", verb: "climb", rootMotionMode: "displacement-profile" },
+  "14_35": { label: "ClimbLadder", verb: "climb", rootMotionMode: "displacement-profile" },
+  "127_25": { label: "RunJumpOver", verb: "vault", rootMotionMode: "displacement-profile" },
+  "127_26": { label: "RunJumpOver", verb: "vault", rootMotionMode: "displacement-profile" },
+  "127_28": { label: "RunJumpOver", verb: "vault", rootMotionMode: "displacement-profile" },
+  "127_30": { label: "RunDuckUnderneath", verb: "duck", rootMotionMode: "in-place" },
+  "127_32": { label: "RunDuckUnderneath", verb: "duck", rootMotionMode: "in-place" },
+  "127_35": { label: "RunOver", verb: "vault", rootMotionMode: "displacement-profile" },
+  "128_10": { label: "RunDiveOverRoll", verb: "roll", rootMotionMode: "displacement-profile" },
+  "143_37": { label: "ClimbUpAndDownLadder", verb: "climb", rootMotionMode: "displacement-profile" },
+};
+
+export const CMU_TRAVERSAL_TAKES: Record<string, string> = Object.fromEntries(
+  Object.entries(CMU_P1_VERBS).map(([trial, entry]) => [trial, entry.label]),
+);
 
 const QUATERNIUS = { author: "Quaternius", license: "CC0 1.0" };
 
@@ -425,6 +464,22 @@ export const ANIMATION_SOURCES: AnimationSource[] = [
     reference: true,
 },
   {
+    id: "cmu-traversal",
+    title: "CMU motion capture: P1 traversal takes (climb, step-up, vault, duck, roll)",
+    author: "CMU Graphics Lab (mocap.cs.cmu.edu); FBX by RancidMilk",
+    license: "CMU: free in commercial products, not to be sold as animations; credit mocap.cs.cmu.edu (NSF EIA-0196217)",
+    url: "https://rancidmilk.itch.io/free-character-animations",
+    clipsExpected: 20,
+    dir: "animations/rancidmilk/traversal",
+    include: /\.fbx$/i,
+    rename: (_clip, file) => {
+      const trial = /(\d+_\d+)\.fbx$/.exec(file)?.[1];
+      return trial && CMU_TRAVERSAL_TAKES[trial] ? `CMU_${trial}_${CMU_TRAVERSAL_TAKES[trial]}` : null;
+    },
+    hips: "hip",
+    map: CMU_MAP,
+  },
+  {
     id: "mesh2motion",
     title: "Mesh2Motion — CC0 creature/humanoid library",
     author: "Mesh2Motion contributors",
@@ -474,6 +529,7 @@ export async function convertAnimations(
   assetsRoot: string,
   log: (line: string) => void = () => {},
   sources: AnimationSource[] = ANIMATION_SOURCES,
+  options: { writeManifest?: boolean } = {},
 ): Promise<AnimationManifest> {
   installNodeShims();
   const rigDir = path.join(assetsRoot, RIG_DIR);
@@ -536,7 +592,10 @@ export async function convertAnimations(
         const out = retargeter.retarget(clip);
         out.clip.name = name;
         out.clip.optimize();
-        validateRetargetedClip(out.clip, 200); // Phase A2: red clips throw here and block the library
+        const check = validateRetargetedClip(out.clip, 200, { rig: rig.scene }); // Phase A2: red clips throw here and block the library
+        if (check.footSlide > 0.15) {
+          log(`[animations] ${src.id}: ${name} planted foot slide ${check.footSlide.toFixed(3)} m`);
+        }
         clips.push(out.clip);
         infos.push({
           name,
@@ -563,7 +622,9 @@ export async function convertAnimations(
   }
 
   const manifest: AnimationManifest = { version: 2, sources: used, clips: infos };
-  fs.writeFileSync(path.join(rigDir, "animations.json"), `${JSON.stringify(manifest, null, 1)}\n`);
+  if (options.writeManifest ?? true) {
+    fs.writeFileSync(path.join(rigDir, "animations.json"), `${JSON.stringify(manifest, null, 1)}\n`);
+  }
   // Phase A0: verify every pinned source produced the expected clip count.
   for (const src of sources) {
     if (typeof src.clipsExpected === "number") {
@@ -585,8 +646,11 @@ const isMain = process.argv[1] !== undefined && path.resolve(process.argv[1]) ==
 if (isMain) {
   const args = process.argv.slice(2);
   const at = args.indexOf("--assets");
+  const onlyAt = args.indexOf("--only");
   const assets = at >= 0 ? path.resolve(args[at + 1]) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../assets");
-  convertAnimations(assets, (l) => console.log(l)).catch((err) => {
+  const onlyIds = onlyAt >= 0 ? new Set(args[onlyAt + 1].split(",").map((s) => s.trim()).filter(Boolean)) : null;
+  const subset = onlyIds ? ANIMATION_SOURCES.filter((s) => onlyIds.has(s.id)) : ANIMATION_SOURCES;
+  convertAnimations(assets, (l) => console.log(l), subset, { writeManifest: !onlyIds }).catch((err) => {
     console.error(`[animations] failed: ${(err as Error).stack ?? err}`);
     process.exit(1);
   });

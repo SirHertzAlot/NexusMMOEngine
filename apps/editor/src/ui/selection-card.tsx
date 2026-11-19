@@ -7,6 +7,7 @@
 import * as React from "react";
 import { DataTable } from "./data-table.js";
 import { Button } from "./components.js";
+import { EcsFootprintSection } from "./ecs-footprint.js";
 import type { SelectedEntity, SelectionCard } from "../inspectors/selection.js";
 import {
   despawnCommand,
@@ -230,6 +231,11 @@ export function SelectionCardView({
           />
         </section>
       ))}
+      <EcsFootprintSection
+        componentNames={card.components.map((c) => c.name)}
+        wireId={card.wireId}
+        admin={live?.admin ?? admin}
+      />
     </div>
   );
 }

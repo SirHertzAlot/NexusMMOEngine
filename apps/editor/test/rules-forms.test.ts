@@ -44,7 +44,10 @@ const keysOf = (sections: ReadonlyArray<{ fields: FieldSpec[] }>): string[] => s
 describe("combat and body forms cover their files", () => {
   it("combat: every coefficient, techniques as records", () => {
     const want = leaves(engineDefaults().combat, ["techniques"]).filter((k) => k !== "techniques").sort();
-    assert.deepEqual(keysOf(COMBAT_SECTIONS), want);
+    // An optional override (armour K per damage kind) has no default to be a leaf of: compare the rest.
+    const fields = COMBAT_SECTIONS.flatMap((s) => s.fields);
+    assert.deepEqual(fields.filter((f) => !f.optional).map((f) => f.key).sort(), want);
+    assert.deepEqual(fields.filter((f) => f.optional).map((f) => f.key).sort(), ["damage.armourHalfByKind.blunt", "damage.armourHalfByKind.cut", "damage.armourHalfByKind.thrust"]);
     assert.deepEqual(TECHNIQUE_FIELDS.map((f) => f.key).sort(), ["damageKind", "property", "skill"]);
   });
 

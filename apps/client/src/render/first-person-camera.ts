@@ -12,6 +12,7 @@
 
 import { combatMove, LocomotionMode, Move } from "@mmo-engine/protocol";
 import type * as THREE from "three";
+import { smooth01 } from "../motion/primitives.js";
 
 /** Eye height above the avatar's feet, metres. */
 export const EYE_HEIGHT = 1.6;
@@ -193,7 +194,7 @@ export function computeCombatCameraImpulse(
     case Move.Guard: {
       // Braced defensive stance: slightly lowered eye and tucked chin
       const brace = Math.min(1, moveElapsed / 0.14);
-      const ease = brace * brace * (3 - 2 * brace);
+      const ease = smooth01(brace);
       out.right = -0.022 * ease;
       out.up = -0.055 * ease;
       out.forward = -0.025 * ease;

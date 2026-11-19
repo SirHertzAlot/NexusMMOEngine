@@ -310,6 +310,26 @@ describe("structures in a scene", () => {
     assert.equal(C.AssetRef.assetHash[e], fnv1a32("structure:town_gate"));
     assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, e), "no body: nothing to bump into");
   });
+
+  it("gives a walk-through stand-in (a paved street) its size and rests it on the ground, as a body-less box has no other size", () => {
+    const { deps } = setup(); // ground at 2 m
+    const street = { id: "paving-1", transform: { position: [10, 0, 20], rotation: [0, 90, 0] }, components: { Structure: { kind: "paved_road", asset: "", width: 6, depth: 54, height: 0.1 }, Collider: { shape: "none" } } };
+    const r = spawnScene(doc([street]) as never, { ...deps, scale: ((_c: unknown, a: string) => (a === "structure:paved_road" ? 1.5 : 1)) as never });
+    const e = r.spawned[0]!.entities[0]!;
+    assert.ok(!hasComponent(deps.sim.ecs, C.BodyConfig, e), "still walked over");
+    assert.ok(Math.abs(C.Transform.sx[e]! - 6 * 1.5) < 1e-5, "width in the scale, times the building factor");
+    assert.ok(Math.abs(C.Transform.sy[e]! - 0.1 * 1.5) < 1e-5);
+    assert.ok(Math.abs(C.Transform.sz[e]! - 54 * 1.5) < 1e-5);
+    assert.ok(Math.abs(C.Transform.py[e]! - (2 + (0.1 * 1.5) / 2)) < 1e-5, "its underside on the ground, not its centre");
+  });
+
+  it("leaves a solid structure's scale alone (its BodyConfig sizes it)", () => {
+    const { deps } = setup();
+    const r = spawnScene(doc([node("smithy-7", { kind: "smithy", width: 10, depth: 18, height: 4 })]) as never, deps);
+    const e = r.spawned[0]!.entities[0]!;
+    assert.equal(C.Transform.sx[e], 1);
+    assert.equal(C.Transform.sy[e], 1);
+  });
 });
 
 describe("sea level in a scene", () => {
@@ -357,5 +377,43 @@ describe("sea level in a scene", () => {
   it("without any water known, nothing is refused (legacy worlds)", () => {
     const { deps } = setup();
     assert.equal(spawnScene(doc([house("h")]) as never, { ...deps, groundHeightAt: () => -50 }).spawned.length, 1);
+  });
+
+  it("levels modular building: groups on one unified slope datum and preserves visual scales", () => {
+    const { deps } = setup();
+    const slope = (x: number): number => 0.1 * x + 10;
+    const modular = {
+      id: "bld-1",
+      name: "building:house",
+      kind: "group",
+      transform: { position: [20, 0, 10] },
+      children: [
+        {
+          id: "vis-wall",
+          transform: { position: [-2, 1.25, 0], scale: [1, 1, -1] },
+          components: { Structure: { kind: "wall", asset: "test-kit/Wall_01", width: 2.5, depth: 0.25, height: 2.5 }, Collider: { shape: "none" } },
+        },
+        {
+          id: "vis-upper",
+          transform: { position: [2, 3.75, 0] },
+          components: { Structure: { kind: "wall", asset: "test-kit/Wall_01", width: 2.5, depth: 0.25, height: 2.5 }, Collider: { shape: "none" } },
+        },
+        {
+          id: "col-wall",
+          prefab: "collider",
+          transform: { position: [-2, 2.5, 0] },
+          components: { Collider: { shape: "box", hx: 1.25, hy: 1.25, hz: 0.12 } },
+        },
+      ],
+    };
+    const r = spawnScene(doc([modular]) as never, { ...deps, groundHeightAt: slope });
+    const wLow = r.spawned.find((s) => s.id === "vis-wall")!.entities[0]!;
+    const wHigh = r.spawned.find((s) => s.id === "vis-upper")!.entities[0]!;
+    const colEnt = r.spawned.find((s) => s.id === "col-wall")!.entities[0]!;
+    const foundEnt = r.spawned.find((s) => s.id === "bld-1/foundation")?.entities[0];
+    assert.ok(foundEnt !== undefined, "single foundation plinth emitted for building group on slope");
+    assert.ok(Math.abs((C.Transform.py[wHigh]! - C.Transform.py[wLow]!) - 2.5) < 1e-4, "upper and lower parts keep exact 2.5m elevation diff across slope");
+    assert.equal(C.Transform.sz[wLow], -1, "walk-through named model preserves mirror scale");
+    assert.equal(C.AssetRef.assetHash[colEnt], fnv1a32("collider"), "prefab: collider tags invisible collider asset hash");
   });
 });

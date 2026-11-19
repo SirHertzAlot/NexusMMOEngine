@@ -16,6 +16,7 @@
 import { defineQuery, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { SimSystem } from "../systems.js";
+import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import { calculateWorldCycle, type SeasonClock, type WorldCycleState, DEFAULT_SEASON_CLOCK } from "./world-cycle.js";
 import { getSpeciesBioProfile, type SpeciesBioProfile } from "./species-metabolism.js";
@@ -81,6 +82,14 @@ export interface LivingSimOptions {
 
 export class LivingSimSystem implements SimSystem {
   readonly name = "living_sim";
+  readonly access: SystemAccess = {
+    system: "living_sim",
+    reads: [
+      { component: "Health", fields: ["current"] },
+      "Transform",
+    ],
+    writes: [],
+  };
   private readonly states = new Map<number, LivingSimState>();
   private readonly movers = defineQuery([C.Transform, C.Health]);
   private tickHz: number;

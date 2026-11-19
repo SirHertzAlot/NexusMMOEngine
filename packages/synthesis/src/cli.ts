@@ -13,7 +13,10 @@ import path from "node:path";
 import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { decomposeScene, extractLearnedRuleSet } from "./extractor.js";
+import { loadCatalogPartBounds } from "./glb-bounds.js";
 import { synthesizeAssembly } from "./synthesizer.js";
+import { extractUnitySceneNodes, findUnityScenes, loadUnityIndex } from "./unity-parser.js";
+import { decomposeUnityScene } from "./unity-decomposer.js";
 import type { SynthesisProblem } from "./types.js";
 
 function installShims(): void {
@@ -60,6 +63,62 @@ export async function runCli(): Promise<void> {
     const idx = args.indexOf(flag);
     return idx !== -1 && args[idx + 1] ? args[idx + 1] : fallback;
   };
+  const getOpt = (flag: string): string | undefined => {
+    const idx = args.indexOf(flag);
+    return idx !== -1 && args[idx + 1] ? args[idx + 1] : undefined;
+  };
+
+  const unitySource = getOpt("--unity");
+  if (unitySource) {
+    const family = getArg("--family", "fantasy-kingdom");
+    const pack = getArg("--pack", family);
+    const catalogPath = getArg("--catalog", path.join(root, "assets", "catalog.json"));
+    const outLibraryPath = getArg(
+      "--out-library",
+      path.join(root, "content", "synthesis", `${family}.local.json`),
+    );
+    const sceneFilter = getOpt("--unity-scene");
+
+    const t0 = Date.now();
+    console.log(`[Synthesis CLI] Indexing Unity assets from: ${unitySource}`);
+    const index = loadUnityIndex(unitySource);
+    const allScenes = findUnityScenes(index);
+    const selectedScenes = sceneFilter
+      ? allScenes.filter((s) => s.toLowerCase().includes(sceneFilter.toLowerCase()))
+      : allScenes;
+    if (selectedScenes.length === 0) {
+      console.error(`[Synthesis CLI] No matching .unity scenes found in ${unitySource} (available: ${allScenes.join(", ")})`);
+      process.exit(1);
+    }
+
+    const catalogBounds = fs.existsSync(catalogPath)
+      ? loadCatalogPartBounds(catalogPath, { pack, assetsRoot: path.dirname(catalogPath), readGlb: true })
+      : undefined;
+    if (catalogBounds) {
+      console.log(`[Synthesis CLI] Loaded ${catalogBounds.size} catalog entries with GLB pivot bounds (${pack})`);
+    }
+
+    const rawNodes = selectedScenes.flatMap((sceneFile) => {
+      const extracted = extractUnitySceneNodes(index, sceneFile, { expandNestedPrefabs: true });
+      console.log(`[Synthesis CLI] Extracted ${extracted.length} nodes from ${sceneFile}`);
+      return extracted;
+    });
+
+    const lib = decomposeUnityScene(rawNodes, {
+      family,
+      assetPrefix: pack,
+      sourceName: selectedScenes.map((s) => path.posix.basename(s)).join(","),
+      catalogBounds,
+    });
+
+    fs.mkdirSync(path.dirname(outLibraryPath), { recursive: true });
+    fs.writeFileSync(outLibraryPath, JSON.stringify(lib, null, 2), "utf8");
+    console.log(
+      `[Synthesis CLI] Wrote DecompositionLibrary -> ${outLibraryPath} (${(fs.statSync(outLibraryPath).size / 1024).toFixed(1)} KB) in ${Date.now() - t0}ms`,
+    );
+    console.log(`[Synthesis CLI] Stats:`, JSON.stringify(lib.stats));
+    return;
+  }
 
   const defaultScene = "C:\\Users\\user\\Downloads\\POLYGON_Dungeon_Pack_SourceFiles_v2\\SourceFiles\\POLYGON_Dungeons_Demo_Scene.fbx";
   const scenePath = getArg("--scene", defaultScene);

@@ -42,7 +42,7 @@ The Nexus MMO Engine solves this through strict **Engine / Game Decoupling**:
 
 ## 3. Pluggable Modular Architecture (`modules/`)
 
-All gameplay features are isolated into modular packages located in [`modules/<name>/`](file:///c:/Users/user/Downloads/mmo-engine-full/modules).
+All gameplay features are isolated into modular packages located in [`modules/<name>/`](../../modules).
 
 ### Anatomy of a Module: `module.json`
 Every module declares its metadata and server execution hooks:
@@ -52,17 +52,19 @@ Every module declares its metadata and server execution hooks:
   "version": "1.0.0",
   "description": "Orbital mechanics and thrust vectors",
   "server": {
-    "entry": "dist/index.js",
+    "entry": "server/index.js",
     "systems": [
-      { "name": "ThrustSystem", "after": ["TransformSystem"] },
-      { "name": "GravitySystem", "after": ["ThrustSystem"] }
+      { "name": "thrust", "after": "intent" },
+      { "name": "gravity", "after": "thrust" }
     ]
   }
 }
 ```
 
+The full manifest, the ordering rules and a working example are in [MODULES.md](../MODULES.md).
+
 ### Module Selection: `content/modules.json`
-Modules are enabled or disabled by listing their names in [`content/modules.json`](file:///c:/Users/user/Downloads/mmo-engine-full/content/modules.json):
+Modules are enabled or disabled by listing their names in [`content/modules.json`](../../content/modules.json):
 ```json
 {
   "modules": [
@@ -84,7 +86,7 @@ Game rules are defined entirely as JSON data files located under `content/rules/
 - `combat.json`: Defense contests, posture recovery rates, and weapon technique parameters.
 
 ### Validation at Boot
-The [`@mmo-engine/rules`](file:///c:/Users/user/Downloads/mmo-engine-full/packages/rules) package inspects all rules against strict Zod schemas:
+The [`@mmo-engine/rules`](../../packages/rules) package inspects all rules against strict Zod schemas:
 - A missing rule pack causes the engine to use inert defaults.
 - A present but malformed rule pack halts the boot sequence immediately, specifying the exact file, path, and error:
   ```
@@ -99,19 +101,17 @@ The [`@mmo-engine/rules`](file:///c:/Users/user/Downloads/mmo-engine-full/packag
 To build a new game on top of the engine:
 
 1. **Create Custom Modules**: Add a new folder in `modules/my-game/` with a `module.json`.
-2. **Export System Factories**:
-   ```ts
-   import type { SimWorld } from "@mmo-engine/engine-core";
-   
-   export function createSystems(world: SimWorld) {
-     return [
-       {
-         name: "OrbitalSystem",
-         step: (dt: number) => {
-           // Iterate over custom bitECS components
-         }
-       }
-     ];
+2. **Export System Factories.** `createSystems(ctx)` returns **an object keyed by system name**, one system for each name the manifest declares (see [MODULES.md](../MODULES.md) and the working `modules/sample-heartbeat`):
+   ```js
+   export function createSystems(ctx) {
+     return {
+       orbital: {
+         name: "orbital",
+         step() {
+           // runs once per tick; iterate your bitECS components here
+         },
+       },
+     };
    }
    ```
 3. **Register in `content/modules.json`**: Enable your module and disable any unneeded modules.

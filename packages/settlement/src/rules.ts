@@ -262,11 +262,14 @@ export const DEFAULT_SETTINGS: Settings = {
  *   - The `stores` (taverns, inns, warehouses, bakeries) have a barrel and a crate by the door; homes on the
  *     `planters` wealth bands a planter either side of it; an industry's workplace its `dressing` either side
  *     (logs at a sawmill, ore carts at a mine, fish racks at a fishery, sacks at a mill).
+ *   - Property lines: a fence runs along each line two neighbouring plots share (`fences.between`: the parcel kinds,
+ *     homes by default), in pieces of `fences.pieceMm`, from the back of the plots to `fences.frontSetbackMm` short of
+ *     the street, so the frontage stays open. A line between two open plots (gardens, parks, lots) is not fenced.
  *   - The `terraces` archetypes stand on a raised terrace over their whole plot, `heightMm` up, reached from the
  *     street by stairs of `stepRiseMm` steps, each `stepTreadMm` deep and `stairsWidthMm` wide.
  * Sizes are millimetres [width, depth, height]: width along the street (or the bench's seat), depth away from it.
  */
-export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks", "guild_banner"] as const;
+export const PROP_KINDS = ["street_lamp", "bench", "fountain", "statue", "barrel", "crate", "planter", "log_pile", "ore_cart", "fish_rack", "grain_sacks", "guild_banner", "fence"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 const SizeMm = z.tuple([z.number().int().positive(), z.number().int().positive(), z.number().int().positive()]);
 export const PropsSchema = z.strictObject({
@@ -282,10 +285,11 @@ export const PropsSchema = z.strictObject({
   planters: z.array(z.enum(["high", "middle", "low"])),
   dressing: z.record(z.string(), z.enum(PROP_KINDS)).default({}),
   terraces: z.strictObject({ archetypes: z.array(z.string()), heightMm: z.number().int().positive(), stepRiseMm: z.number().int().positive(), stepTreadMm: z.number().int().positive(), stairsWidthMm: z.number().int().positive() }),
+  fences: z.strictObject({ enabled: z.boolean(), pieceMm: z.number().int().positive(), frontSetbackMm: z.number().int().min(0), between: z.array(z.string()) }).default({ enabled: true, pieceMm: 2500, frontSetbackMm: 4000, between: ["housing"] }),
 });
 export type Props = z.infer<typeof PropsSchema>;
 export const DEFAULT_PROPS: Props = {
-  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600], log_pile: [3000, 900, 1100], ore_cart: [1400, 900, 1100], fish_rack: [2400, 700, 1600], grain_sacks: [1600, 900, 800], guild_banner: [1000, 400, 4500] },
+  sizesMm: { street_lamp: [300, 300, 3500], bench: [1800, 600, 900], fountain: [4000, 4000, 2500], statue: [1500, 1500, 4000], barrel: [700, 700, 1000], crate: [900, 900, 900], planter: [1200, 500, 600], log_pile: [3000, 900, 1100], ore_cart: [1400, 900, 1100], fish_rack: [2400, 700, 1600], grain_sacks: [1600, 900, 800], guild_banner: [1000, 400, 4500], fence: [2500, 200, 1200] },
   lampEveryPlots: 2,
   lampInsetMm: 500,
   squareBenchSpacingMm: 8000,
@@ -297,6 +301,7 @@ export const DEFAULT_PROPS: Props = {
   planters: ["high"],
   dressing: { sawmill: "log_pile", mine: "ore_cart", fishery: "fish_rack", master_fishery: "fish_rack", mill: "grain_sacks", guild_hall: "guild_banner" },
   terraces: { archetypes: ["town_hall", "guild_hall", "parish_church", "cathedral", "library", "townhouse"], heightMm: 600, stepRiseMm: 200, stepTreadMm: 350, stairsWidthMm: 3000 },
+  fences: { enabled: true, pieceMm: 2500, frontSetbackMm: 4000, between: ["housing"] },
 };
 
 /**
@@ -598,7 +603,7 @@ export type SettlementRules = z.infer<typeof SettlementRulesSchema>;
 export type Archetype = z.infer<typeof ArchetypeSchema>;
 
 export const BUILTIN_RULES: SettlementRules = {
-  version: "settlement-rules/11",
+  version: "settlement-rules/12",
   demographics: {
     householdSizeX10: 44,
     ageShares: { child: 280, adolescent: 170, adult: 410, elder: 140 },

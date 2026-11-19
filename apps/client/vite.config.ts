@@ -90,6 +90,11 @@ export default defineConfig(({ mode }) => {
         fileURLToPath(new URL("../../content/vfx/shrine-earth.json", import.meta.url)),
         fileURLToPath(new URL("../../content/vfx/shrine-wind.json", import.meta.url)),
         fileURLToPath(new URL("../../content/vfx/shrine-darkness.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/pfb-projectile.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/pfb-impact.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/pfb-smoke.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/life-motes.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/corruption-bleed.json", import.meta.url)),
       ]),
       gameStrings(fileURLToPath(new URL("../../content/strings", import.meta.url))),
       // The HUD layout and the ability bar read these at run time (dev server only; the served folders are in vite-content.ts).

@@ -11,6 +11,7 @@
 
 import type { CoarseGrid } from "./survey.js";
 import { labelComponents } from "./grid-ops.js";
+import { detLog } from "@mmo-engine/placement";
 
 /** Water kinds in the survey's `water` map. */
 export const LAND = 0;
@@ -218,7 +219,7 @@ export function carveRivers(
     for (let u = 1; u < W - 1; u++) {
       const i = v * W + u;
       if (!river[i]) continue;
-      const depth = maxDepth * Math.min(1, 0.25 + Math.log(discharge[i] / minCatchment) / Math.log(64));
+      const depth = maxDepth * Math.min(1, 0.25 + detLog(discharge[i] / minCatchment) / detLog(64));
       carve[i] = Math.max(carve[i], depth);
       for (let dz = -1; dz <= 1; dz++) {
         for (let dx = -1; dx <= 1; dx++) {

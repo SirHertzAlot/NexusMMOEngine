@@ -56,10 +56,10 @@ export function remapLedger(
   for (const r of rows) {
     const def = map.get(r.def);
     if (def === undefined) {
-      ledger.record(LedgerKind.Destroy, r.id, r.def, r.owner, r.slot, r.durability, r.x, r.z);
+      ledger.record(LedgerKind.Destroy, r.id, r.def, r.owner, r.slot, r.durability, r.x, r.z, r.count ?? 1);
       destroyed++;
     } else {
-      ledger.record(r.kind, r.id, def, r.owner, r.slot, r.durability, r.x, r.z);
+      ledger.record(r.kind, r.id, def, r.owner, r.slot, r.durability, r.x, r.z, r.count ?? 1);
       moved++;
     }
   }

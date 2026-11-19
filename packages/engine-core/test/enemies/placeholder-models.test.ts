@@ -7,8 +7,8 @@ import { loadEnemyModels } from "../../src/enemy-models.js";
 
 describe("placeholder enemy models", () => {
   it("gives the stand-in quadrupeds a model id that the placeholder catalog lists", () => {
-    const map = new URL("../../content/enemies/models.placeholder.json", import.meta.url);
-    const catalogFile = new URL("../../../../apps/client/public/placeholder-art/catalog.json", import.meta.url);
+    const map = new URL("../../../content/enemies/models.placeholder.json", import.meta.url);
+    const catalogFile = new URL("../../../../../apps/client/public/placeholder-art/catalog.json", import.meta.url);
     const warnings: string[] = [];
     const models = loadEnemyModels(map, (m) => warnings.push(m), (kind) => ["wolf", "bear", "boar"].includes(kind));
     assert.deepEqual(warnings, []);

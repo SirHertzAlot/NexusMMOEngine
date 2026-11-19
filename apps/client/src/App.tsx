@@ -21,7 +21,8 @@ import type { AccountMessage, WelcomeMessage } from "@mmo-engine/protocol";
 import type { BlocksState, ChatBroadcast, ChatChannel, FriendsState, GuildState, PartyState } from "@mmo-engine/protocol";
 import type { BodyMessage, InventoryMessage, ItemView, ManaMessage, SkillsMessage, StatsMessage } from "@mmo-engine/protocol";
 import type { NpcView, QuestView } from "@mmo-engine/protocol";
-import { DialogPanel, QuestTracker, questNotices, type OpenDialog } from "./ui/quests.js";
+import { DialogPanel, QuestTracker, itemTitle, questNotices, type OpenDialog } from "./ui/quests.js";
+import { glossaryFrom } from "./ui/text-performance.js";
 import type { DungeonLook, DungeonMessage } from "@mmo-engine/protocol";
 import type { PouchMaterial } from "@mmo-engine/protocol";
 // Lazy-load heavy panels (code splitting)
@@ -242,6 +243,7 @@ export function App(): React.ReactElement {
   }, []);
   // Items (M3a): the bag, the drop in pickup range, and the last refusal or pickup.
   const [bag, setBag] = useState<InventoryMessage["bag"] | null>(null);
+  const [bagGrid, setBagGrid] = useState<InventoryMessage["grid"] | null>(null);
   const [hands, setHands] = useState<{ main: ItemView | null; off: ItemView | null }>({ main: null, off: null });
   const [worn, setWorn] = useState<Worn>(EMPTY_WORN);
   const [bagOpen, setBagOpen] = useState(false);
@@ -261,6 +263,11 @@ export function App(): React.ReactElement {
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
   const [quests, setQuests] = useState<QuestView[] | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
+  // What a quest-giver talks about, coloured wherever it appears in their lines (CF5).
+  const dialogGlossary = useMemo(
+    () => glossaryFrom({ quests: quests?.map((q) => q.name), items: quests?.flatMap((q) => q.rewards.map((r) => itemTitle(r.base))), people: quests?.map((q) => q.giver) }),
+    [quests],
+  );
   const [npcs, setNpcs] = useState<NpcView[]>([]);
   const [nearNpc, setNearNpc] = useState<string | null>(null);
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
@@ -422,6 +429,7 @@ function welcomeTimeoutMs(): number | undefined {
       onBody: setBody,
       onInventory: (inv) => {
         setBag(inv.bag);
+        setBagGrid(inv.grid ?? null);
         // A bigger bag than before is a pickup (the first inventory only sets the baseline).
         const held = inv.bag.filter(Boolean).length;
         if (bagCount.current !== null && held > bagCount.current) audio.playEvent("pickup");
@@ -923,7 +931,7 @@ function welcomeTimeoutMs(): number | undefined {
         )}
         {dialog && (
           <div className="absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
-            <DialogPanel dialog={dialog} onReply={onReply} onClose={onCloseDialog} />
+            <DialogPanel dialog={dialog} onReply={onReply} onClose={onCloseDialog} glossary={dialogGlossary} />
           </div>
         )}
         {quests && (
@@ -1045,7 +1053,7 @@ function welcomeTimeoutMs(): number | undefined {
           </HudSlot>
         )}
         {bagOpen && bag && (
-          <HudSlot id="bag-panel" className="z-10">
+          <HudSlot id="bag-panel" className="z-20">
             <div>
             <PouchPanel materials={pouch} />
             <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.bag")}</div>}>
@@ -1054,6 +1062,10 @@ function welcomeTimeoutMs(): number | undefined {
                 hands={hands}
                 worn={worn}
                 gold={gold}
+                grid={bagGrid}
+                onMove={(id, x, y, rot) => client?.moveItem(id, x, y, rot)}
+                onSplit={(id, count) => client?.splitItem(id, count)}
+                onCombine={(from, into) => client?.combineItem(from, into)}
                 onDrop={(id) => client?.dropItem(id)}
                 onEquip={(id) => client?.equip(id)}
                 onUnequip={(slot) => client?.unequip(slot)}

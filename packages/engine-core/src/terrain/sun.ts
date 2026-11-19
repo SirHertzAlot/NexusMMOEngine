@@ -18,6 +18,7 @@ import type { CoarseGrid } from "./survey.js";
 import { sampleBilinear } from "./grid-ops.js";
 import { coastFrame } from "./landmass.js";
 import type { Side, WorldSpec } from "./world-spec.js";
+import { detCos, detSin } from "@mmo-engine/placement";
 
 /** Hour angles sampled over the day, degrees from noon. */
 const HOURS = [-75, -45, -15, 15, 45, 75];
@@ -46,10 +47,10 @@ function sunPath(spec: WorldSpec, noonDeg: number): Array<{ x: number; y: number
   const out: Array<{ x: number; y: number; z: number; tanE: number }> = [];
   for (const hour of HOURS) {
     const H = (hour * Math.PI) / 180;
-    const sinE = Math.cos(phi) * Math.cos(H);
+    const sinE = detCos(phi) * detCos(H);
     if (sinE <= 0.02) continue;
     const cosE = Math.sqrt(1 - sinE * sinE);
-    const sinA = Math.max(-1, Math.min(1, Math.sin(H) / cosE));
+    const sinA = Math.max(-1, Math.min(1, detSin(H) / cosE));
     const cosA = Math.sqrt(1 - sinA * sinA);
     const dx = cosA * sx + sinA * px;
     const dz = cosA * sz + sinA * pz;

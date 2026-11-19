@@ -280,7 +280,7 @@ export class LocalEconomyView implements CharacterEconomyView {
         instanceId: itemInstanceId(id),
         def: this.store.defs[at],
         slot,
-        count: 1,
+        count: this.store.countOf(id),
       });
     }
     return out;
@@ -328,8 +328,12 @@ export class LocalEconomyView implements CharacterEconomyView {
             durability: this.durabilityOf(item.def),
             x: 0,
             z: 0,
+            count: item.count,
           });
         } else {
+          if (item.count !== this.store.countOf(id) && this.store.inBagOf(s.characterId, id)) {
+            this.store.setBagCount(s.characterId, id, item.count);
+          }
           this.store.putInBagAt(s.characterId, id, item.slot);
         }
       }

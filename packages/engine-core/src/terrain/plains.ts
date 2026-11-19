@@ -30,6 +30,7 @@ import type { CoarseGrid } from "./survey.js";
 import { boxBlur, distanceTo, smoothstep } from "./grid-ops.js";
 import { fillDepressions, LAND } from "./hydrology.js";
 import type { WorldSpec } from "./world-spec.js";
+import { detTan } from "@mmo-engine/placement";
 
 /** Dry land never ends up closer than this to the sea (the survey keeps the same margin). */
 const SHORE_M = 0.3;
@@ -194,7 +195,7 @@ export function applyPlains(
   const tf = T.treadShare;
   // The steepest a riser gets is the climb times this (the curve's steepest point).
   const riserGain = T.tilt + (1.5 * (1 - T.tilt)) / (1 - tf);
-  const maxRiser = Math.tan((T.maxRiserDeg * Math.PI) / 180);
+  const maxRiser = detTan((T.maxRiserDeg * Math.PI) / 180);
   // Terraced target per cell, and (apart) what the river and shore flats add to it. The flats' share is blurred
   // before it is applied: a graded surface from the water has a crease where two shores' distances meet, which
   // would show as a line across the land.

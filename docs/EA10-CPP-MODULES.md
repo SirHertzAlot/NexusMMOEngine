@@ -11,11 +11,11 @@ C++ modules extend the module system (EA3/EA9) to native code via N-API.
   "name": "physics-jolt",
   "version": "1.0.0",
   "server": {
-    "systems": [{ "name": "PhysicsSystem", "after": ["TransformSystem"] }]
+    "systems": [{ "name": "physics", "after": "intent" }]
   },
   "native": {
     "entry": "./build/Release/physics.node",
-    "systems": ["PhysicsSystem"]
+    "systems": ["physics"]
   }
 }
 ```

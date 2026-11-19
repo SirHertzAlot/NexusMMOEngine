@@ -14,8 +14,10 @@ import {
   ConstantColor,
   ConstantValue,
   DonutEmitter,
+  FrameOverLife,
   Gradient,
   IntervalValue,
+  Noise,
   ParticleSystem,
   PiecewiseBezier,
   PointEmitter,
@@ -26,14 +28,17 @@ import {
   Vector3,
   type EmitterShape,
 } from "three.quarks";
-import type {
-  VfxEffect,
-  VfxEmitter,
-  VfxScalar,
-  VfxSpawnShape,
-  VfxForce,
-  VfxColor,
-  VfxColorGradient,
+import {
+  resolveEmitterRenderSettings,
+  resolveFlipbookFrames,
+  type VfxEffect,
+  type VfxEmitter,
+  type VfxFlipbook,
+  type VfxScalar,
+  type VfxSpawnShape,
+  type VfxForce,
+  type VfxColor,
+  type VfxColorGradient,
 } from "./vfx-schema.js";
 
 // ---------------------------------------------------------------------------
@@ -128,8 +133,9 @@ function toQuarksForce(force: VfxForce, system: ParticleSystem) {
       // TODO: implement DragForce or use damping behavior if available.
       break;
     case "turbulence":
-      // three.quarks Noise behavior approximates turbulence
-      // TODO: map intensity/frequency to Noise parameters
+      system.addBehavior(
+        new Noise(new ConstantValue(force.frequency), new ConstantValue(force.intensity)),
+      );
       break;
     case "attractor":
       // TODO: implement attractor as a custom ApplyForce
@@ -141,7 +147,43 @@ function toQuarksForce(force: VfxForce, system: ParticleSystem) {
 // Emitter conversion
 // ---------------------------------------------------------------------------
 
-function toQuarksEmitter(emitter: VfxEmitter): ParticleSystem {
+function buildFlipbookBehavior(flipbook: VfxFlipbook, lifetime: VfxScalar): FrameOverLife {
+  const frames = resolveFlipbookFrames(flipbook);
+  if (frames.length <= 1) {
+    const f = frames[0] ?? 0;
+    return new FrameOverLife(new PiecewiseBezier([[new Bezier(f, f, f, f), 0]]));
+  }
+  const lifeSeconds =
+    typeof lifetime === "number"
+      ? lifetime
+      : lifetime.points.reduce((sum, p) => sum + p.value, 0) / lifetime.points.length;
+  const playDuration = frames.length / flipbook.fps;
+  const segments: [Bezier, number][] = [];
+
+  if (flipbook.loop === "loop" && lifeSeconds > 0) {
+    const totalFrames = Math.max(frames.length, Math.round(lifeSeconds * flipbook.fps));
+    const maxSegments = Math.min(totalFrames, 64);
+    for (let i = 0; i < maxSegments; i++) {
+      const frame = frames[i % frames.length];
+      segments.push([new Bezier(frame, frame, frame, frame), i / maxSegments]);
+    }
+  } else {
+    const span = lifeSeconds > 0 ? Math.min(1, playDuration / lifeSeconds) : 1;
+    const step = span / frames.length;
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      segments.push([new Bezier(frame, frame, frame, frame), i * step]);
+    }
+  }
+
+  return new FrameOverLife(new PiecewiseBezier(segments));
+}
+
+function toQuarksEmitter(emitter: VfxEmitter, effect?: VfxEffect): ParticleSystem {
+  const flipbook = emitter.flipbook;
+  const flipbookFrames = flipbook ? resolveFlipbookFrames(flipbook) : undefined;
+  const startTile = flipbookFrames?.[0] ?? 0;
+
   const system = new ParticleSystem({
     duration: emitter.duration,
     looping: emitter.looping,
@@ -152,6 +194,9 @@ function toQuarksEmitter(emitter: VfxEmitter): ParticleSystem {
     emissionOverTime: new ConstantValue(emitter.rate),
     shape: toQuarksShape(emitter.spawnShape),
     maxParticle: emitter.maxParticles,
+    uTileCount: flipbook?.columns ?? 1,
+    vTileCount: flipbook?.rows ?? 1,
+    startTileIndex: new ConstantValue(startTile),
     emissionBursts: emitter.bursts.map((b) => ({
       time: b.time,
       count: new ConstantValue(b.count),
@@ -160,7 +205,18 @@ function toQuarksEmitter(emitter: VfxEmitter): ParticleSystem {
     })) as never,
   } as never);
 
+  const meta = system.emitter as unknown as {
+    userData: Record<string, unknown>;
+  };
   (system as unknown as { emitterName: string }).emitterName = emitter.name;
+  if (effect && meta?.userData) {
+    meta.userData.vfxRender = resolveEmitterRenderSettings(effect, emitter);
+  }
+
+  // Flipbook UV frame playback
+  if (flipbook) {
+    system.addBehavior(buildFlipbookBehavior(flipbook, emitter.lifetime));
+  }
 
   // Direction and spread
   // (three.quarks uses shape orientation; direction is applied via rotation)
@@ -190,7 +246,7 @@ function toQuarksEmitter(emitter: VfxEmitter): ParticleSystem {
  * The caller adds them to a BatchedRenderer and the scene.
  */
 export function vfxToQuarks(effect: VfxEffect): ParticleSystem[] {
-  return effect.emitters.map(toQuarksEmitter);
+  return effect.emitters.map((emitter) => toQuarksEmitter(emitter, effect));
 }
 
 /**
