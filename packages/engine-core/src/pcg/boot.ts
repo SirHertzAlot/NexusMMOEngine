@@ -14,8 +14,15 @@ import { RpcServer } from "../net/rpc-http.js";
 import { PcgAssetLibrary, type PcgCooker } from "./asset-library.js";
 import { registerPcgRpc } from "./pcg-rpc.js";
 
-/** The repo's asset library (dist/src/pcg -> repo root). */
-export const DEFAULT_PCG_ASSETS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../content/pcg");
+function resolvePcgAssets(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidate5 = path.resolve(here, "../../../../../content/pcg");
+  if (existsSync(candidate5)) return candidate5;
+  const candidate4 = path.resolve(here, "../../../../content/pcg");
+  if (existsSync(candidate4)) return candidate4;
+  return path.resolve(process.cwd(), "content/pcg");
+}
+export const DEFAULT_PCG_ASSETS = resolvePcgAssets();
 
 /** The native cooker, or null (with the reason) when the addon isn't built. */
 export function loadNativeCooker(): { cooker: PcgCooker | null; version: string; error?: string } {

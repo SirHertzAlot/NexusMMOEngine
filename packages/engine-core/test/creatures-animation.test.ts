@@ -6,13 +6,25 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Move } from "@mmo-engine/protocol";
 import { MOVE_CLIPS } from "../src/animation.js";
 
+function findRepoRoot(fromUrl: string): string {
+  let curr = fileURLToPath(new URL(".", fromUrl));
+  while (curr && curr !== path.dirname(curr)) {
+    if (fs.existsSync(path.join(curr, "package.json")) && fs.existsSync(path.join(curr, "packages"))) {
+      return curr;
+    }
+    curr = path.dirname(curr);
+  }
+  return process.cwd();
+}
+
 describe("Creature rules & animation mapping", () => {
-  // Repo root regardless of cwd (tests compile to dist/test/, so four ups).
-  const rootDir = fileURLToPath(new URL("../../../..", import.meta.url));
+  // Repo root regardless of running from src/ or dist/
+  const rootDir = findRepoRoot(import.meta.url);
   const speciesData = JSON.parse(fs.readFileSync(`${rootDir}/content/species/species.json`, "utf8"));
   const creaturesData = JSON.parse(fs.readFileSync(`${rootDir}/content/rules/creatures.json`, "utf8"));
   const lootData = JSON.parse(fs.readFileSync(`${rootDir}/content/rules/loot.json`, "utf8"));

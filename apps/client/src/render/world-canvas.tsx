@@ -1080,7 +1080,7 @@ function MirrorWorld({
       }
     }
 
-    r.terrain.update(camera.position);
+    r.terrain.update(camera.position, 2);
     r.water.update(seconds);
     updateTerrainFx(seconds);
 

@@ -14,12 +14,22 @@
  *  - respawn: 300 s; animals drop nothing (hides and meat are the crafting agent's).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CreaturesRules } from "@mmo-engine/rules";
+import { SPECIES_NATURAL_SCALE } from "../creatures.js";
 import type { WildlifeTable } from "./wildlife-table.js";
 
-export const DEFAULT_NATURAL_WEAPONS = fileURLToPath(new URL("../../../content/wildlife/natural.json", import.meta.url));
+function resolveNaturalWeapons(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidate5 = resolve(here, "../../../../../content/wildlife/natural.json");
+  if (existsSync(candidate5)) return candidate5;
+  const candidate4 = resolve(here, "../../../../content/wildlife/natural.json");
+  if (existsSync(candidate4)) return candidate4;
+  return resolve(process.cwd(), "content/wildlife/natural.json");
+}
+export const DEFAULT_NATURAL_WEAPONS = resolveNaturalWeapons();
 
 export interface NaturalWeapons {
   byRole: Record<string, string>;
@@ -67,7 +77,7 @@ export function wildlifeCreatures(t: WildlifeTable, natural: NaturalWeapons): Cr
         activity: s.activity,
         habitat: s.habitat === "water" ? "water" : "land",
         ...(s.depthM ? { depthM: [s.depthM[0], s.depthM[1]] as [number, number] } : {}),
-        size: 1,
+        size: SPECIES_NATURAL_SCALE[id] ?? 1,
       },
     };
   }

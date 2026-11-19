@@ -32,7 +32,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fnv1a32, type Breakable as BreakableDef, type SpawnArchetype, type SpawnTable } from "@mmo-engine/scatter";
 import { expandPrefabs, validatePrefab, validateScene, worldNodes, type PrefabDoc, type PrefabLookup, type SceneDoc, type ScaleCategory, type WorldNode } from "@mmo-engine/scene";
@@ -50,14 +50,23 @@ import type { ScaleResolver } from "./scale.js";
 import type { ResourceNodeSpec } from "./gathering/gathering.js";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
-/** The repo's content/scenes (this file is dist/src/scene-spawn.js). */
-export const DEFAULT_SCENES_DIR = fileURLToPath(new URL("../../../../content/scenes", import.meta.url));
+function resolveRepoSubdir(sub: string): string {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const candidate4 = resolve(here, "../../../../content", sub);
+  if (existsSync(candidate4)) return candidate4;
+  const candidate3 = resolve(here, "../../../content", sub);
+  if (existsSync(candidate3)) return candidate3;
+  return resolve(process.cwd(), "content", sub);
+}
+
+/** The repo's content/scenes (resolves from dist/src or src). */
+export const DEFAULT_SCENES_DIR = resolveRepoSubdir("scenes");
 /** A building on a slope stands this far above its footprint's highest ground sample, metres. */
 const PLINTH_M = 0.05;
 const META_KEY ="scene_entities";
 const ITEMS_KEY = "scene_items";
-/** The repo's content/prefabs (this file is dist/src/scene-spawn.js). */
-export const DEFAULT_PREFABS_DIR = fileURLToPath(new URL("../../../../content/prefabs", import.meta.url));
+/** The repo's content/prefabs (resolves from dist/src or src). */
+export const DEFAULT_PREFABS_DIR = resolveRepoSubdir("prefabs");
 
 export interface SceneSpawnDeps {
   sim: SimWorld;

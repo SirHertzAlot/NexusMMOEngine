@@ -223,9 +223,10 @@ with an index manifest for `RE.Model.fetch()`.
 ## Animals: procedural movement for static meshes
 
 The imported animals (woodland fauna, farm animals) are static meshes with no
-skeleton and no clips. They move through the animal rig:
-the shared rig (`packages/animal-rig`, `@mmo-engine/animal-rig`; the client calls it from `EntityLayer`) cuts the mesh into parts, adds an eleven-bone skeleton (body, head,
-tail and four two-segment legs) to a copy of its geometry and poses it from the server's velocity. No clip files are made
+skeleton and no clips. They move through the shared animal rig
+(`packages/animal-rig`, `@mmo-engine/animal-rig`; the client calls it from `EntityLayer`), which cuts the mesh into parts, adds a fifteen-bone anatomical skeleton
+(chest, loin, neck, head, a three-bone tail chain and four two-segment legs)
+to a copy of its geometry and poses it from the server's velocity. No clip files are made
 or needed, so every static quadruped moves the day it is imported.
 
 **Decision.** The idea came from
@@ -245,7 +246,7 @@ or needed, so every static quadruped moves the day it is imported.
   the ideas (a gait is a table of per-leg touchdown phase offsets and a duty
   factor, rows blended by speed, speeds compared by Froude number so a wolf
   and a bear change gait at the same effort, one-shots layered over
-  locomotion) and wrote them for our own eleven-bone rig. **No code from the library
+  locomotion) and wrote them for our own fifteen-bone anatomical rig. **No code from the library
   is vendored**, so there is no licence text to carry and no
   `content/credits.json` entry; the concept credit is this paragraph. If you
   vendor any of its files later, copy its `LICENSE` and copyright notice next
@@ -258,8 +259,15 @@ or needed, so every static quadruped moves the day it is imported.
   the head end is the one held higher off the ground (the rear reaches down
   with hind legs; right on the seven tried: deer, bear, fox, cougar, wolf, pig, goat; vertex count is only the
   tiebreak); the belly is where a height slice's footprint fills in; smooth
-  region weights give head, tail, body and four legs, each leg an upper bone
-  (hip/shoulder) and a lower bone (knee/hock), four influences per vertex.
+  region weights cut head, neck, chest, loin, a tail chain and four legs, four
+  influences per vertex. The layout is anatomical: the hind legs and the tail
+  hang off the loin (pelvis), the head off the neck, the front legs off the
+  chest, so a proximal flexion carries its own mass; the leg column reaches up
+  the haunch and the shoulder (tall vertices only near their own hip), so the
+  femur and the scapula swing with the leg instead of staying with the trunk.
+  Each leg keeps an upper bone (hip/shoulder) and a lower bone (knee/hock).
+  The tail root is found from the shape (the first rear slice as wide as the
+  body); the chain follows it back to the tip.
   The knee is found as the narrowest leg slice in the middle band of the leg
   (clamped to 42 to 58 percent of the hip height, else halfway), blended over
   a band 28 percent of the leg wide so the joint bends smoothly. A mesh that is not four-legged (length under 0.7 of height, snakes,
@@ -272,12 +280,19 @@ or needed, so every static quadruped moves the day it is imported.
   of the angle linear through stance so the foot moves back at body speed and
   does not slide. The knee flexes only in swing, peaking at about 40 percent
   of it (about 40 degrees at a walk, 65 at a trot, 80 at a gallop), and is
-  straight at touchdown. The front knee folds the foot backward, the hind
+  straight at touchdown, while the upper segment counter-rotates against the
+  flexion (the femur sits back as the hock folds forward, the humerus reaches
+  as the carpus folds back). The front knee folds the foot backward, the hind
   hock the opposite way (forward). The hip drops with the swing angle, and
   rises just enough in late swing, so a planted foot stays on the ground and
-  a swinging one clears it. The body bobs twice per cycle, twists and rolls
-  slightly in walk and trot, the head counter-rotates and nods, and the tail
-  follows with a lag.
+  a swinging one clears it; a first-order inverse of the spine's rotation is
+  folded into the hip position so a planted foot stays planted while the back
+  moves over it. The spine locomotes with the legs (`spineCurve`): a lateral
+  undulation the loin leads and the chest follows smaller (fading at a
+  gallop), a dorsoventral loin arch that grows with the gait (the bounding
+  gallop), and a neck that counter-pitches to hold the head level. The tail
+  is a lagged chain (`tailChain`), amplitude growing to the tip, with a lazy
+  flick when idle.
 - `animal-rig.ts`: `AnimalTemplate` (one per model: skinned geometry copy) and
   `AnimalRig` (one per animal: `SkinnedMesh`, bones, state). `update` allocates
   nothing. The material is the model cache's, shared with the scenery, and is
@@ -293,7 +308,7 @@ rules an entity with that model's `AssetRef`; it rigs itself. If the head is
 picked wrong or the belly height is off, pass `SegmentHints`
 (`headSign`, `legTop`) where the template is built. Megafauna (giant
 predators) rig the same way; their stride scales with leg length (Froude).
-Birds, snakes and fish take their own rig type (WL2, #600): the client routes by model name to wing, spine-wave and fin-and-tail motion (`avianFlightCurve`, `serpentineWave`, `aquaticWave` in `gait.ts`), and arachnids and plants have their own (`arachnidGait`, `floraSway`). The rig type chosen is shown in the editor's rig view.
+Birds, snakes and fish take their own rig type (WL2, #600): the client routes by model name (`namedRigType`) to wing, spine-wave and fin-and-tail motion (`avianFlightCurve`, `serpentineWave`, `aquaticWave` in `gait.ts`), and arachnids and plants have their own (`arachnidGait`, `floraSway`). The rig type chosen is shown in the editor's rig view.
 
 **Known artifacts.** Legs are two rigid pieces blended over the belly and
 across the knee, so there is some skin stretch at the hip and a visible kink

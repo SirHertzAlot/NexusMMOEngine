@@ -43,10 +43,34 @@ export interface WorldPopulator {
   ): { tiles: number; solved: number };
 }
 
+function resolveAssetsDir(): string {
+  if (process.env.MMO_ASSETS_DIR) return path.resolve(process.env.MMO_ASSETS_DIR);
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidate5 = path.resolve(here, "../../../../../assets");
+  if (fs.existsSync(candidate5)) return candidate5;
+  const candidate4 = path.resolve(here, "../../../../assets");
+  if (fs.existsSync(candidate4)) return candidate4;
+  return path.resolve(process.cwd(), "assets");
+}
+function resolveEcologyPlan(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidatePkg = path.resolve(here, "../../content/ecology/wilds.ecology.json");
+  if (fs.existsSync(candidatePkg)) return candidatePkg;
+  const candidatePkgDist = path.resolve(here, "../../../content/ecology/wilds.ecology.json");
+  if (fs.existsSync(candidatePkgDist)) return candidatePkgDist;
+  const candidateRoot = path.resolve(process.cwd(), "content/ecology/wilds.ecology.json");
+  if (fs.existsSync(candidateRoot)) return candidateRoot;
+  const candidate5 = path.resolve(here, "../../../../../content/ecology/wilds.ecology.json");
+  if (fs.existsSync(candidate5)) return candidate5;
+  const candidate4 = path.resolve(here, "../../../../content/ecology/wilds.ecology.json");
+  if (fs.existsSync(candidate4)) return candidate4;
+  return path.resolve(process.cwd(), "packages/engine-core/content/ecology/wilds.ecology.json");
+}
+
 /** The art packs' manifest in this checkout, or in MMO_ASSETS_DIR (present only where the art is). */
-const ASSETS = process.env.MMO_ASSETS_DIR ? path.resolve(process.env.MMO_ASSETS_DIR) : fileURLToPath(new URL("../../../../../assets", import.meta.url));
+const ASSETS = resolveAssetsDir();
 export const ART_MANIFEST = path.join(ASSETS, "manifest.json");
-export const DEFAULT_ECOLOGY_PLAN = fileURLToPath(new URL("../../../content/ecology/wilds.ecology.json", import.meta.url));
+export const DEFAULT_ECOLOGY_PLAN = resolveEcologyPlan();
 
 /** The art catalog next to the manifest: model sizes for the ecology's colliders (null where the art isn't). */
 export const ART_CATALOG = process.env.MMO_CATALOG ? path.resolve(process.env.MMO_CATALOG) : path.join(ASSETS, "catalog.json");

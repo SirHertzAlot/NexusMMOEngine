@@ -39,6 +39,7 @@ import type { PlacesStore } from "../interact/places-store.js";
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
+import type { LivingSimSystem } from "../sim/living-sim-system.js";
 
 /** The parts of a baked npc the system needs (settlement's Npc). */
 export interface ResidentNpc {
@@ -110,6 +111,8 @@ export interface ResidentOptions {
   coarseM?: number;
   /** Most walking residents (crowd agents) region-wide. Default 300. */
   maxFull?: number;
+  /** Living simulation system (circadian rhythm, hunger, fatigue, digestion, shelter, entertainment). */
+  livingSim?: LivingSimSystem;
 }
 
 export type ResidentTier = "full" | "coarse" | "none";
@@ -240,6 +243,11 @@ export class ResidentSystem implements SimSystem {
     return this.live.size;
   }
 
+  /** Living simulation system tracking residents' biological needs and circadian rhythms. */
+  get livingSim(): LivingSimSystem | undefined {
+    return this.opts.livingSim;
+  }
+
   /** Whether `eid` is a resident, so DeathSystem leaves its body lying (it does not rise). */
   isResident(eid: number): boolean {
     return this.infoOf.has(eid);
@@ -328,6 +336,39 @@ export class ResidentSystem implements SimSystem {
         const before = this.lastAnchor.get(npc.id);
         this.lastAnchor.set(npc.id, p.anchor);
         if (have && entityExists(sim.ecs, have.eid)) this.arrive(sim, npc.id, have, tick);
+        if (this.opts.livingSim && have && entityExists(sim.ecs, have.eid)) {
+          const state = this.opts.livingSim.getState(have.eid);
+          if (state) {
+            switch (p.activity) {
+              case "sleep":
+                state.fatigue = Math.max(0, state.fatigue - 0.08);
+                state.shelter = Math.max(0, state.shelter - 0.15);
+                break;
+              case "tavern":
+                this.opts.livingSim.feed(have.eid, 0.25);
+                this.opts.livingSim.hydrate(have.eid, 0.35);
+                state.entertainment = Math.min(1, state.entertainment + 0.15);
+                state.shelter = Math.max(0, state.shelter - 0.10);
+                break;
+              case "worship":
+                state.entertainment = Math.min(1, state.entertainment + 0.10);
+                state.shelter = Math.max(0, state.shelter - 0.05);
+                break;
+              case "work":
+                state.fatigue = Math.min(1, state.fatigue + 0.02);
+                break;
+              case "idle":
+                state.entertainment = Math.min(1, state.entertainment + 0.05);
+                break;
+              case "hide":
+                state.shelter = Math.max(0, state.shelter - 0.20);
+                break;
+            }
+            if (state.bathroom >= 0.75) {
+              this.opts.livingSim.relieve(have.eid);
+            }
+          }
+        }
         const live = this.live.get(npc.id);
         if (!p.outdoors) {
           if (!live) continue;
@@ -507,6 +548,7 @@ export class ResidentSystem implements SimSystem {
 
   private remove(sim: SimWorld, npc: string, have: Live): void {
     if (have.agent) this.agents--;
+    this.opts.livingSim?.remove(have.eid);
     if (entityExists(sim.ecs, have.eid)) sim.despawn(have.eid);
     this.opts.detachShop?.(have.eid);
     this.infoOf.delete(have.eid);
@@ -550,6 +592,15 @@ export class ResidentSystem implements SimSystem {
     this.infoOf.set(eid, { npc: npc.id, town: town.id, role: npc.role, class: npc.class, cohort: npc.cohort, ...(npc.mastery ? { mastery: npc.mastery, grandMaster: npc.grandMaster === true } : {}) });
     const keeps = town.keeps?.get(npc.id);
     if (keeps !== undefined) this.opts.attachShop?.(eid, keeps);
+    if (this.opts.livingSim) {
+      const s = this.opts.livingSim.getOrCreateState(eid, "human", C.Transform.px[eid] || 0, C.Transform.py[eid] || 0, C.Transform.pz[eid] || 0);
+      const seed = hashOf(npc.id);
+      s.hunger = 0.15 + (seed % 30) / 100;
+      s.thirst = 0.15 + ((seed >> 5) % 30) / 100;
+      s.fatigue = 0.10 + ((seed >> 10) % 25) / 100;
+      s.bathroom = 0.05 + ((seed >> 15) % 20) / 100;
+      s.entertainment = 0.40 + ((seed >> 20) % 30) / 100;
+    }
     return eid;
   }
 
