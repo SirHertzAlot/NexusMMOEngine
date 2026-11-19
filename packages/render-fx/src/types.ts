@@ -31,7 +31,7 @@ export interface ParamDecl {
  */
 export type ParamValue = number | [number, number, number] | string | number[];
 
-export type BindingKind = "local" | "world" | "entity" | "socket";
+export type BindingKind = "local" | "world" | "entity" | "socket" | "spline";
 
 export interface EffectBinding {
   kind: BindingKind;
@@ -41,10 +41,12 @@ export interface EffectBinding {
   socket?: string;
   /** Metres, applied in the binding space. */
   offset?: [number, number, number];
-  /** kind == "world": authoritative metres. */
+  /** kind == "world" | "spline": authoritative metres (or detonation endpoint for spline). */
   pos?: [number, number, number];
   /** Optional unit surface normal. */
   normal?: [number, number, number];
+  /** kind == "spline": authoritative world waypoints [x, y, z] in metres (2..16). */
+  waypoints?: Array<[number, number, number]>;
 }
 
 export type OrphanRule = "fade" | "detach" | "kill";
@@ -55,7 +57,8 @@ export type FxModuleName =
   | "PoolModule"
   | "TrailModule"
   | "MuzzleFlashModule"
-  | "ShieldModule";
+  | "ShieldModule"
+  | "CurveEmitterModule";
 
 export interface EffectModuleDef {
   module: FxModuleName;

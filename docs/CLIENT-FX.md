@@ -9,6 +9,7 @@ mirrored positions and never feeds back into simulation.
 | Layer | File | What it does |
 |---|---|---|
 | Shared GLSL | `glsl.ts` | Procedural hash / value-noise / FBM / ridged-noise snippet library. Terrain and elemental shaders import from here (DRY) instead of duplicating noise code. |
+| Spell VFX & Spline Shaders | `vfx/spell-fx-layer.ts`, `vfx/spell-content.ts` | `0x28` authoritative spell VFX runtime backed by `@mmo-engine/render-fx`: ground-projected chevron aim ribbon + rotating sigil reticle, `InstancedMesh` billboard elemental particles, crossed spline trails, vertical **Inferno Pillar** (`blazePath`), `6.2m × 3.8m` curling **Tidal Wave** (`tidalSurge`), lava fissures + 3D stone/ice spires, `Gale Sphere` cyclone globe, hexagonal Fresnel `Aegis` shield with hit ripples, Absolute-Zero frost disc, and destructible 12-crystal `fx.ice-ring` prison. |
 | Terrain FX | `terrain-fx.ts` | `onBeforeCompile` injection on the chunk material: noise albedo (grass/dirt/rock), pulsing energy veins, shimmering water pools. Deterministic per-chunk via `ChunkRow.seed`. |
 | Entity FX | `entity-fx.ts` | Spawn portal (expanding shockwave ring + vertical beam), persistent player selection ring, pulsing player aura sprite, camera-facing motion-trail ribbon, hover emissive highlight. |
 | Elemental orbs | `element-fx.ts` | Six procedural `ShaderMaterial` orbs — water, fire, wind, earth, snow, lava — plus runtime canvas textures (soft glow, spark, text labels). No downloaded assets. |

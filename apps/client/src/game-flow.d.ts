@@ -35,3 +35,15 @@ declare module "virtual:vfx-effects" {
   const docs: unknown;
   export default docs;
 }
+
+/** Spell VFX EffectDefinition documents (packages/render-fx schema), keyed by assetId. */
+declare module "virtual:spell-vfx-defs" {
+  const docs: Record<string, unknown>;
+  export default docs;
+}
+
+/** Spell definitions (content/rules/spells.json). */
+declare module "virtual:rules-spells" {
+  const doc: unknown;
+  export default doc;
+}

@@ -40,6 +40,8 @@ import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
 import { CastBar, nextCast, type CastState } from "./ui/cast-bar.js";
 import { AbilityBar, NO_ABILITY_STATE, abilityEntries, nextAbilityState, type AbilityBarState, type AbilityEntry } from "./ui/ability-bar.js";
+import { SpellBar } from "./ui/spell-bar.js";
+import { SPELL_BAR_ENTRIES, type SpellBarEntry } from "./render/vfx/spell-content.js";
 import { StatusFrame, nextStatuses, type StatusView } from "./ui/status-frame.js";
 import { MirrorClient, type JoinReply } from "@mmo-engine/mirror";
 import { BrowserSocket } from "@mmo-engine/mirror";
@@ -225,6 +227,7 @@ export function App(): React.ReactElement {
   // Mana (0x1c) for the player frame, and the player's own cast under way for the cast bar.
   const [mana, setMana] = useState<ManaMessage | null>(null);
   const [cast, setCast] = useState<CastState | null>(null);
+  const [armedSpell, setArmedSpell] = useState<SpellBarEntry | null>(null);
   const [abilityState, setAbilityState] = useState<AbilityBarState>(NO_ABILITY_STATE);
   const [statuses, setStatuses] = useState<StatusView[]>([]);
   /** The ability bar's buttons, from content/combat/abilities.json (placeholder set; M5). */
@@ -503,6 +506,10 @@ function welcomeTimeoutMs(): number | undefined {
         combat.telegraphs.push(tg);
         if (combat.telegraphs.length > 64) combat.telegraphs.shift(); // nothing draws them until the canvas mounts
       },
+      onFx: (fx) => {
+        combat.fxQueue.push(fx);
+        if (combat.fxQueue.length > 128) combat.fxQueue.shift();
+      },
       onTreatment: (t) => {
         const c = clientRef.current;
         const name = c?.body?.parts.find((p) => p.id === t.part)?.name;
@@ -754,6 +761,39 @@ function welcomeTimeoutMs(): number | undefined {
   const onTreatPart = useCallback((part: string) => clientRef.current?.treat(undefined, part), []);
   // G casts Mend on yourself (mana's first spender).
   const onMend = useCallback(() => clientRef.current?.cast("mend"), []);
+  const onActivateSpell = useCallback((sp: SpellBarEntry) => {
+    if (sp.target === "spline") {
+      setArmedSpell((prev) => (prev?.id === sp.id ? null : sp));
+      return;
+    }
+    setArmedSpell(null);
+    const target = sp.target === "self" ? undefined : (combat.target?.toString() ?? undefined);
+    clientRef.current?.cast(sp.id, target);
+  }, [combat]);
+  const onSplineCast = useCallback((spellId: string, path: [number, number, number][]) => {
+    clientRef.current?.cast(spellId, undefined, path);
+    setArmedSpell(null);
+  }, []);
+  const onCancelSpline = useCallback(() => setArmedSpell(null), []);
+  useEffect(() => {
+    if (screen !== "world") return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.repeat || document.pointerLockElement) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.code === "Escape") {
+        setArmedSpell(null);
+        return;
+      }
+      const m = /^Digit([1-9])$/.exec(e.code);
+      if (!m) return;
+      const idx = Number(m[1]) - 1;
+      const sp = SPELL_BAR_ENTRIES[idx];
+      if (sp) onActivateSpell(sp);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [screen, onActivateSpell]);
   // E with nothing in reach eats or drinks the selected hotkey item (any bag item of that definition).
   const [hotkeyDef, setHotkeyDef] = useState<string | null>(null);
   const bagRef = useRef(bag);
@@ -841,6 +881,9 @@ function welcomeTimeoutMs(): number | undefined {
           onLoading={setWorldLoad}
           streamingRef={streamingRef}
           audio={audio}
+          armedSpell={armedSpell}
+          onSplineCast={onSplineCast}
+          onCancelSpline={onCancelSpline}
         />
         {worldLoad ? (
           <div role="status" aria-live="polite" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
@@ -972,6 +1015,15 @@ function welcomeTimeoutMs(): number | undefined {
         <HudSlot id="ability-bar" className="z-10">
           <AbilityBar abilities={abilityBar} state={abilityState} onUse={(id) => clientRef.current?.ability(id)} />
         </HudSlot>
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
+          <SpellBar
+            spells={SPELL_BAR_ENTRIES}
+            armedSpellId={armedSpell?.id ?? null}
+            manaCurrent={mana?.current ?? null}
+            onActivate={onActivateSpell}
+            onCancelArm={onCancelSpline}
+          />
+        </div>
         <TargetFrame target={combatView?.target ?? null} />
         <CombatHud
           view={cameraView}

@@ -12,12 +12,15 @@ export const spellTitle = (id: string): string => id.charAt(0).toUpperCase() + i
 /** The line to show, or null when there is nothing to say. `me` is the player's own wire id. */
 export function spellNotice(s: SpellMessage, me: string | null, name = spellTitle(s.spell)): string | null {
   const self = s.caster === s.target;
+  const isHeal = s.spell === "mend";
   if (s.caster === me) {
     switch (s.state) {
       case "started":
         return t("spell.casting", { name, timed: s.seconds ? "yes" : "no", seconds: Math.round(s.seconds ?? 0) });
       case "done":
-        return s.amount !== undefined ? t("spell.healed", { name, who: self ? "self" : "other", amount: Math.round(s.amount) }) : t("spell.cast", { name });
+        return isHeal && s.amount !== undefined
+          ? t("spell.healed", { name, who: self ? "self" : "other", amount: Math.round(s.amount) })
+          : t("spell.cast", { name });
       case "stopped":
         return t("spell.stopped");
     }
@@ -27,7 +30,7 @@ export function spellNotice(s: SpellMessage, me: string | null, name = spellTitl
     case "started":
       return t("spell.castingOnYou", { name });
     case "done":
-      return s.amount !== undefined ? t("spell.healedYou", { name, amount: Math.round(s.amount) }) : null;
+      return isHeal && s.amount !== undefined ? t("spell.healedYou", { name, amount: Math.round(s.amount) }) : null;
     case "stopped":
       return null;
   }

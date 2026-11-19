@@ -238,13 +238,16 @@ export interface DisciplineRequirement {
 
 /**
  * C->S (catalog 0x1c): cast a spell (`spells.json` id) on `target` (a
- * character's wire id; absent: yourself), or `stop: true` the cast under
- * way. Refusals (unknown spell, too far, cooling down, not enough mana) are 4005.
+ * character's wire id; absent: yourself), optionally along a client-proposed
+ * world-space spline `path` (`[x, y, z]` waypoints, validated/clamped server-side),
+ * or `stop: true` the cast under way. Refusals (unknown spell, too far,
+ * cooling down, not enough mana) are 4005.
  */
 export interface CastMessage {
   kind: "cast";
   spell?: string;
   target?: string;
+  path?: Array<[number, number, number]>;
   stop?: boolean;
 }
 

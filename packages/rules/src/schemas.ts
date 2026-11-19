@@ -792,7 +792,33 @@ export const SpellEffectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("heal"),
     amount: positive,
   }),
+  z.strictObject({
+    /** Deal `amount` magical damage × the caster's `spellPower` stat to the target (or within `radiusM` of a spline detonation point). */
+    kind: z.literal("damage"),
+    amount: positive,
+    element: z.enum(["fire", "water", "earth", "air", "arcane", "frost", "lightning"]).default("fire"),
+    radiusM: positive.optional(),
+  }),
+  z.strictObject({
+    /** Grant an energy ward absorbing up to `absorb` × `spellPower` damage for `durationSeconds`. */
+    kind: z.literal("shield"),
+    absorb: positive,
+    durationSeconds: positive.default(10),
+  }),
+  z.strictObject({
+    /** Conjure an elemental air sphere / traversal launch along a spline path. */
+    kind: z.literal("airSphere"),
+    speed: positive.default(12),
+    radiusM: positive.default(2.5),
+  }),
 ]);
+
+export const SpellVfxSchema = z.strictObject({
+  castAsset: z.string().min(1).max(128).optional(),
+  impactAsset: z.string().min(1).max(128).optional(),
+  persistentAsset: z.string().min(1).max(128).optional(),
+  color: z.string().min(1).max(32).optional(),
+});
 
 export const SpellSchema = z.strictObject({
   id,
@@ -803,10 +829,11 @@ export const SpellSchema = z.strictObject({
   castSeconds: z.number().min(0).default(1.5),
   /** Seconds after a completed cast before it can be cast again. */
   cooldownSeconds: z.number().min(0).default(0),
-  /** Who it can be cast on: the caster only, or anyone within `reach` metres. */
-  target: z.enum(["self", "any"]).default("any"),
+  /** Who it can be cast on: the caster only, anyone within `reach`, or a spline drawn across the world. */
+  target: z.enum(["self", "any", "spline"]).default("any"),
   reach: positive.default(3),
   effect: SpellEffectSchema,
+  vfx: SpellVfxSchema.optional(),
 });
 
 export const SpellsSchema = z.strictObject({
