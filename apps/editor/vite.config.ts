@@ -5,9 +5,20 @@ import { dirname, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { editorHost } from "./src/host.js";
 
-/** Virtual plugin providing virtual:vfx-effects to resolve client/render dependencies */
-function vfxEffectsPlugin(files: string[]) {
-  const id = "virtual:vfx-effects";
+/** Virtual single-JSON plugin to resolve client/render content dependencies in editor play-mode builds. */
+function virtualJsonPlugin(id: string, file: string) {
+  return {
+    name: id,
+    resolveId: (req: string) => (req === id ? `\0${id}` : null),
+    load(req: string) {
+      if (req !== `\0${id}`) return null;
+      return existsSync(file) ? `export default ${readFileSync(file, "utf8")};` : "export default {};";
+    },
+  };
+}
+
+/** Virtual keyed-JSON map plugin providing VFX manifests (e.g. virtual:vfx-effects, virtual:spell-vfx-defs). */
+function virtualJsonMapPlugin(id: string, keyField: string, files: string[]) {
   return {
     name: id,
     resolveId: (req: string) => (req === id ? `\0${id}` : null),
@@ -16,8 +27,9 @@ function vfxEffectsPlugin(files: string[]) {
       const out: Record<string, unknown> = {};
       for (const file of files) {
         if (existsSync(file)) {
-          const doc = JSON.parse(readFileSync(file, "utf8")) as { id: string };
-          out[doc.id] = doc;
+          const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+          const key = doc[keyField];
+          if (typeof key === "string") out[key] = doc;
         }
       }
       return `export default ${JSON.stringify(out)};`;
@@ -93,7 +105,21 @@ export default defineConfig(() => {
         },
       }),
       editorHost({ repoRoot }),
-      vfxEffectsPlugin([
+      virtualJsonPlugin("virtual:vfx-budgets", resolve(repoRoot, "content/vfx/budgets.json")),
+      virtualJsonPlugin("virtual:rules-spells", resolve(repoRoot, "content/rules/spells.json")),
+      virtualJsonMapPlugin("virtual:spell-vfx-defs", "assetId", [
+        resolve(repoRoot, "content/vfx/charged-shot.json"),
+        resolve(repoRoot, "content/vfx/force-shield.json"),
+        resolve(repoRoot, "content/vfx/mend-aura.json"),
+        resolve(repoRoot, "content/vfx/spline-fire.json"),
+        resolve(repoRoot, "content/vfx/spline-water.json"),
+        resolve(repoRoot, "content/vfx/spline-earth.json"),
+        resolve(repoRoot, "content/vfx/spline-air.json"),
+        resolve(repoRoot, "content/vfx/spline-lightning.json"),
+        resolve(repoRoot, "content/vfx/spline-frost.json"),
+        resolve(repoRoot, "content/vfx/ice-ring.json"),
+      ]),
+      virtualJsonMapPlugin("virtual:vfx-effects", "id", [
         resolve(repoRoot, "content/vfx/shrine-fire.json"),
         resolve(repoRoot, "content/vfx/shrine-water.json"),
         resolve(repoRoot, "content/vfx/shrine-earth.json"),
