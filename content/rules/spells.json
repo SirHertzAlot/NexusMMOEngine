@@ -1,6 +1,104 @@
 {
   "spells": [
-    { "id": "mend", "name": "Mend", "mana": 25, "castSeconds": 2, "cooldownSeconds": 6, "target": "any", "reach": 3, "effect": { "kind": "heal", "amount": 15 } }
+    {
+      "id": "mend",
+      "name": "Mend",
+      "mana": 25,
+      "castSeconds": 2,
+      "cooldownSeconds": 6,
+      "target": "any",
+      "reach": 3,
+      "effect": { "kind": "heal", "amount": 15 },
+      "vfx": { "castAsset": "fx.mend-aura", "impactAsset": "fx.mend-aura", "color": "#4ade80" }
+    },
+    {
+      "id": "ember-bolt",
+      "name": "Ember Bolt",
+      "mana": 20,
+      "castSeconds": 1.5,
+      "cooldownSeconds": 4,
+      "target": "any",
+      "reach": 12,
+      "effect": { "kind": "damage", "amount": 22, "element": "fire" },
+      "vfx": { "castAsset": "fx.charged-shot", "impactAsset": "fx.charged-shot", "color": "#ff5522" }
+    },
+    {
+      "id": "aegis",
+      "name": "Aegis Ward",
+      "mana": 25,
+      "castSeconds": 0,
+      "cooldownSeconds": 10,
+      "target": "any",
+      "reach": 4,
+      "effect": { "kind": "shield", "absorb": 30, "durationSeconds": 12 },
+      "vfx": { "persistentAsset": "fx.force-shield", "color": "#26aeff" }
+    },
+    {
+      "id": "blazePath",
+      "name": "Blaze Path",
+      "mana": 18,
+      "castSeconds": 0,
+      "cooldownSeconds": 3,
+      "target": "spline",
+      "reach": 18,
+      "effect": { "kind": "damage", "amount": 26, "element": "fire", "radiusM": 3.5 },
+      "vfx": { "castAsset": "fx.spline-fire", "impactAsset": "fx.spline-fire", "color": "#ff5522" }
+    },
+    {
+      "id": "tidalSurge",
+      "name": "Tidal Surge",
+      "mana": 18,
+      "castSeconds": 0,
+      "cooldownSeconds": 3,
+      "target": "spline",
+      "reach": 18,
+      "effect": { "kind": "damage", "amount": 22, "element": "water", "radiusM": 4.0 },
+      "vfx": { "castAsset": "fx.spline-water", "impactAsset": "fx.spline-water", "color": "#22aaff" }
+    },
+    {
+      "id": "quakeLine",
+      "name": "Quake Line",
+      "mana": 20,
+      "castSeconds": 0,
+      "cooldownSeconds": 4,
+      "target": "spline",
+      "reach": 16,
+      "effect": { "kind": "damage", "amount": 28, "element": "earth", "radiusM": 4.2 },
+      "vfx": { "castAsset": "fx.spline-earth", "impactAsset": "fx.spline-earth", "color": "#a67c52" }
+    },
+    {
+      "id": "galeSphere",
+      "name": "Gale Sphere",
+      "mana": 15,
+      "castSeconds": 0,
+      "cooldownSeconds": 5,
+      "target": "spline",
+      "reach": 18,
+      "effect": { "kind": "airSphere", "speed": 14, "radiusM": 2.5 },
+      "vfx": { "castAsset": "fx.spline-air", "impactAsset": "fx.spline-air", "color": "#b8f7ff" }
+    },
+    {
+      "id": "tempestArc",
+      "name": "Tempest Arc",
+      "mana": 20,
+      "castSeconds": 0,
+      "cooldownSeconds": 3.5,
+      "target": "spline",
+      "reach": 20,
+      "effect": { "kind": "damage", "amount": 30, "element": "lightning", "radiusM": 3.5 },
+      "vfx": { "castAsset": "fx.spline-lightning", "impactAsset": "fx.spline-lightning", "color": "#60a5fa" }
+    },
+    {
+      "id": "glacialSpike",
+      "name": "Glacial Spike",
+      "mana": 20,
+      "castSeconds": 0,
+      "cooldownSeconds": 4,
+      "target": "spline",
+      "reach": 18,
+      "effect": { "kind": "damage", "amount": 26, "element": "frost", "radiusM": 4.0 },
+      "vfx": { "castAsset": "fx.spline-frost", "impactAsset": "fx.spline-frost", "color": "#38bdf8" }
+    }
   ],
   "defaultMax": 50,
   "defaultRegen": 1

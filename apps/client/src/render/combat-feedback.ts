@@ -5,7 +5,7 @@
  * Plain mutable state, not React state: hits arrive many times a second.
  */
 
-import type { HitMessage, LifeMessage, TelegraphMessage } from "@mmo-engine/protocol";
+import type { FxMessage, HitMessage, LifeMessage, TelegraphMessage } from "@mmo-engine/protocol";
 import { CombatNumbers } from "./combat-numbers.js";
 
 /** How long a struck body glows red, seconds. */
@@ -18,6 +18,8 @@ export class CombatFeedback {
   readonly flashUntil = new Map<bigint, number>();
   /** Telegraph messages (0x1e) not yet drawn; the frame loop drains it. */
   readonly telegraphs: TelegraphMessage[] = [];
+  /** Authoritative 0x28 spell/ability FX events; the frame loop drains them. */
+  readonly fxQueue: FxMessage[] = [];
   /** Floating damage numbers (CF2); the frame loop updates and draws them. */
   readonly numbers = new CombatNumbers();
 

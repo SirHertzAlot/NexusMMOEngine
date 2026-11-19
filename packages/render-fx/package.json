@@ -2,6 +2,8 @@
   "name": "@mmo-engine/render-fx",
   "version": "0.1.0",
   "description": "Framework-independent VFX asset schema and GLSL primitives (no three.js, no react)",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "type": "module",
   "private": true,
   "scripts": {
