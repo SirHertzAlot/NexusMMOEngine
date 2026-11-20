@@ -270,6 +270,15 @@ import {
 import { ChannelTransport, type EdgePush } from "./net/channel-transport.js";
 import { loadCombatContent } from "./combat-content.js";
 import { enemyModelPicker, loadEnemyModels } from "./enemy-models.js";
+import {
+  computePoolSabLayout,
+  DEFAULT_L2_CACHE_BYTES,
+  DEFAULT_POOL_CAPACITY,
+  defaultKeyBufferBytes,
+  fnv1a32,
+  SpawnPoolSoA,
+} from "./pools/spawn-pool-soa.js";
+import { loadSpawnPoolFromDisk, saveSpawnPoolToDisk } from "./pools/spawn-pool-io.js";
 
 /** MMO_PLAYER_ABILITIES ("swim", "swim,fly", "none") as protocol Ability bits. */
 function playerAbilitiesFromEnv(value: string | undefined): number {
@@ -830,6 +839,27 @@ async function main(): Promise<void> {
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
   const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
+  const respawnPoolPath = path.join(DATA_DIR, "pools", "world-respawns.sab.bin");
+  const respawnPool = (() => {
+    if (!fs.existsSync(respawnPoolPath)) return new SpawnPoolSoA();
+    const loaded = loadSpawnPoolFromDisk(respawnPoolPath);
+    if (loaded.capacity >= DEFAULT_POOL_CAPACITY) return loaded;
+    const expandedKeyCap = Math.max(loaded.keyBytesUsed, defaultKeyBufferBytes(DEFAULT_POOL_CAPACITY));
+    if (computePoolSabLayout(DEFAULT_POOL_CAPACITY, expandedKeyCap).totalBytes <= DEFAULT_L2_CACHE_BYTES) {
+      return SpawnPoolSoA.decodeBinary(loaded.encodeBinary(), {
+        capacity: DEFAULT_POOL_CAPACITY,
+        maxBudgetBytes: DEFAULT_L2_CACHE_BYTES,
+      });
+    }
+    return loaded;
+  })();
+  const resolveCreatureKindByHash = (archHash: number): string | undefined => {
+    const target = archHash >>> 0;
+    for (const kind of Object.keys(game.rules.creatures.creatures)) {
+      if ((fnv1a32(kind) >>> 0) === target) return kind;
+    }
+    return undefined;
+  };
   const creaturesConfig = {
     rules: game.rules,
     botCount,
@@ -852,6 +882,8 @@ async function main(): Promise<void> {
     // Wildlife models first, then the enemies' (EM1); a kind in neither spawns on its stand-in block.
     modelOf: (kind: string) => wildlifeModelOf(kind) ?? enemyModelOf(kind),
     settlements: () => wildlifeSettlements,
+    respawnPool,
+    kindResolver: resolveCreatureKindByHash,
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
   let startWild: (() => void) | null = null;
@@ -925,6 +957,7 @@ async function main(): Promise<void> {
     regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
     regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
     store: gatheringStore,
+    pool: respawnPool,
     train: (avatar, skill, difficulty, key) => {
       const i = masteryOf().index.of(skill);
       if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
@@ -1089,6 +1122,7 @@ async function main(): Promise<void> {
     take: (holder, base) => itemsOf().takeBase(holder, base),
     drop: dropTable,
     store: placesStore,
+    pool: respawnPool,
   });
   // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
   // Shops placed in scenes (IX8): content/vendors.json templates, defined on the economy's vendor system the first time a node names one.
@@ -1117,6 +1151,7 @@ async function main(): Promise<void> {
   const collapse = new CollapseSystem({ store: placesStore });
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
     store: placesStore,
+    pool: respawnPool,
     // Mending a building spends the pouch (gathered materials).
     materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
     killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
@@ -1272,6 +1307,8 @@ async function main(): Promise<void> {
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
+    getPoolSlotOf: (e: number) => creaturesOf().poolSlotOf(e),
+    respawnPool,
     // Blow resolution (EG6): read each strike, so a rules reload applies at once.
     getCombatTuning: () => ({ resolution: game.rules.combat.resolution, unarmed: game.rules.items.unarmed }),
   };
@@ -1316,6 +1353,7 @@ async function main(): Promise<void> {
       if (kind) creaturesOf().spawnPack(sim, kind, x, z, [1, 2]);
     },
     metrics: civicMetrics,
+    respawnPool,
   };
   // The tick's systems (roadmap EA9): the core module's instances in the order
   // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
@@ -1448,6 +1486,17 @@ async function main(): Promise<void> {
       : null;
   await socialSync?.boot();
   spawnBootScene();
+  if (respawnPool.activeCount > 0) {
+    const poolCreatures = creaturesRef.creatures.instantiateFromPool(
+      sim,
+      respawnPool,
+      resolveCreatureKindByHash,
+    );
+    logServerModuleLog(
+      worldLog,
+      `[pools] loaded ${respawnPool.activeCount} active slot(s) (${poolCreatures.length} creature(s) instantiated) from ${respawnPoolPath}`,
+    );
+  }
   // Streamer warm/adopt (deferred from before assembly): loading pinned
   // chunks registers terrain colliders, which need physicsRef (assigned
   // above). Contents attached earlier (attachContents) still reach these
@@ -1715,6 +1764,11 @@ async function main(): Promise<void> {
     gw.saveCharacters();
     if (gw.serverTick >= nextSaveTick) {
       const result = store.saveWorld(gw.serverTick, sim);
+      try {
+        saveSpawnPoolToDisk(respawnPoolPath, respawnPool);
+      } catch (err) {
+        logServerModuleLog(worldLog, `[pools] checkpoint save failed: ${(err as Error).message}`);
+      }
       const st = streamer.stats;
       console.log(
         `[server] saved tick ${result.tick} (${result.entityCount} entities, ${result.bytes} B, ${result.ms.toFixed(1)} ms) | ` +
@@ -1779,6 +1833,11 @@ async function main(): Promise<void> {
   installShutdownHook(store, () => ({ tick: gw.serverTick, sim }), {
     onSaved: (result, signal) => {
       logServerShutdownSave(worldLog, signal, result.tick);
+      try {
+        saveSpawnPoolToDisk(respawnPoolPath, respawnPool);
+      } catch {
+        /* best-effort pool flush: never block shutdown */
+      }
       // Runs still going report now, so their loot is in the ledger flush below.
       dungeons.endAll();
       gw.saveCharacters();

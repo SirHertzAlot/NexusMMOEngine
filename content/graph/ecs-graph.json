@@ -54268,168 +54268,168 @@
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "component:Breakable"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:AssetRef.assetHash"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:AssetRef.variant"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "component:Breakable"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "component:Transform"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:AssetRef.assetHash"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:AssetRef.variant"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Velocity.ax"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Velocity.ay"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Velocity.az"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "declared",
       "from": "system:breaks",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/breaks.ts:105",
+      "source": "packages/engine-core/src/interact/breaks.ts:110",
       "to": "field:Velocity.lz"
     },
     {
@@ -54695,28 +54695,28 @@
       "confidence": "declared",
       "from": "system:chests",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/chests.ts:80",
+      "source": "packages/engine-core/src/interact/chests.ts:84",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "declared",
       "from": "system:chests",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/chests.ts:80",
+      "source": "packages/engine-core/src/interact/chests.ts:84",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:chests",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/chests.ts:80",
+      "source": "packages/engine-core/src/interact/chests.ts:84",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:chests",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/chests.ts:80",
+      "source": "packages/engine-core/src/interact/chests.ts:84",
       "to": "component:BodyConfig"
     },
     {
@@ -54730,21 +54730,21 @@
       "confidence": "declared",
       "from": "system:civic",
       "kind": "reads",
-      "source": "packages/engine-core/src/civic/civic-service.ts:186",
+      "source": "packages/engine-core/src/civic/civic-service.ts:196",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:civic",
       "kind": "reads",
-      "source": "packages/engine-core/src/civic/civic-service.ts:186",
+      "source": "packages/engine-core/src/civic/civic-service.ts:196",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:civic",
       "kind": "reads",
-      "source": "packages/engine-core/src/civic/civic-service.ts:186",
+      "source": "packages/engine-core/src/civic/civic-service.ts:196",
       "to": "field:Transform.pz"
     },
     {
@@ -55409,280 +55409,280 @@
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "component:CharacterRef"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.seq"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.state"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "component:FarVisible"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:AssetRef.assetHash"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:AssetRef.variant"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Locomotion.abilities"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Locomotion.breath"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Locomotion.mode"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.seq"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.speed"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.tx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.ty"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:NavAgent.tz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.buttons"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.jump"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.lookYaw"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.my"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.sx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.sy"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Transform.sz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:134",
+      "source": "packages/engine-core/src/creatures.ts:142",
       "to": "field:Velocity.lz"
     },
     {
@@ -55801,84 +55801,91 @@
       "confidence": "declared",
       "from": "system:death",
       "kind": "excludes",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "component:Breakable"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "component:Action"
+    },
+    {
+      "confidence": "extracted",
+      "from": "system:death",
+      "kind": "reads",
+      "source": "packages/engine-core/src/death.ts:210",
+      "to": "component:Breakable"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "component:PlayerIntent"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:PlayerIntent.buttons"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/engine-core/src/death.ts:55",
+      "source": "packages/engine-core/src/death.ts:113",
       "to": "field:Velocity.lz"
     },
     {
@@ -55899,14 +55906,14 @@
       "confidence": "declared",
       "from": "system:gathering",
       "kind": "reads",
-      "source": "packages/engine-core/src/gathering/gathering.ts:92",
+      "source": "packages/engine-core/src/gathering/gathering.ts:96",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:gathering",
       "kind": "reads",
-      "source": "packages/engine-core/src/gathering/gathering.ts:92",
+      "source": "packages/engine-core/src/gathering/gathering.ts:96",
       "to": "field:Transform.pz"
     },
     {
@@ -58767,7 +58774,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "206af6a6e3cc5bbe91807b0ec4c74027e27cdbcd",
+    "builtFromCommit": "cdf695ed34479110d909fdcb596ef604fb8560eb",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -58776,7 +58783,7 @@
         "hasComponent": 20,
         "instantiates": 7526,
         "operatesOn": 10,
-        "reads": 380,
+        "reads": 381,
         "realizes": 20,
         "summons": 11,
         "touches": 18,
@@ -58793,7 +58800,7 @@
         "widget": 16
       },
       "declaredSystems": 33,
-      "edges": 8395,
+      "edges": 8396,
       "nodes": 7769,
       "simulationSystems": 33,
       "unresolved": 10
@@ -58848,7 +58855,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "f6782eda37fff2c2dda29a1da9cad40a9071e9beeacacd5fddfa07b4e96ca2d4",
+    "graphHash": "99f408ff051b7d92b675aa9d009c8c1f275044f39dd57b750fa6c41086089906",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -58878,12 +58885,12 @@
       "modules/characters/module.json": "64066d43ae85a5dfa6616d9da2c21591e7f3b839ed9069ac72f9b268434fe253",
       "modules/chat/module.json": "3c9272de7ccc037eb80ef1a1b4d66a6e29479d4bfef09b91a12f1483982e45d2",
       "modules/civic/module.json": "3d6bd5b4897c234615996018de0896802adfe89032977647a571a966410b7208",
-      "modules/civic/server.js": "bc33205cf63de3740c34b960e3c6a94ab3937e4715fb76084818cf6647a2a347",
+      "modules/civic/server.js": "bb62e52e4fc953b9faf0ab612a53c803fb9f544075da7296633c85260e02eb13",
       "modules/combat/module.json": "ae615ac7acfb0654d76414937106eedce1fd3070729d1abf8983d81c95c65684",
-      "modules/combat/server.js": "1a3ab84c0f30d5e4a969dbb6c4d25fdbd11e6f8181c24b8c0825f7c70818c542",
+      "modules/combat/server.js": "9cd9df74e3742db1bc55a8ddf9444500025edf13f224b401c23f7cd35f1a3ccc",
       "modules/core/module.json": "c83dca0dbf70615bb4d15d3184f56f27d0435949c38cfbcb187fa434d76140eb",
       "modules/creatures/module.json": "095a85e81bfba6bef2cd6c00b0cbefdf2a4a19cda91197c1c32d0edb8775bfd9",
-      "modules/creatures/server.js": "47ad69c38fd3ae42151ecc1c0e6cb520d6334a0e9f7ef96dfa3aeec8656dec56",
+      "modules/creatures/server.js": "58199267453ef8a0de16345a821cb4d318212a73257c4072f793ea35469c7b90",
       "modules/database/module.json": "8e42b9b27f3fda10cd25f27464200d533a57c66a3afdf878385fdbbbe0bf4ba2",
       "modules/debug/module.json": "9b08a4c265ffdae0d26f858d1082df1cf54757d940dcefcfeed6870be8f8a919",
       "modules/dungeons/module.json": "275fc8c42758e2062978d1145a804dc99da4bd7890f7bf64d5e64f8d2564fd08",
@@ -58950,7 +58957,7 @@
       "packages/engine-core/src/chat.ts": "3293ee5e5e07ba56615ce17ba0c8cd825331c71ad8f7b2c1cb7b3aa823af53f4",
       "packages/engine-core/src/civic/caravan-escort.ts": "66055405a4747aec98c4394bcb464455954c7ac182350d2ff2890e107e7becce",
       "packages/engine-core/src/civic/civic-admin.ts": "84b7666cd26a09877f7d31224a49756382d5aa5da7cfe79259d3baac252f23b3",
-      "packages/engine-core/src/civic/civic-service.ts": "033d628ba17e2079a7acc8695577cbbd0ffad0ab02876f9c39261fadcfcf05e9",
+      "packages/engine-core/src/civic/civic-service.ts": "7282630535fd329610269e76ad7d6ec9d81a8cb04c81704da455ebbc87943738",
       "packages/engine-core/src/civic/civic-store.ts": "eb9ae4d88e5dcba3badc6f355d00fd729c8152d377656369d9c9735a8e4bada6",
       "packages/engine-core/src/civic/civic-world-bridge.ts": "7db1551f99ae77fa25e732b0fa9e4c606ecff872eb47cb8d4b39e1dcd38deb9b",
       "packages/engine-core/src/civic/foundry-pivot.ts": "1be0b7b0fd92b3d9c3454bf34c0b9db5d9f369d1a3375a43dca4074f8bdbe2a2",
@@ -58959,9 +58966,9 @@
       "packages/engine-core/src/combat.ts": "11a9622a0f01a0443f9363d6005227eb9723123c5fbdd04ec1ef275828d81c3a",
       "packages/engine-core/src/components.ts": "fa91dc4abf8867d063c16d80fd4d3a5cd902c8dc5993db6eaa7d24939b0c0cb3",
       "packages/engine-core/src/crafting/crafting-service.ts": "06d4b5abaf0e208f8a7c885224d3b2e74651b9d9f8066cde5fcf85aef2ecc7c6",
-      "packages/engine-core/src/creatures.ts": "bbe63c8bb868a537346e96e1256f8350934c176bf75cfdce57200d03ddd3d781",
+      "packages/engine-core/src/creatures.ts": "28cba9045f28147aa9f7824b438b9f3e97d56c15442ac29baee552b2d89f8b52",
       "packages/engine-core/src/data-plane-server.ts": "21e6a4eef49b73b1d9cbea929785989f397576216b6372a33c6584d656edc05d",
-      "packages/engine-core/src/death.ts": "b9e09a2fcc9302d093f950b01aaa7cc68194f73df0e25bab37c21f99963c0fb4",
+      "packages/engine-core/src/death.ts": "a5dd1a5c2ebe8c114fde2bcbc7dc84a569cd4e16a57bc64f48bd59816438f4fe",
       "packages/engine-core/src/delta-apply.ts": "3969aa091e471c3fe1afe8fb788978a37b3a4625e977e70f56d0de0ac54041c1",
       "packages/engine-core/src/duel.ts": "52249328283a9d1df3b91049c473cd354e584b2be952bb4b1e2e79f500ae80c4",
       "packages/engine-core/src/dungeons/content.ts": "fc5fa1e094db4af3de7fa62f90000a73da8c3dd58733ceb688308b2f781113fa",
@@ -58983,14 +58990,14 @@
       "packages/engine-core/src/friend-store.ts": "a391d04b3b3b14f46840726f247186f30647cbc955bd0ebcdfb3193799703033",
       "packages/engine-core/src/friends.ts": "cb6f12d9b550192d78d86285be8dbbfe4f4c4bb49d20c97323fb6c97e389271d",
       "packages/engine-core/src/gathering/gathering-store.ts": "3e101a08d09c854e2d6eba4dbce50b45677ba759d61b68a3d42eb4e8f0495f45",
-      "packages/engine-core/src/gathering/gathering.ts": "24d32d06068666fb328bfe8813a88ea88ca09164b515ff52c086a3e58ac2fd8c",
+      "packages/engine-core/src/gathering/gathering.ts": "252dfb30aa3cedcd8d52b94eff1268168ec3d7fb3efec58605aefa4943f90e8a",
       "packages/engine-core/src/gathering/index.ts": "8c3e1700f4e597571d74f7cf73bc60b8ea593c063caad427b917d55227eddd06",
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "01db960dd2f298e49db17bfe8c31825d67b5630f39c6a31dd22163b1b9b17ff1",
-      "packages/engine-core/src/interact/breaks.ts": "f3c1d3f87d2e08bbeced2005d3f454a4acd26c87f90dbb0a65202157d5682eb3",
-      "packages/engine-core/src/interact/chests.ts": "c1591399fb82b2b03759c06287533be5162b64cf3d30e08de88fb97459a43b21",
+      "packages/engine-core/src/index.ts": "e87a2ac7f67821512442c9eea6ef0d4420bdd032be3faf3a519f741eccb4b2b0",
+      "packages/engine-core/src/interact/breaks.ts": "287a9d7bd3aa3b9d09733f74f24ea016dc585507af7973a5c158eb6878069db4",
+      "packages/engine-core/src/interact/chests.ts": "24a8624bc3ed4bb6d72057fab4ec120050ac2ebd1d908f94b3282ddb18880ed8",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
       "packages/engine-core/src/interact/index.ts": "62c594f5f3cdb4bc6d6420906ae8f792c303b1e275dad62bf9787694773c1788",
       "packages/engine-core/src/interact/places-store.ts": "821758c3491eac0aa6046d2cde2b9e7461bec469b70a8e4db868a93730524640",
@@ -59052,6 +59059,12 @@
       "packages/engine-core/src/persist/terrain-cache.ts": "dce733f9e94786477fa82b8c7bb942d1e3e999cc900ac5dcdec92cc711d194c6",
       "packages/engine-core/src/persist/terrain-tiles.ts": "130915547ff83806e8bdf95c42c259c71174e8276f1245c4c98981cf287d347a",
       "packages/engine-core/src/persist/world-catalog.ts": "bde2c474ee28aba90242dc5129dfb727410132d4f787c7928d6ee7c6b3cad55d",
+      "packages/engine-core/src/pools/bake-pools.ts": "2776e10786f1535c69959fd9eb063d8ce23ab30997bc254df5daa6b6da592b22",
+      "packages/engine-core/src/pools/index.ts": "ac226140373b1dfd88bffa1cfc97d9cc697c4dfa5d964043d54ecfb86d94a088",
+      "packages/engine-core/src/pools/native-pool-bridge.ts": "3d044ac62f77f6954f651054e157d05705c2972ed2e960b48fdb4ef06d7815d8",
+      "packages/engine-core/src/pools/spawn-pool-io.ts": "51f32a7742ad6ff000199ab89c071f9cf318c5c2d1ab94f795e6c19f35c7c202",
+      "packages/engine-core/src/pools/spawn-pool-soa.ts": "defbc41566b21325f2807394f28df2e1bb9800e35907c594184071b339f23379",
+      "packages/engine-core/src/pools/spawn-pool-solver.ts": "d9b4fca14e8ab39ddb5587b66ebee4f032e23dadf6b9d05bafb0d4d77ba98e0b",
       "packages/engine-core/src/preview-world.ts": "6f6b3b7be66640f0ca9d71e97f57de684b2d1bbb1151eec0775a2adbab2c6a81",
       "packages/engine-core/src/procgen/biome-registry.ts": "4299b74b7905d5441f07a8c08edddbfbe3117dfa94d08cc11ce194d7b4d73087",
       "packages/engine-core/src/procgen/chunk-source.ts": "e5fd4c271958cf75446f4e66fa133b8f996d4bd709681120259f555d7ea8ba4e",
@@ -59089,7 +59102,7 @@
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
       "packages/engine-core/src/scene-spawn.ts": "0c9002f0aa75dc79c28ed8a1f0e9d6b468858a4acef96e18a4bb8b335cfd41a1",
       "packages/engine-core/src/server-settings.ts": "644264d10ee891ef74170c742cab78b7fe35012fa962129e7e2127b7a1c69236",
-      "packages/engine-core/src/server.ts": "77cdbd3cdd288effd3788062f0ed5084ac27883c2741e61f5d0f260c8321a2b4",
+      "packages/engine-core/src/server.ts": "bc732536e1b6df3ac63e7948299f805ce4c83dcd0a2823b4cd710fcc34ea1302",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
@@ -59166,37 +59179,37 @@
       {
         "expression": "Transform[f][eid]",
         "reason": "computed property indexing on component Transform",
-        "site": "packages/engine-core/src/interact/breaks.ts:346",
+        "site": "packages/engine-core/src/interact/breaks.ts:569",
         "system": "breaks"
       },
       {
         "expression": "BodyConfig[f][eid]",
         "reason": "computed property indexing on component BodyConfig",
-        "site": "packages/engine-core/src/interact/breaks.ts:349",
+        "site": "packages/engine-core/src/interact/breaks.ts:572",
         "system": "breaks"
       },
       {
         "expression": "Transform[f][eid]",
         "reason": "computed property indexing on component Transform",
-        "site": "packages/engine-core/src/interact/breaks.ts:358",
+        "site": "packages/engine-core/src/interact/breaks.ts:581",
         "system": "breaks"
       },
       {
         "expression": "BodyConfig[f][eid]",
         "reason": "computed property indexing on component BodyConfig",
-        "site": "packages/engine-core/src/interact/breaks.ts:367",
+        "site": "packages/engine-core/src/interact/breaks.ts:590",
         "system": "breaks"
       },
       {
         "expression": "BodyConfig[f][c.eid]",
         "reason": "computed property indexing on component BodyConfig",
-        "site": "packages/engine-core/src/interact/chests.ts:175",
+        "site": "packages/engine-core/src/interact/chests.ts:273",
         "system": "chests"
       },
       {
         "expression": "BodyConfig[f][c.eid]",
         "reason": "computed property indexing on component BodyConfig",
-        "site": "packages/engine-core/src/interact/chests.ts:180",
+        "site": "packages/engine-core/src/interact/chests.ts:278",
         "system": "chests"
       },
       {
@@ -129271,7 +129284,7 @@
       "name": "breaks",
       "role": "simulation",
       "simName": "breaks",
-      "source": "packages/engine-core/src/interact/breaks.ts:103",
+      "source": "packages/engine-core/src/interact/breaks.ts:108",
       "tickIndex": 4
     },
     {
@@ -129310,7 +129323,7 @@
       "name": "chests",
       "role": "simulation",
       "simName": "chests",
-      "source": "packages/engine-core/src/interact/chests.ts:78",
+      "source": "packages/engine-core/src/interact/chests.ts:82",
       "tickIndex": 3
     },
     {
@@ -129323,7 +129336,7 @@
       "name": "civic",
       "role": "simulation",
       "simName": "civic",
-      "source": "packages/engine-core/src/civic/civic-service.ts:183",
+      "source": "packages/engine-core/src/civic/civic-service.ts:193",
       "tickIndex": 37
     },
     {
@@ -129375,7 +129388,7 @@
       "name": "creatures",
       "role": "simulation",
       "simName": "creatures",
-      "source": "packages/engine-core/src/creatures.ts:132",
+      "source": "packages/engine-core/src/creatures.ts:140",
       "tickIndex": 31
     },
     {
@@ -129401,7 +129414,7 @@
       "name": "death",
       "role": "simulation",
       "simName": "death",
-      "source": "packages/engine-core/src/death.ts:53",
+      "source": "packages/engine-core/src/death.ts:111",
       "tickIndex": 23
     },
     {
@@ -129427,7 +129440,7 @@
       "name": "gathering",
       "role": "simulation",
       "simName": "gathering",
-      "source": "packages/engine-core/src/gathering/gathering.ts:90",
+      "source": "packages/engine-core/src/gathering/gathering.ts:94",
       "tickIndex": 2
     },
     {

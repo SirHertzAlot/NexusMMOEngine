@@ -55,6 +55,9 @@ export function createSystems(ctx) {
     waterSurfaceAt: config.waterSurfaceAt,
     modelOf: config.modelOf,
     settlements: config.settlements,
+    pool: config.respawnPool,
+    kindResolver: config.kindResolver,
+    now: config.now,
   });
 
   const needs = new NeedsSystem(rules.needs, config.waterSurfaceAt);

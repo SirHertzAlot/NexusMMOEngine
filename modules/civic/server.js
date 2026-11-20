@@ -43,6 +43,7 @@ export function createSystems(ctx) {
     escortOptions: config.escortOptions,
     metrics: config.metrics,
     activeAvatars: config.activeAvatars,
+    respawnPool: config.respawnPool,
   });
 
   ctx.log(
