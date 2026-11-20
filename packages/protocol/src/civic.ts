@@ -67,6 +67,9 @@ export interface CivicFoundryView {
   oreBuffer: Record<string, number>;
   activationThreshold: number;
   depletedPermille: number;
+  mature: boolean;
+  reforgeGoldCost?: number;
+  repairKitCost?: Record<string, number>;
   craftBonusSummary: string;
 }
 
@@ -111,6 +114,8 @@ export type CivicClientMessage =
   | { kind: "civic"; op: "plaque"; siteId: string; offset?: number; limit?: number }
   | { kind: "civic"; op: "foundry_supply"; townId: string; opId: string; veinBatchId: string; material: string; qty: number }
   | { kind: "civic"; op: "foundry_craft"; townId: string; opId: string; item: string; rank: string }
+  | { kind: "civic"; op: "foundry_reforge"; townId: string; opId: string; itemId: number }
+  | { kind: "civic"; op: "craft_repair_kit"; townId: string; opId: string }
   | { kind: "civic"; op: "contract_post"; opId: string; targetKind: "site" | "foundry"; targetId: string; material: string; qty: number; rewardPerUnit: number; ttlHours?: number }
   | { kind: "civic"; op: "contract_deliver"; opId: string; contractId: string; qty: number }
   | { kind: "civic"; op: "contract_cancel"; opId: string; contractId: string };
@@ -161,6 +166,7 @@ export type CivicServerMessage =
       stageAdvanced: boolean;
       repaired: boolean;
       eraTag: string;
+      repairKitsUsed?: number;
       replayed: boolean;
     }
   | {
@@ -185,6 +191,7 @@ export type CivicServerMessage =
       opId: string;
       foundry: CivicFoundryView;
       specialized: boolean;
+      escortBonusGold?: number;
       replayed: boolean;
     }
   | {
@@ -201,12 +208,34 @@ export type CivicServerMessage =
     }
   | {
       kind: "civic";
+      op: "foundry_reforge";
+      opId: string;
+      townId: string;
+      itemId: number;
+      provenance: ItemProvenanceView;
+      goldCost: number;
+      foundry: CivicFoundryView;
+      replayed: boolean;
+    }
+  | {
+      kind: "civic";
+      op: "craft_repair_kit";
+      opId: string;
+      townId: string;
+      qty: number;
+      consumedMaterials: Record<string, number>;
+      foundry: CivicFoundryView;
+      replayed: boolean;
+    }
+  | {
+      kind: "civic";
       op: "contract_update";
       opId: string;
       action: "posted" | "delivered" | "cancelled";
       contract: CivicContractView;
       acceptedQty?: number;
       payoutGold?: number;
+      escortBonusGold?: number;
       refundedGold?: number;
       replayed: boolean;
     }

@@ -24,6 +24,8 @@ export function createSystems(ctx) {
   const civic = new CivicService({
     rules,
     store,
+    now: config.now,
+    sweepEveryTicks: config.sweepEveryTicks,
     dayOf: config.dayOf,
     countMaterial: config.countMaterial ?? (() => 0),
     takeMaterial: config.takeMaterial ?? (() => false),
@@ -34,7 +36,12 @@ export function createSystems(ctx) {
     grantGold: config.grantGold ?? ((charId, amount, tick) => wallet?.grant(charId, amount, tick ?? lastTick) ?? false),
     hasBagRoom: config.hasBagRoom ?? (() => false),
     craftAndGrantItem: config.craftAndGrantItem ?? (() => null),
+    ownsItem: config.ownsItem,
     onSiteStateChange: config.onSiteStateChange,
+    onEscortAmbush: config.onEscortAmbush,
+    nearbyEscortCount: config.nearbyEscortCount,
+    escortOptions: config.escortOptions,
+    metrics: config.metrics,
     activeAvatars: config.activeAvatars,
   });
 

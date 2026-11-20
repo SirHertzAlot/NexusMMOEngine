@@ -35,6 +35,7 @@ import type {
 } from "@mmo-engine/protocol";
 import { Health, Transform } from "../components.js";
 import type { GatewayExtension, ExtensionPlayer } from "../net/extension.js";
+import type { CivicTelemetryMetrics } from "../logging/civic-metrics.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
@@ -50,6 +51,17 @@ import {
   type StoredSite,
   type StoredVein,
 } from "./civic-store.js";
+import {
+  CaravanEscortCoordinator,
+  countNearbyEscorts,
+  type CaravanEscortOptions,
+} from "./caravan-escort.js";
+import {
+  isFoundryMature,
+  planRepairContributionWithKits,
+  REPAIR_KIT_MATERIAL_ID,
+  resolveReforgeTargetTrait,
+} from "./foundry-pivot.js";
 
 const DAY_MS = 86_400_000;
 const slugRegex = /^[a-z][a-z0-9-]{0,63}$/;
@@ -102,6 +114,19 @@ export const CivicClientMessageSchema = z.discriminatedUnion("op", [
   }),
   z.strictObject({
     kind: z.literal("civic"),
+    op: z.literal("foundry_reforge"),
+    townId: z.string().regex(slugRegex),
+    opId: opIdSchema,
+    itemId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  }),
+  z.strictObject({
+    kind: z.literal("civic"),
+    op: z.literal("craft_repair_kit"),
+    townId: z.string().regex(slugRegex),
+    opId: opIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("civic"),
     op: z.literal("contract_post"),
     opId: opIdSchema,
     targetKind: z.enum(["site", "foundry"]),
@@ -143,6 +168,16 @@ export interface CivicServiceOptions {
   onSiteStateChange?: (siteId: string, stage: number, damaged: boolean) => void;
   activeAvatars?: () => Iterable<{ charId: number; eid: number }>;
   sweepEveryTicks?: number;
+  /** Track C6: authoritative item ownership check required for `foundry_reforge`. */
+  ownsItem?: (charId: number, itemId: number) => boolean;
+  /** Track C5: optional bounded ambush callback invoked on heavy hauls. */
+  onEscortAmbush?: (siteId: string, x: number, z: number, charId: number) => void;
+  /** Track C5: optional nearby party/escort helper counter around (x, z). */
+  nearbyEscortCount?: (charId: number, x: number, z: number, radiusM: number) => number;
+  /** Track C5: optional tuning overrides for caravan escort risk/bonus windows. */
+  escortOptions?: Omit<CaravanEscortOptions, "onEscortAmbush">;
+  /** Track C7a: optional zero-alloc SAB telemetry gauge sink updated once per sweep. */
+  metrics?: CivicTelemetryMetrics;
 }
 
 export class CivicService implements SimSystem, GatewayExtension {
@@ -169,17 +204,27 @@ export class CivicService implements SimSystem, GatewayExtension {
   private readonly enteredPlayers = new Map<number, ExtensionPlayer>();
   private readonly lastSurveyAt = new Map<number, number>();
   private readonly lastExtractAt = new Map<number, number>();
-  private readonly lastBridgeCrossAt = new Map<string, number>();
+  private readonly lastBridgeCrossAt = new Map<string, Map<number, number>>();
+  private readonly escort: CaravanEscortCoordinator;
+  private readonly activeVeinsCountStmt;
+  private readonly openContractsCountStmt;
 
   private veinBatchCounter = 0;
   private currentTick = 0;
+  private lastSim: SimWorld | null = null;
 
   constructor(private readonly opts: CivicServiceOptions) {
     this.rules = opts.rules;
     this.store = opts.store;
+    this.activeVeinsCountStmt = this.store.db.prepare(`SELECT COUNT(*) AS n FROM civic_veins WHERE stock > 0`);
+    this.openContractsCountStmt = this.store.db.prepare(`SELECT COUNT(*) AS n FROM civic_contracts WHERE status = 'open'`);
     this.now = opts.now ?? Date.now;
     this.dayOf = opts.dayOf ?? ((ms) => Math.floor(ms / DAY_MS));
     this.sweepEveryTicks = Math.max(1, opts.sweepEveryTicks ?? 30);
+    this.escort = new CaravanEscortCoordinator({
+      ...opts.escortOptions,
+      onEscortAmbush: opts.onEscortAmbush,
+    });
 
     this.rebuildRuleIndexes(this.rules);
     const t = this.now();
@@ -266,12 +311,38 @@ export class CivicService implements SimSystem, GatewayExtension {
 
   step(sim: SimWorld, _dt: number): void {
     this.currentTick = sim.currentTick;
+    this.lastSim = sim;
     if (sim.currentTick % this.sweepEveryTicks !== 0) return;
+    const metrics = this.opts.metrics;
+    const sweepStartMs = metrics ? performance.now() : 0;
     const t = this.now();
     this.sweepTrafficWear(sim, t);
     this.expireDueFoundries(t);
     this.store.expireDueContracts(t);
     this.ensureActiveVeins(t);
+    if (metrics) {
+      this.recordTelemetrySweep(metrics, sweepStartMs);
+    }
+  }
+
+  private recordTelemetrySweep(metrics: CivicTelemetryMetrics, sweepStartMs: number): void {
+    const activeVeins = (this.activeVeinsCountStmt.get() as { n: number }).n;
+    const openContracts = (this.openContractsCountStmt.get() as { n: number }).n;
+    const primarySiteDef = this.rules.sites[0];
+    const primarySite = primarySiteDef ? this.store.getSite(primarySiteDef.id) : undefined;
+    const bridgeStage = primarySite ? primarySite.stage : 0;
+    const bridgeWear = primarySite ? primarySite.wear : 0;
+    let matureFoundries = 0;
+    const foundryDefs = this.rules.foundries;
+    for (let i = 0; i < foundryDefs.length; i++) {
+      const fDef = foundryDefs[i]!;
+      const f = this.store.getFoundry(fDef.id);
+      if (f && isFoundryMature(f, fDef)) {
+        matureFoundries++;
+      }
+    }
+    const elapsedMicros = Math.max(0, (performance.now() - sweepStartMs) * 1000);
+    metrics.recordSweep(activeVeins, openContracts, bridgeStage, bridgeWear, matureFoundries, elapsedMicros);
   }
 
   private sweepTrafficWear(sim: SimWorld, nowMs: number): void {
@@ -306,10 +377,14 @@ export class CivicService implements SimSystem, GatewayExtension {
     const dx = Math.abs((Transform.px[eid] ?? 0) - siteDef.x);
     const dz = Math.abs((Transform.pz[eid] ?? 0) - siteDef.z);
     if (dx > halfWidth || dz > halfWidth) return;
-    const crossKey = `${charId}:${siteDef.id}`;
-    const lastCross = this.lastBridgeCrossAt.get(crossKey) ?? -Infinity;
+    let siteCrosses = this.lastBridgeCrossAt.get(siteDef.id);
+    if (!siteCrosses) {
+      siteCrosses = new Map();
+      this.lastBridgeCrossAt.set(siteDef.id, siteCrosses);
+    }
+    const lastCross = siteCrosses.get(charId) ?? -Infinity;
     if (nowMs - lastCross < siteDef.crossingCooldownMs) return;
-    this.lastBridgeCrossAt.set(crossKey, nowMs);
+    siteCrosses.set(charId, nowMs);
     this.applySiteWear(siteDef, siteDef.wearPerCrossing, charId, "Crossing traffic", nowMs);
     // Keep in-memory reference coherent for remaining avatars in same sweep.
     const refreshed = this.store.getSite(siteDef.id);
@@ -503,7 +578,10 @@ export class CivicService implements SimSystem, GatewayExtension {
     if (eid < 0) return false;
     // If entity lacks Health component (test harness), treat as alive; otherwise require current > 0.
     const h = Health.current[eid];
-    return h === undefined || Number.isNaN(h) ? true : !hasComponent(_sim?.ecs ?? ({} as never), Health, eid) || h > 0;
+    if (h === undefined || Number.isNaN(h)) return true;
+    const sim = _sim ?? this.lastSim;
+    if (sim && !hasComponent(sim.ecs, Health, eid)) return true;
+    return h > 0;
   }
 
   private checkAlive(player: ExtensionPlayer): { ok: true; eid: number; charId: number } | { ok: false; code: string; error: string } {
@@ -557,6 +635,12 @@ export class CivicService implements SimSystem, GatewayExtension {
         return;
       case "foundry_craft":
         this.handleFoundryCraft(player, msg);
+        return;
+      case "foundry_reforge":
+        this.handleFoundryReforge(player, msg);
+        return;
+      case "craft_repair_kit":
+        this.handleCraftRepairKit(player, msg);
         return;
       case "contract_post":
         this.handleContractPost(player, msg);
@@ -791,15 +875,23 @@ export class CivicService implements SimSystem, GatewayExtension {
 
     const t = this.now();
     // Clamp all offers to exact remaining deficit so partial donations NEVER burn overshoot materials or gold!
-    const acceptedMaterials: Record<string, number> = {};
+    let acceptedMaterials: Record<string, number> = {};
+    let repairProgressDelta: Record<string, number> = {};
+    let repairKitsUsed = 0;
     let acceptedGold = 0;
 
     if (isRepairMode) {
       const repairNeed = computeRepairCost(site, siteDef);
-      for (const [mat, qty] of Object.entries(offerMats)) {
-        const need = repairNeed.materials[mat] ?? 0;
-        if (need > 0 && qty > 0) acceptedMaterials[mat] = Math.min(qty, need);
-      }
+      const linkedFoundry =
+        this.rules.foundries.find((f) => f.requiresBridgeId === siteDef.id) ?? this.rules.foundries[0];
+      const plan = planRepairContributionWithKits(
+        offerMats,
+        repairNeed.materials,
+        linkedFoundry?.repairKitCost,
+      );
+      acceptedMaterials = plan.acceptedMaterials;
+      repairProgressDelta = plan.repairProgressDelta;
+      repairKitsUsed = plan.repairKitsUsed;
       if (repairNeed.gold > 0 && offerGold > 0) {
         acceptedGold = Math.min(offerGold, repairNeed.gold);
       }
@@ -847,8 +939,9 @@ export class CivicService implements SimSystem, GatewayExtension {
       return;
     }
 
-    const totalAcceptedUnits =
-      Object.values(acceptedMaterials).reduce((a, b) => a + b, 0) + acceptedGold;
+    const progressUnits = isRepairMode
+      ? Object.values(repairProgressDelta).reduce((a, b) => a + b, 0) + acceptedGold
+      : Object.values(acceptedMaterials).reduce((a, b) => a + b, 0) + acceptedGold;
 
     let stageAdvanced = false;
     let repaired = false;
@@ -858,7 +951,7 @@ export class CivicService implements SimSystem, GatewayExtension {
       const latest = this.store.getSite(siteDef.id)!;
       if (isRepairMode) {
         const nextRep = { ...latest.repairProgress };
-        for (const [mat, qty] of Object.entries(acceptedMaterials)) {
+        for (const [mat, qty] of Object.entries(repairProgressDelta)) {
           nextRep[mat] = (nextRep[mat] ?? 0) + qty;
         }
         const nextRepGold = latest.repairGoldProgress + acceptedGold;
@@ -917,17 +1010,17 @@ export class CivicService implements SimSystem, GatewayExtension {
       const priorToday = prevContrib && prevContrib.todayDay === today ? prevContrib.todayRaw : 0;
       const gainedWeight = effectiveContributionWeight(
         priorToday,
-        totalAcceptedUnits,
+        progressUnits,
         siteDef.antiWhaleDailyContribCap,
       );
       this.store.saveContributor({
         siteId: siteDef.id,
         charId: check.charId,
         name: player.name,
-        rawScore: (prevContrib?.rawScore ?? 0) + totalAcceptedUnits,
+        rawScore: (prevContrib?.rawScore ?? 0) + progressUnits,
         effectiveWeight: Math.round(((prevContrib?.effectiveWeight ?? 0) + gainedWeight) * 100) / 100,
         todayDay: today,
-        todayRaw: priorToday + totalAcceptedUnits,
+        todayRaw: priorToday + progressUnits,
         updatedAt: t,
       });
 
@@ -941,7 +1034,7 @@ export class CivicService implements SimSystem, GatewayExtension {
           ? `Advanced ${siteDef.name} to Stage ${updatedSite.stage} (${updatedSite.eraTag})`
           : repaired
             ? `Completed structural repairs on ${siteDef.name}`
-            : `Supplied ${totalAcceptedUnits} units toward ${siteDef.name}`,
+            : `Supplied ${progressUnits} units toward ${siteDef.name}`,
         createdAt: t,
       });
 
@@ -958,6 +1051,7 @@ export class CivicService implements SimSystem, GatewayExtension {
         stageAdvanced,
         repaired,
         eraTag: updatedSite.eraTag,
+        ...(repairKitsUsed > 0 ? { repairKitsUsed } : {}),
         replayed: false,
       };
       this.store.saveProcessedOp(opKey, JSON.stringify(response), t);
@@ -1144,11 +1238,19 @@ export class CivicService implements SimSystem, GatewayExtension {
       this.store.saveProcessedOp(opKey, JSON.stringify(resPayload), t);
     });
 
+    let escortBonusGold = 0;
     if (bridgeDef && msg.qty > 5) {
       this.applySiteWear(bridgeDef, bridgeDef.wearPerHeavyHaul, check.charId, player.name, t);
+      escortBonusGold = this.evaluateCaravanEscort(check.charId, bridgeDef.id, foundryDef.x, foundryDef.z, msg.qty, t);
     }
 
     const resPayload = JSON.parse(this.store.getProcessedOp(opKey)!) as Extract<CivicServerMessage, { op: "foundry_updated" }>;
+    if (escortBonusGold > 0) {
+      resPayload.escortBonusGold = escortBonusGold;
+      this.store.db
+        .prepare(`UPDATE civic_processed_ops SET result_json = ? WHERE op_key = ?`)
+        .run(JSON.stringify(resPayload), opKey);
+    }
     player.refreshInventory();
     player.send(resPayload);
     this.sendState(player, 0);
@@ -1249,6 +1351,279 @@ export class CivicService implements SimSystem, GatewayExtension {
       this.store.bindItemProvenance(itemId, minted.provenanceId);
       return minted;
     });
+  }
+
+  private handleFoundryReforge(player: ExtensionPlayer, msg: Extract<CivicClientMessage, { op: "foundry_reforge" }>): void {
+    const check = this.checkAlive(player);
+    if (!check.ok) {
+      this.sendNotice(player, false, check.code, check.error, msg.opId);
+      return;
+    }
+    const opKey = `${check.charId}:foundry_reforge:${msg.opId}`;
+    const replayed = this.store.getProcessedOp(opKey);
+    if (replayed) {
+      const payload = JSON.parse(replayed) as Extract<CivicServerMessage, { op: "foundry_reforge" }>;
+      player.send({ ...payload, replayed: true });
+      return;
+    }
+
+    const foundryDef = this.foundriesById.get(msg.townId);
+    if (!foundryDef) {
+      this.sendNotice(player, false, "unknown_foundry", `unknown settlement foundry "${msg.townId}"`, msg.opId);
+      return;
+    }
+    if (!this.withinRadius(check.eid, foundryDef.x, foundryDef.z, foundryDef.interactRadiusM)) {
+      this.sendNotice(player, false, "out_of_range", `move closer to ${foundryDef.name}`, msg.opId);
+      return;
+    }
+    if (!this.opts.ownsItem || !this.opts.ownsItem(check.charId, msg.itemId)) {
+      this.sendNotice(player, false, "not_owned", "you must own and carry that item to reforge it", msg.opId);
+      return;
+    }
+    const existingProv = this.store.getProvenanceByItemId(msg.itemId);
+    if (!existingProv) {
+      this.sendNotice(player, false, "no_provenance", "only items with existing provenance can be reforged", msg.opId);
+      return;
+    }
+
+    const t = this.now();
+    this.expireDueFoundries(t);
+    const foundry = this.store.getFoundry(foundryDef.id);
+    if (!foundry || !isFoundryMature(foundry, foundryDef)) {
+      this.sendNotice(
+        player,
+        false,
+        "immature_foundry",
+        `${foundryDef.name} has not reached maturity for masterwork reforging`,
+        msg.opId,
+      );
+      return;
+    }
+    const hasSpecialty = foundry.batchesRemaining > 0 && (foundry.expiresAt === null || t < foundry.expiresAt);
+    if (!hasSpecialty) {
+      this.sendNotice(
+        player,
+        false,
+        "not_specialized",
+        `${foundryDef.name} requires an active vein specialization to reforge`,
+        msg.opId,
+      );
+      return;
+    }
+    const traitRes = resolveReforgeTargetTrait(existingProv.traitId, foundry.activeTraitId, this.rules.traits);
+    if (!traitRes.ok) {
+      this.sendNotice(player, false, traitRes.code, traitRes.message, msg.opId);
+      return;
+    }
+
+    const goldCost = foundryDef.reforgeGoldCost;
+    if (goldCost > 0) {
+      if (this.opts.balanceOf(check.charId) < goldCost) {
+        this.sendNotice(player, false, "insufficient_gold", `insufficient gold (need ${goldCost})`, msg.opId);
+        return;
+      }
+      if (!this.opts.spendGold(check.charId, goldCost, this.currentTick)) {
+        this.sendNotice(player, false, "insufficient_gold", "gold deduction failed", msg.opId);
+        return;
+      }
+    }
+
+    let failureNotice: { code: string; message: string } | null = null;
+    try {
+      this.store.runImmediate(() => {
+        const f = this.store.getFoundry(foundryDef.id);
+        if (!f || !isFoundryMature(f, foundryDef)) {
+          failureNotice = { code: "immature_foundry", message: `${foundryDef.name} is not mature` };
+          return;
+        }
+        if (f.batchesRemaining <= 0 || (f.expiresAt !== null && t >= f.expiresAt)) {
+          failureNotice = { code: "not_specialized", message: `${foundryDef.name} specialization expired` };
+          return;
+        }
+        const txTrait = resolveReforgeTargetTrait(existingProv.traitId, f.activeTraitId, this.rules.traits);
+        if (!txTrait.ok) {
+          failureNotice = { code: txTrait.code, message: txTrait.message };
+          return;
+        }
+
+        const nextBatches = f.batchesRemaining - 1;
+        const updatedFoundry: StoredFoundry = {
+          ...f,
+          batchesRemaining: nextBatches,
+          activeTraitId: nextBatches > 0 ? f.activeTraitId : "bog-standard",
+          activeVeinBatchId: nextBatches > 0 ? f.activeVeinBatchId : null,
+          expiresAt: nextBatches > 0 ? f.expiresAt : null,
+          updatedAt: t,
+        };
+        this.store.saveFoundry(updatedFoundry);
+
+        const bridge = foundryDef.requiresBridgeId
+          ? this.store.getSite(foundryDef.requiresBridgeId)
+          : this.store.listSites()[0];
+        const reforgedProv = this.store.reforgeItemProvenance(msg.itemId, {
+          veinBatchId: txTrait.usedActiveSpecialty
+            ? (f.activeVeinBatchId ?? existingProv.veinBatchId)
+            : existingProv.veinBatchId,
+          traitId: txTrait.traitId,
+          townId: foundryDef.id,
+          crafterId: existingProv.crafterId,
+          crafterName: existingProv.crafterName,
+          eraTag: bridge?.eraTag ?? existingProv.eraTag,
+          craftedAt: t,
+        });
+
+        const payload: Extract<CivicServerMessage, { op: "foundry_reforge" }> = {
+          kind: "civic",
+          op: "foundry_reforge",
+          opId: msg.opId,
+          townId: foundryDef.id,
+          itemId: msg.itemId,
+          provenance: reforgedProv,
+          goldCost,
+          foundry: toFoundryView(updatedFoundry, foundryDef, this.traitsById.get(updatedFoundry.activeTraitId)),
+          replayed: false,
+        };
+        this.store.saveProcessedOp(opKey, JSON.stringify(payload), t);
+      });
+    } catch (err) {
+      if (goldCost > 0) this.opts.grantGold(check.charId, goldCost, this.currentTick);
+      this.sendNotice(player, false, "db_error", (err as Error).message, msg.opId);
+      return;
+    }
+
+    if (failureNotice) {
+      if (goldCost > 0) this.opts.grantGold(check.charId, goldCost, this.currentTick);
+      const errNotice = failureNotice as { code: string; message: string };
+      this.sendNotice(player, false, errNotice.code, errNotice.message, msg.opId);
+      return;
+    }
+
+    const storedPayload = JSON.parse(this.store.getProcessedOp(opKey)!) as Extract<CivicServerMessage, { op: "foundry_reforge" }>;
+    player.refreshInventory();
+    player.send(storedPayload);
+    this.sendState(player, 0);
+  }
+
+  private handleCraftRepairKit(player: ExtensionPlayer, msg: Extract<CivicClientMessage, { op: "craft_repair_kit" }>): void {
+    const check = this.checkAlive(player);
+    if (!check.ok) {
+      this.sendNotice(player, false, check.code, check.error, msg.opId);
+      return;
+    }
+    const opKey = `${check.charId}:craft_repair_kit:${msg.opId}`;
+    const replayed = this.store.getProcessedOp(opKey);
+    if (replayed) {
+      const payload = JSON.parse(replayed) as Extract<CivicServerMessage, { op: "craft_repair_kit" }>;
+      player.send({ ...payload, replayed: true });
+      return;
+    }
+
+    const foundryDef = this.foundriesById.get(msg.townId);
+    if (!foundryDef) {
+      this.sendNotice(player, false, "unknown_foundry", `unknown settlement foundry "${msg.townId}"`, msg.opId);
+      return;
+    }
+    if (!this.withinRadius(check.eid, foundryDef.x, foundryDef.z, foundryDef.interactRadiusM)) {
+      this.sendNotice(player, false, "out_of_range", `move closer to ${foundryDef.name}`, msg.opId);
+      return;
+    }
+
+    const t = this.now();
+    this.expireDueFoundries(t);
+    const foundry = this.store.getFoundry(foundryDef.id);
+    if (!foundry || !isFoundryMature(foundry, foundryDef)) {
+      this.sendNotice(
+        player,
+        false,
+        "immature_foundry",
+        `${foundryDef.name} has not reached maturity to craft repair kits`,
+        msg.opId,
+      );
+      return;
+    }
+    if (!this.opts.hasMaterialRoom(check.charId, REPAIR_KIT_MATERIAL_ID, 1)) {
+      this.sendNotice(player, false, "pouch_full", "your pouch holds no more repair kits", msg.opId);
+      return;
+    }
+
+    const costEntries = Object.entries(foundryDef.repairKitCost).filter(([, qty]) => qty > 0);
+    for (const [mat, qty] of costEntries) {
+      if (this.opts.countMaterial(check.charId, mat) < qty) {
+        this.sendNotice(player, false, "insufficient_materials", `insufficient ${mat} (need ${qty})`, msg.opId);
+        return;
+      }
+    }
+
+    const debited: Array<[string, number]> = [];
+    for (const [mat, qty] of costEntries) {
+      if (!this.opts.takeMaterial(check.charId, mat, qty)) {
+        for (const [rmat, rqty] of debited) this.opts.grantMaterial(check.charId, rmat, rqty);
+        this.sendNotice(player, false, "insufficient_materials", "material deduction failed", msg.opId);
+        return;
+      }
+      debited.push([mat, qty]);
+    }
+
+    if (!this.opts.grantMaterial(check.charId, REPAIR_KIT_MATERIAL_ID, 1)) {
+      for (const [rmat, rqty] of debited) this.opts.grantMaterial(check.charId, rmat, rqty);
+      this.sendNotice(player, false, "pouch_full", "your pouch holds no more repair kits", msg.opId);
+      return;
+    }
+
+    const consumedMaterials: Record<string, number> = {};
+    for (const [mat, qty] of debited) consumedMaterials[mat] = qty;
+
+    const payload: Extract<CivicServerMessage, { op: "craft_repair_kit" }> = {
+      kind: "civic",
+      op: "craft_repair_kit",
+      opId: msg.opId,
+      townId: foundryDef.id,
+      qty: 1,
+      consumedMaterials,
+      foundry: toFoundryView(foundry, foundryDef, this.traitsById.get(foundry.activeTraitId)),
+      replayed: false,
+    };
+    this.store.saveProcessedOp(opKey, JSON.stringify(payload), t);
+    player.refreshInventory();
+    player.send(payload);
+    this.sendState(player, 0);
+  }
+
+  private evaluateCaravanEscort(
+    charId: number,
+    siteId: string,
+    x: number,
+    z: number,
+    qty: number,
+    nowMs: number,
+  ): number {
+    if (qty <= this.escort.heavyHaulThreshold) return 0;
+    const rawEscorts = this.opts.nearbyEscortCount
+      ? this.opts.nearbyEscortCount(charId, x, z, this.escort.escortRadiusM)
+      : countNearbyEscorts(
+          charId,
+          x,
+          z,
+          this.escort.escortRadiusM,
+          this.enteredPlayers.values(),
+          Transform.px,
+          Transform.pz,
+          (eid) => this.isAlive(this.lastSim, eid),
+          this.escort.maxEscortHelpers,
+        );
+    const res = this.escort.evaluate({
+      charId,
+      siteId,
+      x,
+      z,
+      qty,
+      nearbyEscortCount: rawEscorts,
+      nowMs,
+    });
+    if (res.escortBonusGold > 0 && !this.opts.grantGold(charId, res.escortBonusGold, this.currentTick)) {
+      this.store.addPendingCredits(charId, res.escortBonusGold, nowMs);
+    }
+    return res.escortBonusGold;
   }
 
   // ---- Domain 4: Escrow Frontier Contracts ----
@@ -1495,6 +1870,34 @@ export class CivicService implements SimSystem, GatewayExtension {
     }
 
     const resPayload = JSON.parse(this.store.getProcessedOp(opKey)!) as Extract<CivicServerMessage, { op: "contract_update" }>;
+    const deliveredUnits = resPayload.acceptedQty ?? 0;
+    if (deliveredUnits > this.escort.heavyHaulThreshold) {
+      let siteId = outcome.targetId;
+      let tx = 0;
+      let tz = 0;
+      if (outcome.targetKind === "site") {
+        const sDef = this.sitesById.get(outcome.targetId);
+        if (sDef) {
+          tx = sDef.x;
+          tz = sDef.z;
+        }
+      } else {
+        const fDef = this.foundriesById.get(outcome.targetId);
+        if (fDef) {
+          siteId = fDef.requiresBridgeId ?? fDef.id;
+          tx = fDef.x;
+          tz = fDef.z;
+        }
+      }
+      const escortBonusGold = this.evaluateCaravanEscort(check.charId, siteId, tx, tz, deliveredUnits, t);
+      if (escortBonusGold > 0) {
+        resPayload.escortBonusGold = escortBonusGold;
+        this.store.db
+          .prepare(`UPDATE civic_processed_ops SET result_json = ? WHERE op_key = ?`)
+          .run(JSON.stringify(resPayload), opKey);
+      }
+    }
+
     player.refreshInventory();
     player.send(resPayload);
     this.sendState(player, 0);

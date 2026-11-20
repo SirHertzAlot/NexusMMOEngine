@@ -22,6 +22,12 @@ export const CivicAdminArgsSchema = z.discriminatedUnion("subcommand", [
     subcommand: z.literal("stage"),
     siteId: z.string().min(1),
     stage: z.number().int().min(0).max(20),
+    damaged: z.boolean().optional(),
+  }),
+  z.strictObject({
+    subcommand: z.literal("set-depletion"),
+    townId: z.string().min(1),
+    depletedPermille: z.number().int().min(0).max(900),
   }),
   z.strictObject({
     subcommand: z.literal("refund"),
@@ -113,6 +119,7 @@ export function runCivicAdminCommand(
       if (!stageDef) {
         return { ok: false, message: `stage ${cmd.stage} out of range 0..${def.stages.length - 1}` };
       }
+      const nextDamaged = cmd.damaged === true;
       store.runImmediate(() => {
         store.saveSite({
           ...site,
@@ -121,8 +128,8 @@ export function runCivicAdminCommand(
           goldProgress: 0,
           repairProgress: {},
           repairGoldProgress: 0,
-          wear: 0,
-          damaged: false,
+          wear: nextDamaged ? def.damageThreshold : 0,
+          damaged: nextDamaged,
           eraTag: stageDef.label,
           updatedAt: now,
         });
@@ -132,12 +139,32 @@ export function runCivicAdminCommand(
           actorId: 0,
           actorName,
           eraTag: stageDef.label,
-          detail: `GM ${actorName} set ${def.name} to Stage ${stageDef.stage} (${stageDef.label})`,
+          detail: `GM ${actorName} set ${def.name} to Stage ${stageDef.stage} (${stageDef.label})${nextDamaged ? " [damaged]" : ""}`,
           createdAt: now,
         });
       });
-      onSiteStateChange?.(site.id, stageDef.stage, false);
+      onSiteStateChange?.(site.id, stageDef.stage, nextDamaged);
       return { ok: true, message: `set ${def.name} to stage ${stageDef.stage} (${stageDef.label})` };
+    }
+
+    case "set-depletion": {
+      const fDef = rules.foundries.find((f) => f.id === cmd.townId);
+      const foundry = store.getFoundry(cmd.townId);
+      if (!fDef || !foundry) return { ok: false, message: `unknown settlement foundry "${cmd.townId}"` };
+      const nextDepleted = Math.min(fDef.maxDepletedPermille, Math.max(0, cmd.depletedPermille));
+      store.saveFoundry({
+        ...foundry,
+        depletedPermille: nextDepleted,
+        updatedAt: now,
+      });
+      return {
+        ok: true,
+        message: JSON.stringify({
+          townId: fDef.id,
+          depletedPermille: nextDepleted,
+          mature: nextDepleted >= fDef.maturityThresholdPermille,
+        }),
+      };
     }
 
     case "refund": {

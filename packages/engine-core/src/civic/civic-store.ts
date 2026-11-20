@@ -1097,6 +1097,16 @@ export class SqliteCivicStore {
       .run(itemId, provenanceId);
   }
 
+  /**
+   * Mint a new immutable provenance record for a reforged item and re-point
+   * `civic_item_provenance` to it cleanly inside the caller's transaction.
+   */
+  reforgeItemProvenance(itemId: number, input: ProvenanceMintInput): ItemProvenanceView {
+    const minted = this.mintProvenance(input);
+    this.bindItemProvenance(itemId, minted.provenanceId);
+    return minted;
+  }
+
   getProvenanceByItemId(itemId: number): ItemProvenanceView | undefined {
     const r = this.db
       .prepare(
@@ -1208,6 +1218,9 @@ export function toFoundryView(f: StoredFoundry, def: CivicFoundryDef, trait: Vei
     oreBuffer: { ...f.oreBuffer },
     activationThreshold: def.activationOreThreshold,
     depletedPermille: f.depletedPermille,
+    mature: f.depletedPermille >= def.maturityThresholdPermille,
+    reforgeGoldCost: def.reforgeGoldCost,
+    repairKitCost: { ...def.repairKitCost },
     craftBonusSummary: f.batchesRemaining > 0 ? formatTraitBonusSummary(trait) : "Baseline (no active specialty)",
   };
 }

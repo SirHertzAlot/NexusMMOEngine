@@ -19,6 +19,27 @@ describe("civic rules schema & cross-checks", () => {
     const ok = parseCivicRules(DEFAULT_CIVIC_RULES);
     assert.equal(ok.sites[0]!.id, "redwater-bridge");
     assert.equal(ok.foundries.length, 2);
+    assert.equal(ok.foundries[0]!.maturityThresholdPermille, 500);
+    assert.equal(ok.foundries[0]!.reforgeGoldCost, 25);
+    assert.deepEqual(ok.foundries[0]!.repairKitCost, { iron: 2, wood: 2 });
+    assert.equal(ok.foundries[1]!.maturityThresholdPermille, 500);
+
+    // Custom foundry maturity/reforge/repairKit overrides validate cleanly
+    const customFoundry = structuredClone(DEFAULT_CIVIC_RULES);
+    customFoundry.foundries[1]!.maturityThresholdPermille = 300;
+    customFoundry.foundries[1]!.reforgeGoldCost = 40;
+    customFoundry.foundries[1]!.repairKitCost = { iron: 3, wood: 1 };
+    const parsedCustom = parseCivicRules(customFoundry);
+    assert.equal(parsedCustom.foundries[1]!.maturityThresholdPermille, 300);
+    assert.equal(parsedCustom.foundries[1]!.reforgeGoldCost, 40);
+    assert.deepEqual(parsedCustom.foundries[1]!.repairKitCost, { iron: 3, wood: 1 });
+
+    // Negative gold cost or invalid repairKitCost qty rejected strictly
+    const badCost = structuredClone(DEFAULT_CIVIC_RULES) as unknown as {
+      foundries: Array<{ reforgeGoldCost: number }>;
+    };
+    badCost.foundries[0]!.reforgeGoldCost = -1;
+    assert.throws(() => parseCivicRules(badCost));
 
     // Unknown trait ref in vein template
     const badTrait = structuredClone(DEFAULT_CIVIC_RULES) as unknown as {

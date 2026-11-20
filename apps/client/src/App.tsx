@@ -37,6 +37,15 @@ const VendorPanel = React.lazy(() => import("./ui/vendor-panel.js").then((m) => 
 const QuestLogPanel = React.lazy(() => import("./ui/quests.js").then((m) => ({ default: m.QuestLog })));
 const CivicPanel = React.lazy(() => import("./ui/civic-panel.js").then((m) => ({ default: m.CivicPanel })));
 import { INITIAL_CIVIC_UI_STATE, nextCivicState, type CivicUiState } from "./ui/civic-panel.js";
+import {
+  civicTargetDisplayName,
+  hasCloserWorldTarget,
+  nearestCivicTarget,
+  type CivicProximityTarget,
+  type WorldPromptCandidate,
+} from "./ui/civic-proximity.js";
+import { getVfxAdapter } from "./render/vfx/VFXAdapter.js";
+import { isTextField } from "./input/input.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -122,6 +131,42 @@ const DEFAULT_URL =
   typeof window !== "undefined" && window.location.protocol === "https:"
     ? "wss://localhost:7777"
     : "ws://localhost:7777";
+
+function activeWorldPromptTargets(
+  c: MirrorClient | null,
+  px: number,
+  pz: number,
+  nearDrop: NearDrop | null,
+  nearResource: bigint | null,
+  nearChest: bigint | null,
+  nearNpc: string | null,
+  npcs: readonly NpcView[],
+  nearEntrance: string | null,
+): WorldPromptCandidate[] {
+  if (!c) return [];
+  const out: WorldPromptCandidate[] = [];
+  if (nearDrop) {
+    const tr = c.state.get(nearDrop.entity)?.transform;
+    out.push(tr ? { x: tr.px, z: tr.pz } : { x: px, z: pz });
+  }
+  if (nearResource !== null && c.resources.get(nearResource)) {
+    const tr = c.state.get(nearResource)?.transform;
+    out.push(tr ? { x: tr.px, z: tr.pz } : { x: px, z: pz });
+  }
+  if (nearChest !== null) {
+    const ch = c.chests.get(nearChest);
+    out.push(ch ? { x: ch.x, z: ch.z } : { x: px, z: pz });
+  }
+  if (nearNpc) {
+    const npc = npcs.find((n) => n.id === nearNpc);
+    out.push(npc ? { x: npc.x, z: npc.z } : { x: px, z: pz });
+  }
+  if (nearEntrance) {
+    const ent = c.entrances.find((e) => e.id === nearEntrance);
+    if (ent) out.push({ x: ent.x, z: ent.z });
+  }
+  return out;
+}
 
 /** What each settings slider plays when let go (U4 audio). */
 const PREVIEW_EVENT: Partial<Record<AudioBus, string>> = { effects: "hit", interface: "ui-whisper" };
@@ -267,6 +312,10 @@ export function App(): React.ReactElement {
   const [questsOpen, setQuestsOpen] = useState(false);
   const [civicState, setCivicState] = useState<CivicUiState>(INITIAL_CIVIC_UI_STATE);
   const [civicOpen, setCivicOpen] = useState(false);
+  const hudRef = useRef(hud);
+  hudRef.current = hud;
+  const civicStateRef = useRef(civicState);
+  civicStateRef.current = civicState;
   // What a quest-giver talks about, coloured wherever it appears in their lines (CF5).
   const dialogGlossary = useMemo(
     () => glossaryFrom({ quests: quests?.map((q) => q.name), items: quests?.flatMap((q) => q.rewards.map((r) => itemTitle(r.base))), people: quests?.map((q) => q.giver) }),
@@ -427,10 +476,16 @@ function welcomeTimeoutMs(): number | undefined {
         const text = notices[notices.length - 1];
         if (text) setNotice({ text, at: performance.now() });
       },
-      onCivic: (c) => {
-        setCivicState((prev) => nextCivicState(prev, c));
-        if (c.op === "state" && c.pendingCreditsClaimed > 0) {
-          setNotice({ text: `Claimed ${c.pendingCreditsClaimed} gold from expired escrow`, at: performance.now() });
+      onCivic: (msg) => {
+        setCivicState((prev) => nextCivicState(prev, msg));
+        if (msg.op === "state" && msg.pendingCreditsClaimed > 0) {
+          setNotice({ text: t("civic.escrowClaimed", { gold: msg.pendingCreditsClaimed }), at: performance.now() });
+        } else if (msg.op === "survey_result" && msg.band !== "none") {
+          const me = c.playerEntity != null ? c.state.get(c.playerEntity)?.transform : undefined;
+          const origin = me
+            ? { x: me.px, y: me.py, z: me.pz }
+            : { x: hudRef.current.px, y: hudRef.current.py, z: hudRef.current.pz };
+          getVfxAdapter()?.emitSurveyFlare(origin, msg.direction, msg.band);
         }
       },
       onNpcs: (n) => setNpcs(n.npcs),
@@ -702,6 +757,8 @@ function welcomeTimeoutMs(): number | undefined {
     setQuests(null);
     questsRef.current = null;
     setQuestsOpen(false);
+    setCivicState(INITIAL_CIVIC_UI_STATE);
+    setCivicOpen(false);
     setNpcs([]);
     setNearNpc(null);
     setDialog(null);
@@ -768,7 +825,85 @@ function welcomeTimeoutMs(): number | undefined {
   const [hotkeyDef, setHotkeyDef] = useState<string | null>(null);
   const bagRef = useRef(bag);
   bagRef.current = bag;
+  const dialogRef = useRef(dialog);
+  dialogRef.current = dialog;
+  const nearStateRef = useRef({ nearDrop, nearResource, nearChest, nearNpc, npcs, nearEntrance });
+  nearStateRef.current = { nearDrop, nearResource, nearChest, nearNpc, npcs, nearEntrance };
+
+  const civicTarget = useMemo(
+    () => (screen === "world" ? nearestCivicTarget(hud.px, hud.pz, civicState) : null),
+    [screen, hud.px, hud.pz, civicState],
+  );
+  const reforgeCandidates = useMemo(() => {
+    const out: Array<{ id: number; name: string }> = [];
+    const seen = new Set<number>();
+    const pushItem = (it: ItemView | null | undefined): void => {
+      if (!it || seen.has(it.id)) return;
+      seen.add(it.id);
+      out.push({ id: it.id, name: it.name });
+    };
+    pushItem(hands.main);
+    pushItem(hands.off);
+    for (const slot of Object.values(worn)) pushItem(slot);
+    if (bag) for (const it of bag) pushItem(it);
+    return out;
+  }, [hands.main, hands.off, worn, bag]);
+  const triggerCivicTarget = useCallback((target: CivicProximityTarget) => {
+    const c = clientRef.current;
+    if (!c) return;
+    if (target.kind === "vein") {
+      c.civic({ kind: "civic", op: "extract", veinBatchId: target.id, qty: 1 });
+      return;
+    }
+    setCivicOpen(true);
+    c.civic({ kind: "civic", op: "state" });
+    if (target.kind === "site") {
+      const site = civicStateRef.current.sites.find((s) => s.siteId === target.id);
+      if (site && !site.damaged && site.stage >= site.maxStage) {
+        c.civic({ kind: "civic", op: "plaque", siteId: target.id, offset: 0, limit: 10 });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen !== "world") return;
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.repeat || isTextField(e.target) || dialogRef.current) return;
+      if (!bindings.interact.includes(e.code)) return;
+      const c = clientRef.current;
+      if (!c) return;
+      const tr = c.playerEntity != null ? c.state.get(c.playerEntity)?.transform : undefined;
+      const px = tr?.px ?? hudRef.current.px;
+      const pz = tr?.pz ?? hudRef.current.pz;
+      const target = nearestCivicTarget(px, pz, civicStateRef.current);
+      if (!target) return;
+      const ns = nearStateRef.current;
+      const worldTargets = activeWorldPromptTargets(
+        c,
+        px,
+        pz,
+        ns.nearDrop,
+        ns.nearResource,
+        ns.nearChest,
+        ns.nearNpc,
+        ns.npcs,
+        ns.nearEntrance,
+      );
+      if (worldTargets.length > 0 || hasCloserWorldTarget(px, pz, target.distanceM, worldTargets)) return;
+      triggerCivicTarget(target);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [screen, bindings.interact, triggerCivicTarget]);
+
   const onUseHotkey = useCallback(() => {
+    const c = clientRef.current;
+    if (c && !dialogRef.current) {
+      const tr = c.playerEntity != null ? c.state.get(c.playerEntity)?.transform : undefined;
+      const px = tr?.px ?? hudRef.current.px;
+      const pz = tr?.pz ?? hudRef.current.pz;
+      if (nearestCivicTarget(px, pz, civicStateRef.current) !== null) return;
+    }
     const item = hotkeyDef === null ? undefined : bagRef.current?.find((i) => i?.def === hotkeyDef);
     if (item) clientRef.current?.use(item.id);
   }, [hotkeyDef]);
@@ -807,6 +942,22 @@ function welcomeTimeoutMs(): number | undefined {
   if (client) {
     const entrance = nearEntrance ? client.entrances.find((e) => e.id === nearEntrance) : undefined;
     const resource = nearResource !== null ? client.resources.get(nearResource) : undefined;
+    const worldTargets = activeWorldPromptTargets(
+      client,
+      hud.px,
+      hud.pz,
+      nearDrop,
+      nearResource,
+      nearChest,
+      nearNpc,
+      npcs,
+      nearEntrance,
+    );
+    const hasAnyWorldPrompt = Boolean(nearDrop || resource || nearChest !== null || nearNpc || entrance);
+    const showCivicPrompt =
+      !dialog &&
+      civicTarget !== null &&
+      !hasCloserWorldTarget(hud.px, hud.pz, civicTarget.distanceM, worldTargets);
     return (
       <HudLayoutProvider layout={hudLayout}>
       <div className="relative h-full w-full">
@@ -915,6 +1066,31 @@ function welcomeTimeoutMs(): number | undefined {
             <span className="mr-1 rounded border px-1 text-xs text-muted-foreground">{prettyCode(bindings.interact[0] ?? "KeyE")}</span>
             {t("interact.enter")} <span className="text-violet-300">{entrance.name}</span>
             {party && party.members.length > 1 ? <span className="text-muted-foreground"> {t("interact.withParty")}</span> : null}
+          </div>
+        ) : null}
+        {showCivicPrompt && civicTarget ? (
+          <div
+            className={`pointer-events-auto absolute left-1/2 z-10 -translate-x-1/2 ${
+              hasAnyWorldPrompt ? "top-[67%]" : "top-[60%]"
+            }`}
+          >
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-md border bg-card/90 px-3 py-1 text-sm shadow-sm hover:bg-accent"
+              onClick={() => triggerCivicTarget(civicTarget)}
+              aria-label={t(civicTarget.actionLabelKey)}
+            >
+              {!hasAnyWorldPrompt ? (
+                <span className="rounded border px-1 text-xs text-muted-foreground">
+                  {prettyCode(bindings.interact[0] ?? "KeyE")}
+                </span>
+              ) : null}
+              <span>{t(civicTarget.actionLabelKey)}</span>
+              <span className="text-amber-200">{civicTargetDisplayName(civicTarget, civicState)}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {t("civic.promptDistance", { dist: Math.round(civicTarget.distanceM) })}
+              </span>
+            </button>
           </div>
         ) : null}
         {run?.phase === "in" && (
@@ -1097,7 +1273,12 @@ function welcomeTimeoutMs(): number | undefined {
         {civicOpen && (
           <HudSlot id="civic-panel" className="z-20">
             <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.civic")}</div>}>
-              <CivicPanel state={civicState} onSend={(op) => client?.civic(op)} onClose={() => setCivicOpen(false)} />
+              <CivicPanel
+                state={civicState}
+                onSend={(op) => client?.civic(op)}
+                onClose={() => setCivicOpen(false)}
+                reforgeCandidates={reforgeCandidates}
+              />
             </React.Suspense>
           </HudSlot>
         )}

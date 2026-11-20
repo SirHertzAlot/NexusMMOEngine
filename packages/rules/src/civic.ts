@@ -80,6 +80,9 @@ export const CivicFoundryDefSchema = z.strictObject({
   depletedPermilleStep: nonNegInt.default(25),
   maxDepletedPermille: nonNegInt.max(900).default(650),
   requiresBridgeId: slugId.optional(),
+  maturityThresholdPermille: nonNegInt.max(1000).default(500),
+  reforgeGoldCost: nonNegInt.default(25),
+  repairKitCost: z.record(slugId, positiveInt).default({ iron: 2, wood: 2 }),
 });
 export type CivicFoundryDef = z.infer<typeof CivicFoundryDefSchema>;
 
@@ -164,6 +167,15 @@ export const DEFAULT_CIVIC_RULES: CivicRules = CivicRulesSchema.parse({
       durabilityBonusPct: 20,
       staminaReductionPct: 0,
       armourPenetrationPct: 12,
+    },
+    {
+      id: "masterwork",
+      name: "Masterwork Alloy",
+      craftTag: "Masterwork",
+      powerBonusPct: 20,
+      durabilityBonusPct: 25,
+      staminaReductionPct: 10,
+      armourPenetrationPct: 15,
     },
   ],
   sites: [

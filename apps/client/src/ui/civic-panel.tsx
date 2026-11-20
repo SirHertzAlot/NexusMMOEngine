@@ -117,6 +117,15 @@ export function nextCivicState(prev: CivicUiState, msg: CivicServerMessage): Civ
       return {
         ...prev,
         foundries: prev.foundries.map((f) => (f.townId === msg.foundry.townId ? msg.foundry : f)),
+        ...(msg.escortBonusGold && msg.escortBonusGold > 0
+          ? {
+              lastNotice: {
+                ok: true,
+                code: "escort_bonus",
+                message: `+${msg.escortBonusGold}g`,
+              },
+            }
+          : {}),
       };
     case "foundry_crafted":
       return {
@@ -128,18 +137,39 @@ export function nextCivicState(prev: CivicUiState, msg: CivicServerMessage): Civ
           message: `${msg.item} (${msg.rank}) · ${msg.provenance.traitId}`,
         },
       };
+    case "foundry_reforge":
+      return {
+        ...prev,
+        foundries: prev.foundries.map((f) => (f.townId === msg.foundry.townId ? msg.foundry : f)),
+        lastNotice: {
+          ok: true,
+          code: "foundry_reforge",
+          message: `#${msg.itemId} -> ${msg.provenance.traitId} (-${msg.goldCost}g)`,
+        },
+      };
+    case "craft_repair_kit":
+      return {
+        ...prev,
+        foundries: prev.foundries.map((f) => (f.townId === msg.foundry.townId ? msg.foundry : f)),
+        lastNotice: {
+          ok: true,
+          code: "craft_repair_kit",
+          message: `+${msg.qty} repair-kit`,
+        },
+      };
     case "contract_update": {
       const exists = prev.contracts.some((c) => c.contractId === msg.contract.contractId);
       const contracts = exists
         ? prev.contracts.map((c) => (c.contractId === msg.contract.contractId ? msg.contract : c))
         : [msg.contract, ...prev.contracts];
+      const bonusSuffix = msg.escortBonusGold && msg.escortBonusGold > 0 ? ` (+${msg.escortBonusGold}g)` : "";
       return {
         ...prev,
         contracts,
         lastNotice: {
           ok: true,
           code: `contract_${msg.action}`,
-          message: `#${msg.contract.contractId} ${msg.action}`,
+          message: `#${msg.contract.contractId} ${msg.action}${bonusSuffix}`,
         },
       };
     }
@@ -156,16 +186,25 @@ export function CivicPanel({
   state,
   onSend,
   onClose,
+  reforgeCandidates = [],
 }: {
   state: CivicUiState;
   onSend: (msg: CivicClientMessage) => void;
   onClose: () => void;
+  reforgeCandidates?: ReadonlyArray<{ id: number; name: string }>;
 }): React.ReactElement {
   const [postQty, setPostQty] = useState(10);
   const [postReward, setPostReward] = useState(5);
+  const [reforgeItemId, setReforgeItemId] = useState(0);
 
   const openContracts = state.contracts.filter((c) => c.status === "open");
   const primaryVein = state.veins[0];
+  const activeReforgeId =
+    reforgeCandidates.length > 0
+      ? reforgeCandidates.some((c) => c.id === reforgeItemId)
+        ? reforgeItemId
+        : reforgeCandidates[0]!.id
+      : reforgeItemId;
 
   return (
     <div className="pointer-events-auto max-h-[82vh] w-[420px] overflow-y-auto rounded-lg border bg-card/95 p-3 text-card-foreground shadow-md">
@@ -314,7 +353,14 @@ export function CivicPanel({
         {state.foundries.map((f) => (
           <div key={f.townId} className="mb-2 border-b border-border/50 pb-2 last:mb-0 last:border-b-0 last:pb-0">
             <div className="flex items-center justify-between text-xs font-medium">
-              <span>{f.name}</span>
+              <span>
+                {f.name}
+                {f.mature && (
+                  <span className="ml-1.5 rounded border border-amber-500/40 px-1 py-0.5 text-[10px] text-amber-300">
+                    {t("civic.matureBadge")}
+                  </span>
+                )}
+              </span>
               <span className="tabular-nums text-muted-foreground">
                 {f.batchesRemaining > 0
                   ? t("civic.foundryBatches", { trait: f.traitName, batches: f.batchesRemaining })
@@ -324,7 +370,7 @@ export function CivicPanel({
             <div className="mt-0.5 text-[11px] text-muted-foreground">
               {t("civic.foundryMeta", { bonus: f.craftBonusSummary, pct: Math.round(f.depletedPermille / 10) })}
             </div>
-            <div className="mt-1 flex gap-1.5">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {primaryVein && (
                 <button
                   type="button"
@@ -360,6 +406,65 @@ export function CivicPanel({
               >
                 {t("civic.forgeSword")}
               </button>
+              {f.mature && (
+                <>
+                  <button
+                    type="button"
+                    className="rounded border border-emerald-500/40 px-2 py-0.5 text-[11px] hover:bg-emerald-500/10"
+                    onClick={() =>
+                      onSend({
+                        kind: "civic",
+                        op: "craft_repair_kit",
+                        townId: f.townId,
+                        opId: nextOpId("rkit"),
+                      })
+                    }
+                  >
+                    {t("civic.craftRepairKit")}
+                  </button>
+                  {reforgeCandidates.length > 0 ? (
+                    <select
+                      value={activeReforgeId}
+                      onChange={(e) => setReforgeItemId(Number(e.target.value) || 0)}
+                      className="max-w-[140px] rounded border bg-background px-1 py-0.5 text-[11px]"
+                      aria-label={t("civic.reforgeItemLabel")}
+                    >
+                      {reforgeCandidates.map((cand) => (
+                        <option key={cand.id} value={cand.id}>
+                          {cand.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="number"
+                      min={1}
+                      value={activeReforgeId > 0 ? activeReforgeId : ""}
+                      onChange={(e) => setReforgeItemId(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                      className="w-14 rounded border bg-background px-1 py-0.5 text-[11px] tabular-nums"
+                      aria-label={t("civic.reforgeItemLabel")}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    disabled={activeReforgeId <= 0}
+                    className="rounded border border-amber-500/50 px-2 py-0.5 text-[11px] hover:bg-amber-500/10 disabled:opacity-50"
+                    onClick={() => {
+                      if (activeReforgeId > 0) {
+                        onSend({
+                          kind: "civic",
+                          op: "foundry_reforge",
+                          townId: f.townId,
+                          opId: nextOpId("reforge"),
+                          itemId: activeReforgeId,
+                        });
+                      }
+                    }}
+                  >
+                    {t("civic.reforgeItem", { gold: f.reforgeGoldCost ?? 25 })}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ))}
