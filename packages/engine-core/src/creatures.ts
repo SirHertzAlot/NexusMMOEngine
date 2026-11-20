@@ -35,6 +35,7 @@ import { type CreaturesRules, type ItemBaseRules, CreatureAiSchema, type Creatur
 import { fnv1a32 } from "@mmo-engine/scatter";
 import * as C from "./components.js";
 import type { Weapon } from "./combat.js";
+import { INVALID_POOL_HANDLE, RespawnKind, SlotState, SpawnPoolSoA } from "./pools/spawn-pool-soa.js";
 import { attachDefaultCollider, CHARACTER_CAPSULE, PLAYER_SPEED, type SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import { clearOfStatics } from "./prop-collision.js";
@@ -72,6 +73,12 @@ export interface CreatureOptions {
   modelOf?: (creature: string) => string | undefined;
   /** Brain pacing and ranges (creatures.json `ai`); default: the engine's. */
   ai?: CreatureAiRules;
+  /** Optional SAB SpawnPoolSoA for pool-backed creature instantiation and respawn polling. */
+  pool?: SpawnPoolSoA;
+  /** Optional resolver mapping `archetypeHash` -> creature kind id when polling `pool`. */
+  kindResolver?: (archetypeHash: number) => string | undefined;
+  /** Optional ms clock for SAB pool timestamps; defaults to tick-derived ms `(tick * 1000) / tickHz`. */
+  now?: () => number;
 }
 
 /** A place raiders are drawn to. */
@@ -81,6 +88,7 @@ type Mode = "idle" | "chase" | "return" | "flee" | "warn" | "raid";
 
 interface Brain {
   kind: string;
+  slotHandle: number;
   homeX: number;
   homeZ: number;
   weapon: Weapon;
@@ -165,6 +173,11 @@ export class CreatureSystem implements SimSystem {
   /** The ai's re-aim and raid rescan intervals, in ticks. */
   private repathTicks = 10;
   private rescanTicks = 15;
+  private respawnPool: SpawnPoolSoA | undefined;
+  private poolKindResolver: ((hash: number) => string | undefined) | undefined;
+  private readonly poolHandleToEid = new Map<number, number>();
+  private readonly hashToKind = new Map<number, string>();
+  private poolScratchSlots: Int32Array | undefined;
 
   private readonly opts: CreatureOptions;
 
@@ -172,7 +185,20 @@ export class CreatureSystem implements SimSystem {
     this.opts = { ...opts };
     this.rngState = opts.seed ?? 20261002;
     this.tickHz = opts.tickHz ?? 30;
+    this.respawnPool = opts.pool;
+    this.poolKindResolver = opts.kindResolver;
+    if (opts.pool) {
+      this.poolScratchSlots = new Int32Array(Math.max(64, opts.pool.capacity));
+    }
+    this.rebuildKindHashes();
     this.setAi(opts.ai ?? DEFAULT_AI);
+  }
+
+  private rebuildKindHashes(): void {
+    this.hashToKind.clear();
+    for (const k of Object.keys(this.opts.creatures)) {
+      this.hashToKind.set(fnv1a32(k) >>> 0, k);
+    }
   }
 
   /** Swap in reloaded brain pacing and ranges (creatures.json `ai`); applies on the next step. */
@@ -191,6 +217,7 @@ export class CreatureSystem implements SimSystem {
   setRules(creatures: CreaturesRules["creatures"], bases: Record<string, ItemBaseRules>): void {
     this.opts.creatures = creatures;
     this.opts.bases = bases;
+    this.rebuildKindHashes();
     for (const [e, b] of this.brains) {
       const def = creatures[b.kind];
       if (def) C.NavAgent.speed[e] = this.runSpeed(def) * this.walkSpeed;
@@ -265,7 +292,17 @@ export class CreatureSystem implements SimSystem {
   /** Seconds before a dead creature rises, or undefined if `e` is not one. */
   respawnSeconds(e: number): number | undefined {
     const b = this.brains.get(e);
-    return b ? this.opts.creatures[b.kind]?.respawnSeconds : undefined;
+    if (!b) return undefined;
+    if (b.slotHandle !== INVALID_POOL_HANDLE && this.respawnPool?.isValidHandle(b.slotHandle)) {
+      const slotDelayMs = this.respawnPool.respawnDelayMs[b.slotHandle & 0xffff]!;
+      if (slotDelayMs > 0) return slotDelayMs / 1000;
+    }
+    return this.opts.creatures[b.kind]?.respawnSeconds;
+  }
+
+  /** Packed `SpawnPoolSoA` slot handle for creature `eid`, or `0` (`INVALID_POOL_HANDLE`) if not pool-backed. */
+  poolSlotOf(eid: number): number {
+    return this.brains.get(eid)?.slotHandle ?? INVALID_POOL_HANDLE;
   }
 
   /** Put a respawning creature back at home with a fresh brain. False if `e` is not one. */
@@ -273,9 +310,18 @@ export class CreatureSystem implements SimSystem {
     const b = this.brains.get(e);
     if (!b) return false;
     const def = this.opts.creatures[b.kind];
+    let fallbackY = C.Transform.py[e];
+    if (b.slotHandle !== INVALID_POOL_HANDLE && this.respawnPool?.isValidHandle(b.slotHandle)) {
+      const idx = b.slotHandle & 0xffff;
+      b.homeX = this.respawnPool.homeX[idx]!;
+      b.homeZ = this.respawnPool.homeZ[idx]!;
+      fallbackY = this.respawnPool.homeY[idx]!;
+      this.respawnPool.markActive(b.slotHandle, e);
+      this.poolHandleToEid.set(b.slotHandle, e);
+    }
     C.Transform.px[e] = b.homeX;
     C.Transform.pz[e] = b.homeZ;
-    C.Transform.py[e] = this.spawnY(def, b.homeX, b.homeZ, C.Transform.py[e]);
+    C.Transform.py[e] = this.spawnY(def, b.homeX, b.homeZ, fallbackY);
     C.Velocity.lx[e] = 0;
     C.Velocity.lz[e] = 0;
     b.mode = "idle";
@@ -288,6 +334,66 @@ export class CreatureSystem implements SimSystem {
     b.hungryAt = sim.currentTick + this.hungerTicks(def);
     this.stop(e);
     return true;
+  }
+
+  /**
+   * Instantiate all active `RespawnKind.Creature` slots from a `SpawnPoolSoA` into `sim`,
+   * binding each `slotHandle` to the creature `Brain` and updating `liveEid` in the SAB SoA.
+   * Also saves `pool`, `kindResolver`, and optional pre-allocated `scratchSlots` for zero-alloc polling.
+   */
+  instantiateFromPool(
+    sim: SimWorld,
+    pool: SpawnPoolSoA,
+    kindResolver: (hash: number) => string | undefined,
+    opts?: { scratchSlots?: Int32Array },
+  ): number[] {
+    this.respawnPool = pool;
+    this.poolKindResolver = kindResolver;
+    if (opts?.scratchSlots) {
+      this.poolScratchSlots = opts.scratchSlots;
+    } else if (!this.poolScratchSlots || this.poolScratchSlots.length < pool.capacity) {
+      this.poolScratchSlots = new Int32Array(Math.max(64, pool.capacity));
+    }
+
+    const spawned: number[] = [];
+    const hw = pool.highWater;
+    const kindArr = pool.kind;
+    const stateArr = pool.state;
+    const archArr = pool.archetypeHash;
+    const modelArr = pool.modelHash;
+    const homeXArr = pool.homeX;
+    const homeYArr = pool.homeY;
+    const homeZArr = pool.homeZ;
+    const group = this.nextGroup++;
+
+    for (let i = 0; i < hw; i++) {
+      if (kindArr[i] !== RespawnKind.Creature || stateArr[i] !== SlotState.Active) continue;
+      const handle = pool.handleAtSlot(i);
+      if (handle === INVALID_POOL_HANDLE) continue;
+      const prevEid = this.poolHandleToEid.get(handle);
+      if (prevEid !== undefined && entityExists(sim.ecs, prevEid) && this.brains.has(prevEid)) {
+        continue;
+      }
+      const kind = this.resolvePoolKind(archArr[i]! >>> 0);
+      if (!kind || !(kind in this.opts.creatures)) continue;
+
+      const hx = homeXArr[i]!;
+      const hy = homeYArr[i]!;
+      const hz = homeZArr[i]!;
+      const eid = this.spawnInternal(sim, kind, hx, hz, spawned.length, group, {
+        slotHandle: handle,
+        homeY: hy,
+        modelHashOverride: modelArr[i]! >>> 0,
+      });
+      const b = this.brains.get(eid)!;
+      if (b.homeX !== hx || b.homeZ !== hz) {
+        pool.setHome(handle, b.homeX, C.Transform.py[eid]!, b.homeZ);
+      }
+      pool.markActive(handle, eid);
+      this.poolHandleToEid.set(handle, eid);
+      spawned.push(eid);
+    }
+    return spawned;
   }
 
   /**
@@ -311,6 +417,18 @@ export class CreatureSystem implements SimSystem {
   }
 
   spawn(sim: SimWorld, kind: string, x: number, z: number, index = 0, group = 0): number {
+    return this.spawnInternal(sim, kind, x, z, index, group);
+  }
+
+  private spawnInternal(
+    sim: SimWorld,
+    kind: string,
+    x: number,
+    z: number,
+    index = 0,
+    group = 0,
+    poolMeta?: { slotHandle?: number; homeY?: number; modelHashOverride?: number },
+  ): number {
     const def = this.opts.creatures[kind];
     if (!def) throw new Error(`unknown creature "${kind}"`);
     const beh = def.behavior;
@@ -327,7 +445,7 @@ export class CreatureSystem implements SimSystem {
     const size = beh?.size ?? 1;
     C.Transform.px[eid] = x;
     C.Transform.pz[eid] = z;
-    C.Transform.py[eid] = this.spawnY(def, x, z, 0);
+    C.Transform.py[eid] = this.spawnY(def, x, z, poolMeta?.homeY ?? 0);
     C.Transform.qw[eid] = 1;
     C.Transform.sx[eid] = C.Transform.sy[eid] = C.Transform.sz[eid] = size;
     C.Health.current[eid] = C.Health.max[eid] = def.health;
@@ -347,6 +465,10 @@ export class CreatureSystem implements SimSystem {
       addComponent(sim.ecs, C.AssetRef, eid);
       C.AssetRef.assetHash[eid] = fnv1a32(model);
       C.AssetRef.variant[eid] = 0;
+    } else if (poolMeta?.modelHashOverride && poolMeta.modelHashOverride !== 0) {
+      addComponent(sim.ecs, C.AssetRef, eid);
+      C.AssetRef.assetHash[eid] = poolMeta.modelHashOverride;
+      C.AssetRef.variant[eid] = 0;
     }
     // ColliderSystem skips entities with an AssetRef (scatter props), so a creature with a model would have no
     // body: it would never collide and the client would draw it as scenery. Give it the collider here.
@@ -355,6 +477,7 @@ export class CreatureSystem implements SimSystem {
     const mass = base.mass * Math.pow(def.damageX ?? 1, 1 / (this.opts.massPower ?? 0.5));
     this.brains.set(eid, {
       kind,
+      slotHandle: poolMeta?.slotHandle ?? INVALID_POOL_HANDLE,
       homeX: x,
       homeZ: z,
       weapon: {
@@ -382,6 +505,60 @@ export class CreatureSystem implements SimSystem {
     return eid;
   }
 
+  private resolvePoolKind(archHash: number): string | undefined {
+    return this.poolKindResolver?.(archHash) ?? this.hashToKind.get(archHash);
+  }
+
+  private poolNowMs(tick: number): number {
+    return this.opts.now ? this.opts.now() : (tick * 1000) / this.tickHz;
+  }
+
+  private poolPollMs(tick: number): number {
+    return this.opts.now ? this.opts.now() : (tick * 1000) / this.tickHz + 1e-6;
+  }
+
+  private pollPoolRespawns(sim: SimWorld): void {
+    const pool = this.respawnPool;
+    if (!pool) return;
+    if (!this.poolScratchSlots || this.poolScratchSlots.length < pool.capacity) {
+      this.poolScratchSlots = new Int32Array(Math.max(64, pool.capacity));
+    }
+    const readyCount = pool.pollReady(
+      this.poolPollMs(sim.currentTick),
+      this.poolScratchSlots,
+      RespawnKind.Creature,
+      false,
+    );
+    if (readyCount === 0) return;
+
+    for (let i = 0; i < readyCount; i++) {
+      const slotIdx = this.poolScratchSlots[i]!;
+      const handle = pool.handleAtSlot(slotIdx);
+      if (handle === INVALID_POOL_HANDLE) continue;
+      const existingEid = this.poolHandleToEid.get(handle);
+      if (existingEid !== undefined && entityExists(sim.ecs, existingEid) && this.brains.has(existingEid)) {
+        // Living or corpse held by DeathSystem in this SimWorld; DeathSystem owns its respawn/place.
+        continue;
+      }
+      const kind = this.resolvePoolKind(pool.archetypeHash[slotIdx]! >>> 0);
+      if (!kind || !(kind in this.opts.creatures)) continue;
+      const hx = pool.homeX[slotIdx]!;
+      const hy = pool.homeY[slotIdx]!;
+      const hz = pool.homeZ[slotIdx]!;
+      const eid = this.spawnInternal(sim, kind, hx, hz, 0, this.nextGroup++, {
+        slotHandle: handle,
+        homeY: hy,
+        modelHashOverride: pool.modelHash[slotIdx]! >>> 0,
+      });
+      const b = this.brains.get(eid)!;
+      if (b.homeX !== hx || b.homeZ !== hz) {
+        pool.setHome(handle, b.homeX, C.Transform.py[eid]!, b.homeZ);
+      }
+      pool.markActive(handle, eid);
+      this.poolHandleToEid.set(handle, eid);
+    }
+  }
+
   private runSpeed(def: Def): number {
     const base = def.behavior?.speedX ?? def.chaseSpeed;
     return def.behavior?.temperament === "flee" ? base * def.behavior.fleeSpeed : base;
@@ -405,6 +582,7 @@ export class CreatureSystem implements SimSystem {
   }
 
   step(sim: SimWorld): void {
+    if (this.respawnPool) this.pollPoolRespawns(sim);
     if (this.brains.size === 0) return;
     if (sim.movement.walkSpeed !== this.walkSpeed) {
       // A rules reload changed the walk: every creature's speed is a share of it.
@@ -416,6 +594,12 @@ export class CreatureSystem implements SimSystem {
     const tod = this.opts.timeOfDay?.(tick) ?? null;
     for (const [e, b] of this.brains) {
       if (!entityExists(sim.ecs, e)) {
+        if (b.slotHandle !== INVALID_POOL_HANDLE) {
+          this.poolHandleToEid.delete(b.slotHandle);
+          if (this.respawnPool?.isValidHandle(b.slotHandle) && this.respawnPool.liveEid[b.slotHandle & 0xffff] === e) {
+            this.respawnPool.setLiveEid(b.slotHandle, -1);
+          }
+        }
         this.brains.delete(e);
         continue;
       }
@@ -428,6 +612,17 @@ export class CreatureSystem implements SimSystem {
         if (b.mode === "warn") this.opts.cancelWarn?.(e, tick);
         b.mode = "idle"; // dead: DeathSystem holds the body, `place` resets it
         b.target = -1;
+        if (b.slotHandle !== INVALID_POOL_HANDLE && this.respawnPool?.isValidHandle(b.slotHandle)) {
+          const idx = b.slotHandle & 0xffff;
+          if (this.respawnPool.state[idx] === SlotState.Active) {
+            const slotDelayMs = this.respawnPool.respawnDelayMs[idx]!;
+            const def = this.opts.creatures[b.kind];
+            const delayMs = slotDelayMs > 0 ? slotDelayMs : (def ? def.respawnSeconds * 1000 : 0);
+            if (Number.isFinite(delayMs)) {
+              this.respawnPool.scheduleRespawn(b.slotHandle, this.poolNowMs(tick), delayMs);
+            }
+          }
+        }
         continue;
       }
       const def = this.opts.creatures[b.kind];

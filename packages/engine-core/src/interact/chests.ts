@@ -18,6 +18,7 @@
 import { z } from "zod";
 import { addComponent, hasComponent, removeComponent } from "bitecs";
 import { BodyConfig, Transform } from "../components.js";
+import { INVALID_POOL_HANDLE, RespawnKind, SlotState, type SpawnPoolSoA } from "../pools/spawn-pool-soa.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
@@ -56,6 +57,8 @@ export interface ChestSystemOptions {
   reachM?: number;
   /** Where open chests and doors are kept across a restart (IX5). */
   store?: PlacesStore;
+  /** Optional SAB SpawnPoolSoA mirroring chest refill timers. */
+  pool?: SpawnPoolSoA;
   now?: () => number;
 }
 
@@ -70,6 +73,7 @@ interface Chest extends ChestSpec {
   doorOpen: boolean;
   /** Doors: the collider, kept while it is open. */
   body: number[] | null;
+  poolHandle: number;
 }
 
 export type ChestResult = { ok: true; items: number } | { ok: false; error: string };
@@ -86,6 +90,9 @@ export class ChestSystem implements SimSystem {
     writes: ["BodyConfig"],
   };
   private readonly chests = new Map<number, Chest>();
+  private readonly slotToChest = new Map<number, Chest>();
+  private readonly pool?: SpawnPoolSoA;
+  private readonly readyScratch: Int32Array;
   private changed = new Set<Chest>();
   private readonly reachM: number;
   private readonly now: () => number;
@@ -93,20 +100,94 @@ export class ChestSystem implements SimSystem {
   constructor(private readonly opts: ChestSystemOptions) {
     this.reachM = opts.reachM ?? 3;
     this.now = opts.now ?? Date.now;
+    this.pool = opts.pool;
+    this.readyScratch = opts.pool
+      ? new Int32Array(Math.max(64, opts.pool.capacity))
+      : new Int32Array(0);
+  }
+
+  /** Packed `SpawnPoolSoA` slot handle for chest `eid`, or `0` (`INVALID_POOL_HANDLE`) if absent. */
+  poolSlotOf(eid: number): number {
+    return this.chests.get(eid)?.poolHandle ?? INVALID_POOL_HANDLE;
   }
 
   /** Make a spawned entity a chest or door; `sim` lets a door that was left open open again. What the store remembers is applied. */
   register(eid: number, key: string, spec: ChestSpec, sim?: SimWorld): void {
-    const c: Chest = { ...spec, eid, key, refillAt: null, doorOpen: false, body: null };
+    const c: Chest = {
+      ...spec,
+      eid,
+      key,
+      refillAt: null,
+      doorOpen: false,
+      body: null,
+      poolHandle: INVALID_POOL_HANDLE,
+    };
     this.chests.set(eid, c);
     const rec = this.opts.store?.load("chest", key);
-    if (!rec) return;
     if (c.kind === "door") {
-      if (sim) this.setDoor(sim, c, true);
-    } else if (rec.respawnAt !== null && this.now() < rec.respawnAt) {
-      c.refillAt = rec.respawnAt;
-    } else {
-      this.opts.store!.clear("chest", key); // refilled while the server was down
+      if (rec && sim) this.setDoor(sim, c, true);
+      else if (rec && !sim) return;
+      return;
+    }
+
+    const now = this.now();
+    if (rec) {
+      if (rec.respawnAt !== null && now < rec.respawnAt) {
+        c.refillAt = rec.respawnAt;
+      } else {
+        this.opts.store!.clear("chest", key); // refilled while the server was down
+      }
+    }
+
+    if (this.pool) {
+      const existing = this.pool.findByKey(key);
+      const delayMs = spec.refillSeconds !== undefined ? Math.max(0, spec.refillSeconds * 1000) : 600_000;
+      let handle = existing;
+      if (handle === INVALID_POOL_HANDLE) {
+        const px = Transform.px[eid];
+        const py = Transform.py[eid];
+        const pz = Transform.pz[eid];
+        const inCooldown = c.refillAt !== null;
+        handle = this.pool.allocateSlot({
+          key,
+          kind: RespawnKind.Chest,
+          state: inCooldown ? SlotState.CooldownRespawn : SlotState.Active,
+          archetypeId: spec.table ?? "chest",
+          liveEid: inCooldown ? -1 : eid,
+          stock: inCooldown ? 0 : 1,
+          maxStock: 1,
+          homeX: Number.isFinite(px) ? px! : 0,
+          homeY: Number.isFinite(py) ? py! : 0,
+          homeZ: Number.isFinite(pz) ? pz! : 0,
+          respawnDelayMs: delayMs,
+          respawnAtMs: inCooldown ? c.refillAt! : Number.NaN,
+        });
+      } else if (rec) {
+        if (c.refillAt !== null) {
+          this.pool.scheduleRespawn(handle, now, Math.max(0, c.refillAt - now));
+        } else {
+          this.pool.markActive(handle, eid, 1);
+        }
+      } else {
+        const idx = handle & 0xffff;
+        if (this.pool.state[idx] === SlotState.CooldownRespawn && Number.isFinite(this.pool.respawnAtMs[idx]!)) {
+          if (now >= this.pool.respawnAtMs[idx]!) {
+            c.refillAt = null;
+            this.pool.markActive(handle, eid, 1);
+          } else {
+            c.refillAt = this.pool.respawnAtMs[idx]!;
+          }
+        } else {
+          this.pool.markActive(handle, eid, 1);
+        }
+        if (this.pool.respawnDelayMs[idx]! === 0 && spec.refillSeconds !== undefined) {
+          this.pool.respawnDelayMs[idx] = delayMs;
+        }
+      }
+      if (handle !== INVALID_POOL_HANDLE) {
+        c.poolHandle = handle;
+        this.slotToChest.set(handle & 0xffff, c);
+      }
     }
   }
 
@@ -122,6 +203,9 @@ export class ChestSystem implements SimSystem {
     this.changed.delete(c);
     c.eid = newEid;
     this.chests.set(newEid, c);
+    if (this.pool && c.poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(c.poolHandle)) {
+      if (c.refillAt === null) this.pool.setLiveEid(c.poolHandle, newEid);
+    }
     this.changed.add(c);
   }
 
@@ -162,8 +246,22 @@ export class ChestSystem implements SimSystem {
       else this.opts.store?.clear("chest", c.key);
       return { ok: true, items: 0 };
     }
-    c.refillAt = this.now() + (c.refillSeconds ?? 600) * 1000;
-    this.opts.store?.save({ kind: "chest", key: c.key, state: "open", at: this.now(), respawnAt: c.refillAt });
+    const now = this.now();
+    if (this.pool && c.poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(c.poolHandle)) {
+      const idx = c.poolHandle & 0xffff;
+      const delayMs =
+        c.refillSeconds !== undefined
+          ? Math.max(0, c.refillSeconds * 1000)
+          : this.pool.respawnDelayMs[idx]! > 0
+            ? this.pool.respawnDelayMs[idx]!
+            : 600_000;
+      this.pool.stock[idx] = 0;
+      this.pool.scheduleRespawn(c.poolHandle, now, delayMs);
+      c.refillAt = this.pool.respawnAtMs[idx]!;
+    } else {
+      c.refillAt = now + (c.refillSeconds ?? 600) * 1000;
+    }
+    this.opts.store?.save({ kind: "chest", key: c.key, state: "open", at: now, respawnAt: c.refillAt });
     this.changed.add(c);
     return { ok: true, items: this.opts.drop(sim, c.table ?? "", Transform.px[eid]!, Transform.pz[eid]!, holder > 0 ? holder : 0) };
   }
@@ -187,6 +285,27 @@ export class ChestSystem implements SimSystem {
   /** Chests whose timer has come due are full again. */
   step(): void {
     const now = this.now();
+    if (this.pool) {
+      const readyCount = this.pool.pollReady(now, this.readyScratch, RespawnKind.Chest, false);
+      for (let i = 0; i < readyCount; i++) {
+        const c = this.slotToChest.get(this.readyScratch[i]!);
+        if (!c) continue;
+        c.refillAt = null;
+        this.pool.markActive(c.poolHandle, c.eid, 1);
+        this.opts.store?.clear("chest", c.key);
+        this.changed.add(c);
+      }
+      if (this.slotToChest.size < this.chests.size) {
+        for (const c of this.chests.values()) {
+          if (c.poolHandle === INVALID_POOL_HANDLE && c.refillAt !== null && now >= c.refillAt) {
+            c.refillAt = null;
+            this.opts.store?.clear("chest", c.key);
+            this.changed.add(c);
+          }
+        }
+      }
+      return;
+    }
     for (const c of this.chests.values()) {
       if (c.refillAt !== null && now >= c.refillAt) {
         c.refillAt = null;

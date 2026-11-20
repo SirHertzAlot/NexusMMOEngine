@@ -17,6 +17,8 @@
     "wildlife:plan": "npm run build && node dist/src/procgen/wildlife-plan.js",
     "bake:world": "npm run build && node dist/src/bake-world.js",
     "bake:world:force": "npm run build && node dist/src/bake-world.js --force",
+    "bake:pools": "node dist/src/pools/bake-pools.js",
+    "bake:pools:compile": "npm run build && node dist/src/pools/bake-pools.js",
     "preview:world": "npm run build && node dist/src/preview-world.js",
     "bench:transport": "node dist/src/net/transport-bench.js",
     "bench:contention": "npm run build && node dist/src/sab-contention-bench.js"

@@ -14,6 +14,7 @@
  */
 
 import { hasComponent } from "bitecs";
+import { fnv1a32 } from "@mmo-engine/scatter";
 import { z } from "zod";
 import {
   computeContractTotals,
@@ -34,6 +35,13 @@ import type {
   ItemProvenanceView,
 } from "@mmo-engine/protocol";
 import { Health, Transform } from "../components.js";
+import {
+  INVALID_POOL_HANDLE,
+  PoolSlotFlags,
+  RespawnKind,
+  SlotState,
+  type SpawnPoolSoA,
+} from "../pools/spawn-pool-soa.js";
 import type { GatewayExtension, ExtensionPlayer } from "../net/extension.js";
 import type { CivicTelemetryMetrics } from "../logging/civic-metrics.js";
 import type { SystemAccess } from "../system-access.js";
@@ -178,6 +186,8 @@ export interface CivicServiceOptions {
   escortOptions?: Omit<CaravanEscortOptions, "onEscortAmbush">;
   /** Track C7a: optional zero-alloc SAB telemetry gauge sink updated once per sweep. */
   metrics?: CivicTelemetryMetrics;
+  /** Optional SAB SpawnPoolSoA mirroring finite civic veins and 1 Hz respawn polls. */
+  respawnPool?: SpawnPoolSoA;
 }
 
 export class CivicService implements SimSystem, GatewayExtension {
@@ -201,6 +211,10 @@ export class CivicService implements SimSystem, GatewayExtension {
   private readonly sitesById = new Map<string, CivicSiteDef>();
   private readonly foundriesById = new Map<string, CivicFoundryDef>();
   private readonly traitsById = new Map<string, VeinTraitDef>();
+  private readonly veinTemplateByHash = new Map<number, CivicRules["veins"][number]>();
+  private readonly veinTemplateById = new Map<string, CivicRules["veins"][number]>();
+  private readonly veinKeyToHandle = new Map<string, number>();
+  private readonly slotToVeinKey = new Map<number, string>();
   private readonly enteredPlayers = new Map<number, ExtensionPlayer>();
   private readonly lastSurveyAt = new Map<number, number>();
   private readonly lastExtractAt = new Map<number, number>();
@@ -209,6 +223,10 @@ export class CivicService implements SimSystem, GatewayExtension {
   private readonly activeVeinsCountStmt;
   private readonly openContractsCountStmt;
 
+  private respawnPool: SpawnPoolSoA | undefined;
+  private veinReadyScratch: Int32Array = new Int32Array(0);
+  private hasUnpooledVeins = false;
+  private needsVeinMaintenance = true;
   private veinBatchCounter = 0;
   private currentTick = 0;
   private lastSim: SimWorld | null = null;
@@ -232,6 +250,9 @@ export class CivicService implements SimSystem, GatewayExtension {
     this.veinBatchCounter = this.store.listVeins(true).length;
     this.store.expireDueContracts(t);
     this.expireDueFoundries(t);
+    if (opts.respawnPool) {
+      this.seedVeinsFromPool(opts.respawnPool);
+    }
     this.ensureActiveVeins(t);
   }
 
@@ -242,6 +263,12 @@ export class CivicService implements SimSystem, GatewayExtension {
     for (const f of rules.foundries) this.foundriesById.set(f.id, f);
     this.traitsById.clear();
     for (const tr of rules.traits) this.traitsById.set(tr.id, tr);
+    this.veinTemplateByHash.clear();
+    this.veinTemplateById.clear();
+    for (const v of rules.veins) {
+      this.veinTemplateByHash.set(fnv1a32(v.id) >>> 0, v);
+      this.veinTemplateById.set(v.id, v);
+    }
   }
 
   getRules(): CivicRules {
@@ -251,9 +278,211 @@ export class CivicService implements SimSystem, GatewayExtension {
   setRules(next: CivicRules): void {
     this.rules = next;
     this.rebuildRuleIndexes(next);
+    this.needsVeinMaintenance = true;
     const t = this.now();
     this.store.seedDefaults(next, t);
     this.ensureActiveVeins(t);
+  }
+
+  /** Packed `SpawnPoolSoA` slot handle for vein batch `veinBatchId`, or `0` (`INVALID_POOL_HANDLE`) if absent. */
+  poolSlotOf(veinBatchId: string): number {
+    return this.veinKeyToHandle.get(veinBatchId) ?? INVALID_POOL_HANDLE;
+  }
+
+  /**
+   * Bind a `SpawnPoolSoA` to `CivicService`, seeding any existing `RespawnKind.CivicVein`
+   * slots from the SAB into SQLite and mirroring all active/cooldown store veins into SAB.
+   */
+  seedVeinsFromPool(pool: SpawnPoolSoA): void {
+    this.respawnPool = pool;
+    if (this.veinReadyScratch.length < pool.capacity) {
+      this.veinReadyScratch = new Int32Array(Math.max(64, pool.capacity));
+    }
+    this.veinKeyToHandle.clear();
+    this.slotToVeinKey.clear();
+    this.hasUnpooledVeins = false;
+    this.needsVeinMaintenance = true;
+    const nowMs = this.now();
+
+    this.store.runImmediate(() => {
+      const hw = pool.highWater;
+      for (let i = 0; i < hw; i++) {
+        if (pool.state[i] === SlotState.Free || pool.kind[i] !== RespawnKind.CivicVein) continue;
+        const handle = pool.handleAtSlot(i);
+        const key = pool.getKeyAtSlot(i);
+        if (handle === INVALID_POOL_HANDLE || !key) continue;
+
+        const tmpl = this.resolveVeinTemplate(pool.archetypeHash[i]! >>> 0, key);
+        if (!tmpl) continue;
+
+        const suffixMatch = /-(\d+)$/.exec(key);
+        if (suffixMatch) {
+          const n = Number(suffixMatch[1]);
+          if (Number.isInteger(n) && n > this.veinBatchCounter) {
+            this.veinBatchCounter = n;
+          }
+        }
+
+        const existing = this.store.getVein(key);
+        if (!existing) {
+          const anchorLen = Math.max(1, tmpl.spawnAnchors.length);
+          const anchorIdx = pool.anchorIndex[i]! % anchorLen;
+          const traitLen = Math.max(1, tmpl.traitPool.length);
+          const traitId = tmpl.traitPool[anchorIdx % traitLen] ?? "bog-standard";
+          const stock = Math.max(0, pool.stock[i]!);
+          const maxStock = Math.max(stock, pool.maxStock[i]! > 0 ? pool.maxStock[i]! : tmpl.stock);
+          const st = pool.state[i]!;
+          const respawnAt =
+            st === SlotState.CooldownRespawn && Number.isFinite(pool.respawnAtMs[i]!)
+              ? pool.respawnAtMs[i]!
+              : null;
+          const isBaseline = tmpl.isBaseline || (pool.flags[i]! & PoolSlotFlags.Baseline) !== 0;
+          this.store.upsertVein({
+            veinBatchId: key,
+            templateId: tmpl.id,
+            traitId,
+            material: tmpl.material,
+            x: pool.homeX[i]!,
+            z: pool.homeZ[i]!,
+            anchorIndex: anchorIdx,
+            stock,
+            maxStock,
+            discoveredByCharId: isBaseline ? 0 : null,
+            discoveredByName: isBaseline ? "Regional Survey" : null,
+            discoveredAt: isBaseline ? nowMs : null,
+            respawnAt,
+            createdAt: nowMs,
+          });
+          if (pool.respawnDelayMs[i]! === 0 && tmpl.respawnDelayMs > 0) {
+            pool.respawnDelayMs[i] = tmpl.respawnDelayMs;
+          }
+          this.veinKeyToHandle.set(key, handle);
+          this.slotToVeinKey.set(i, key);
+        } else if (pool.state[i] === SlotState.CooldownRespawn || pool.stock[i]! < pool.maxStock[i]!) {
+          const st = pool.state[i]!;
+          const stock = Math.max(0, pool.stock[i]!);
+          const respawnAt =
+            st === SlotState.CooldownRespawn && Number.isFinite(pool.respawnAtMs[i]!)
+              ? pool.respawnAtMs[i]!
+              : null;
+          this.store.upsertVein({
+            ...existing,
+            stock,
+            respawnAt,
+          });
+          this.veinKeyToHandle.set(key, handle);
+          this.slotToVeinKey.set(i, key);
+        } else {
+          this.mirrorVeinToPool(existing, nowMs);
+        }
+      }
+
+      for (const v of this.store.listVeins(true)) {
+        if (v.stock === 0 && v.respawnAt === null) continue;
+        if (!this.veinKeyToHandle.has(v.veinBatchId)) {
+          this.mirrorVeinToPool(v, nowMs);
+        }
+      }
+    });
+  }
+
+  private resolveVeinTemplate(archHash: number, key: string): CivicRules["veins"][number] | undefined {
+    const byHash = this.veinTemplateByHash.get(archHash);
+    if (byHash) return byHash;
+    for (const v of this.rules.veins) {
+      if (key === v.id || key.startsWith(`${v.id}-`) || key.includes(`/${v.id}/`) || key.endsWith(`/${v.id}`)) {
+        return v;
+      }
+    }
+    return undefined;
+  }
+
+  private mirrorVeinToPool(v: StoredVein, nowMs: number): number {
+    const pool = this.respawnPool;
+    if (!pool) {
+      this.hasUnpooledVeins = true;
+      return INVALID_POOL_HANDLE;
+    }
+    const tmpl = this.veinTemplateById.get(v.templateId);
+    const respawnDelayMs = tmpl?.respawnDelayMs ?? 30_000;
+    let handle = this.veinKeyToHandle.get(v.veinBatchId) ?? pool.findByKey(v.veinBatchId);
+
+    if (handle !== INVALID_POOL_HANDLE && pool.isValidHandle(handle)) {
+      const idx = handle & 0xffff;
+      pool.maxStock[idx] = v.maxStock;
+      pool.respawnDelayMs[idx] = respawnDelayMs;
+      pool.anchorIndex[idx] = v.anchorIndex & 0xffff;
+      pool.setHome(handle, v.x, 0, v.z);
+      if (v.stock > 0) {
+        pool.markActive(handle, -1, v.stock);
+      } else if (v.respawnAt !== null) {
+        pool.stock[idx] = 0;
+        pool.scheduleRespawn(handle, nowMs, Math.max(0, v.respawnAt - nowMs));
+      } else {
+        pool.stock[idx] = 0;
+        pool.state[idx] = SlotState.Exhausted;
+        pool.respawnAtMs[idx] = Number.NaN;
+      }
+      this.veinKeyToHandle.set(v.veinBatchId, handle);
+      this.slotToVeinKey.set(idx, v.veinBatchId);
+      return handle;
+    }
+
+    if (v.stock === 0 && v.respawnAt === null) {
+      return INVALID_POOL_HANDLE;
+    }
+
+    const state = v.stock > 0 ? SlotState.Active : SlotState.CooldownRespawn;
+    const flags = (tmpl?.isBaseline ? PoolSlotFlags.Baseline : 0) | PoolSlotFlags.Persistent;
+    try {
+      handle = pool.allocateSlot({
+        key: v.veinBatchId,
+        kind: RespawnKind.CivicVein,
+        state,
+        flags,
+        archetypeId: v.templateId,
+        modelId: v.material,
+        stock: v.stock,
+        maxStock: v.maxStock,
+        anchorIndex: v.anchorIndex & 0xffff,
+        homeX: v.x,
+        homeY: 0,
+        homeZ: v.z,
+        respawnDelayMs,
+        respawnAtMs: state === SlotState.CooldownRespawn ? (v.respawnAt ?? Number.NaN) : Number.NaN,
+      });
+    } catch {
+      this.hasUnpooledVeins = true;
+      return INVALID_POOL_HANDLE;
+    }
+    if (handle === INVALID_POOL_HANDLE) {
+      this.hasUnpooledVeins = true;
+      return INVALID_POOL_HANDLE;
+    }
+    this.veinKeyToHandle.set(v.veinBatchId, handle);
+    this.slotToVeinKey.set(handle & 0xffff, v.veinBatchId);
+    return handle;
+  }
+
+  private freeVeinFromPool(veinBatchId: string, fallbackSlotIdx = -1): void {
+    const pool = this.respawnPool;
+    const handle =
+      this.veinKeyToHandle.get(veinBatchId) ??
+      (fallbackSlotIdx >= 0 && pool ? pool.handleAtSlot(fallbackSlotIdx) : INVALID_POOL_HANDLE);
+    this.veinKeyToHandle.delete(veinBatchId);
+    if (fallbackSlotIdx >= 0) this.slotToVeinKey.delete(fallbackSlotIdx);
+    if (handle !== INVALID_POOL_HANDLE && pool) {
+      this.slotToVeinKey.delete(handle & 0xffff);
+      pool.freeSlot(handle);
+    }
+  }
+
+  private nextUniqueBatchId(templateId: string): string {
+    let candidate = `${templateId}-${++this.veinBatchCounter}`;
+    while (this.store.getVein(candidate) !== undefined) {
+      candidate = `${templateId}-${++this.veinBatchCounter}`;
+    }
+    return candidate;
   }
 
   provenanceOf(itemId: number): ItemProvenanceView | undefined {
@@ -319,7 +548,7 @@ export class CivicService implements SimSystem, GatewayExtension {
     this.sweepTrafficWear(sim, t);
     this.expireDueFoundries(t);
     this.store.expireDueContracts(t);
-    this.ensureActiveVeins(t);
+    this.ensureActiveVeins(t, true);
     if (metrics) {
       this.recordTelemetrySweep(metrics, sweepStartMs);
     }
@@ -436,40 +665,92 @@ export class CivicService implements SimSystem, GatewayExtension {
     }
   }
 
+  private rotateDepletedVein(
+    v: StoredVein | undefined,
+    tmpl: CivicRules["veins"][number],
+    prevAnchorIdx: number,
+    nowMs: number,
+    oldKey: string,
+    slotIdx = -1,
+  ): void {
+    const nextAnchorIdx = (prevAnchorIdx + 1) % tmpl.spawnAnchors.length;
+    const anchor = tmpl.spawnAnchors[nextAnchorIdx]!;
+    const nextTraitIdx = (prevAnchorIdx + 1) % tmpl.traitPool.length;
+    const nextTrait = tmpl.traitPool[nextTraitIdx]!;
+    // Mint fresh rotated batch ID so provenance distinguishes historical seams!
+    const nextBatchId = this.nextUniqueBatchId(tmpl.id);
+    if (v) {
+      // Mark old exhausted batch non-respawning so history doesn't respawn it twice.
+      this.store.upsertVein({ ...v, respawnAt: null });
+    }
+    const rotated: StoredVein = {
+      veinBatchId: nextBatchId,
+      templateId: tmpl.id,
+      traitId: nextTrait,
+      material: tmpl.material,
+      x: anchor.x,
+      z: anchor.z,
+      anchorIndex: nextAnchorIdx,
+      stock: tmpl.stock,
+      maxStock: tmpl.stock,
+      discoveredByCharId: null,
+      discoveredByName: null,
+      discoveredAt: null,
+      respawnAt: null,
+      createdAt: nowMs,
+    };
+    this.store.upsertVein(rotated);
+    if (this.respawnPool) {
+      this.freeVeinFromPool(oldKey, slotIdx);
+      this.mirrorVeinToPool(rotated, nowMs);
+    }
+  }
+
   /** Guarantees `minActivePerRegion` active veins and rotates depleted respawned veins across anchors. */
-  ensureActiveVeins(nowMs: number): void {
+  ensureActiveVeins(nowMs: number, fromStep = false): void {
     if (this.rules.veins.length === 0) return;
+
+    let poolReadyCount = 0;
+    if (this.respawnPool) {
+      poolReadyCount = this.respawnPool.pollReady(
+        nowMs,
+        this.veinReadyScratch,
+        RespawnKind.CivicVein,
+        false,
+      );
+      if (fromStep && poolReadyCount === 0 && !this.needsVeinMaintenance && !this.hasUnpooledVeins) {
+        return;
+      }
+    }
+
+    this.maintainVeins(nowMs, poolReadyCount);
+  }
+
+  private maintainVeins(nowMs: number, poolReadyCount: number): void {
     this.store.runImmediate(() => {
+      // 0. Rotate any pool-polled ready veins first (O(ready) SAB scan).
+      if (this.respawnPool && poolReadyCount > 0) {
+        for (let i = 0; i < poolReadyCount; i++) {
+          const slotIdx = this.veinReadyScratch[i]!;
+          const oldKey = this.slotToVeinKey.get(slotIdx) ?? this.respawnPool.getKeyAtSlot(slotIdx);
+          if (!oldKey) continue;
+          const v = this.store.getVein(oldKey);
+          const tmpl = v
+            ? this.veinTemplateById.get(v.templateId)
+            : this.veinTemplateByHash.get(this.respawnPool.archetypeHash[slotIdx]! >>> 0);
+          if (!tmpl) continue;
+          const prevAnchorIdx = v ? v.anchorIndex : this.respawnPool.anchorIndex[slotIdx]!;
+          this.rotateDepletedVein(v, tmpl, prevAnchorIdx, nowMs, oldKey, slotIdx);
+        }
+      }
+
       const existing = this.store.listVeins(true);
       // 1. Respawn any depleted veins whose wall-clock respawn delay elapsed -> rotate anchor & trait!
       for (const v of existing) {
         if (v.stock > 0 || v.respawnAt === null || nowMs < v.respawnAt) continue;
-        const tmpl = this.rules.veins.find((t) => t.id === v.templateId);
+        const tmpl = this.veinTemplateById.get(v.templateId);
         if (!tmpl) continue;
-        const nextAnchorIdx = (v.anchorIndex + 1) % tmpl.spawnAnchors.length;
-        const anchor = tmpl.spawnAnchors[nextAnchorIdx]!;
-        const nextTraitIdx = (v.anchorIndex + 1) % tmpl.traitPool.length;
-        const nextTrait = tmpl.traitPool[nextTraitIdx]!;
-        // Mint fresh rotated batch ID so provenance distinguishes historical seams!
-        const nextBatchId = `${tmpl.id}-${++this.veinBatchCounter}`;
-        // Mark old exhausted batch non-respawning so history doesn't respawn it twice.
-        this.store.upsertVein({ ...v, respawnAt: null });
-        this.store.upsertVein({
-          veinBatchId: nextBatchId,
-          templateId: tmpl.id,
-          traitId: nextTrait,
-          material: tmpl.material,
-          x: anchor.x,
-          z: anchor.z,
-          anchorIndex: nextAnchorIdx,
-          stock: tmpl.stock,
-          maxStock: tmpl.stock,
-          discoveredByCharId: null,
-          discoveredByName: null,
-          discoveredAt: null,
-          respawnAt: null,
-          createdAt: nowMs,
-        });
+        this.rotateDepletedVein(v, tmpl, v.anchorIndex, nowMs, v.veinBatchId);
       }
 
       // 2. Enforce baseline active guarantee across region
@@ -481,12 +762,12 @@ export class CivicService implements SimSystem, GatewayExtension {
         const tmpl = sourcePool[spin % sourcePool.length]!;
         spin++;
         if (active.some((v) => v.templateId === tmpl.id)) continue;
-        const batchNum = ++this.veinBatchCounter;
-        const anchorIdx = (batchNum - 1) % tmpl.spawnAnchors.length;
+        const nextBatchId = this.nextUniqueBatchId(tmpl.id);
+        const anchorIdx = (this.veinBatchCounter - 1) % tmpl.spawnAnchors.length;
         const anchor = tmpl.spawnAnchors[anchorIdx]!;
-        const traitId = tmpl.traitPool[(batchNum - 1) % tmpl.traitPool.length]!;
-        this.store.upsertVein({
-          veinBatchId: `${tmpl.id}-${batchNum}`,
+        const traitId = tmpl.traitPool[(this.veinBatchCounter - 1) % tmpl.traitPool.length]!;
+        const spawned: StoredVein = {
+          veinBatchId: nextBatchId,
           templateId: tmpl.id,
           traitId,
           material: tmpl.material,
@@ -500,8 +781,16 @@ export class CivicService implements SimSystem, GatewayExtension {
           discoveredAt: tmpl.isBaseline ? nowMs : null,
           respawnAt: null,
           createdAt: nowMs,
-        });
+        };
+        this.store.upsertVein(spawned);
+        if (this.respawnPool) {
+          this.mirrorVeinToPool(spawned, nowMs);
+        }
         active = this.store.listVeins(false);
+      }
+
+      if (this.respawnPool) {
+        this.needsVeinMaintenance = false;
       }
     });
   }
@@ -794,16 +1083,31 @@ export class CivicService implements SimSystem, GatewayExtension {
       return;
     }
 
+    const pool = this.respawnPool;
+    const veinHandle = pool ? (this.veinKeyToHandle.get(veinBatchId) ?? pool.findByKey(veinBatchId)) : INVALID_POOL_HANDLE;
+    if (pool && veinHandle !== INVALID_POOL_HANDLE && pool.isValidHandle(veinHandle)) {
+      const idx = veinHandle & 0xffff;
+      pool.respawnDelayMs[idx] = respawnDelayMs;
+      pool.decrementStock(veinHandle, extracted.extracted, t);
+      if (extracted.vein.stock === 0 && extracted.vein.respawnAt !== null) {
+        pool.respawnAtMs[idx] = extracted.vein.respawnAt;
+      }
+    }
+
     if (!this.opts.grantMaterial(check.charId, vein.material, extracted.extracted)) {
       // Defensive rollback if pouch refused concurrently: restore extracted stock cleanly.
       this.store.runImmediate(() => {
         const cur = this.store.getVein(veinBatchId);
         if (cur) {
+          const restoredStock = Math.min(cur.maxStock, cur.stock + extracted.extracted);
           this.store.upsertVein({
             ...cur,
-            stock: Math.min(cur.maxStock, cur.stock + extracted.extracted),
+            stock: restoredStock,
             respawnAt: null,
           });
+          if (pool && veinHandle !== INVALID_POOL_HANDLE && pool.isValidHandle(veinHandle)) {
+            pool.markActive(veinHandle, -1, restoredStock);
+          }
         }
       });
       this.sendNotice(player, false, "pouch_full", "pouch full; extraction cancelled");
@@ -812,6 +1116,7 @@ export class CivicService implements SimSystem, GatewayExtension {
 
     this.lastExtractAt.set(check.charId, t);
     if (extracted.vein.stock === 0) {
+      this.needsVeinMaintenance = true;
       this.ensureActiveVeins(t);
     }
 

@@ -144,6 +144,11 @@ export function createSystems(ctx) {
   // Death: players respawn at the gateway's spawn grid, bots rise where
   // they fell. Drops and quest kills route through lazy module refs. A
   // duelist felled by their opponent loses the duel instead of dying.
+  const deathPool = config.respawnPool
+    ? ("pool" in config.respawnPool
+        ? config.respawnPool
+        : { pool: config.respawnPool, slotOf: config.getPoolSlotOf })
+    : undefined;
   const death = new DeathSystem(
     config.hooks,
     30,
@@ -155,7 +160,9 @@ export function createSystems(ctx) {
       config.getQuests()?.onDeath(s, ev, (e) => config.getKindOf(e));
     },
     body,
-    duels
+    duels,
+    config.getPoolSlotOf,
+    deathPool,
   );
 
   return { stamina, body, magic, abilities, status, telegraphs, duels, combat, death };

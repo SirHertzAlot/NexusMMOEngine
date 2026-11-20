@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { GatheringRules } from "@mmo-engine/rules";
 import type { PouchMaterial, PouchMessage, ResourceNodeView } from "@mmo-engine/protocol";
 import { Transform } from "../components.js";
+import { INVALID_POOL_HANDLE, RespawnKind, SlotState, type SpawnPoolSoA } from "../pools/spawn-pool-soa.js";
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
@@ -62,6 +63,8 @@ export interface GatheringOptions {
   regrowHourMs?: number;
   /** Train the gatherer's skill (lowercase id, e.g. "mining") at a difficulty 0..1 against a target key. */
   train?: (avatar: number, skill: string, difficulty: number, key: number) => void;
+  /** Optional SAB SpawnPoolSoA mirroring resource node stock and regrowth timers. */
+  pool?: SpawnPoolSoA;
 }
 
 export type GatherResult =
@@ -74,6 +77,7 @@ interface Node extends ResourceNodeSpec {
   name: string;
   max: number;
   regrowAt: number | null;
+  poolHandle: number;
 }
 
 const round2 = (v: number): number => Math.round(v * 100) / 100;
@@ -99,6 +103,9 @@ export class GatheringSystem implements SimSystem {
   private readonly nodes = new Map<number, Node>();
   private readonly pouches = new Map<number, Map<string, number>>();
   private readonly lastGather = new Map<number, number>();
+  private readonly slotToNode = new Map<number, Node>();
+  private readonly pool?: SpawnPoolSoA;
+  private readonly readyScratch: Int32Array;
   private changed = new Set<Node>();
   private reachM: number;
   private cooldownMs: number;
@@ -118,6 +125,10 @@ export class GatheringSystem implements SimSystem {
     this.regrowCheckSeconds = opts.regrowCheckSeconds ?? 1;
     this.regrowHourMs = opts.regrowHourMs ?? HOUR_MS;
     this.now = opts.now ?? Date.now;
+    this.pool = opts.pool;
+    this.readyScratch = opts.pool
+      ? new Int32Array(Math.max(64, opts.pool.capacity))
+      : new Int32Array(0);
   }
 
   /** Apply gathering.json on a rules reload (EG11). A node already worked out keeps the regrow time it was given. */
@@ -129,15 +140,115 @@ export class GatheringSystem implements SimSystem {
     this.trainPerTier = r.trainDifficultyPerTier;
     this.regrowCheckSeconds = r.regrowCheckSeconds;
     this.regrowHourMs = r.regrowHourSeconds * 1000;
+    if (this.pool) {
+      for (const node of this.nodes.values()) {
+        if (node.poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(node.poolHandle)) {
+          this.pool.respawnDelayMs[node.poolHandle & 0xffff] =
+            node.regrowHours > 0 ? node.regrowHours * this.regrowHourMs : 0;
+        }
+      }
+    }
+  }
+
+  /** Packed `SpawnPoolSoA` slot handle for resource node `eid`, or `0` (`INVALID_POOL_HANDLE`) if absent. */
+  poolSlotOf(eid: number): number {
+    return this.nodes.get(eid)?.poolHandle ?? INVALID_POOL_HANDLE;
   }
 
   /** Make entity `eid` the resource node `key`: its saved stock if it has one, else full. */
   register(eid: number, key: string, spec: ResourceNodeSpec): void {
     const max = Math.max(0, Math.round(spec.stock));
     const saved = this.opts.store?.loadNode(key);
-    const stock = saved ? Math.min(max, Math.max(0, saved.stock)) : max;
-    const node: Node = { ...spec, key, eid, name: materialName(spec.material), max, stock, regrowAt: saved && stock === 0 ? saved.regrowAt : null };
+    let stock = saved ? Math.min(max, Math.max(0, saved.stock)) : max;
+    let regrowAt: number | null = saved && stock === 0 ? saved.regrowAt : null;
+    let poolHandle = INVALID_POOL_HANDLE;
+
+    if (this.pool) {
+      const existingHandle = this.pool.findByKey(key);
+      const defaultDelayMs = spec.regrowHours > 0 ? spec.regrowHours * this.regrowHourMs : 0;
+      if (existingHandle === INVALID_POOL_HANDLE) {
+        const px = Transform.px[eid];
+        const py = Transform.py[eid];
+        const pz = Transform.pz[eid];
+        const initState =
+          stock > 0
+            ? SlotState.Active
+            : regrowAt !== null
+              ? SlotState.CooldownRespawn
+              : SlotState.Exhausted;
+        poolHandle = this.pool.allocateSlot({
+          key,
+          kind: RespawnKind.ResourceNode,
+          state: initState,
+          archetypeId: spec.kind,
+          modelId: spec.material,
+          liveEid: eid,
+          stock,
+          maxStock: max,
+          homeX: Number.isFinite(px) ? px! : 0,
+          homeY: Number.isFinite(py) ? py! : 0,
+          homeZ: Number.isFinite(pz) ? pz! : 0,
+          footprintRadiusM: Math.max(0, spec.halfX, spec.halfZ),
+          respawnDelayMs: defaultDelayMs,
+          respawnAtMs: initState === SlotState.CooldownRespawn ? (regrowAt ?? Number.NaN) : Number.NaN,
+        });
+      } else {
+        poolHandle = existingHandle;
+        const idx = poolHandle & 0xffff;
+        if (!saved) {
+          const st = this.pool.state[idx]!;
+          if (st === SlotState.CooldownRespawn) {
+            stock = 0;
+            regrowAt = Number.isFinite(this.pool.respawnAtMs[idx]!) ? this.pool.respawnAtMs[idx]! : null;
+            this.pool.setLiveEid(poolHandle, eid);
+          } else if (st === SlotState.Exhausted) {
+            stock = 0;
+            regrowAt = null;
+            this.pool.setLiveEid(poolHandle, eid);
+          } else {
+            if (this.pool.maxStock[idx]! === 0 && max > 0) {
+              this.pool.maxStock[idx] = max;
+              this.pool.stock[idx] = max;
+            }
+            stock = Math.min(max, Math.max(0, this.pool.stock[idx]!));
+            regrowAt = null;
+            this.pool.markActive(poolHandle, eid, stock);
+          }
+        } else if (stock > 0) {
+          this.pool.markActive(poolHandle, eid, stock);
+        } else if (regrowAt !== null) {
+          const now = this.now();
+          if (now >= regrowAt) {
+            this.pool.scheduleRespawn(poolHandle, regrowAt, 0);
+          } else {
+            this.pool.scheduleRespawn(poolHandle, now, regrowAt - now);
+          }
+        } else {
+          this.pool.stock[idx] = 0;
+          this.pool.state[idx] = SlotState.Exhausted;
+          this.pool.respawnAtMs[idx] = Number.NaN;
+          this.pool.liveEid[idx] = -1;
+        }
+        if (this.pool.respawnDelayMs[idx]! === 0 && defaultDelayMs > 0) {
+          this.pool.respawnDelayMs[idx] = defaultDelayMs;
+        }
+      }
+    }
+
+    const node: Node = {
+      ...spec,
+      key,
+      eid,
+      name: materialName(spec.material),
+      max,
+      stock,
+      regrowAt,
+      poolHandle,
+    };
     this.nodes.set(eid, node);
+    if (poolHandle !== INVALID_POOL_HANDLE) {
+      this.slotToNode.set(poolHandle & 0xffff, node);
+    }
     // A node that came back while the server was down is full again.
     this.regrow(node);
   }
@@ -171,7 +282,18 @@ export class GatheringSystem implements SimSystem {
     if (dryRun) return { ok: true, material: node.material, name: node.name, count: 0 };
     this.lastGather.set(holder, now);
     node.stock -= 1;
-    if (node.stock === 0) node.regrowAt = node.regrowHours > 0 ? now + node.regrowHours * this.regrowHourMs : null;
+    if (this.pool && node.poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(node.poolHandle)) {
+      this.pool.decrementStock(node.poolHandle, 1, now);
+      if (node.stock === 0) {
+        const idx = node.poolHandle & 0xffff;
+        node.regrowAt =
+          this.pool.state[idx] === SlotState.CooldownRespawn && Number.isFinite(this.pool.respawnAtMs[idx]!)
+            ? this.pool.respawnAtMs[idx]!
+            : null;
+      }
+    } else if (node.stock === 0) {
+      node.regrowAt = node.regrowHours > 0 ? now + node.regrowHours * this.regrowHourMs : null;
+    }
     this.opts.store?.saveNode(node.key, node.stock, node.regrowAt);
     pouch.set(node.material, have + 1);
     if (holder >= 0) this.opts.store?.savePouch(holder, node.material, have + 1);
@@ -183,13 +305,34 @@ export class GatheringSystem implements SimSystem {
   /** Worked-out nodes whose time has come grow back. */
   step(sim: SimWorld, dt: number): void {
     if (sim.currentTick % Math.max(1, Math.round(this.regrowCheckSeconds / dt)) !== 0) return;
-    for (const node of this.nodes.values()) this.regrow(node);
+    const nowMs = this.now();
+    if (this.pool) {
+      const readyCount = this.pool.pollReady(nowMs, this.readyScratch, RespawnKind.ResourceNode, false);
+      for (let i = 0; i < readyCount; i++) {
+        const node = this.slotToNode.get(this.readyScratch[i]!);
+        if (node) this.applyRegrow(node);
+      }
+      if (this.slotToNode.size < this.nodes.size) {
+        for (const node of this.nodes.values()) {
+          if (node.poolHandle === INVALID_POOL_HANDLE) this.regrow(node, nowMs);
+        }
+      }
+      return;
+    }
+    for (const node of this.nodes.values()) this.regrow(node, nowMs);
   }
 
-  private regrow(node: Node): void {
-    if (node.stock > 0 || node.regrowAt === null || this.now() < node.regrowAt) return;
+  private regrow(node: Node, nowMs = this.now()): void {
+    if (node.stock > 0 || node.regrowAt === null || nowMs < node.regrowAt) return;
+    this.applyRegrow(node);
+  }
+
+  private applyRegrow(node: Node): void {
     node.stock = node.max;
     node.regrowAt = null;
+    if (this.pool && node.poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(node.poolHandle)) {
+      this.pool.markActive(node.poolHandle, node.eid, node.max);
+    }
     this.opts.store?.saveNode(node.key, node.stock, null);
     this.changed.add(node);
   }

@@ -22,6 +22,7 @@ import { fnv1a32 } from "@mmo-engine/scatter";
 import type { Breakable as BreakableDef, SpawnTable } from "@mmo-engine/scatter";
 import { BROKEN_VARIANT } from "@mmo-engine/protocol";
 import { AssetRef, BodyConfig, Breakable, Health, Transform, Velocity } from "../components.js";
+import { INVALID_POOL_HANDLE, RespawnKind, SlotState, type SpawnPoolSoA } from "../pools/spawn-pool-soa.js";
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
@@ -51,6 +52,8 @@ export interface BreakSystemOptions {
   materials?: { count(holder: number, material: string): number; spend(holder: number, material: string, n: number): boolean };
   /** How close to a ruin's edge a mender must stand, metres. Default 3. */
   repairReachM?: number;
+  /** Optional SAB SpawnPoolSoA mirroring timed breakable prop respawns. */
+  pool?: SpawnPoolSoA;
   now?: () => number;
 }
 
@@ -84,6 +87,7 @@ interface Ruin {
   key: string | null;
   def: BreakableDef;
   snap: Snap;
+  poolHandle: number;
 }
 
 export type RepairCheck = { ok: true; castSeconds: number; spell: string } | { ok: false; error: string };
@@ -98,6 +102,7 @@ interface Pending {
   eid: number | null;
   /** "debris": the debris that stands there meanwhile. */
   debris: number | null;
+  poolHandle: number;
 }
 
 export class BreakSystem implements SimSystem {
@@ -124,6 +129,10 @@ export class BreakSystem implements SimSystem {
   private readonly keys = new Map<number, string>();
   private readonly eidDefs = new Map<number, BreakableDef>();
   private readonly customStages = new Map<string, readonly number[]>();
+  private readonly eidToPoolHandle = new Map<number, number>();
+  private readonly slotToPending = new Map<number, Pending>();
+  private readonly pool?: SpawnPoolSoA;
+  private readonly readyScratch: Int32Array;
   private pending: Pending[] = [];
   /** Buildings that stand broken and can be mended, by entity. */
   private readonly ruins = new Map<number, Ruin>();
@@ -137,6 +146,15 @@ export class BreakSystem implements SimSystem {
     private readonly opts: BreakSystemOptions = {},
   ) {
     this.now = opts.now ?? Date.now;
+    this.pool = opts.pool;
+    this.readyScratch = opts.pool
+      ? new Int32Array(Math.max(64, opts.pool.capacity))
+      : new Int32Array(0);
+  }
+
+  /** Packed `SpawnPoolSoA` slot handle for breakable prop `eid`, or `0` (`INVALID_POOL_HANDLE`) if absent. */
+  poolSlotOf(eid: number): number {
+    return this.eidToPoolHandle.get(eid) ?? INVALID_POOL_HANDLE;
   }
 
   /**
@@ -152,10 +170,69 @@ export class BreakSystem implements SimSystem {
     if (def.stages && def.stages.length > 0 && hasComponent(sim.ecs, AssetRef, eid)) {
       this.customStages.set(`${AssetRef.assetHash[eid]! >>> 0}:${def.health}`, def.stages);
     }
+
     const rec = this.opts.store?.load("break", key);
+    if (this.pool) {
+      let handle = this.pool.findByKey(key);
+      const delayMs = def.respawnS !== null ? Math.max(0, def.respawnS * 1000) : 0;
+      if (handle === INVALID_POOL_HANDLE) {
+        const px = Transform.px[eid];
+        const py = Transform.py[eid];
+        const pz = Transform.pz[eid];
+        const assetHash = hasComponent(sim.ecs, AssetRef, eid) ? AssetRef.assetHash[eid]! >>> 0 : 0;
+        const radius = hasComponent(sim.ecs, BodyConfig, eid)
+          ? Math.max(0, BodyConfig.radius[eid]!, BodyConfig.halfX[eid]!, BodyConfig.halfZ[eid]!)
+          : 0;
+        handle = this.pool.allocateSlot({
+          key,
+          kind: RespawnKind.BreakableProp,
+          state: SlotState.Active,
+          modelHash: assetHash,
+          liveEid: eid,
+          stock: 1,
+          maxStock: 1,
+          homeX: Number.isFinite(px) ? px! : 0,
+          homeY: Number.isFinite(py) ? py! : 0,
+          homeZ: Number.isFinite(pz) ? pz! : 0,
+          footprintRadiusM: Number.isFinite(radius) ? radius : 0,
+          respawnDelayMs: delayMs,
+        });
+        if (handle !== INVALID_POOL_HANDLE) this.eidToPoolHandle.set(eid, handle);
+      } else {
+        this.eidToPoolHandle.set(eid, handle);
+        const idx = handle & 0xffff;
+        if (!rec) {
+          const st = this.pool.state[idx]!;
+          if (st === SlotState.CooldownRespawn && Number.isFinite(this.pool.respawnAtMs[idx]!)) {
+            const now = this.now();
+            if (now >= this.pool.respawnAtMs[idx]!) {
+              this.pool.markActive(handle, eid, 1);
+            } else {
+              const rAt = this.pool.respawnAtMs[idx]!;
+              const dMs = this.pool.respawnDelayMs[idx]!;
+              this.breakIt(sim, eid, def, { at: rAt - dMs, respawnAt: rAt });
+              return;
+            }
+          } else if (st === SlotState.Exhausted) {
+            this.breakIt(sim, eid, def, { at: this.now(), respawnAt: null });
+            return;
+          } else {
+            this.pool.markActive(handle, eid, 1);
+          }
+        }
+        if (this.pool.respawnDelayMs[idx]! === 0 && delayMs > 0) {
+          this.pool.respawnDelayMs[idx] = delayMs;
+        }
+      }
+    }
+
     if (!rec) return;
     if (rec.respawnAt !== null && this.now() >= rec.respawnAt) {
       this.opts.store!.clear("break", key); // it came back while the server was down
+      const handle = this.eidToPoolHandle.get(eid) ?? INVALID_POOL_HANDLE;
+      if (this.pool && handle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(handle)) {
+        this.pool.markActive(handle, eid, 1);
+      }
       return;
     }
     this.breakIt(sim, eid, def, { at: rec.at, respawnAt: rec.respawnAt });
@@ -177,14 +254,53 @@ export class BreakSystem implements SimSystem {
       }
       const def = this.defs.get(snap.assetHash >>> 0);
       if (!def) continue;
-      this.pending.push({ key: rec.key, def, snap, respawnAt: rec.respawnAt, eid: null, debris: null });
+      let poolHandle = INVALID_POOL_HANDLE;
+      if (this.pool) {
+        const found = this.pool.findByKey(rec.key);
+        const now = this.now();
+        if (found !== INVALID_POOL_HANDLE) {
+          poolHandle = found;
+          this.pool.scheduleRespawn(poolHandle, now, Math.max(0, rec.respawnAt - now));
+        } else {
+          poolHandle = this.pool.allocateSlot({
+            key: rec.key,
+            kind: RespawnKind.BreakableProp,
+            state: SlotState.CooldownRespawn,
+            modelHash: snap.assetHash >>> 0,
+            liveEid: -1,
+            stock: 0,
+            maxStock: 1,
+            homeX: Number.isFinite(snap.tf[0]) ? snap.tf[0]! : 0,
+            homeY: Number.isFinite(snap.tf[1]) ? snap.tf[1]! : 0,
+            homeZ: Number.isFinite(snap.tf[2]) ? snap.tf[2]! : 0,
+            respawnDelayMs: def.respawnS !== null ? Math.max(0, def.respawnS * 1000) : 0,
+            respawnAtMs: rec.respawnAt,
+          });
+        }
+      }
+      const item: Pending = {
+        key: rec.key,
+        def,
+        snap,
+        respawnAt: rec.respawnAt,
+        eid: null,
+        debris: null,
+        poolHandle,
+      };
+      if (this.pool && poolHandle !== INVALID_POOL_HANDLE) {
+        this.slotToPending.set(poolHandle & 0xffff, item);
+      } else {
+        this.pending.push(item);
+      }
     }
   }
 
   step(sim: SimWorld): void {
     if (!this.recovered) this.recover(sim);
     this.respawns(sim);
-    for (const eid of this.bodies(sim.ecs)) {
+    const bodyIds = this.bodies(sim.ecs);
+    for (let i = 0; i < bodyIds.length; i++) {
+      const eid = bodyIds[i]!;
       if (Health.current[eid]! > 0) continue;
       const def = this.eidDefs.get(eid) ?? this.defs.get(AssetRef.assetHash[eid]! >>> 0);
       if (!def) {
@@ -201,6 +317,8 @@ export class BreakSystem implements SimSystem {
     const y = Transform.py[eid]!;
     const z = Transform.pz[eid]!;
     const key = this.keys.get(eid) ?? null;
+    let poolHandle = this.eidToPoolHandle.get(eid) ?? INVALID_POOL_HANDLE;
+    this.eidToPoolHandle.delete(eid);
     const at = again?.at ?? this.now();
     const respawnAt = again ? again.respawnAt : def.respawnS !== null ? at + def.respawnS * 1000 : null;
     this.broken++;
@@ -210,6 +328,43 @@ export class BreakSystem implements SimSystem {
     // A world scatter prop has no scene key: it is found again after a restart by what it was and where it stood.
     const scatterKey = key === null && snap && respawnAt !== null && def.into !== "variant" ? `scatter/${snap.assetHash}/${x.toFixed(1)},${z.toFixed(1)}` : null;
     if (scatterKey !== null && !again) this.opts.store?.save({ kind: "break", key: scatterKey, state: `scatter:${JSON.stringify(snap)}`, at, respawnAt });
+
+    if (this.pool) {
+      const pKey = key ?? scatterKey ?? (respawnAt !== null && snap ? `scatter/${snap.assetHash}/${x.toFixed(1)},${z.toFixed(1)}` : null);
+      if (poolHandle === INVALID_POOL_HANDLE && pKey !== null) {
+        const existing = this.pool.findByKey(pKey);
+        if (existing !== INVALID_POOL_HANDLE) {
+          poolHandle = existing;
+        } else if (respawnAt !== null) {
+          poolHandle = this.pool.allocateSlot({
+            key: pKey,
+            kind: RespawnKind.BreakableProp,
+            state: SlotState.Active,
+            modelHash: snap?.assetHash ? snap.assetHash >>> 0 : 0,
+            liveEid: eid,
+            stock: 1,
+            maxStock: 1,
+            homeX: Number.isFinite(x) ? x : 0,
+            homeY: Number.isFinite(y) ? y : 0,
+            homeZ: Number.isFinite(z) ? z : 0,
+            respawnDelayMs: def.respawnS !== null ? Math.max(0, def.respawnS * 1000) : 0,
+          });
+        }
+      }
+      if (poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(poolHandle)) {
+        const idx = poolHandle & 0xffff;
+        if (respawnAt !== null) {
+          this.pool.stock[idx] = 0;
+          this.pool.scheduleRespawn(poolHandle, at, Math.max(0, respawnAt - at));
+        } else {
+          this.pool.stock[idx] = 0;
+          this.pool.state[idx] = SlotState.Exhausted;
+          this.pool.respawnAtMs[idx] = Number.NaN;
+          this.pool.liveEid[idx] = -1;
+        }
+      }
+    }
+
     let debris: number | null = null;
     this.keys.delete(eid);
     this.eidDefs.delete(eid);
@@ -226,10 +381,25 @@ export class BreakSystem implements SimSystem {
       }
     }
     if (snap && def.repair && def.into === "variant") {
-      this.ruins.set(eid, { key, def, snap });
+      this.ruins.set(eid, { key, def, snap, poolHandle });
       this.changed.add(eid);
     }
-    if (snap && respawnAt !== null) this.pending.push({ key: key ?? scatterKey, def, snap, respawnAt, eid: def.into === "variant" ? eid : null, debris });
+    if (snap && respawnAt !== null) {
+      const pendingItem: Pending = {
+        key: key ?? scatterKey,
+        def,
+        snap,
+        respawnAt,
+        eid: def.into === "variant" ? eid : null,
+        debris,
+        poolHandle,
+      };
+      if (this.pool && poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(poolHandle)) {
+        this.slotToPending.set(poolHandle & 0xffff, pendingItem);
+      } else {
+        this.pending.push(pendingItem);
+      }
+    }
   }
 
   /** Whether a blow from `attacker` can hurt `target`: a building holds out against anyone below its `minStrength` (bodies with no stats pass). */
@@ -276,8 +446,13 @@ export class BreakSystem implements SimSystem {
       this.keys.set(eid, r.key);
       this.opts.store?.clear("break", r.key);
     }
+    if (r.poolHandle !== INVALID_POOL_HANDLE && this.pool?.isValidHandle(r.poolHandle)) {
+      this.slotToPending.delete(r.poolHandle & 0xffff);
+      this.pool.markActive(r.poolHandle, eid, 1);
+      this.eidToPoolHandle.set(eid, r.poolHandle);
+    }
     // A respawn timer, if it had one, no longer applies.
-    this.pending = this.pending.filter((p) => p.eid !== eid);
+    if (this.pending.length > 0) this.pending = this.pending.filter((p) => p.eid !== eid);
     this.ruins.delete(eid);
     this.changed.add(eid);
     return { ok: true };
@@ -319,6 +494,46 @@ export class BreakSystem implements SimSystem {
 
   /** Props whose time has come are back. */
   private respawns(sim: SimWorld): void {
+    if (this.pool) {
+      const now = this.now();
+      const readyCount = this.pool.pollReady(now, this.readyScratch, RespawnKind.BreakableProp, false);
+      for (let i = 0; i < readyCount; i++) {
+        const idx = this.readyScratch[i]!;
+        const p = this.slotToPending.get(idx);
+        if (p) {
+          this.slotToPending.delete(idx);
+          this.restorePending(sim, p);
+        } else {
+          const mHash = this.pool.modelHash[idx]! >>> 0;
+          const aHash = this.pool.archetypeHash[idx]! >>> 0;
+          const def = this.defs.get(mHash) ?? this.defs.get(aHash);
+          if (def) {
+            const handle = this.pool.handleAtSlot(idx);
+            const eid = sim.spawn();
+            addComponent(sim.ecs, Transform, eid);
+            Transform.px[eid] = this.pool.homeX[idx]!;
+            Transform.py[eid] = this.pool.homeY[idx]!;
+            Transform.pz[eid] = this.pool.homeZ[idx]!;
+            Transform.qw[eid] = 1;
+            Transform.sx[eid] = Transform.sy[eid] = Transform.sz[eid] = 1;
+            addComponent(sim.ecs, AssetRef, eid);
+            AssetRef.assetHash[eid] = mHash || aHash;
+            AssetRef.variant[eid] = 0;
+            addComponent(sim.ecs, Health, eid);
+            Health.current[eid] = Health.max[eid] = def.health;
+            addComponent(sim.ecs, Breakable, eid);
+            const key = this.pool.getKeyAtSlot(idx);
+            if (key) {
+              if (!key.startsWith("scatter/")) this.keys.set(eid, key);
+              this.opts.store?.clear("break", key);
+            }
+            this.eidDefs.set(eid, def);
+            this.eidToPoolHandle.set(eid, handle);
+            this.pool.markActive(handle, eid, 1);
+          }
+        }
+      }
+    }
     if (this.pending.length === 0) return;
     const now = this.now();
     const later: Pending[] = [];
@@ -327,17 +542,25 @@ export class BreakSystem implements SimSystem {
         later.push(p);
         continue;
       }
-      if (p.debris !== null) sim.despawn(p.debris);
-      if (p.eid !== null && this.ruins.delete(p.eid)) this.changed.add(p.eid);
-      const eid = p.eid !== null ? p.eid : sim.spawn();
-      restore(sim, eid, p.snap, p.eid !== null);
-      this.eidDefs.set(eid, p.def);
-      if (p.key !== null) {
-        if (!p.key.startsWith("scatter/")) this.keys.set(eid, p.key);
-        this.opts.store?.clear("break", p.key);
-      }
+      this.restorePending(sim, p);
     }
     this.pending = later;
+  }
+
+  private restorePending(sim: SimWorld, p: Pending): void {
+    if (p.debris !== null) sim.despawn(p.debris);
+    if (p.eid !== null && this.ruins.delete(p.eid)) this.changed.add(p.eid);
+    const eid = p.eid !== null ? p.eid : sim.spawn();
+    restore(sim, eid, p.snap, p.eid !== null);
+    this.eidDefs.set(eid, p.def);
+    if (p.key !== null) {
+      if (!p.key.startsWith("scatter/")) this.keys.set(eid, p.key);
+      this.opts.store?.clear("break", p.key);
+    }
+    if (this.pool && p.poolHandle !== INVALID_POOL_HANDLE && this.pool.isValidHandle(p.poolHandle)) {
+      this.pool.markActive(p.poolHandle, eid, 1);
+      this.eidToPoolHandle.set(eid, p.poolHandle);
+    }
   }
 }
 
