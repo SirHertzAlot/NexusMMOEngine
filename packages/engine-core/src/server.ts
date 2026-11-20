@@ -168,13 +168,15 @@ import { Ability, timeOfDayAt, type DayClock } from "@mmo-engine/protocol";
 import { worldInfoFor } from "./terrain/world-info.js";
 import { startPcgService } from "./pcg/boot.js";
 import { ShardStateShipper, SNAPSHOT_UPLOAD_EVERY_TICKS } from "./world/state-shipper.js";
+import { exportCivicSnapshot, importCivicSnapshot } from "./world/civic-sync.js";
 import { WorldCharacterSync } from "./world/character-sync.js";
 import { SocialWorldSync } from "./world/social-sync.js";
 import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
-import { healthHttpHandler } from "./net/health.js";
+import { makeHealthHttpHandler } from "./net/health.js";
+import { CivicWorldBridge, SqliteCivicStore } from "./civic/index.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
-import { armourFactor, RulesError } from "@mmo-engine/rules";
+import { armourFactor, loadCivicRules, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { assembleServerSystems, type ServerModuleContext } from "./modules.js";
@@ -242,6 +244,7 @@ import { BreakSystem, breakDefsOf, ChestSystem, CollapseSystem, loadStructureBre
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import {
+  CivicTelemetryMetrics,
   LogProducer,
   LogProducerClient,
   LogRingBuffer,
@@ -494,6 +497,14 @@ async function main(): Promise<void> {
             records.replaceAll(placeRecordsOf(places["place_records"]));
           } finally {
             records.close();
+          }
+          if (places["civic"] !== undefined) {
+            const civicRecallStore = new SqliteCivicStore(path.join(DATA_DIR, "civic.db"));
+            try {
+              importCivicSnapshot(civicRecallStore, places["civic"], { authoritative: true });
+            } finally {
+              civicRecallStore.close();
+            }
           }
         },
       });
@@ -970,6 +981,18 @@ async function main(): Promise<void> {
       const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
       return def >= 0 && itemsOf().give(character, def).ok;
     },
+    grantItemWithId: (character, item, rank) => {
+      const d = itemsOf().defs;
+      const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
+      if (def < 0) return null;
+      const res = itemsOf().give(character, def);
+      return res.ok ? (res.itemId ?? null) : null;
+    },
+    onCrafted: (character, itemId, _item, _rank, avatarEid, characterName) => {
+      if (itemId !== null) {
+        civicRef?.bindCraftedItemProvenance(character, characterName, itemId, avatarEid);
+      }
+    },
     // Fleet mode (atomic ops A2): with a world client, the craft's
     // commit routes through the coordinator's craftExecute and the
     // produced item is materialised by the settled outcome instead of
@@ -1019,15 +1042,7 @@ async function main(): Promise<void> {
   };
   const weaponOf = (e: number): Weapon | null => {
     if (!hasComponent(sim.ecs, CharacterRef, e)) return creaturesOf().weaponOf(e);
-    const def = itemsOf().mainHandDef(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
-    if (def < 0) return null;
-    const d = itemsOf().defs;
-    return {
-      technique: d.technique[def],
-      item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] },
-      reach: d.length[def],
-      family: d.bases[def],
-    };
+    return itemsOf().weaponForCharacter(CharacterRef.idHi[e] * 4294967296 + CharacterRef.idLo[e]);
   };
   // Creature drops (L2): the items module builds the dropper during assembly.
   // It receives the wallet via ctx.stores (published by the economy module) so creature kills can drop gold (EC1).
@@ -1273,6 +1288,35 @@ async function main(): Promise<void> {
   } | null = null;
   // Slice 4: quests comes from the quests module; lazy ref for the death callback.
   let questsRef: { onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void } | null = null;
+  let civicRef: import("./civic/index.js").CivicService | null = null;
+  let civicWorldBridgeRef: CivicWorldBridge | null = null;
+  const civicMetrics = new CivicTelemetryMetrics();
+  const civicConfig = {
+    dataDir: DATA_DIR,
+    rules: loadCivicRules(process.env.MMO_CIVIC_RULES || path.join(REPO_ROOT, "content", "rules", "civic.json")),
+    dayOf: () => (gameDayOf ? gameDayOf(sim.currentTick) : Math.floor(Date.now() / 86_400_000)),
+    countMaterial: (charId: number, material: string) => gathering.countOf(charId, material),
+    takeMaterial: (charId: number, material: string, qty: number) => gathering.take(charId, material, qty),
+    grantMaterial: (charId: number, material: string, qty: number) => gathering.grant(charId, material, qty),
+    hasMaterialRoom: (charId: number, material: string, qty: number) => gathering.hasRoom(charId, material, qty),
+    hasBagRoom: (charId: number) => itemsOf().store.hasRoom(charId),
+    craftAndGrantItem: (charId: number, item: string, rank: string) => {
+      const d = itemsOf().defs;
+      const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
+      if (def < 0) return null;
+      const res = itemsOf().give(charId, def);
+      return res.ok ? (res.itemId ?? null) : null;
+    },
+    ownsItem: (charId: number, itemId: number) => itemsOf().store.inBagOf(charId, itemId),
+    onSiteStateChange: (siteId: string, stage: number, damaged: boolean) => {
+      civicWorldBridgeRef?.syncSite(siteId, stage, damaged);
+    },
+    onEscortAmbush: (_siteId: string, x: number, z: number) => {
+      const kind = ["bandit", "raider", "goblin", "wolf"].find((k) => creaturesOf().has(k));
+      if (kind) creaturesOf().spawnPack(sim, kind, x, z, [1, 2]);
+    },
+    metrics: civicMetrics,
+  };
   // The tick's systems (roadmap EA9): the core module's instances in the order
   // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
   // set (unknown id, cycle) stops the boot with every problem listed.
@@ -1309,7 +1353,7 @@ async function main(): Promise<void> {
     sim,
     log: (m) => logServerModuleLog(worldLog, m),
     // Slices 2-6: modules read their bootstrap config from here.
-    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig },
+    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
   };
   const assembled = await assembleServerSystems({
     modulesDir: path.join(REPO_ROOT, "modules"),
@@ -1344,6 +1388,10 @@ async function main(): Promise<void> {
     onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void;
   };
   const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;
+  const civic = (assembled.extensions["civic"] as unknown as import("./civic/index.js").CivicService | undefined) ?? null;
+  civicRef = civic;
+  itemsRef.setProvenanceLookup((id) => civic?.provenanceOf(id));
+  itemsRef.setTraitDefs(civicConfig.rules.traits);
   // Combat cluster (slice 5): assign bodyRef for the physics fall callback,
   // magicRef for the rules reloader.
   bodyRef = assembled.byName["body"] as unknown as import("./body.js").BodySystem;
@@ -1362,6 +1410,14 @@ async function main(): Promise<void> {
     character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
     mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
   };
+  if (civic) {
+    civicWorldBridgeRef = new CivicWorldBridge({
+      sim,
+      rules: civicConfig.rules,
+      groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
+    });
+    civicWorldBridgeRef.syncAll(civic.store.listSites());
+  }
   // Domain stores, built by their modules during assembly and published on
   // moduleCtx.stores: the gateway consumes them below. Undefined when the
   // owning module is disabled — the gateway falls back to its in-memory
@@ -1503,8 +1559,8 @@ async function main(): Promise<void> {
     lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
     // A pupil takes one lesson a game day (a real day with no calendar).
     gameDay: gameDayOf,
-    // GET /health for deploy health checks (EA19); PCG's handler composes with it.
-    http: healthHttpHandler,
+    // GET /health and GET /metrics/civic (EA19, C7a); PCG's handler composes with it.
+    http: makeHealthHttpHandler({ renderCivicMetrics: () => civicMetrics.renderPrometheusMetrics() }),
     presence: {
       report: (names) => void worldClient?.reportPresence(names),
       query: (names) => {
@@ -1524,7 +1580,7 @@ async function main(): Promise<void> {
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: assembled.systems,
-    extensions: [quests, dungeons, craftingService],
+    extensions: [quests, dungeons, craftingService, ...(civic ? [civic] : [])],
     items: itemsOf(),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
@@ -1639,8 +1695,14 @@ async function main(): Promise<void> {
         ledger: itemLedger,
         snapshotIntervalTicks: SNAPSHOT_UPLOAD_EVERY_TICKS,
         log: (line) => logShardShipperLog(worldLog, `[server] ${line}`),
-        // The range's place state outside the ECS rides each snapshot (PL3a); recall seeds it back.
-        places: () => ({ resource_nodes: gatheringStore.allNodes(), place_records: placesStore.all() }),
+        // The range's place state outside the ECS rides each snapshot (PL3a, B4); recall seeds it back.
+        places: () => ({
+          resource_nodes: gatheringStore.allNodes(),
+          place_records: placesStore.all(),
+          ...(moduleCtx.stores?.civicStore
+            ? { civic: exportCivicSnapshot(moduleCtx.stores.civicStore as SqliteCivicStore) }
+            : {}),
+        }),
       })
     : null;
 

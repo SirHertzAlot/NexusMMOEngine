@@ -241,6 +241,23 @@ export class GatheringSystem implements SimSystem {
     return this.pouchOf(holder).get(material) ?? 0;
   }
 
+  /** Whether `holder`'s pouch has room for `qty` more units of `material`. */
+  hasRoom(holder: number, material: string, qty: number): boolean {
+    if (!Number.isInteger(qty) || qty <= 0) return false;
+    return this.countOf(holder, material) + qty <= this.pouchMax;
+  }
+
+  /** Add `qty` of `material` to `holder`'s pouch, written through to the store; false when full or invalid. */
+  grant(holder: number, material: string, qty: number): boolean {
+    if (!Number.isInteger(qty) || qty <= 0) return false;
+    const pouch = this.pouchOf(holder);
+    const have = pouch.get(material) ?? 0;
+    if (have + qty > this.pouchMax) return false;
+    pouch.set(material, have + qty);
+    if (holder >= 0) this.opts.store?.savePouch(holder, material, have + qty);
+    return true;
+  }
+
   /** Spend `qty` of `material` from `holder`'s pouch (crafting), written through to the store; false and no change when short. */
   take(holder: number, material: string, qty: number): boolean {
     const pouch = this.pouchOf(holder);

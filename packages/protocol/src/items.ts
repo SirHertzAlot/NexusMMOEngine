@@ -45,6 +45,18 @@ export type ItemAction =
   | { kind: "item"; action: "unequip"; hand: "main" | "off" }
   | { kind: "item"; action: "unequip"; slot: "head" | "chest" | "hands" | "legs" | "ring" | "amulet" };
 
+/** Immutable frontier origin stamp attached to forged/provenance items. */
+export interface ItemProvenanceView {
+  provenanceId: number;
+  veinBatchId: string;
+  traitId: string;
+  townId: string;
+  crafterId: number;
+  crafterName: string;
+  eraTag: string;
+  craftedAt: number;
+}
+
 /** One item as its holder sees it. */
 export interface ItemView {
   /** Item instance id (stable while it exists). */
@@ -72,6 +84,8 @@ export interface ItemView {
   durability: number;
   /** The model it shows as (art catalog id), "" for the placeholder. */
   model: string;
+  /** Optional historical origin & maker mark stamped by a frontier workshop. */
+  provenance?: ItemProvenanceView;
 }
 
 /**

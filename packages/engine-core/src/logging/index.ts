@@ -7,3 +7,4 @@
  * importing it back). This barrel keeps engine-core's imports stable.
  */
 export * from "@mmo-engine/logging/dist/src/logging/index.js";
+export * from "./civic-metrics.js";

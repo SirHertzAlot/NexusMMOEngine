@@ -33,6 +33,7 @@ import {
   type CharacterSessionLock,
   type CharacterStateRecord,
   type CraftExecuteInput,
+  type CraftOutput,
   type InventoryItem,
   type InventoryMutateInput,
   type LootGrantInput,
@@ -41,8 +42,60 @@ import {
   type VendorTransactInput,
 } from "./types.js";
 
+/** Immutable frontier provenance attached to crafted/granted world-tier items. */
+export interface AtomicItemProvenance {
+  veinBatchId: string;
+  traitId: string;
+  townId: string;
+  crafterId: number;
+  crafterName: string;
+  eraTag: string;
+  craftedAt: number;
+}
+
+export type InventoryItemWithProvenance = InventoryItem & {
+  provenance?: AtomicItemProvenance;
+};
+
+export type CraftOutputWithProvenance = CraftOutput & {
+  provenance?: AtomicItemProvenance;
+};
+
+export type CraftExecuteWithProvenanceInput = Omit<CraftExecuteInput, "outputs"> & {
+  outputs: CraftOutputWithProvenance[];
+};
+
+export type LootGrantWithProvenanceInput = LootGrantInput & {
+  provenance?: AtomicItemProvenance;
+};
+
 /** A ledger entry before the store assigns its seq / timestamp. */
-export type AtomicLedgerDraft = Omit<AtomicLedgerEntry, "seq" | "at">;
+export type AtomicLedgerDraft = Omit<AtomicLedgerEntry, "seq" | "at"> & {
+  provenance?: AtomicItemProvenance;
+};
+
+function cloneProvenance(p: AtomicItemProvenance): AtomicItemProvenance {
+  return {
+    veinBatchId: p.veinBatchId,
+    traitId: p.traitId,
+    townId: p.townId,
+    crafterId: p.crafterId,
+    crafterName: p.crafterName,
+    eraTag: p.eraTag,
+    craftedAt: p.craftedAt,
+  };
+}
+
+function cloneInventoryItem(item: InventoryItemWithProvenance, slotOverride?: number): InventoryItemWithProvenance {
+  const base: InventoryItemWithProvenance = {
+    ...item,
+    ...(slotOverride !== undefined ? { slot: slotOverride } : {}),
+  };
+  if (item.provenance !== undefined) {
+    base.provenance = cloneProvenance(item.provenance);
+  }
+  return base;
+}
 
 export interface AtomicCommit {
   /** New character record versions to persist (version already bumped). */
@@ -83,7 +136,7 @@ interface CharView {
   characterId: number;
   version: number;
   gold: number;
-  inventory: InventoryItem[];
+  inventory: InventoryItemWithProvenance[];
   /** The record's other state keys, preserved verbatim. */
   rest: Record<string, unknown>;
 }
@@ -103,7 +156,7 @@ function viewOf(ctx: AtomicContext, characterId: number): CharView {
     version: rec.version,
     gold: typeof gold === "number" && Number.isFinite(gold) ? Math.floor(gold) : 0,
     inventory: Array.isArray(inventory)
-      ? (inventory as InventoryItem[]).map((i) => ({ ...i }))
+      ? (inventory as InventoryItemWithProvenance[]).map((i) => cloneInventoryItem(i))
       : [],
     rest: { ...rest },
   };
@@ -112,7 +165,11 @@ function viewOf(ctx: AtomicContext, characterId: number): CharView {
 function recordOf(ctx: AtomicContext, view: CharView, epoch: number): CharacterStateRecord {
   return {
     characterId: view.characterId,
-    state: { ...view.rest, gold: view.gold, inventory: view.inventory.map((i) => ({ ...i })) },
+    state: {
+      ...view.rest,
+      gold: view.gold,
+      inventory: view.inventory.map((i) => cloneInventoryItem(i)),
+    },
     version: view.version + 1,
     epoch,
     regionId: ctx.regionId,
@@ -186,21 +243,26 @@ function findItem(view: CharView, instanceId: string): InventoryItem | undefined
 }
 
 /** Remove `count` units of an instance from a view; false when short. */
-function takeFrom(view: CharView, instanceId: string, count: number): InventoryItem | null {
+function takeFrom(view: CharView, instanceId: string, count: number): InventoryItemWithProvenance | null {
   const idx = view.inventory.findIndex((i) => i.instanceId === instanceId);
   if (idx < 0) return null;
   const item = view.inventory[idx];
   if (item.count < count) return null;
-  const taken: InventoryItem = { ...item, count };
+  const taken = cloneInventoryItem(item);
+  taken.count = count;
   if (item.count === count) view.inventory.splice(idx, 1);
-  else view.inventory[idx] = { ...item, count: item.count - count };
+  else {
+    const remaining = cloneInventoryItem(item);
+    remaining.count = item.count - count;
+    view.inventory[idx] = remaining;
+  }
   return taken;
 }
 
 /** Give a whole instance to a view at an explicit or lowest free slot. */
 function giveTo(
   view: CharView,
-  item: InventoryItem,
+  item: InventoryItemWithProvenance,
   slot: number | undefined,
 ): { rejection: AtomicRejectionCode; message: string } | null {
   if (findItem(view, item.instanceId) !== undefined) {
@@ -216,7 +278,7 @@ function giveTo(
       message: `slot ${at} is occupied in character ${view.characterId}'s inventory`,
     };
   }
-  view.inventory.push({ ...item, slot: at });
+  view.inventory.push(cloneInventoryItem(item, at));
   return null;
 }
 
@@ -311,11 +373,11 @@ export function applyTradeCommit(
 }
 
 /** Take an entire stack out of a view; null when the instance is absent. */
-function takeWhole(view: CharView, instanceId: string): InventoryItem | null {
+function takeWhole(view: CharView, instanceId: string): InventoryItemWithProvenance | null {
   const idx = view.inventory.findIndex((i) => i.instanceId === instanceId);
   if (idx < 0) return null;
   const [item] = view.inventory.splice(idx, 1);
-  return { ...item };
+  return cloneInventoryItem(item);
 }
 
 // ---------------------------------------------------------------------------
@@ -505,7 +567,7 @@ const CRAFT_SYSTEM = "system:craft";
 
 export function applyCraftExecute(
   ctx: AtomicContext,
-  input: CraftExecuteInput,
+  input: CraftExecuteWithProvenanceInput,
 ): AtomicOutcome {
   const fenced = fenceAll(ctx, [input.participant]);
   if (fenced !== null) return fenced;
@@ -531,15 +593,20 @@ export function applyCraftExecute(
     });
   }
   for (const o of input.outputs) {
-    const bad = giveTo(
-      v,
-      { instanceId: o.instanceId, def: o.def, slot: 0, count: o.count ?? 1 },
-      o.slot,
-    );
+    const provenance = o.provenance !== undefined ? cloneProvenance(o.provenance) : undefined;
+    const item: InventoryItemWithProvenance = {
+      instanceId: o.instanceId,
+      def: o.def,
+      slot: 0,
+      count: o.count ?? 1,
+      ...(provenance !== undefined ? { provenance } : {}),
+    };
+    const bad = giveTo(v, item, o.slot);
     if (bad !== null) return reject(bad.rejection, bad.message);
     ledger.push({
       opId: input.opId, op: "craftExecute", kind: "item", instanceId: o.instanceId,
       def: o.def, from: CRAFT_SYSTEM, to: charRef(v.characterId), count: o.count ?? 1,
+      ...(provenance !== undefined ? { provenance: cloneProvenance(provenance) } : {}),
     });
   }
   v.gold -= input.goldFee;
@@ -562,16 +629,20 @@ export function applyCraftExecute(
 
 export function applyLootGrant(
   ctx: AtomicContext,
-  input: LootGrantInput,
+  input: LootGrantWithProvenanceInput,
 ): AtomicOutcome {
   const fenced = fenceAll(ctx, [input.participant]);
   if (fenced !== null) return fenced;
   const v = viewOf(ctx, input.participant.characterId);
-  const bad = giveTo(
-    v,
-    { instanceId: input.instanceId, def: input.def, slot: 0, count: input.count ?? 1 },
-    input.slot,
-  );
+  const provenance = input.provenance !== undefined ? cloneProvenance(input.provenance) : undefined;
+  const item: InventoryItemWithProvenance = {
+    instanceId: input.instanceId,
+    def: input.def,
+    slot: 0,
+    count: input.count ?? 1,
+    ...(provenance !== undefined ? { provenance } : {}),
+  };
+  const bad = giveTo(v, item, input.slot);
   if (bad !== null) return reject(bad.rejection, bad.message);
   return {
     ok: true,
@@ -582,6 +653,7 @@ export function applyLootGrant(
           opId: input.opId, op: "lootGrant", kind: "item", instanceId: input.instanceId,
           def: input.def, from: input.sourceId, to: charRef(v.characterId),
           count: input.count ?? 1,
+          ...(provenance !== undefined ? { provenance: cloneProvenance(provenance) } : {}),
         },
       ],
       pendingCredits: [],
