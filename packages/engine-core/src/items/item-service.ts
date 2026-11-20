@@ -15,7 +15,13 @@
  */
 
 import { addComponent, defineQuery, entityExists, hasComponent } from "bitecs";
-import { GROUND_ITEM_VARIANT, type DropsMessage, type InventoryMessage, type ItemView } from "@mmo-engine/protocol";
+import {
+  GROUND_ITEM_VARIANT,
+  type DropsMessage,
+  type InventoryMessage,
+  type ItemProvenanceView,
+  type ItemView,
+} from "@mmo-engine/protocol";
 import type { LootRules } from "@mmo-engine/rules";
 import { AssetRef, Transform, WorldItem } from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
@@ -62,9 +68,11 @@ export interface ItemServiceOptions {
    * `giveGranted`. Absent: `giveGranted` is exactly `give`.
    */
   atomicGrant?: AtomicGrantExecutor;
+  /** Optional lookup attaching historical civic provenance to ItemView responses. */
+  provenanceOf?: (itemId: number) => ItemProvenanceView | undefined;
 }
 
-export type ItemResult = { ok: true; message: string } | { ok: false; error: string };
+export type ItemResult = { ok: true; message: string; itemId?: number } | { ok: false; error: string };
 
 const worldItems = defineQuery([WorldItem]);
 
@@ -95,6 +103,7 @@ export class ItemService implements SimSystem {
   private readonly rankOrder: readonly string[];
   private readonly starterBase: string | null;
   private readonly atomicGrant: AtomicGrantExecutor | null;
+  private provenanceOf: ((itemId: number) => ItemProvenanceView | undefined) | null;
   /** Characters already given their starter weapon this run. */
   private readonly outfitted = new Set<number>();
 
@@ -111,6 +120,12 @@ export class ItemService implements SimSystem {
     this.rankOrder = o.rankOrder ?? [];
     this.starterBase = o.starterBase ?? null;
     this.atomicGrant = o.atomicGrant ?? null;
+    this.provenanceOf = o.provenanceOf ?? null;
+  }
+
+  /** Attach or replace the item provenance resolver post-assembly (e.g. from the civic module). */
+  setProvenanceLookup(fn: ((itemId: number) => ItemProvenanceView | undefined) | null): void {
+    this.provenanceOf = fn;
   }
 
   /**
@@ -355,7 +370,11 @@ export class ItemService implements SimSystem {
       left -= batch;
     }
     const suffix = firstId ? ` (item ${firstId})` : " (stacked)";
-    return { ok: true, message: `gave ${this.defs.names[def]}${n > 1 ? ` ×${n}` : ""}${suffix}` };
+    return {
+      ok: true,
+      message: `gave ${this.defs.names[def]}${n > 1 ? ` ×${n}` : ""}${suffix}`,
+      ...(firstId ? { itemId: firstId } : {}),
+    };
   }
 
   /**
@@ -662,6 +681,7 @@ export class ItemService implements SimSystem {
     const defs = this.defs;
     const count = this.store.counts[slot] || 1;
     const maxStack = defs.maxStack[d] ?? 1;
+    const provenance = this.provenanceOf?.(item);
     return {
       id: item,
       def: defs.ids[d],
@@ -675,6 +695,7 @@ export class ItemService implements SimSystem {
       ...(maxStack > 1 ? { count, maxStack } : count > 1 ? { count } : {}),
       durability: Math.round(this.store.durability[slot]),
       model: defs.models[d],
+      ...(provenance ? { provenance } : {}),
     };
   }
 

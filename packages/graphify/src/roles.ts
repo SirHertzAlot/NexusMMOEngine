@@ -23,6 +23,9 @@ export const SYSTEM_ROLES: Readonly<Record<string, SystemRole>> = {
   // items module
   items: "simulation",
 
+  // civic module
+  civic: "simulation",
+
   // character module
   character: "simulation",
   animation: "simulation",
@@ -85,4 +88,5 @@ export const ROSTER_TO_CLASS_HINTS: Readonly<Record<string, { className: string;
   telegraphs: { className: "TelegraphSystem", simName: "telegraph" },
   duels: { className: "DuelSystem", simName: "duel" },
   items: { className: "ItemService", simName: "items" },
+  civic: { className: "CivicService", simName: "civic" },
 };

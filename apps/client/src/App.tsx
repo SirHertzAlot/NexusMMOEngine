@@ -35,6 +35,8 @@ const CharacterSheet = React.lazy(() => import("./ui/character-sheet.js").then((
 const BagPanel = React.lazy(() => import("./ui/bag-panel.js").then((m) => ({ default: m.BagPanel })));
 const VendorPanel = React.lazy(() => import("./ui/vendor-panel.js").then((m) => ({ default: m.VendorPanel })));
 const QuestLogPanel = React.lazy(() => import("./ui/quests.js").then((m) => ({ default: m.QuestLog })));
+const CivicPanel = React.lazy(() => import("./ui/civic-panel.js").then((m) => ({ default: m.CivicPanel })));
+import { INITIAL_CIVIC_UI_STATE, nextCivicState, type CivicUiState } from "./ui/civic-panel.js";
 import { treatmentNotice } from "./ui/treatment-notice.js";
 import { disarmNotice, disciplineNotices } from "./ui/mastery-notice.js";
 import { spellNotice } from "./ui/spell-notice.js";
@@ -263,6 +265,8 @@ export function App(): React.ReactElement {
   // Quests (U11): the log, the givers, the npc in talk range, the open dialog.
   const [quests, setQuests] = useState<QuestView[] | null>(null);
   const [questsOpen, setQuestsOpen] = useState(false);
+  const [civicState, setCivicState] = useState<CivicUiState>(INITIAL_CIVIC_UI_STATE);
+  const [civicOpen, setCivicOpen] = useState(false);
   // What a quest-giver talks about, coloured wherever it appears in their lines (CF5).
   const dialogGlossary = useMemo(
     () => glossaryFrom({ quests: quests?.map((q) => q.name), items: quests?.flatMap((q) => q.rewards.map((r) => itemTitle(r.base))), people: quests?.map((q) => q.giver) }),
@@ -422,6 +426,12 @@ function welcomeTimeoutMs(): number | undefined {
         setQuests(q.quests);
         const text = notices[notices.length - 1];
         if (text) setNotice({ text, at: performance.now() });
+      },
+      onCivic: (c) => {
+        setCivicState((prev) => nextCivicState(prev, c));
+        if (c.op === "state" && c.pendingCreditsClaimed > 0) {
+          setNotice({ text: `Claimed ${c.pendingCreditsClaimed} gold from expired escrow`, at: performance.now() });
+        }
       },
       onNpcs: (n) => setNpcs(n.npcs),
       onDialog: (d) => setDialog("closed" in d ? null : d),
@@ -1084,6 +1094,13 @@ function welcomeTimeoutMs(): number | undefined {
             </React.Suspense>
           </HudSlot>
         )}
+        {civicOpen && (
+          <HudSlot id="civic-panel" className="z-20">
+            <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.civic")}</div>}>
+              <CivicPanel state={civicState} onSend={(op) => client?.civic(op)} onClose={() => setCivicOpen(false)} />
+            </React.Suspense>
+          </HudSlot>
+        )}
         {sheetOpen && sheet && (
           <HudSlot id="character-sheet" className="z-10">
             <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.characterSheet")}</div>}>
@@ -1099,6 +1116,9 @@ function welcomeTimeoutMs(): number | undefined {
             title={t("hud.view.toggleTitle")}
           >
             {cameraView === "first" ? t("hud.view.first") : t("hud.view.third")}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setCivicOpen((o) => !o)} aria-expanded={civicOpen} title={t("hud.civicTitle")}>
+            {t("hud.civic")}
           </Button>
           <Button size="sm" variant="secondary" onClick={toggleQuests} aria-expanded={questsOpen} title={t("hud.questLogTitle", { key: prettyCode(bindings.quests[0] ?? "KeyJ") })}>
             {t("hud.quests")}

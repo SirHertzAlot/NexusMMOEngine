@@ -36,3 +36,25 @@ export {
   type RuleHooks,
 } from "./hooks.js";
 export * from "./worldbuilding.js";
+export {
+  CivicContractsRulesSchema,
+  CivicFoundryDefSchema,
+  CivicRulesSchema,
+  CivicSiteDefSchema,
+  CivicStageDefSchema,
+  CivicSurveyingRulesSchema,
+  CivicVeinTemplateSchema,
+  DEFAULT_CIVIC_RULES,
+  VeinTraitDefSchema,
+  computeContractTotals,
+  computeSurveyBearing,
+  effectiveContributionWeight,
+  loadCivicRules,
+  parseCivicRules,
+  type CivicFoundryDef,
+  type CivicRules,
+  type CivicSiteDef,
+  type CivicStageDef,
+  type CivicVeinTemplate,
+  type VeinTraitDef,
+} from "./civic.js";

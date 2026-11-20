@@ -174,7 +174,7 @@ import { LocalEconomyView, WorldAtomicOps } from "./world/atomic-ops.js";
 import { recallShardState } from "./world/state-recall.js";
 import { healthHttpHandler } from "./net/health.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
-import { armourFactor, RulesError } from "@mmo-engine/rules";
+import { armourFactor, loadCivicRules, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { loadGameRules, type GameRules } from "./rules/boot.js";
 import { assembleServerSystems, type ServerModuleContext } from "./modules.js";
@@ -970,6 +970,18 @@ async function main(): Promise<void> {
       const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
       return def >= 0 && itemsOf().give(character, def).ok;
     },
+    grantItemWithId: (character, item, rank) => {
+      const d = itemsOf().defs;
+      const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
+      if (def < 0) return null;
+      const res = itemsOf().give(character, def);
+      return res.ok ? (res.itemId ?? null) : null;
+    },
+    onCrafted: (character, itemId, _item, _rank, avatarEid, characterName) => {
+      if (itemId !== null) {
+        civicRef?.bindCraftedItemProvenance(character, characterName, itemId, avatarEid);
+      }
+    },
     // Fleet mode (atomic ops A2): with a world client, the craft's
     // commit routes through the coordinator's craftExecute and the
     // produced item is materialised by the settled outcome instead of
@@ -1273,6 +1285,24 @@ async function main(): Promise<void> {
   } | null = null;
   // Slice 4: quests comes from the quests module; lazy ref for the death callback.
   let questsRef: { onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void } | null = null;
+  let civicRef: import("./civic/index.js").CivicService | null = null;
+  const civicConfig = {
+    dataDir: DATA_DIR,
+    rules: loadCivicRules(process.env.MMO_CIVIC_RULES || path.join(REPO_ROOT, "content", "rules", "civic.json")),
+    dayOf: () => (gameDayOf ? gameDayOf(sim.currentTick) : Math.floor(Date.now() / 86_400_000)),
+    countMaterial: (charId: number, material: string) => gathering.countOf(charId, material),
+    takeMaterial: (charId: number, material: string, qty: number) => gathering.take(charId, material, qty),
+    grantMaterial: (charId: number, material: string, qty: number) => gathering.grant(charId, material, qty),
+    hasMaterialRoom: (charId: number, material: string, qty: number) => gathering.hasRoom(charId, material, qty),
+    hasBagRoom: (charId: number) => itemsOf().store.hasRoom(charId),
+    craftAndGrantItem: (charId: number, item: string, rank: string) => {
+      const d = itemsOf().defs;
+      const def = d.ofBase(item).find((i) => d.ranks[i] === rank) ?? -1;
+      if (def < 0) return null;
+      const res = itemsOf().give(charId, def);
+      return res.ok ? (res.itemId ?? null) : null;
+    },
+  };
   // The tick's systems (roadmap EA9): the core module's instances in the order
   // modules/core/module.json fixes, plus whatever the enabled set adds. A bad
   // set (unknown id, cycle) stops the boot with every problem listed.
@@ -1309,7 +1339,7 @@ async function main(): Promise<void> {
     sim,
     log: (m) => logServerModuleLog(worldLog, m),
     // Slices 2-6: modules read their bootstrap config from here.
-    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig },
+    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
   };
   const assembled = await assembleServerSystems({
     modulesDir: path.join(REPO_ROOT, "modules"),
@@ -1344,6 +1374,9 @@ async function main(): Promise<void> {
     onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void;
   };
   const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;
+  const civic = (assembled.extensions["civic"] as unknown as import("./civic/index.js").CivicService | undefined) ?? null;
+  civicRef = civic;
+  itemsRef.setProvenanceLookup((id) => civic?.provenanceOf(id));
   // Combat cluster (slice 5): assign bodyRef for the physics fall callback,
   // magicRef for the rules reloader.
   bodyRef = assembled.byName["body"] as unknown as import("./body.js").BodySystem;
@@ -1524,7 +1557,7 @@ async function main(): Promise<void> {
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: assembled.systems,
-    extensions: [quests, dungeons, craftingService],
+    extensions: [quests, dungeons, craftingService, ...(civic ? [civic] : [])],
     items: itemsOf(),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).

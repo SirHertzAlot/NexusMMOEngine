@@ -1,0 +1,21 @@
+{
+  "description": "Living Regional Provenance & Civic Logistics (Redwater Crossing): dynamic vein surveying, cooperative bridge restoration with wear & diminishing weights, settlement foundry specialization, escrow frontier contracts, and immutable item provenance.",
+  "name": "civic",
+  "version": "0.1.0",
+  "dependsOn": [
+    "economy",
+    "items"
+  ],
+  "server": {
+    "entry": "server.js",
+    "extensions": [
+      "civic"
+    ],
+    "systems": [
+      {
+        "name": "civic",
+        "after": "items"
+      }
+    ]
+  }
+}

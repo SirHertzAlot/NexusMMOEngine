@@ -91,6 +91,10 @@ export interface CraftingServiceOptions {
   hasBagRoom: (character: number) => boolean;
   /** Give the crafted item. Only called after every input was consumed. */
   grantItem: (character: number, item: string, rank: string) => boolean;
+  /** Optional grant variant returning the newly created item id for provenance binding. */
+  grantItemWithId?: (character: number, item: string, rank: string) => number | null;
+  /** Optional hook invoked after a standalone or fleet craft grants an item. */
+  onCrafted?: (character: number, itemId: number | null, item: string, rank: string, avatarEid: number, characterName: string) => void;
   /**
    * Fleet mode: the world-tier craft executor. Absent: crafts commit
    * locally, exactly as the standalone service always has. Present:
@@ -174,10 +178,19 @@ export class CraftingService implements GatewayExtension {
         return;
       }
     }
-    if (!this.opts.grantItem(character, m.item, m.rank)) {
+    let craftedId: number | null = null;
+    if (this.opts.grantItemWithId) {
+      craftedId = this.opts.grantItemWithId(character, m.item, m.rank);
+      if (craftedId === null) {
+        this.notice(player, "crafting failed");
+        return;
+      }
+    } else if (!this.opts.grantItem(character, m.item, m.rank)) {
       this.notice(player, "crafting failed");
       return;
     }
+    this.opts.onCrafted?.(character, craftedId, m.item, m.rank, player.entity(), player.name);
+    if (craftedId !== null) player.refreshInventory();
     player.send({ kind: "craft", op: "crafted", item: m.item, rank: m.rank });
   }
 
