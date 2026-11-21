@@ -120,12 +120,12 @@ describe("geology provinces", () => {
     const a = classifyGeology(geo, grid, zeros);
     const b = classifyGeology(geo, grid, zeros);
     assert.equal(a.hash, b.hash);
-    assert.equal(a.hash, "1f9121d7cf4c41a0");
+    assert.equal(a.hash, "3aa72e3d9d9465aa");
   });
 
   it("classify with the strict-IEEE warp noise to a pinned hash (cross-CPU golden)", () => {
     const a = classifyGeology(geo, grid, real);
-    assert.equal(a.hash, "4b0e6d9b44bc7554");
+    assert.equal(a.hash, "7f4269e6dc808167");
   });
 
   it("finds several distinct provinces, each kind a valid code", () => {

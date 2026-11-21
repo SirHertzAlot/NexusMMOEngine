@@ -86,14 +86,19 @@ export const GeologySpecSchema = z
         geoKmPerWorldKm: z.number().positive(),
       })
       .strict(),
+    // Widths, reliefs and `strike` are set by full bakes, not by the survey alone: broader, higher belts (700 m wide,
+    // 520 m high, crests unbroken) made 17% of a 4 km world mountain, left one town site where the designer range
+    // leaves three, and their passes were too narrow for the places planner to route a road through. These keep as
+    // many towns as the designer range, all joined by routes (docs/GEOLOGY.md, "Towns and roads"; guarded by
+    // packages/settlement/test/geology-sites.test.ts).
     widths: z
       .object({
         /** Full width of a collision belt, metres. */
-        orogenM: z.number().positive().default(700),
+        orogenM: z.number().positive().default(300),
         /** Width of the volcanic arc on the overriding side of an ocean–continent margin. */
-        arcM: z.number().positive().default(450),
+        arcM: z.number().positive().default(220),
         /** Width of the foreland basin beside a collision belt, on the down-going plate's side. */
-        forelandM: z.number().positive().default(600),
+        forelandM: z.number().positive().default(400),
         /** Full width of a continental rift. */
         riftM: z.number().positive().default(380),
         /** Full width of an old suture's worn ridge. */
@@ -101,7 +106,7 @@ export const GeologySpecSchema = z
         /** Full width of a transform shear zone. */
         transformM: z.number().positive().default(160),
         /** Rim over which a craton's plateau falls to the platform. */
-        cratonRimM: z.number().positive().default(250),
+        cratonRimM: z.number().positive().default(150),
         /** Boundary warp: how far plate edges wander, and the size of their bends. */
         warpM: z.number().min(0).default(260),
         warpScaleM: z.number().positive().default(1400),
@@ -112,17 +117,17 @@ export const GeologySpecSchema = z
       .prefault({}),
     relief: z
       .object({
-        orogenM: z.number().default(520),
+        orogenM: z.number().default(400),
         arcM: z.number().default(300),
         forelandM: z.number().default(-14),
         riftM: z.number().default(-45),
         riftShoulderM: z.number().default(55),
-        cratonM: z.number().default(45),
+        cratonM: z.number().default(20),
         sutureM: z.number().default(90),
         transformM: z.number().default(-12),
         oceanM: z.number().default(-70),
-        /** Along-strike variation of a belt's crest, 0..1 (saddles become passes). */
-        strike: z.number().min(0).max(1).default(0.55),
+        /** Along-strike variation of a belt's crest, 0..1 (saddles become passes; 1 = saddles fall to the belt's foot). */
+        strike: z.number().min(0).max(1).default(1),
         strikeScaleM: z.number().positive().default(1100),
         /** Ridges across a belt, 0..1 of its height, and their size. */
         ridges: z.number().min(0).max(1).default(0.4),

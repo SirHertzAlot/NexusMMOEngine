@@ -116,72 +116,105 @@ baseline's range axis). Results: see the table below and the PR.
 
 | signal | baseline 7 | geology 7 | baseline 11 | geology 11 | baseline 23 | geology 23 |
 |---|---|---|---|---|---|---|
-| survey ms | 11981 | 11523 | 11499 | 10973 | 10579 | 11255 |
-| geology classify ms / provinces | n/a | 154 / 31 | n/a | 155 / 27 | n/a | 104 / 22 |
-| snapshot JSON bytes | n/a | 1611 | n/a | 1611 | n/a | 1603 |
-| opportunity pass ms | 1758 | 1743 | 1709 | 1759 | 1890 | 1665 |
-| landform regions (≥0.5% land) | 8 | 24 | 5 | 18 | 9 | 19 |
-| land share in 6 largest regions | 0.95 | 0.59 | 0.95 | 0.66 | 0.95 | 0.72 |
-| landmarks (peaks ≥40 m proud) | 17 | 20 | 19 | 30 | 20 | 23 |
-| macro coherence (≥400 m variance share) | 0.45 | 0.47 | 0.51 | 0.41 | 0.48 | 0.44 |
-| viable settlement sites | 10 | 12 | 12 | 11 | 9 | 12 |
-| viable routes between the pair | 4 | 3 | 3 | 4 | 4 | 3 |
-| bridge saving | 58% (23 m span) | 54% (16 m span) | 79% (16 m span) | 5% (16 m span) | 68% (16 m span) | 18% (23 m span) |
+| survey ms | 9590 | 9124 | 9746 | 8725 | 8835 | 8839 |
+| geology classify ms / provinces | n/a | 117 / 29 | n/a | 83 / 28 | n/a | 94 / 24 |
+| snapshot JSON bytes | n/a | 1608 | n/a | 1608 | n/a | 1600 |
+| opportunity pass ms | 1466 | 1308 | 1568 | 1442 | 1433 | 1264 |
+| landform regions (≥0.5% land) | 8 | 18 | 5 | 16 | 9 | 19 |
+| land share in 6 largest regions | 0.95 | 0.75 | 0.95 | 0.79 | 0.95 | 0.72 |
+| landmarks (peaks ≥40 m proud) | 17 | 13 | 19 | 18 | 20 | 18 |
+| macro coherence (≥400 m variance share) | 0.45 | 0.40 | 0.51 | 0.33 | 0.48 | 0.31 |
+| viable settlement sites | 10 | 10 | 12 | 12 | 9 | 12 |
+| viable routes between the pair | 4 | 4 | 3 | 3 | 4 | 4 |
+| bridge saving | 58% (23 m span) | none | 79% (16 m span) | 67% (34 m span) | 68% (16 m span) | 81% (23 m span) |
 | route exists without bridge | yes | yes | yes | yes | yes | yes |
-| survey advantage (hidden-province table, default) | 0.00 | 0.92 | 0.00 | 0.83 | 0.00 | 0.92 |
-| survey advantage (visible-province table) | n/a | 0.17 | n/a | -0.25 | n/a | 0.17 |
-| max share of a resource in one region | 0.79 | 0.25 | 0.79 | 0.17 | 0.69 | 0.21 |
-| starter ore / fuel within 600 m of spawn | 0 / 3 | 4 / 2 | 2 / 1 | 3 / 1 | 1 / 3 | 4 / 3 |
-| land changed by a local edit | 32.8% | 19.4% | 38.4% | 18% | 35.8% | 7.5% |
+| survey advantage (hidden-province table, default) | 0.00 | 2.00 | 0.00 | 1.25 | 0.00 | 1.42 |
+| survey advantage (visible-province table) | n/a | 1.25 | n/a | 1.08 | n/a | 2.00 |
+| max share of a resource in one region | 0.79 | 0.21 | 0.79 | 0.21 | 0.69 | 0.29 |
+| starter ore / fuel within 600 m of spawn | 0 / 3 | 6 / 4 | 2 / 1 | 6 / 2 | 1 / 3 | 3 / 1 |
+| land changed by a local edit | 32.8% | 14.9% | 38.4% | 16.4% | 35.8% | 6.8% |
 
 Reading it against the brief's success signals (these are offline proxies;
 the player-facing ones need a playtest):
 
 | Question (brief) | Signal | Result |
 |---|---|---|
-| Is geography more readable? | landform regions, land in the 6 largest, landmarks | **Better.** 18–24 distinct regions vs 5–9; the baseline is one big lowland (95% of land in six regions) vs 59–72%; landmarks 20–30 vs 17–20. |
-| Does it create better decisions? | viable sites, viable routes, bridge saving | **No better.** Sites 11–12 vs 9–12, routes 3–4 vs 3–4. The baseline's single range makes *bigger* bridge detours (58–79% saved vs 5–54%). |
-| Does surveying matter? | top-quarter deposit capture, survey vs terrain | **Only with hidden provinces.** Keyed to visible belts, survey adds nothing (−0.25..0.17). Keyed to cratons and sutures (which erode flat), survey beats reading the terrain by 0.83–0.92 lift. That table is now the default (measured). The baseline has no hidden layer: 0. |
-| Is it controllable? | land changed by a local edit | **Better.** Retagging one province changed 7.5–19% of the land; moving the baseline's range 250 m changed 33–38%. |
-| Is it affordable? | survey time, classify time, snapshot size | **Yes.** Same survey time (10.6–12.0 s either way); classification 104–155 ms; the snapshot is 1.6 KB of JSON; maps add ~0.5 MB (u16 provinces) plus kind/plate/uplift. |
-| Safeguards | route without bridge, monopoly share, starter resources | Route without bridge: always (enforced). One region's share of a resource: 0.17–0.25 vs 0.69–0.79 (geology spreads ore over several provinces). Starter ore/fuel near spawn: 3–4 / 1–3 vs 0–2 / 1–3. |
-| Does it outperform simpler methods? | all of the above | **Partly.** The wins are readability, editability, resource spread and surveying; none of them needed a plate *simulation*: a frozen, editable snapshot of provinces does it. Routes and bridges did not improve. |
+| Is geography more readable? | landform regions, land in the 6 largest, landmarks | **Better regions, fewer peaks.** 16–19 distinct regions vs 5–9; the baseline is one big lowland (95% of land in six regions) vs 72–79%. Landmarks 13–18 vs 17–20, and the baseline's one big range explains more of the relief (macro coherence 0.45–0.51 vs 0.31–0.40): geology's belts are now lower, narrower and broken by passes so towns keep their land and roads (see *Towns and roads*). |
+| Does it create better decisions? | viable sites, viable routes, bridge saving | **About even.** Sites 10–12 vs 9–12, routes 3–4 vs 3–4. Bridges pay off on two seeds of three (67% and 81% saved, against 79% and 68%); on seed 7 the chosen pair has no bridge worth building (the baseline saves 58%). |
+| Does surveying matter? | top-quarter deposit capture, survey vs terrain | **Yes, with hidden provinces.** Keyed to cratons and sutures (which erode flat), survey beats reading the terrain by 1.25–2.00 lift; keyed to visible belts, 1.08–2.00. The hidden table is the default (measured). The baseline has no hidden layer: 0. |
+| Is it controllable? | land changed by a local edit | **Better.** Retagging one province changed 6.8–16.4% of the land; moving the baseline's range 250 m changed 33–38%. |
+| Is it affordable? | survey time, classify time, snapshot size | **Yes.** Same survey time (8.7–9.7 s either way); classification 83–117 ms; the snapshot is 1.6 KB of JSON; maps add ~0.5 MB (u16 provinces) plus kind/plate/uplift. |
+| Safeguards | route without bridge, monopoly share, starter resources | Route without bridge: always (enforced). One region's share of a resource: 0.21–0.29 vs 0.69–0.79 (geology spreads ore over several provinces). Starter ore/fuel near spawn: 3–6 / 1–4 vs 0–2 / 1–3. Towns and roads: as many towns as the baseline, less one at most, every town on a route (enforced by a test; see *Towns and roads*). |
+| Does it outperform simpler methods? | all of the above | **Partly.** The wins are readability, editability, resource spread and surveying; none of them needed a plate *simulation*: a frozen, editable snapshot of provinces does it. Routes and bridges are about even. |
 
 Proxies, not players: "players recognise regions" and "players choose among
 routes" need a playtest on a baked geology world.
 
 ## The bridge-detour gap
 
-Routes were already at parity (3–4 viable routes in both arms). Bridges were
-not: the chosen pair's bridge saves 5–54% (mean 26%) in the geology arm
-against 58–79% (mean 68%) with the baseline range. The cause is drainage
-shape. One long range gathers rain into a few long trunk rivers across the
-lowland, which is where crossings matter. Several belts split the land into
-many short catchments, and rifts tend to flood into sea arms and lakes
-(sea and lakes block carts, but they are not bridgeable). The close-up of
-seed 7 shows the one good case, a crossing at a rift mouth.
+With the first defaults (belts 700 m wide, orogens 520 m high), the chosen
+pair's bridge saved 5–54% (mean 26%) in the geology arm against 58–79% (mean
+68%) with the baseline range. The cause is drainage shape. One long range
+gathers rain into a few long trunk rivers across the lowland, which is where
+crossings matter. Several broad belts split the land into many short
+catchments, and rifts tend to flood into sea arms and lakes (sea and lakes
+block carts, but they are not bridgeable).
 
-Relief variants, same 3 seeds (bridge saving for the chosen pair; survey
-advantage; max share of one resource in one province):
+Relief variants of those first defaults, same 3 seeds (bridge saving for the
+chosen pair; survey advantage; max share of one resource in one province):
 
 | variant | bridge saving (7 / 11 / 23, mean) | survey advantage | monopoly |
 |---|---|---|---|
-| default (rift −45 m, foreland −14 m) | 54 / 5 / 18%, 26% | 0.83–0.92 | 0.17–0.25 |
+| first defaults (rift −45 m, foreland −14 m) | 54 / 5 / 18%, 26% | 0.83–0.92 | 0.17–0.25 |
 | deep rift (−90 m) + foreland −35 m | 3 / 39 / 21%, 21% | 0.50–1.25 | 0.21–0.25 |
 | shallow rift (−18 m, shoulders 30 m) | 28 / 50 / 22%, 33% | 0.33–0.83 | 0.21–0.29 |
 | wide foreland (1,100 m, −30 m) | 7 / 26 / 13%, 15% | 0.83–1.33 | 0.21–0.33 |
+| **current defaults** (narrower, lower belts with passes; see *Towns and roads*) | 0 / 67 / 81%, 49% | 1.25–2.00 | 0.21–0.29 |
 | baseline (range) | 58 / 79 / 68%, 68% | 0 | 0.69–0.79 |
 
-No variant comes near the baseline, and the best one (shallow rifts) costs
-surveying, so the defaults stay as they are. Geology stays **opt-in**. A
-designer who wants a big crossing can still place a rift or suture where a
-trunk river should run. That is an authoring choice the snapshot supports,
-but no generator default can promise it.
+The narrower, broken belts that keep the towns also leave longer lowland rivers, so
+two seeds of three now get a crossing worth building. Seed 7 gets none. The
+mean is still below the baseline, so geology stays **opt-in**. A designer who
+wants a big crossing can still place a rift or suture where a trunk river
+should run. That is an authoring choice the snapshot supports, but no
+generator default can promise it.
 
-The server was run against a baked geology world (seed 7, 4 km): the bake
-took 20 s (survey 11.8 s, 62,500 tiles 7.6 s), the settlement stage ran on
-it, and the server restored all tiles at tick 0 and ran 2,400 ticks without
-errors.
+## Towns and roads
+
+The comparison above stops at the survey. A full `bake:all` (world, towns,
+places) with the first defaults showed what it missed: on seed 7 the world
+supported 1 town instead of 3, so the places pass had no routes to build and
+no guard outposts, inns, shacks, camps or homesteads to put along them.
+Nothing in the bake was removed or reordered; the terrain itself left too
+little flat green land (mountains 17% of the world instead of 5%), and the
+belts' passes were too narrow for the places planner's 32 m route grid, so
+the towns that remained stood cut off.
+
+The current defaults fix both: belts are narrower and lower (orogen 300 m
+wide and 400 m high, was 700 m and 520 m; arc 220 m, foreland 400 m, craton
+rim 150 m and craton plateau 20 m), and every belt's crest falls to its
+foot at its saddles (`strike` 1, was 0.55), so belts read as chains of peaks
+with passes between them. Same six seeds, the real site finder and places
+planner, 600-person towns:
+
+| | towns (sites) | routes | route km | roadside places |
+|---|---|---|---|---|
+| no geology (designer range) | 16 | 14 | 37 | 76 |
+| geology, first defaults | 5 | 1 | 4.5 | 13 |
+| geology, current defaults | 19 | 22 | 72 | 88 |
+
+Per seed, current defaults (no geology in brackets): towns 4 (3), 3 (2),
+3 (3), 2 (2), 5 (3), 2 (3) for seeds 7, 11, 23, 3, 42 and 101; every town is
+on a route. `packages/settlement/test/geology-sites.test.ts` runs the site
+finder and the places planner on the default world (seed 7) and fails if
+geology loses more than one town or leaves a town without a route; it fails
+on the first defaults.
+
+The server was run against a full `bake:all` of a geology world with the
+current defaults (seed 7, 4 km): world, 4 towns (618–758 people each), and
+the places between them (6 routes, 23 km; 2 guard outposts, 2 inns, 5
+shacks, 3 camp sites, 8 homesteads). The server restored all 62,500 tiles at
+tick 0, loaded 10,962 entities and ran 2,700 ticks without errors.
 
 ## Recommendation
 
