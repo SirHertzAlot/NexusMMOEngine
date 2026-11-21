@@ -941,40 +941,48 @@ describe("Track P3: Engine Respawn Systems on Shared SpawnPoolSoA", () => {
     }
 
     const gc = (globalThis as { gc?: () => void }).gc;
-    void process.memoryUsage().heapUsed;
-    // Two full collections on each side: objects freed by the first are only
-    // swept by the second, and a single gc() left 30-50 KB that read as a leak.
-    gc?.();
-    gc?.();
-    const heapBefore = process.memoryUsage().heapUsed;
-
-    for (let t = 13_001; t <= 23_000; t++) {
-      sim.beginTick(t);
-      death.step(sim);
-      gathering.step(sim, 1 / 30);
-      chests.step();
-      breaks.step(sim);
-      if (t % 30 === 0) civic.ensureActiveVeins(clock.t, true);
-      sim.endTick();
+    /** 10,000 idle ticks from `from`: heap allocated during them, and heap still held after two full collections. */
+    const idleWindow = (from: number): { transient: number; retained: number } => {
+      // Two full collections on each side: objects freed by the first are only
+      // swept by the second.
+      gc?.();
+      gc?.();
+      const before = process.memoryUsage().heapUsed;
+      for (let t = from; t < from + 10_000; t++) {
+        sim.beginTick(t);
+        death.step(sim);
+        gathering.step(sim, 1 / 30);
+        chests.step();
+        breaks.step(sim);
+        if (t % 30 === 0) civic.ensureActiveVeins(clock.t, true);
+        sim.endTick();
+      }
+      const raw = process.memoryUsage().heapUsed;
+      gc?.();
+      gc?.();
+      return { transient: raw - before, retained: process.memoryUsage().heapUsed - before };
+    };
+    // Retention is judged on the second of two back-to-back windows. The first
+    // window after the warm-up swings by +-50 KB on Node 24 (cleanup V8 defers
+    // past a synchronous gc(), from the earlier tests in this file); every later
+    // window is steady. A leak would show in both.
+    const first = idleWindow(13_001);
+    const steady = idleWindow(23_001);
+    for (const w of [first, steady]) {
+      assert.ok(
+        w.transient <= 262_144,
+        `10,000 idle ticks across all 5 SAB poll paths allocated too much transient heap: ${w.transient} bytes`,
+      );
     }
-
-    const heapRaw = process.memoryUsage().heapUsed;
-    gc?.();
-    gc?.();
-    const heapAfter = process.memoryUsage().heapUsed;
-    assert.ok(
-      heapRaw - heapBefore <= 262_144,
-      `10,000 idle ticks across all 5 SAB poll paths allocated too much transient heap: ${heapRaw - heapBefore} bytes`,
-    );
     if (gc) {
       assert.ok(
-        heapAfter - heapBefore <= 32_768,
-        `10,000 idle ticks across all 5 SAB poll paths retained too much heap: ${heapAfter - heapBefore} bytes`,
+        steady.retained <= 32_768,
+        `10,000 idle ticks across all 5 SAB poll paths retained too much heap: ${steady.retained} bytes (first window ${first.retained})`,
       );
     }
 
     // Also confirm full CivicService.step() runs cleanly across idle ticks
-    for (let t = 23_001; t <= 23_060; t++) {
+    for (let t = 33_001; t <= 33_060; t++) {
       sim.beginTick(t);
       civic.step(sim, 1 / 30);
       sim.endTick();
