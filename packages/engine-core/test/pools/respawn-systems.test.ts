@@ -926,12 +926,29 @@ describe("Track P3: Engine Respawn Systems on Shared SpawnPoolSoA", () => {
       sim.endTick();
     }
 
+    // Then warm the exact loop that is measured below (dt 1/30, civic every
+    // 30 ticks). Without it V8 compiles that path during the measured window
+    // and keeps 20-50 KB of code and feedback metadata, which read as a leak
+    // in about one run in six. Later windows of the same loop retain nothing.
+    for (let t = 3001; t <= 13_000; t++) {
+      sim.beginTick(t);
+      death.step(sim);
+      gathering.step(sim, 1 / 30);
+      chests.step();
+      breaks.step(sim);
+      if (t % 30 === 0) civic.ensureActiveVeins(clock.t, true);
+      sim.endTick();
+    }
+
     const gc = (globalThis as { gc?: () => void }).gc;
     void process.memoryUsage().heapUsed;
+    // Two full collections on each side: objects freed by the first are only
+    // swept by the second, and a single gc() left 30-50 KB that read as a leak.
+    gc?.();
     gc?.();
     const heapBefore = process.memoryUsage().heapUsed;
 
-    for (let t = 3002; t <= 13_001; t++) {
+    for (let t = 13_001; t <= 23_000; t++) {
       sim.beginTick(t);
       death.step(sim);
       gathering.step(sim, 1 / 30);
@@ -942,6 +959,7 @@ describe("Track P3: Engine Respawn Systems on Shared SpawnPoolSoA", () => {
     }
 
     const heapRaw = process.memoryUsage().heapUsed;
+    gc?.();
     gc?.();
     const heapAfter = process.memoryUsage().heapUsed;
     assert.ok(
@@ -956,7 +974,7 @@ describe("Track P3: Engine Respawn Systems on Shared SpawnPoolSoA", () => {
     }
 
     // Also confirm full CivicService.step() runs cleanly across idle ticks
-    for (let t = 12_001; t <= 12_060; t++) {
+    for (let t = 23_001; t <= 23_060; t++) {
       sim.beginTick(t);
       civic.step(sim, 1 / 30);
       sim.endTick();

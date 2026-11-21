@@ -139,8 +139,8 @@ describe("ItemLedger crash and replay", () => {
 
       const db = new Database(file, { readonly: true });
       const events = db
-        .prepare("SELECT item_id AS id, kind, def, owner, slot, durability, x, z FROM item_events ORDER BY seq")
-        .all() as { id: number; kind: number; def: number; owner: number; slot: number; durability: number; x: number; z: number }[];
+        .prepare("SELECT item_id AS id, kind, def, owner, slot, durability, x, z, count FROM item_events ORDER BY seq")
+        .all() as { id: number; kind: number; def: number; owner: number; slot: number; durability: number; x: number; z: number; count: number }[];
       db.close();
 
       const replay = new Map<number, (typeof events)[number]>();

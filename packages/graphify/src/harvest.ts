@@ -20,6 +20,9 @@ import {
 } from "./schema.js";
 import { validateGraph } from "./validate.js";
 
+/** Scenes baked locally from licensed art and kept out of git. */
+const LOCAL_ONLY_SCENE = /^settlement-.*\.scene\.json$/;
+
 export interface HarvestOptions {
   repoRoot?: string;
   introspectModules?: readonly IntrospectModuleSpec[];
@@ -188,8 +191,11 @@ export function harvest(options: HarvestOptions = {}): EcsGraph {
   let realizedSceneObjects = 0;
 
   if (existsSync(scenesDir)) {
+    // Settlement scenes name licensed art and are baked locally, never
+    // committed (/.gitignore: content/scenes/settlement-*.scene.json). They
+    // are left out so the committed graph is the same in every clone.
     const sceneFiles = readdirSync(scenesDir)
-      .filter((f) => f.endsWith(".scene.json"))
+      .filter((f) => f.endsWith(".scene.json") && !LOCAL_ONLY_SCENE.test(f))
       .sort();
 
     for (const fileName of sceneFiles) {
