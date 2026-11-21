@@ -20,12 +20,12 @@
         "-mfma",
         "-mbmi",
         "-mbmi2",
-        "-flto"
+        "-flto=auto"
       ],
       "xcode_settings": {
         "GCC_OPTIMIZATION_LEVEL": "3",
         "GCC_ENABLE_CPP_EXCEPTIONS": "NO",
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3", "-flto"]
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3", "-flto=auto"]
       },
       "msvs_settings": {
         "VCCLCompilerTool": {
@@ -56,12 +56,12 @@
         "-mfma",
         "-mbmi",
         "-mbmi2",
-        "-flto"
+        "-flto=auto"
       ],
       "xcode_settings": {
         "GCC_OPTIMIZATION_LEVEL": "3",
         "GCC_ENABLE_CPP_EXCEPTIONS": "NO",
-        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3", "-flto"]
+        "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3", "-flto=auto"]
       },
       "msvs_settings": {
         "VCCLCompilerTool": {

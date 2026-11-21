@@ -188,7 +188,10 @@
         "native"
       ],
       "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
-      "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell"],
+      # -Wno-stringop-overflow: GCC false positive inside vendored Jolt
+      # (Body::IsSensor atomic load inlined into VehicleCollisionTester).
+      # Warning flags only; the generated code is unchanged.
+      "cflags_cc": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell", "-Wno-stringop-overflow"],
       "xcode_settings": {
         "OTHER_CPLUSPLUSFLAGS": ["-std=c++17", "-fno-exceptions", "-O3", "-ffast-math", "-fno-finite-math-only", "-march=haswell"]
       },
