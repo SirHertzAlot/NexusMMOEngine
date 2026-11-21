@@ -85,3 +85,52 @@ test('ids must be BigInts', () => {
   assert.throws(() => w.addCharacter(1, RADIUS, HALF_HEIGHT, 0, 0, 0), TypeError);
   w.destroy();
 });
+
+test('followCharacters moves characters exactly as characterPosition, setCharacterVelocity and updateCharacter', () => {
+  // Same box, same walkers, two worlds: one moved by the single calls, one by the batch. Positions match bit for
+  // bit; a walker too far from its target is flagged, not moved; an unknown id gives NaN.
+  const make = () => {
+    const w = createWorld();
+    addBox(w, 1n, 0);
+    for (let i = 0; i < 6; i++) assert.strictEqual(w.addCharacter(BigInt(10 + i), RADIUS, HALF_HEIGHT, -4 + i * 0.3, HALF_HEIGHT + RADIUS, i - 3), true);
+    return w;
+  };
+  const single = make();
+  const batch = make();
+  try {
+    const ids = new BigUint64Array([10n, 11n, 12n, 13n, 14n, 15n, 99n]);
+    const targets = new Float64Array(ids.length * 3);
+    const out = new Float32Array(ids.length * 4);
+    for (let t = 0; t < 60; t++) {
+      for (let i = 0; i < ids.length; i++) {
+        const cur = batch.characterPosition(ids[i]);
+        targets[3 * i] = cur[0] + 0.12 * Math.cos(i + t * 0.1);
+        targets[3 * i + 1] = cur[1];
+        targets[3 * i + 2] = cur[2] + 0.05;
+      }
+      if (t === 30) targets[0] += 5; // too far: flagged
+      batch.followCharacters(ids, targets, ids.length, DT, 2, out);
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        const cur = single.characterPosition(id);
+        const dx = targets[3 * i] - cur[0], dy = targets[3 * i + 1] - cur[1], dz = targets[3 * i + 2] - cur[2];
+        const far = dx * dx + dy * dy + dz * dz > 4;
+        if (!far) {
+          single.setCharacterVelocity(id, dx / DT, dy / DT, dz / DT);
+          single.updateCharacter(id, DT, 0, 0, 0);
+        }
+        assert.strictEqual(out[4 * i + 3], far ? 1 : 0, `flag of ${id} at tick ${t}`);
+        if (far) continue;
+        const at = single.characterPosition(id);
+        for (let k = 0; k < 3; k++) assert.ok(Object.is(out[4 * i + k], Math.fround(at[k])), `${id} axis ${k} at tick ${t}: ${out[4 * i + k]} vs ${at[k]}`);
+      }
+    }
+    assert.ok(Number.isNaN(out[4 * 6]), 'an unknown id gives NaN');
+    batch.followCharacters(ids, targets, 0, DT, 2, new Float32Array(0)); // nothing to do
+    assert.throws(() => batch.followCharacters(ids, targets, ids.length, DT, 2, new Float32Array(4)), RangeError);
+    assert.throws(() => batch.followCharacters(ids, new Float32Array(21), ids.length, DT, 2, out), TypeError);
+  } finally {
+    single.destroy();
+    batch.destroy();
+  }
+});

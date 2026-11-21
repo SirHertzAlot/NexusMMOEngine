@@ -231,3 +231,49 @@ test("a walker that spawns inside a static box is nudged out once, and its first
     backend.destroy();
   }
 });
+
+test("the batched bridge (followCharacters) moves walkers exactly as the per-walker calls", () => {
+  // 40 walkers among 12 static boxes, walking into them, sliding along them, one standing still and one teleporting:
+  // run once through the single calls (the backend without followCharacters) and once batched, and compare every
+  // position bit for bit.
+  const run = (batched: boolean): Float32Array => {
+    const jolt = createJoltBackend();
+    try {
+      const backend = batched
+        ? jolt
+        : {
+            addCharacter: jolt.addCharacter,
+            removeCharacter: jolt.removeCharacter,
+            setCharacterVelocity: jolt.setCharacterVelocity,
+            updateCharacter: jolt.updateCharacter,
+            characterPosition: jolt.characterPosition,
+          };
+      for (let k = 0; k < 12; k++) addStaticBox(jolt, 9100n + BigInt(k), -11 + 2 * k);
+      const sim = new SimWorld();
+      const walkers = Array.from({ length: 40 }, (_, i) => {
+        const e = spawnWalker(sim, -12 + (i % 20) * 1.2);
+        Transform.pz[e] = i < 20 ? -1.5 : 1.5;
+        return e;
+      });
+      const bridge = new CharacterBridgeSystem(backend);
+      const trace = new Float32Array(90 * walkers.length * 3);
+      for (let t = 0; t < 90; t++) {
+        walkers.forEach((e, i) => {
+          if (i === 7) return; // stands still
+          Transform.px[e] += 0.07 * Math.cos(i + t * 0.05);
+          Transform.pz[e] += (i < 20 ? 0.05 : -0.05) * Math.sin(i * 0.3 + t * 0.1);
+          if (i === 11 && t === 45) Transform.px[e] += 6; // a teleport
+        });
+        bridge.step(sim, DT);
+        walkers.forEach((e, i) => trace.set([Transform.px[e]!, Transform.py[e]!, Transform.pz[e]!], (t * walkers.length + i) * 3));
+      }
+      return trace;
+    } finally {
+      jolt.destroy();
+    }
+  };
+  const single = run(false);
+  const batched = run(true);
+  assert.ok(single.some((v, i) => v !== single[i % 3]), "the walkers moved");
+  assert.deepEqual(Buffer.from(batched.buffer), Buffer.from(single.buffer));
+});
