@@ -150,6 +150,39 @@ the player-facing ones need a playtest):
 Proxies, not players: "players recognise regions" and "players choose among
 routes" need a playtest on a baked geology world.
 
+## The bridge-detour gap
+
+Routes were already at parity (3–4 viable routes in both arms). Bridges were
+not: the chosen pair's bridge saves 5–54% (mean 26%) in the geology arm
+against 58–79% (mean 68%) with the baseline range. The cause is drainage
+shape. One long range gathers rain into a few long trunk rivers across the
+lowland, which is where crossings matter. Several belts split the land into
+many short catchments, and rifts tend to flood into sea arms and lakes
+(sea and lakes block carts, but they are not bridgeable). The close-up of
+seed 7 shows the one good case, a crossing at a rift mouth.
+
+Relief variants, same 3 seeds (bridge saving for the chosen pair; survey
+advantage; max share of one resource in one province):
+
+| variant | bridge saving (7 / 11 / 23, mean) | survey advantage | monopoly |
+|---|---|---|---|
+| default (rift −45 m, foreland −14 m) | 54 / 5 / 18%, 26% | 0.83–0.92 | 0.17–0.25 |
+| deep rift (−90 m) + foreland −35 m | 3 / 39 / 21%, 21% | 0.50–1.25 | 0.21–0.25 |
+| shallow rift (−18 m, shoulders 30 m) | 28 / 50 / 22%, 33% | 0.33–0.83 | 0.21–0.29 |
+| wide foreland (1,100 m, −30 m) | 7 / 26 / 13%, 15% | 0.83–1.33 | 0.21–0.33 |
+| baseline (range) | 58 / 79 / 68%, 68% | 0 | 0.69–0.79 |
+
+No variant comes near the baseline, and the best one (shallow rifts) costs
+surveying, so the defaults stay as they are. Geology stays **opt-in**. A
+designer who wants a big crossing can still place a rift or suture where a
+trunk river should run. That is an authoring choice the snapshot supports,
+but no generator default can promise it.
+
+The server was run against a baked geology world (seed 7, 4 km): the bake
+took 20 s (survey 11.8 s, 62,500 tiles 7.6 s), the settlement stage ran on
+it, and the server restored all tiles at tick 0 and ran 2,400 ticks without
+errors.
+
 ## Recommendation
 
 **No-go on extracting GeoForge's C++ core through N-API.** The license gate
