@@ -1,6 +1,6 @@
 # Animation Pipeline Audit — End to End, and Where It Breaks
 
-**Status:** Audit, 2026-10-26, at Joey's direction (animation is critical
+**Status:** Audit, 2026-10-26, at the owner's direction (animation is critical
 to the game's AAA demands; it must be end-to-end and robust). Every claim
 below was verified against `origin/main` at `150e06ba` or the local asset
 stores on this date. No code changed.
@@ -34,7 +34,7 @@ animation stage is a strong engine with an unproven fuel line.
 **B1. The library build is not reproducible.** `convert-animations`
 "converts what it has": missing sources are *skipped silently*, per
 machine. Two machines produce two different animation libraries, and CI
-produces none (assets are git-ignored). For a stage Joey calls critical,
+produces none (assets are git-ignored). For a stage the owner calls critical,
 the library must be a *pinned, checkable artifact*: source manifest with
 hashes, an expected-clip inventory, and a convert that **fails loud**
 when a source is missing or a clip vanishes — the same fail-loud
@@ -179,4 +179,4 @@ divergence breaks), then A2.
 - The editor already has an animation surface; authoring won't start
   from zero when the library is trustworthy.
 
-Nothing here starts without Joey's word, per phase, as always.
+Nothing here starts without the owner's word, per phase, as always.

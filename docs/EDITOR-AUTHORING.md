@@ -1,6 +1,6 @@
 # Editor Authoring — the view-centered model (Phase B, first slice)
 
-Joey's direction (2026-10-17, `VIEWPORT-AUTHORING-DESIGN.md` in the arch-docs):
+The owner's direction (2026-10-17, `VIEWPORT-AUTHORING-DESIGN.md` in the arch-docs):
 designers author through the viewport — selection summons contextual module
 widgets, the hierarchy is a relationship navigator, authoring speaks only the
 13 canonical verbs, and every mutation carries a mandatory 5W1H provenance
@@ -55,9 +55,9 @@ Every other workspace is the **Developer surface** (data/IDE tooling over the
 same pipeline); two left-dock titles say so ("Tables · Developer surface",
 "Schema · Developer surface") as the labeling pattern to extend.
 
-### Layout — panels embedded in the view pane, widgets floating in it (Joey, 2026-10-24 evening)
+### Layout — panels embedded in the view pane, widgets floating in it (the owner, 2026-10-24 evening)
 
-Joey's direction, naming his reference set — *"embed the panels into
+The owner's direction, naming his reference set — *"embed the panels into
 the viewport pane… like other editors like VSCode and Blender and
 Unity and PlayCanvas"*: the workspace columns are gone. The workspace
 is **one view pane** (a single framed canvas), and the panels dock
@@ -78,7 +78,7 @@ is **one view pane** (a single framed canvas), and the panels dock
 - **Bottom, inside the pane — the provenance strip**: the session
   history (5W1H + dispatch outcomes) as a collapsible strip, like
   VSCode's panel/console.
-- **Floating in the pane — the selection widgets** (Joey's refinement,
+- **Floating in the pane — the selection widgets** (the owner's refinement,
   same evening): the widgets are not docked anywhere. When the shared
   selection lands on an object — a hierarchy pick here, or an object
   picked in Scenes — its contextual widgets appear as a **floating
@@ -89,7 +89,7 @@ is **one view pane** (a single framed canvas), and the panels dock
   overflow). A **× dismisses** it until the selection changes or the
   object is clicked again — dismissal is view state only; the
   selection is untouched. With nothing selected, nothing floats: the
-  pane shows its plain stage. This restores Joey's original
+  pane shows its plain stage. This restores the owner's original
   2026-10-17 design — *"clicking a game object summons contextual
   widgets/modals within the viewport"* — which the docked slices had
   temporarily traded for columns. No drag-to-move in this slice.
@@ -106,7 +106,7 @@ is **one view pane** (a single framed canvas), and the panels dock
   left → right: find, see, act).
 - **History of the layout:** fixed rails (288px / flex / 320px) →
   equal-thirds columns → centered quarter/half/quarter grid →
-  embedded panels → floating selection widgets. Each step is Joey's
+  embedded panels → floating selection widgets. Each step is the owner's
   refinement of the last. The Legacy presentation is untouched by
   all of it — it keeps its own original two-panel layout behind its
   pin, as designed.
@@ -378,7 +378,7 @@ envelope rules as verb calls.
    is live AND dispatching (per the slate below). These are criteria for a
    human decision — no automation performs the deletion.
 
-   **Grace window — SET (Joey's decision, 2026-10-24): 7 days**, starting
+   **Grace window — SET (the owner's decision, 2026-10-24): 7 days**, starting
    2026-10-24. Removals become eligible **on/after 2026-10-31**, and then
    only for panels where, at that time: the project pin has held on the
    viewport-authoring template for the whole window (a); no rollback to
@@ -400,7 +400,7 @@ A standalone panel is removed only when the widget that replaces it is live
 | ECS inspector component tables (Scene workspace, `ecs-inspector.tsx`) | Per-module widgets for the same selection | Widget CRUD dispatches through the verb layer and covers the components the inspector edits | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback to legacy recorded in memory or this doc during the window; (c) still not fully passed: per-field editing dispatches for the fields the widgets expose on live-entity selections (numeric fields via admin `set`, the set whitelist gating; `fieldEditTarget`/`fieldEditPlan` in dispatch.ts), but the inspector's entity list/filter/pick plus its full component tables are unreplaced — and the inspector is the live-entity picker that feeds widget selections (`EcsInspectorPanel` writes `editorSelection`), so removing it would break the widget flow itself |
 | Characters workspace Records panel | Merged Character widget (Sheet + Records tabs) | The widget's Records tab renders the panel (Phase A modal already proves the merge) | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) unmet: the merged widget carries the Sheet + Records tabs, but the Records tab is a tab over applied-state lines and CRUD, not the Records panel's record data (no live character-record read feeds it) |
 | Story workspace quest & dialog panels | Merged Quests & dialogue widget (Quests + Dialogue tabs) | Same — widget renders both tabs against live quest content | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) unmet: the tabs render as structure, not against live quest content, and dialogue has no dispatch at all (startDialogue still has no admin home) |
-| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Held, not deleted (2026-10-31 evaluation)** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; bind/unbind (c) met (binding dispatches via shelf `addcomponent` FlowRef; unbinding dispatches from the flow widget via admin `removecomponent`). NOT deleted because the panel that exists is the full game-flow graph editor (nodes/edges/validation/save/play-from over `content/flow/game.flow.json`), not merely a per-object entry point, and no widget replaces graph-content editing — deleting `flow.graph` would remove unreplaced capability, so (c) does not fully pass for the panel as it exists. Needs Joey's call: narrow this row to bind/unbind only (graph editor stays), or hold the row until a graph-editing widget exists |
+| Flow workspace entry point for per-object graphs | Flow widget (FlowRef marker) | Flow binding/unbinding dispatches as component edits from the widget | **Held, not deleted (2026-10-31 evaluation)** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; bind/unbind (c) met (binding dispatches via shelf `addcomponent` FlowRef; unbinding dispatches from the flow widget via admin `removecomponent`). NOT deleted because the panel that exists is the full game-flow graph editor (nodes/edges/validation/save/play-from over `content/flow/game.flow.json`), not merely a per-object entry point, and no widget replaces graph-content editing — deleting `flow.graph` would remove unreplaced capability, so (c) does not fully pass for the panel as it exists. Needs the owner's call: narrow this row to bind/unbind only (graph editor stays), or hold the row until a graph-editing widget exists |
 | Art & audio panels (per-object emitters) | VFX / Audio widgets (marker-driven) | Emitter attach/edit dispatches from the widgets; scene-level ambient/music stays a scene widget | **Blocked** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) half met, narrowed: emitter *attach* dispatches (shelf `addcomponent`), and the per-field edit path now exists for emitter fields too (VfxEmitter.template/intensity, AudioEmitter.clip/radius are `set`-writable and field-editable when a selection's applied lines expose them) — but today's live entity picks still project only transform/velocity/intent/chunk/health/body through the mirror (`inspectors/ecs.ts` ComponentKind, mirror state rows), so emitter fields do not yet appear on live selections to be edited; the remaining (c) gap is that projection, not the edit path |
 | Modules workspace panels for vendor/economy | Vendor widget | Vendor template attach/detach + stock CRUD dispatch live | **No panel to remove (2026-10-31 evaluation)** — (a)/(b): grace window closed 2026-10-31, no rollback recorded during the window; (c) met for the widget functions (attach/detach dispatch live, and stock dispatches from the vendor widget — template picker + exact def name + price + qty → `vendor stock`; the template must already be defined on the server, and an undefined template returns the server's refusal). But no standalone vendor panel exists on current main to delete: the economy module has no editor entry, and the Modules workspace panel is the module registry itself, which must stay. Row closed as N/A unless a vendor panel is identified |
 
@@ -415,13 +415,13 @@ Verdicts: ECS inspector kept (picker + full tables unreplaced); Characters
 Records kept (no live record read); Story kept (no live quest content,
 startDialogue still homeless); Flow kept despite bind/unbind passing,
 because the existing panel is the full graph editor and no widget replaces
-graph-content editing — that row needs Joey's scoping call before any
+graph-content editing — that row needs the owner's scoping call before any
 deletion; Art/audio kept (emitter-field projection gap); Vendor closed as
 N/A (widget functions pass, but no standalone vendor panel exists — the
 Modules panel is the registry itself). The legacy presentation and the
 templating system are untouched, as Phase C requires.
 
-**Superseded (Joey, 2026-11-02): the panels are not going to be removed.**
+**Superseded (the owner, 2026-11-02): the panels are not going to be removed.**
 The removal slate above is closed as a plan, not merely blocked: the
 editor instead changes through a VC system for its interface, driven by
 templating (Mustache as the content/expression layer), so surfaces are
@@ -431,7 +431,7 @@ changed yet, by design. The per-panel findings above remain a capability
 inventory for widget/registry work. The first slice of the new direction
 (T1, interface-template definitions) is recorded in the templating
 section of this doc.
-**Joey set the grace window on 2026-10-24: 7 days, starting
+**The owner set the grace window on 2026-10-24: 7 days, starting
 2026-10-24 — the window closed 2026-10-31; see the 2026-10-31 evaluation
 above for the outcome: removals are eligible on/after
 2026-10-31, per panel, provided the viewport-authoring pin held for

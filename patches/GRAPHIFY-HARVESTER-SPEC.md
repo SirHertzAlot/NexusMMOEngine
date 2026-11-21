@@ -1,6 +1,6 @@
 # Graphify Harvester — Spec
 
-**Status:** SPEC — commissioned by Joey 2026-10-27 ("Spec the Graphify harvester
+**Status:** SPEC — commissioned by the owner 2026-10-27 ("Spec the Graphify harvester
 first"). Companion to `GRAPHIFY-ECS-EXPOSURE.md` (the design note: why Node,
 the granularity ladder, the editor surfacing). This document is the buildable
 spec: sources, artifact schema, extraction rules, the declarations contract,
@@ -37,7 +37,7 @@ labeled by how it is known.
    (`file:line` or the declaring module). Consumers must render inferred
    edges as second-class.
 
-### The shape principle (Joey's framing, 2026-10-27)
+### The shape principle (the owner's framing, 2026-10-27)
 
 Identification is by shape, because in this ECS the shape *is* the identity:
 
@@ -227,7 +227,7 @@ New workspace package **`packages/graphify`** (`@mmo-engine/graphify`), bin `gra
   the UI compares `meta.builtFromCommit` + the world server's build id for the
   staleness badge (never silently stale).
 
-## 9. Phases (each gated on Joey's word)
+## 9. Phases (each gated on the owner's word)
 
 - **H1 — Registry + content graph.** Introspection (S1, S2), content objects +
   archetypes (S7), authoring maps (S9), artifact + schema + `--check`,

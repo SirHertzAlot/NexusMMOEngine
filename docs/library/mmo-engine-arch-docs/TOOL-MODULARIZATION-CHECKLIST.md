@@ -1,7 +1,7 @@
 # Tool-Modularization Completion Checklist
 
 **Purpose:** answer the question "what does 'every tool to edit our game is now
-modularized' concretely mean?" — Joey's completion criterion, 2026-10-13:
+modularized' concretely mean?" — The owner's completion criterion, 2026-10-13:
 "Nothing is locked. Please continue to completion. Completion means every tool
 to edit our game is now modularized."
 

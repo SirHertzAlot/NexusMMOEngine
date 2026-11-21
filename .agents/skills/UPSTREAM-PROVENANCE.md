@@ -1,7 +1,7 @@
 # Vendored upstream skills — provenance
 
 Skills in this folder that come from upstream open-source projects,
-vendored 2026-11-13 on Joey's direction so the workspace's agents can
+vendored 2026-11-13 on the owner's direction so the workspace's agents can
 hot-load them on open. Each skill keeps its upstream layout
 (`<skill-name>/SKILL.md` + its agents/assets/scripts folders).
 
