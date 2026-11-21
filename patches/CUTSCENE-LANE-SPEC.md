@@ -1,7 +1,7 @@
 # Cutscene Lane — MuJoCo-Backed Cinematics
 
-Status: SPEC (Joey's direction, 2026-11-11). Nothing built. This spec defines
-the lane; implementation starts on Joey's word, phase by phase.
+Status: SPEC (the owner's direction, 2026-11-11). Nothing built. This spec defines
+the lane; implementation starts on the owner's word, phase by phase.
 Companion note: `~/workspace/your_files/mmo-engine-research/MUJOCO-ENGINE-NOTE.md`
 (reel evaluation + the adoption addendum this spec executes).
 
@@ -255,7 +255,7 @@ Hard rules:
   the native retarget/validate half is still stubbed (B3). C2 ships with
   prop tracks + existing hand-authored clips bound to slots; the MuJoCo
   skeletal leg lands when A1/A2 do, or via an interim direct bone-track
-  format if Joey calls it. The lane is not blocked on ozz; it is honest
+  format if the owner calls it. The lane is not blocked on ozz; it is honest
   about which leg is.
 - **C3 — Authoring.** Editor surface: place a cinematic anchor in the
   viewport, bind slots to placed objects, edit beats on a timeline, preview
@@ -268,7 +268,7 @@ Each phase: tests green before anything leaves a local branch; performance-
 affecting phases ship the repo-required metrics report; ROADMAP +
 DECISIONS sync in the same change; board updated in the same turn.
 
-## 12. Open questions (for Joey)
+## 12. Open questions (for the owner)
 
 1. **Group skip** — v1 specced as local-only skip. Vote / party-leader skip
    can come later; say if you want it in v1.

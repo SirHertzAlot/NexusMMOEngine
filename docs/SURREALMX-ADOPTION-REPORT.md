@@ -1,6 +1,6 @@
 # SurrealMX Adoption Report — 2026-10-28
 
-Directive (Joey): update the engine so we are using SurrealMX — "without
+Directive (the owner): update the engine so we are using SurrealMX — "without
 that, we aren't optimizing for the best case scenario" — and evaluate
 Nebula DB. Branch: `arlo/surreal-mx` (local; not pushed).
 
@@ -139,7 +139,7 @@ place.
 
 ## Still owed
 
-- The same live-server suite run on Joey's hardware (sandbox CPU
+- The same live-server suite run on the owner's hardware (sandbox CPU
   contention is the flake source; his codespace run is the clean one).
 - Windows native-engine check for `surrealkv:` (the old "surrealkv
   hangs" note was from the WASM era; verified fixed on Linux/native).

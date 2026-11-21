@@ -1,7 +1,7 @@
 # CPU Lightmap / Probe Baker — Project Brief
 
 **Status:** Scoping brief only (2026-10-23). No code written, nothing vendored,
-no repo changes. A developer can start from this document; Joey's word starts
+no repo changes. A developer can start from this document; The owner's word starts
 the build.
 **Origin:** `~/workspace/your_files/mmo-engine-graphics/CPP-AAA-GRAPHICS-RESEARCH.md`
 — the trio is that report's #1 ADOPT ("the bake-time GI trio"), re-verified
@@ -257,7 +257,7 @@ in/out) is identical either way, so the promotion is mechanical later.
 
 ---
 
-## 8. Risks and open questions for Joey
+## 8. Risks and open questions for the owner
 
 **Risks**
 
@@ -293,7 +293,7 @@ in/out) is identical either way, so the promotion is mechanical later.
   hour (late morning reads best and keeps shadows informative) and let
   the runtime sun modulate on top — or bake neutrally (AO + sky ambient
   only) so the cycle never disagrees with the bake? This is a look
-  decision, and it is Joey's.
+  decision, and it is the owner's.
 - **Q3 — Probe density.** Per-structure probes (cheap, coarse) vs a
   regular world grid (smoother, bigger sidecars). Pilot data should
   inform this; default to per-structure for v1.
@@ -309,7 +309,7 @@ in/out) is identical either way, so the promotion is mechanical later.
 - It does not change the graphics research doc, the pipeline, or any
   existing stage.
 - It does not authorize a push, a branch, or a build. It is the document
-  Joey approves (or edits) before any of that starts.
+  the owner approves (or edits) before any of that starts.
 
 ---
 

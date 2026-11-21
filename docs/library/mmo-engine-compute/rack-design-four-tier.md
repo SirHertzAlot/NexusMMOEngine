@@ -1,10 +1,10 @@
-# Four-Tier Rack: Joey's Cluster Design (2026-10-17)
+# Four-Tier Rack: The owner's Cluster Design (2026-10-17)
 
-*Design note, not a build order. Captures Joey's own rack sketch from the 2026-10-17 design session plus the engineering constraints worked out alongside it. Prices are Oct 2026 snapshots from that session — re-verify before buying; DRAM/GDDR prices are moving weekly. "Joey's" = his stated decision. "Recommended" = assistant's working recommendation, still his call. Supersedes the concept in `dense-cluster-research.md` (kept as the BD liquid-cooled chassis study) as the current design of record.*
+*Design note, not a build order. Captures the owner's own rack sketch from the 2026-10-17 design session plus the engineering constraints worked out alongside it. Prices are Oct 2026 snapshots from that session — re-verify before buying; DRAM/GDDR prices are moving weekly. "The owner's" = his stated decision. "Recommended" = assistant's working recommendation, still his call. Supersedes the concept in `dense-cluster-research.md` (kept as the BD liquid-cooled chassis study) as the current design of record.*
 
 **One-line summary:** four tiers — 895i/SE compute nodes, 395i AI workers, a 4U Tesla V100 GPU box, TrueNAS NAS — on one 25GbE spine. Proxmox owns virtualization (IaaS), Slurm owns batch, LLM inference is a shared API. Nothing exotic; every piece buyable used today except the 395i boards (mid-2026).
 
-**Joey's decisions that anchor this:**
+**The owner's decisions that anchor this:**
 - Build BD nodes now as the PoC; run them until the game outgrows them — stop hunting for the ideal hardware first ([source:9]).
 - The goal is one big mesh of compute that handles massive tasks cooperatively, iterated and expanded on price — not a one-shot final build ([source:15], [source:17]).
 - The rack must host IaaS with built-in LLM support for custom models that make the MMO engine (and its tech) easier to use ([source:12]).
@@ -84,13 +84,13 @@ Nothing in the starter config gets thrown away as it grows.
 
 ---
 
-## Alternatives considered (2026-10-17, not Joey's verdicts)
+## Alternatives considered (2026-10-17, not the owner's verdicts)
 
 - **AMD EPYC 4004** (assistant's top rank): same Zen 4 on AM5, ECC, up to 192GB DDR5/node. ASRock Rack 1U2N2G-AM5/2T = 2 independent nodes per 1U, dual 10GbE per node, BMC/IPMI — 32 cores/U matching the BD concept's density, minus the science project. Supermicro MicroCloud H13 = 10 nodes/3U. EPYC 4005 refresh exists on the same socket.
 - **Used Ampere Altra** (80-core Q80-30 ~$299): best cores-per-watt-per-dollar, but ARM — the sim stack would need ARM builds.
-- Joey took no position; the four-tier BD-anchored design above is the current direction.
+- The owner took no position; the four-tier BD-anchored design above is the current direction.
 
-## Open decisions (all Joey's)
+## Open decisions (all the owner's)
 
 - [ ] Greenlight to buy anything — nothing purchased; dense-cluster research and this doc are both pre-purchase.
 - [ ] Electrical: is 208/240V available where the 4U box will live? (Blocks tier 3.)

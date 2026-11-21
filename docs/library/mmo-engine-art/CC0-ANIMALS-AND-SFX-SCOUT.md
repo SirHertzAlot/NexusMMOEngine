@@ -1,6 +1,6 @@
 # CC0 Animals & SFX Scout — 2026-10-19
 
-Joey asked: what CC0 animal animations, animal sounds, and game SFX can we borrow, sourced together like the poly.pizza packs. Research only — nothing downloaded, no repo changes.
+The owner asked: what CC0 animal animations, animal sounds, and game SFX can we borrow, sourced together like the poly.pizza packs. Research only — nothing downloaded, no repo changes.
 
 **Bottom line:** CC0 animated animals = Gobkit carries the category almost alone (and our in-house copy is stale — 69 of 149 models). CC0 animal *sounds* are thin and will need per-file Freesound CC0 filtering at pack time. CC0 game SFX are abundant — Kenney's 10 audio packs cover UI, combat, RPG, sci-fi, voiceovers, and jingles, all CC0.
 

@@ -4,7 +4,7 @@
 **Status:** Evaluations, not decisions. Nothing here merges on its own.
 **Relation to the bundle:** This document extends the Shader & FX R&D program
 (`R&D-INDEX.md` and its five documents). It evaluates four external libraries
-Joey surfaced in October 2026 against the program's cost/benefit rubric
+The owner surfaced in October 2026 against the program's cost/benefit rubric
 (frame-ms budget, GPU-memory delta, mandatory quality-tier fallback), maps
 each to the existing experiment program, and records the open art-direction
 question they raised. Read `R&D-INDEX.md` first; this file assumes it.
@@ -415,7 +415,7 @@ to evidence, not vibes. Settle it with:
 2. **Cost numbers** — cel shading is generally cheaper (simpler BRDFs,
    fewer lights), but the difference must be measured on the program's
    named hardware, not assumed.
-3. **Asset fit** — whichever direction Joey's art inputs favor (hand-
+3. **Asset fit** — whichever direction the owner's art inputs favor (hand-
    painted textures lean PBR-with-style-in-inputs; flat color palettes
    lean cel).
 

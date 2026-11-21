@@ -961,7 +961,7 @@ Newest first. One line per merged PR or decision.
   - Graphics modernization analysis: clarified OpenGL (legacy native C/C++) vs. WebGL (sandboxed browser OpenGL ES binding over ANGLE) execution divergence, established WebGPU (three/webgpu + WGSL compute) as target rendering standard for GPU-driven indirect draw and 100k-particle compute pipelines.
   - Native C++ performance improvement plan: scheduled P1 addon-codec (AVX2/SIMD direct SharedArrayBuffer delta serialization eliminating 12.8ms p99 tail), P2 addon-spatial (dense 2D integer spatial hash curing interest.ts string churn), P3 JPH::JobSystemThreadPool multi-threaded physics solving, P4 CastRaysBulk parallel raycasting, and P5 mimalloc/jemalloc integration.
 - **2026-10-27**: C++ Main Tick Specification & Implementation Roadmap (docs/CPP-MAIN-TICK-SPEC.md):
-  - Commissioned by Joey: migrate authoritative 30Hz main tick from TypeScript to C++, reducing Node.js to the networking/session tier on uWebSockets.js, while keeping the persistence tier (world-server + SurrealDB atomic ops) unchanged.
+  - Commissioned by the owner: migrate authoritative 30Hz main tick from TypeScript to C++, reducing Node.js to the networking/session tier on uWebSockets.js, while keeping the persistence tier (world-server + SurrealDB atomic ops) unchanged.
   - Target scale: 1,000 CCU + 50,000 entities/NPCs in ONE region under shared resources (no sharding escape hatch, 33.33ms budget).
   - Phased gated execution plan: Phase 0 (Baselines & transport guarantee), Phase 1 (typescript2cxx transpiler pilot on fast-path.ts), Phase 2 (Production wiring of PR #430 SAB data-plane topology), Phase 3 (System-by-system migration, densest first), and Phase 4 (Native tick loop, determinism audit, and crash drills).
 - **2026-10-27**: Comprehensive Engine Documentation Wiki (docs/WIKI.md, docs/wiki/, README.md):
@@ -996,7 +996,7 @@ Newest first. One line per merged PR or decision.
   - Executed SimWorker crash drill: proved gateway WebSocket session survivability (zero client disconnects) and hot worker reattachment to the master SAB memory arena.
   - Passed owed B3 Load Test at target scale: 51,000 entities (1k players + 50k NPCs) under 1,000-client fan-out with network impairment injection (45ms latency, ±15ms jitter, 2% loss), achieving 0.562ms p99 tick latency (1.7% of 33.33ms budget, beating the 25% threshold) with 0 dropped steps. Verified PlayerIntent edge-trigger re-fire.
 - **2026-10-27**: SAB Logging Layer Specification & Roadmap (docs/SAB-LOGGING-LAYER-SPEC.md):
-  - Commissioned by Joey: ultra-low latency, allocation-free logging layer extending the SharedArrayBuffer.
+  - Commissioned by the owner: ultra-low latency, allocation-free logging layer extending the SharedArrayBuffer.
   - Sacred producer path: 128-byte binary records written to AtomicMPSCQueue in tens of nanoseconds with zero locks, formatting, or I/O on the simulation tick.
   - Disposable sinks: dedicated background log worker flushes batched 64KB writes to file, atomic metrics to edge counters, and formatted batches to uWS live edge topic `logs` for editor live-ops streaming (deleting snapshot timer polling).
   - World-tier fan-in: multi-region collector process lands streams into Redis Streams for persistent GraphQL live-ops queries.

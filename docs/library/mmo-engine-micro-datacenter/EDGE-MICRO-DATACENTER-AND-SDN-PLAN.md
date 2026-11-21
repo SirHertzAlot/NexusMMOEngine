@@ -1,6 +1,6 @@
 # Edge Micro-Datacenter + SDN Stack — Build Plan
 
-**For:** Claude (the implementing agent) and Joey (hardware/ops).
+**For:** Claude (the implementing agent) and the owner (hardware/ops).
 **Goal:** run the MMO engine's edge/core split on a super-compact, self-owned
 micro-datacenter built from SBCs and compact x86 boards, with a software-defined
 network (SDN) stack that a solo operator can actually run.
@@ -53,7 +53,7 @@ can be replaced.
    story*; a 4–10 node shelf does not need a container orchestrator's
    control plane eating the same CPUs the tick needs.
 4. **The Node-only rule covers engine services, not support tooling.**
-   FRR, HAProxy, Prometheus/Grafana (Go binaries, per Joey 2026-10-01) are
+   FRR, HAProxy, Prometheus/Grafana (Go binaries, per the owner 2026-10-01) are
    daemons/binaries alongside the engine, exactly like the observability
    stack in E6.
 5. **Cost/benefit gate, like the shader rubric.** Every node must justify
@@ -294,7 +294,7 @@ flowchart TB
 OpenDaylight/OpenStack-class controllers, ZeroTier-style hosted control
 planes, and any SDN that requires a JVM or a cloud account on the player
 path. Each is real software solving a bigger problem than a pod has;
-adopting one would spend the operator (Joey, nights) instead of the
+adopting one would spend the operator (the owner, nights) instead of the
 hardware. Recorded here so the question stays closed until scale reopens
 it.
 
@@ -442,7 +442,7 @@ Use the repo's existing test runner and Zod conventions — schema file is
 documentation, the validator is TypeScript in N7.
 
 **Done:** example inventory validates; README explains adding a node in
-5 steps; no real MACs/IPs of Joey's home network committed (examples only).
+5 steps; no real MACs/IPs of the owner's home network committed (examples only).
 
 ### N1 — Physical fabric bring-up
 
@@ -498,7 +498,7 @@ static remains the default and this slice reports that honestly).
 
 **Gate (all three required):** (1) a second physical rack/pod exists or a
 region must migrate between cores without edge changes; (2) H5 shows
-VXLAN keeps the E5 hop budget on-pod; (3) Joey explicitly opens the gate.
+VXLAN keeps the E5 hop budget on-pod; (3) the owner explicitly opens the gate.
 
 **Files (when built):** `infra/frr/evpn.md`, VNI map extending §4.4,
 `advertise-all-vni` config fragment, symmetric IRB notes.
@@ -551,7 +551,7 @@ infra/controller/README.md
 **Rules:** deterministic rendering (sorted keys, fixed whitespace) so
 renders diff cleanly in git; secrets never rendered (templates reference
 secret files by path); one command prints the full pod diff; pushing is a
-separate, manual, per-node step in v1 (ansible/ssh by Joey) — automation
+separate, manual, per-node step in v1 (ansible/ssh by the owner) — automation
 of the push is a future slice with its own approval, not a flag.
 
 **Tests:** golden-file test on the example inventory (rendered outputs
@@ -715,7 +715,7 @@ measurement (Section 6) wins and this file gets an appended note.*
 
 ## Appendix — G1 goal + device elimination (added 2026-10-02)
 
-Joey defined the first concrete capacity goal: **1000 concurrent users
+The owner defined the first concrete capacity goal: **1000 concurrent users
 at max load, no dropped/lost connections, no resource stalling.** The
 full definition (workload W1/W2, gates G1-C/S/R), the workload model
 built on the repo's own transport-bench constants (1.2 KB deltas at
@@ -737,7 +737,7 @@ this appendix.
 
 ## Appendix — Dense HPC cluster research (added 2026-10-02)
 
-Joey expanded the target from a single G1 pod to a strong cluster built from smaller, cheaper parts in a much denser footprint, with a dedicated orchestrator/head node as the cluster entry point and strict separation from the actual compute cores.
+The owner expanded the target from a single G1 pod to a strong cluster built from smaller, cheaper parts in a much denser footprint, with a dedicated orchestrator/head node as the cluster entry point and strict separation from the actual compute cores.
 
 The full research synthesis lives in:
 
@@ -763,7 +763,7 @@ Nothing in Sections 0–10 or the G1 appendix is changed by this appendix.
 Two appendices were added to the dense-cluster research document
 (`HPC-DENSE-CLUSTER-RESEARCH.md`, same directory):
 
-- **Appendix A** prices the first iteration under Joey's essentially-
+- **Appendix A** prices the first iteration under the owner's essentially-
   under-$3,000 constraint using 2026-10-02 verified US prices. Headlines:
   the BD895i SE (8945HX) succeeds the BD795i at $419.90; DDR5 SO-DIMM
   pricing (~$1,000 for 64GB) forces a 32GB first iteration; dropping PoE

@@ -1,7 +1,7 @@
 /**
  * Asset pipeline hooks (Phase 3: placeholder visuals).
  *
- * Joey supplies the real art assets later; the pack contract now lives
+ * The owner supplies the real art assets later; the pack contract now lives
  * in @mmo-engine/art (manifest schema, validation, ManifestAssetProvider
  * with per-asset placeholder fallback). This module keeps the
  * PlaceholderAssets renderer the game client uses until a pack ships —
@@ -128,7 +128,7 @@ export class PlaceholderAssets implements AssetProvider {
   async loadAssetPack(_url: string): Promise<void> {
     // Stub: the real art pipeline (glTF/texture manifest) lands here.
     // The renderer never calls this yet; it exists so the App can wire
-    // Joey's assets later without changing the render loop.
+    // the owner's assets later without changing the render loop.
     return Promise.resolve();
   }
 }

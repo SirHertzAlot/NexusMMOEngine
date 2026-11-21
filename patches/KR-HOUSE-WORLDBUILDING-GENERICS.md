@@ -1,6 +1,6 @@
 # K.R. House's worldbuilding shorts → quest generics, world systems, and the particle bridge
 
-Filed 2026-11-12 by the creator-sweep pass, at Joey's direction: look
+Filed 2026-11-12 by the creator-sweep pass, at the owner's direction: look
 through @author_kr_house's shorts and extrapolate what helps create
 quests and sub-quests and systems that feel authentic to Nexus — and
 incorporate it into the real-world particle system we're building.
@@ -336,7 +336,7 @@ their particle tells.)
 
 ## 3. The particle bridge — metaphysics you can see in the air
 
-Joey's ask: fold this into the real-world particle system. The
+The owner's ask: fold this into the real-world particle system. The
 governing rule for everything below: **particles report world
 state.** Every ambient effect is bound to a variable the server
 already owns (fabric health, devotion, corruption, pact state), so
