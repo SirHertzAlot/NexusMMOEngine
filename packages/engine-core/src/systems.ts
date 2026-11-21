@@ -1078,6 +1078,7 @@ interface JoltAddonModule {
     setCharacterVelocity(id: bigint, vx: number, vy: number, vz: number): void;
     updateCharacter(id: bigint, dt: number, gx: number, gy: number, gz: number): void;
     characterPosition(id: bigint): [number, number, number];
+    followCharacters(ids: BigUint64Array, targets: Float64Array, count: number, dt: number, teleport: number, out: Float32Array): void;
   };
   ShapeKind: { Box: 0; Sphere: 1 };
   MotionType: { Static: 0; Kinematic: 1; Dynamic: 2 };
@@ -1116,5 +1117,6 @@ export function createJoltBackend(): PhysicsBackend & CharacterBackend {
     setCharacterVelocity: (id, vx, vy, vz) => world.setCharacterVelocity(id, vx, vy, vz),
     updateCharacter: (id, dt, gx, gy, gz) => world.updateCharacter(id, dt, gx, gy, gz),
     characterPosition: (id) => world.characterPosition(id),
+    followCharacters: (ids, targets, count, dt, teleport, out) => world.followCharacters(ids, targets, count, dt, teleport, out),
   };
 }
