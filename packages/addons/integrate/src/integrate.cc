@@ -62,24 +62,10 @@ using mmo::logging::NativeLogArg;
 using mmo::logging::NativeLogProducer;
 namespace codes = mmo::logging::codes;
 
-static NativeLogArg MakeArgU32(uint32_t v) {
-  NativeLogArg a;
-  a.tag = mmo::logging::TAG_U32;
-  a.lo = v;
-  return a;
-}
-
 static NativeLogArg MakeArgI32(int32_t v) {
   NativeLogArg a;
   a.tag = mmo::logging::TAG_I32;
   a.lo = static_cast<uint32_t>(v);
-  return a;
-}
-
-static NativeLogArg MakeArgF32(float v) {
-  NativeLogArg a;
-  a.tag = mmo::logging::TAG_F32;
-  std::memcpy(&a.lo, &v, sizeof(uint32_t));
   return a;
 }
 
