@@ -22,7 +22,7 @@ describe("loadStrings", () => {
 
 describe("t", () => {
   it("formats placeholders, plurals, exact matches and select", () => {
-    assert.equal(t(EN, "hi", { name: "Joey" }), "Hello, Joey!");
+    assert.equal(t(EN, "hi", { name: "Alice" }), "Hello, Alice!");
     assert.equal(t(EN, "bag.slots", { count: 1 }), "1 slot");
     assert.equal(t(EN, "bag.slots", { count: 5 }), "5 slots");
     assert.equal(t(EN, "party.n", { n: 0 }), "nobody");

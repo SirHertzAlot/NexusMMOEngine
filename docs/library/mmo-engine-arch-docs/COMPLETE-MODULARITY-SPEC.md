@@ -1,6 +1,6 @@
 # Complete Modularity Spec
 
-**Status:** spec (2026-10-12), Joey's directive: "make the engine completely modular"
+**Status:** spec (2026-10-12), the owner's directive: "make the engine completely modular"
 **Parents:** `packages/modules` manifest system (EA3/EA9), EA10 native, EA11 sidecar,
 EA12 edge, EA13 tools-as-modules, EA17 DB functions, BAKE-OUTPUT-CONTRACT.md
 

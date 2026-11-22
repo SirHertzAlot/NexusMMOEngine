@@ -1,6 +1,6 @@
 # Model Synthesis Map — Beyond Tiles, Mapped onto the Engine
 
-**Status:** Complete mapping, 2026-10-26, at Joey's direction ("map it out
+**Status:** Complete mapping, 2026-10-26, at the owner's direction ("map it out
 completely"). Every constraint-driven generation domain in the engine is
 inventoried and given a verdict. No code, no adoption — a map.
 **Trigger:** Paul Merrell, "Beyond Wave Function Collapse: Procedural
@@ -353,7 +353,7 @@ The style pipeline's fourth step — **validate** — extends naturally:
 
 ## 12. Phased adoption — each phase gated, each with a kill criterion
 
-- **Phase 0 — This map.** Done when Joey accepts the verdict table
+- **Phase 0 — This map.** Done when the owner accepts the verdict table
   (§5). Kill: the map itself, if the verdicts don't survive his read.
 - **Phase 1 — Example assemblies + extractor prototype.** Decompose
   2–3 building archetypes into part catalogs; extractor emits a
@@ -378,7 +378,7 @@ The style pipeline's fourth step — **validate** — extends naturally:
   scheduled only now, from evidence. Kill: n/a — this phase is
   consolidation, entered only on pilot success.
 
-No phase starts without Joey's word, per-item, as always.
+No phase starts without the owner's word, per-item, as always.
 
 ## 13. Decision summary (one glance)
 

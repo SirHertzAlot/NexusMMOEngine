@@ -18,6 +18,7 @@
 
 import * as fs from "node:fs";
 import { z } from "zod";
+import { GeologySpecSchema } from "./geology/snapshot.js";
 
 /** A world edge. */
 export const Side = z.enum(["north", "south", "east", "west"]);
@@ -456,6 +457,13 @@ export const WorldSpecSchema = z
       .strict()
       .refine((s) => (s.x === undefined) === (s.z === undefined), "spawn: give both x and z, or neither")
       .optional(),
+
+    /**
+     * Macro geology (terrain/geology): an explicit plate/craton/suture
+     * snapshot whose provinces replace the wind-placed ranges as the land's
+     * uplift. Omitted = the ranges, as before. Frozen at runtime.
+     */
+    geology: GeologySpecSchema.optional(),
   })
   .strict()
   .superRefine((w, ctx) => {

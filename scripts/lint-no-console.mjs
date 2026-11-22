@@ -46,6 +46,7 @@ const BUDGETS = [
   { file: "packages/engine-core/src/sim.ts", budget: 12, justification: "CLI: the verification report is the product" },
   { file: "packages/engine-core/src/bake-world.ts", budget: 16, justification: "CLI: bake progress report" },
   { file: "packages/engine-core/src/preview-world.ts", budget: 6, justification: "CLI: survey report" },
+  { file: "packages/engine-core/src/terrain/geology/compare-cli.ts", budget: 2, justification: "CLI: geology:compare per-seed timing + result table" },
   { file: "packages/engine-core/src/items/rebake.ts", budget: 1, justification: "CLI: one-line bake report" },
   { file: "packages/engine-core/src/auth/seed-user.ts", budget: 5, justification: "CLI: seed tool usage/report" },
   { file: "packages/engine-core/src/procgen/wildlife-plan.ts", budget: 1, justification: "CLI: one-line table report" },

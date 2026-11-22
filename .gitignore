@@ -113,3 +113,6 @@ packages/engine-core/surreal/
 
 # Local Unity decomposition libraries referencing licensed pack assets
 /content/synthesis/*.local.json
+
+# V8 profiler output from local `node --prof` runs
+isolate-*-v8.log

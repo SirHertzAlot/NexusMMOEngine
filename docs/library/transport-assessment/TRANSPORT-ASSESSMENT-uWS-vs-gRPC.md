@@ -83,7 +83,7 @@ gRPC's HTTP/2 framing adds per-message overhead (headers, flow control, HPACK) t
 
 ### 3.4 Serialization — already decided
 
-gRPC mandates protobuf. The repo decided 2026-09-27 (recorded in `docs/DECISIONS.md`, re-confirmed when Joey raised protobufs+webrpc): **FlatBuffers stays** — single `.fbs` → C++ and JS/TS bindings, zero-copy on the 30 Hz path. Adopting gRPC would force a protobuf migration against an explicit, recorded decision.
+gRPC mandates protobuf. The repo decided 2026-09-27 (recorded in `docs/DECISIONS.md`, re-confirmed when the owner raised protobufs+webrpc): **FlatBuffers stays** — single `.fbs` → C++ and JS/TS bindings, zero-copy on the 30 Hz path. Adopting gRPC would force a protobuf migration against an explicit, recorded decision.
 
 **Winner: uWebSockets** (by prior binding decision).
 

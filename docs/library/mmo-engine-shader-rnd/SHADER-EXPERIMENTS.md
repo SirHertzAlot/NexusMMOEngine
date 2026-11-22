@@ -72,7 +72,7 @@ New `render/lab/bench.ts` (spec — build it in Exp 1):
 
 ### §0.4 Verdict rubric (applies to every experiment)
 
-**The guiding constraint** (Joey's directive): push graphics and
+**The guiding constraint** (the owner's directive): push graphics and
 aesthetics as far as possible **within reason**. He pays real resources
 to run the server and players' GPUs vary enormously — so ambition is
 high and cost justification is mandatory. Pretty is not a verdict.
@@ -80,7 +80,7 @@ Pretty *within budget, on tiered hardware* is.
 
 **Merge** requires ALL of:
 1. Acceptance criteria met (numbers on named hardware).
-2. Stills approved (Joey or designated art eye — no self-approval).
+2. Stills approved (the owner or designated art eye — no self-approval).
 3. Registered in `quality.ts` tiers (off/low/high or equivalent; low tier
    must never regress).
 4. WebGL2 fallback still renders correctly (or the fallback path is

@@ -19,6 +19,7 @@ or planned.
 | [CLI.md](CLI.md) | Every command, admin console commands, chat commands, keys |
 | [GAMEPLAY.md](GAMEPLAY.md) | Movement, combat, bots, skills, body, inventory, quests, and how to extend them |
 | [WORLD-BUILDING.md](WORLD-BUILDING.md) | Design or regenerate a world: specs, biomes, terrain editing |
+| [GEOLOGY.md](GEOLOGY.md) | Macro geology prototype: an optional province snapshot under the survey, and the GeoForge evaluation |
 | [ART-PIPELINE.md](ART-PIPELINE.md) | The art packs, the manifest contract, and the conversion tools |
 | [EDITOR.md](EDITOR.md) | The editor: inspectors, play mode, debugger, world-scale terrain, art pipeline |
 | [EDITOR-ARCHITECTURE.md](EDITOR-ARCHITECTURE.md) | The modular editor plan |
@@ -37,9 +38,11 @@ or planned.
 | Doc | What it is |
 |---|---|
 | [ALPHA-PLAN.md](ALPHA-PLAN.md) | What alpha means and its exit criteria |
+| [ENGINE-CORE-SPLIT.md](ENGINE-CORE-SPLIT.md) | Where the engine ends and our game begins, and the staged plan to split them |
 | [ROADMAP.md](ROADMAP.md) | Built, in progress, and planned, with an update log |
 | [DOCS-AUDIT.md](DOCS-AUDIT.md) | The latest documentation audit: what was checked, what was fixed, and what is still stale |
 | [DECISIONS.md](DECISIONS.md) | The locked engineering decisions |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | Every dependency and vendored library, its licence, and what shipping one obliges |
 | [CHARACTER-PLAN.md](CHARACTER-PLAN.md) | Character plan |
 | [CLIENT-FX.md](CLIENT-FX.md) | Client visual effects notes |
 | [EDGE-SPLIT-RESULTS.md](EDGE-SPLIT-RESULTS.md) | Edge/core split measurements |

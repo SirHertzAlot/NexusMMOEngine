@@ -7,7 +7,7 @@
 suggestion area from the mockup review, grounds it in supporting code,
 scholarly/first-hand sources, and real implementations, and ends with
 concrete acceptance criteria a builder can execute against. Append-only:
-add sections; do not rewrite existing ones without Joey.
+add sections; do not rewrite existing ones without the owner.
 
 **How to read:** §1–§3 are the architectural bets (navigation, time-travel,
 collaboration). §4–§8 are per-view deep dives (FX lab, command palette, data
@@ -258,7 +258,7 @@ emitter to the game event that fires it.
 
 ### §4.2 Supporting sources
 
-**Spector.js (Babylon.js).** The WebGL frame debugger Joey already adopted
+**Spector.js (Babylon.js).** The WebGL frame debugger the owner already adopted
 captures a full frame's GL commands: every draw call, shader, texture, and
 GL state, with a result panel for inspection (BabylonJS; Realtimerendering).
 It now ships an MCP server so AI assistants can "load a URL, capture

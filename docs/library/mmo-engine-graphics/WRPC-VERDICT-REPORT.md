@@ -198,9 +198,9 @@ gameplay messages, and it stays as is.
 
 ---
 
-## Audit addendum (2026-10-25, after Joey's challenge)
+## Audit addendum (2026-10-25, after the owner's challenge)
 
-Joey asked whether wRPC was implemented correctly, since it is
+The owner asked whether wRPC was implemented correctly, since it is
 supposed to be much more performant than ordinary gateways. The spike
 was re-audited line by line and re-measured with attribution lanes
 (same sandbox, Node 24, 5,000 samples/action; medians are the stable

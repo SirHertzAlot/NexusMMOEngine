@@ -1,7 +1,7 @@
 # C++ Main Tick — Specification and Implementation Roadmap
 
 ## Summary
-Commissioned by Joey 2026-10-27. Gated, phased plan to move the authoritative 30 Hz main simulation tick from TypeScript (engine-core) to C++, reducing Node.js to the networking/session tier on uWebSockets.js, while keeping the persistence tier (world-server + SurrealDB atomic ops) unchanged.
+Commissioned by the owner 2026-10-27. Gated, phased plan to move the authoritative 30 Hz main simulation tick from TypeScript (engine-core) to C++, reducing Node.js to the networking/session tier on uWebSockets.js, while keeping the persistence tier (world-server + SurrealDB atomic ops) unchanged.
 
 ## Target Scale & Goal
 - 1,000 concurrent users + 50,000 entities/NPCs in ONE region under shared resources (no sharding escape hatch).
@@ -13,7 +13,7 @@ Commissioned by Joey 2026-10-27. Gated, phased plan to move the authoritative 30
 - **Sim Worker (C++ Tick Host)**: Fixed 30 Hz loop, SAB SoA component plane, direct Jolt physics stepping (no per-tick N-API crossing), native kernels.
 - **Persist Worker**: SurrealDB WorldStore, atomic ops, and ledger transactions via lockless SPSC ring (unchanged).
 
-## Implementation Phases (Gated on Joey's Word)
+## Implementation Phases (Gated on the owner's Word)
 - **Phase 0 — Baselines & Transport Guarantee**: Re-run transport bench at 250–2,000 clients; re-baseline 51k JS tick; enforce loud failure if uWS fails to load; packaging fix for uWS binary.
 - **Phase 1 — Transpiler Pilot (`fast-path.ts`)**: Run `typescript2cxx` on 230-line sync codec; hand-finish SAB boundaries; golden test parity vs TS reference; benchmark encode/decode.
 - **Phase 2 — Production Wiring of Data-Plane Topology**: Wire PR #430 3-thread topology into production boot behind a rollback flag; sim worker initially runs TS tick over SPSC ring; green test suite & recovery soak.

@@ -3,7 +3,7 @@
 **Document Version:** 1.0.0  
 **Date:** 2026-10-27  
 **Branch:** `feat/cpp-main-tick-phase1`  
-**Status:** Phase 1 Complete — Gated on Joey's Approval  
+**Status:** Phase 1 Complete — Gated on the owner's Approval  
 **Module Audited:** `packages/protocol/src/fast-path.ts` (230 LOC, frozen v1 binary layout)  
 **Native Implementation:** `packages/addons/codec` (`@mmo-engine/addon-codec`, N-API C++17 with AVX2)
 
@@ -127,4 +127,4 @@ All 60 tests in `@mmo-engine/protocol` and 6 tests in `@mmo-engine/addon-codec` 
 With Phase 1 complete, verified, and benchmarked:
 - Native C++ addon infrastructure (`@mmo-engine/addon-codec`) is proven on the Windows build chain.
 - The gate requirements are fully satisfied.
-- **Ready for Joey's authorization to advance to Phase 2** (Production Wiring of the SAB Data-Plane Topology behind a feature flag).
+- **Ready for the owner's authorization to advance to Phase 2** (Production Wiring of the SAB Data-Plane Topology behind a feature flag).
