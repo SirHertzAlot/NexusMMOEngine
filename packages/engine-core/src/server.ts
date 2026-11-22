@@ -212,7 +212,7 @@ import { type MagicSystem } from "./magic.js";
 import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
 import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
-import { CharacterRef, God, Health } from "./components.js";
+import { CharacterRef, God, Health, Transform } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
 import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent } from "./dungeons/content.js";
@@ -1884,6 +1884,15 @@ async function main(): Promise<void> {
   if (coreChannel) {
     toEdge.push = (type, payload) => coreChannel.server.pushToAll(type, payload);
     console.log(`[server] core channel on 127.0.0.1:${channelPort} (edge/core split)`);
+  }
+  if (magicRef) {
+    magicRef.setHooks({
+      areAllies: (a, b) => gw.areAllies(a, b),
+      creatureInfo: (e) => ({
+        kind: creaturesRef?.creatures?.kindOf(e),
+        biome: biomeAt ? (biomeAt(Transform.px[e] ?? 0, Transform.pz[e] ?? 0) ?? undefined) : undefined,
+      }),
+    });
   }
   const port = await gw.listen();
   gw.startTicking();

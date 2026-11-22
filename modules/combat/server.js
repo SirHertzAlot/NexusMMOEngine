@@ -125,6 +125,28 @@ export function createSystems(ctx) {
     },
   );
   for (const def of loadAbilityStatuses()) status.define(def);
+  status.define({
+    id: "ignite",
+    kind: "debuff",
+    durationMs: 4000,
+    maxStacks: 5,
+    refresh: "accumulate",
+    dispellable: true,
+    mods: [],
+    dot: { perSecond: 6, intervalMs: 500 },
+  });
+  status.define({
+    id: "frostbite",
+    kind: "debuff",
+    durationMs: 4500,
+    maxStacks: 1,
+    refresh: "refresh",
+    dispellable: true,
+    mods: [{ stat: "speed", mode: "mul", value: -0.6 }],
+  });
+  magic.setHooks({
+    applyStatus: (target, id, source, tick) => status.apply(target, id, source, tick),
+  });
   const telegraphs = new TelegraphSystem(30);
   const duels = new DuelSystem(30);
 

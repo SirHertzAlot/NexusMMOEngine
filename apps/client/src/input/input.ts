@@ -193,7 +193,7 @@ function deriveSets(bindings: Bindings): { movementKeys: Set<string>; pressKeys:
 export function bindInput(
   el: HTMLElement,
   input: InputState,
-  opts: { onFirstInteraction?: () => void; onAction?: (action: UiActionId) => void } = {},
+  opts: { onFirstInteraction?: () => void; onAction?: (action: UiActionId) => void; canLockPointer?: () => boolean } = {},
 ): () => void {
   let interacted = false;
 
@@ -224,7 +224,7 @@ export function bindInput(
 
   const onClick = (): void => {
     interact();
-    el.requestPointerLock?.();
+    if (!opts.canLockPointer || opts.canLockPointer()) el.requestPointerLock?.();
   };
 
   // Mouse buttons fight only while the pointer is locked (the first click

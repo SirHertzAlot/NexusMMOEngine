@@ -7,6 +7,7 @@
     "@mmo-engine/mirror": "0.1.0",
     "@mmo-engine/picg": "0.1.0",
     "@mmo-engine/protocol": "^0.1.0",
+    "@mmo-engine/render-fx": "0.1.0",
     "@mmo-engine/scene": "0.1.0",
     "@mmo-engine/schema": "0.1.0",
     "@pmndrs/detect-gpu": "^6.0.24",
@@ -52,7 +53,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:deps && npm run build:lib && vite build",
-    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/animal-rig",
+    "build:deps": "node ../../scripts/dep-build.mjs @mmo-engine/scene && node ../../scripts/dep-build.mjs @mmo-engine/schema && node ../../scripts/dep-build.mjs @mmo-engine/protocol && node ../../scripts/dep-build.mjs @mmo-engine/art && node ../../scripts/dep-build.mjs @mmo-engine/mirror && node ../../scripts/dep-build.mjs @mmo-engine/picg && node ../../scripts/dep-build.mjs @mmo-engine/compose && node ../../scripts/dep-build.mjs @mmo-engine/animal-rig && node ../../scripts/dep-build.mjs @mmo-engine/render-fx",
     "build:lib": "tsc -p tsconfig.json",
     "predev": "npm run build:deps",
     "dev": "vite",

@@ -253,9 +253,27 @@ describe("gateway: magic", () => {
     const msgs = (await events).map((b) => decodeControl<SpellMessage | ManaMessage>(b));
     const spells = msgs.filter((m): m is SpellMessage => m.kind === "spell");
     assert.deepEqual(spells.map((m) => m.state), ["started", "done"]);
-    assert.equal(spells[1].amount, mend.effect.amount);
+    assert.equal(mend.effect.kind, "heal");
+    if (mend.effect.kind === "heal") assert.equal(spells[1].amount, mend.effect.amount);
     const mana = msgs.find((m): m is ManaMessage => m.kind === "mana")!;
     assert.equal(mana.current, rules.spells.defaultMax - mend.mana);
+
+    // Spline-drawn Blaze Path broadcasts authoritative 0x28 FxSpawn with binding.kind === "spline".
+    magic.refill(world, me);
+    const fxWait = client.waitFor(MessageType.Fx, 1);
+    client.sendRaw(MessageType.Magic, encodeControl({
+      kind: "cast",
+      spell: "blazePath",
+      path: [[0, 0.5, 0], [4, 1.5, 3], [8, 0.5, 6]],
+    }));
+    await new Promise((r) => setTimeout(r, 30));
+    tick(2);
+    const fxBufs = await fxWait;
+    const fx = decodeControl<{ kind: string; assetId: string; binding: { kind: string; waypoints?: unknown[] } }>(fxBufs[0]);
+    assert.equal(fx.kind, "fx-spawn");
+    assert.equal(fx.assetId, "fx.spline-fire");
+    assert.equal(fx.binding.kind, "spline");
+    assert.ok(Array.isArray(fx.binding.waypoints) && fx.binding.waypoints.length >= 2);
     await client.close();
   });
 });

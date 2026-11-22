@@ -15,7 +15,7 @@
 /** Closed parameter value union (mirrors render-fx ParamValue). */
 export type FxParamValue = number | [number, number, number] | string | number[];
 
-export type FxBindingKind = "local" | "world" | "entity" | "socket";
+export type FxBindingKind = "local" | "world" | "entity" | "socket" | "spline";
 
 /** Wire binding: entityId is the protocol wire-id string (u64-as-string). */
 export interface FxBinding {
@@ -25,6 +25,8 @@ export interface FxBinding {
   offset?: [number, number, number];
   pos?: [number, number, number];
   normal?: [number, number, number];
+  /** kind == "spline": authoritative world waypoints [x, y, z] in metres (2..16). */
+  waypoints?: Array<[number, number, number]>;
 }
 
 export type FxPhase = "charge" | "release" | "travel" | "impact" | "active" | "hit" | "shutdown";

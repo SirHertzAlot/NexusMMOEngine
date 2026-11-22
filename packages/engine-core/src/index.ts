@@ -382,7 +382,14 @@ export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social
 export { SqliteFriendStore } from "./friend-store.js";
 
 export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
-export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
+export {
+  Mana,
+  MagicSystem,
+  type SpellEvent,
+  type ActiveIceRing,
+  type MagicCreatureInfo,
+  type MagicSystemHooks,
+} from "./magic.js";
 export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
 export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
 export { BotSystem } from "./bots.js";

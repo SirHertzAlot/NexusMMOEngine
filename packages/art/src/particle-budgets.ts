@@ -77,5 +77,13 @@ export const DEFAULT_PARTICLE_BUDGETS: ParticleBudgets = loadParticleBudgets({
   fxSlots: {
     "fx.charged-shot": { medium: 8, high: 16, ultra: 24 },
     "fx.force-shield": { low: 0, medium: 4, high: 8, ultra: 8 },
+    "fx.mend-aura": { low: 4, medium: 8, high: 16, ultra: 24 },
+    "fx.spline-fire": { low: 6, medium: 12, high: 24, ultra: 32 },
+    "fx.spline-water": { low: 6, medium: 12, high: 24, ultra: 32 },
+    "fx.spline-earth": { low: 6, medium: 12, high: 24, ultra: 32 },
+    "fx.spline-air": { low: 6, medium: 12, high: 24, ultra: 32 },
+    "fx.spline-lightning": { low: 6, medium: 12, high: 24, ultra: 32 },
+    "fx.spline-frost": { low: 6, medium: 12, high: 24, ultra: 32 },
+    "fx.ice-ring": { low: 4, medium: 8, high: 16, ultra: 24 },
   },
 });

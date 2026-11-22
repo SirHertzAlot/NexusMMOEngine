@@ -27,3 +27,21 @@ export {
   validateFrameGraph,
 } from "./post-contracts.js";
 export type { PassKind, PassContract, FrameGraphValidation } from "./post-contracts.js";
+export {
+  ManagedEffectRuntime,
+  createEffectRuntime,
+  type EffectRendererHooks,
+  type EffectRuntimeOptions,
+  type FxWireKill,
+  type FxWireMessage,
+  type FxWireSpawn,
+  type FxWireUpdate,
+  type LiveEffectState,
+} from "./runtime.js";
+export {
+  clampSplineToRange,
+  sampleSpline,
+  splineLength,
+  type SplineSample,
+  type Vec3Point,
+} from "./spline.js";
