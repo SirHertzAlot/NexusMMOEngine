@@ -16,8 +16,7 @@
 
 import { defineQuery, hasComponent } from "bitecs";
 import { LocomotionMode } from "@mmo-engine/protocol";
-import { Action, Locomotion, PlayerIntent, Stamina } from "../components.js";
-import { Injury } from "../body.js";
+import { Action, Injury, Locomotion, PlayerIntent, Stamina } from "../components.js";
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";

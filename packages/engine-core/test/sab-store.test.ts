@@ -13,9 +13,7 @@ import {
   hasComponent,
   removeComponent,
 } from "bitecs";
-import { Transform, Needs, God } from "../src/components.js";
-import { Body, Injury } from "../src/body.js";
-import { Mana } from "../src/magic.js";
+import { Body, God, Injury, Mana, Needs, Transform } from "../src/components.js";
 
 describe("sab-store (Phase 1)", () => {
   it("scalar field stores live in a SharedArrayBuffer", () => {

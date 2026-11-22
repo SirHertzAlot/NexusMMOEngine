@@ -9,9 +9,11 @@ import { Move } from "@mmo-engine/protocol";
 import { parseRules, type SpellsRules } from "@mmo-engine/rules";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
-import { Mana, MagicSystem } from "../src/magic.js";
+import { MagicSystem } from "../src/magic.js";
+import { Mana } from "../src/components.js";
 import { loadGameRules } from "../src/rules/boot.js";
-import { BodySystem, Body } from "../src/body.js";
+import { BodySystem } from "../src/body.js";
+import { Body } from "../src/components.js";
 
 const DT = 1 / 30;
 const { rules } = loadGameRules();

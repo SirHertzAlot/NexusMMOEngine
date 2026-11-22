@@ -33,6 +33,7 @@ import {
   CharacterRef,
   Health,
   Locomotion,
+  Mana,
   PlayerIntent,
   Stamina,
   Transform,
@@ -41,12 +42,6 @@ import {
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
-
-/** The mana pool, server only (the owner hears it as the 0x1c `mana` message). */
-export const Mana = defineSABComponent({
-  current: Types.f32,
-  max: Types.f32,
-});
 
 /** A cast's progress, for the caster and the target. */
 export interface SpellEvent {

@@ -26,6 +26,7 @@
  */
 
 import { defineComponent, Types } from "bitecs";
+import { MAX_BODY_PARTS, type PartState } from "@mmo-engine/rules";
 import { defineSABComponent } from "./sab-store.js";
 
 export const Transform = defineSABComponent({
@@ -436,4 +437,62 @@ export const VfxEmitter = defineSABComponent({
 export const AudioEmitter = defineSABComponent({
   clip: Types.ui32,
   radius: Types.f32,
+});
+
+/* --- A body and its magic (ES5c) ---
+ *
+ * These were declared in `body.ts` and `magic.ts`, beside the systems that
+ * maintain them, which meant the engine's own tick read a kit's module to
+ * ask whether a leg slows an entity down. The data is the seam: a component
+ * is a layout in a SharedArrayBuffer that any system may read, and the
+ * engine already keeps `BodyConfig` here for the same reason. The systems
+ * move to a kit; what they write stays where everything can read it.
+ */
+
+/** Part states, as stored (2 bits each in Injury.bits). */
+export const PART_STATES: readonly PartState[] = ["healthy", "harmed", "maimed", "dismembered"];
+
+/** An open wound on a part (Body.wound). */
+export const Wound = { None: 0, Cut: 1, Thrust: 2, Stump: 3 } as const;
+
+/** Injury.bits: set while any wound bleeds (above the 2 × 15 state bits). */
+export const BLEEDING_BIT = 1 << 30;
+/** Injury.flags: no jumping (a useless leg). */
+export const NO_JUMP = 1;
+
+/**
+ * The body's state, server only (docs/MASTERY-AND-COMBAT.md §6). `hp` is
+ * each part's health as a share of its own maximum (0..1), so a change of
+ * Health.max (a buff) keeps every part's share. `clot` is the seconds left
+ * before a part's wound stops bleeding (< 0: it never does by itself).
+ * `seen` is the Health.current BodySystem last wrote: anything else is a
+ * change from outside, spread over the parts.
+ */
+export const Body = defineSABComponent({
+  hp: [Types.f32, MAX_BODY_PARTS],
+  wound: [Types.ui8, MAX_BODY_PARTS],
+  clot: [Types.f32, MAX_BODY_PARTS],
+  blood: Types.f32,
+  bloodMax: Types.f32,
+  seen: Types.f32,
+  /** Bit i: part i is gone, as last reported by drainLooks. */
+  lost: Types.ui16,
+});
+
+/**
+ * What injuries show and cost. `bits`: 2 bits of state per part (part i at
+ * bit 2i) and BLEEDING_BIT; `move` multiplies every speed the entity moves
+ * at; `stamina` its stamina recovery; `flags` NO_JUMP.
+ */
+export const Injury = defineSABComponent({
+  bits: Types.ui32,
+  move: Types.f32,
+  stamina: Types.f32,
+  flags: Types.ui8,
+});
+
+/** The mana pool, server only (the owner hears it as the 0x1c `mana` message). */
+export const Mana = defineSABComponent({
+  current: Types.f32,
+  max: Types.f32,
 });
