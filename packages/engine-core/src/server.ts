@@ -1542,6 +1542,8 @@ async function main(): Promise<void> {
       `(scatter plan ${populator.planHash.slice(0, 12)}…)`,
   );
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
+  // Which of the table's services this boot has, and which are off (ES4).
+  console.log(`[modules] ${services.summary}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "region.db"));
   // Cross-region presence (S2): the gateway reports online names and asks

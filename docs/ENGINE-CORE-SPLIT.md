@@ -325,13 +325,28 @@ Three changes make that possible:
 1. **`@mmo-engine/sdk` with a real `exports` map**, so a module imports
    `@mmo-engine/sdk` and `@mmo-engine/kit-combat`, never
    `../../packages/engine-core/dist/src/...`.
-2. **A typed service registry replaces `assembled.byName[...]`.** Instead
-   of `server.ts` reaching into the assembly and casting, modules
-   *publish* into `ctx.stores` (which already exists, `modules.ts:36`)
-   and *resolve* by a typed key. Boot fails loud when a required service
-   is missing — the same fail-closed style as the skill contract.
-3. **Config comes from `game.json`**, resolved per module by name, so
-   `server.ts:1394` stops being a list of 11 hardcoded objects.
+2. **A typed service registry replaces `assembled.byName[...]`.**
+   *Done (ES4, 2026-11-22.)* `packages/engine-core/src/services.ts` holds
+   one row per service the engine's entry point reads — the module behind
+   it, system or gateway extension, and whether the server runs without
+   it — and `server.ts` resolves by a typed key instead of casting. Boot
+   fails loud when a required service is missing, naming the module to
+   enable, the same fail-closed style as the skill contract. The
+   mechanism is in `@mmo-engine/sdk`, so a game with its own entry point
+   writes its own table.
+3. **Config comes from `game.json`**, resolved per module by name.
+   *Done (ES4), with one correction to this plan:* the 11 objects at
+   `server.ts:1394` do **not** move. They are host wiring — callbacks
+   into the host and live engine objects (`craftAndGrantItem`,
+   `groundHeightAt`, the spawn pool, the chunk source) — which no JSON
+   file can hold, and a manifest that could replace them would be a way
+   to break a boot rather than a way to configure one. What moved is the
+   data keys: `game.json`'s `modules` block layers *under* what the host
+   passes each module, so a `MMO_*` variable still wins for one run, a
+   key the host leaves unset comes from the file, and a key neither sets
+   is the module's own default. A module the host wires nothing for still
+   reads its settings, which is the part that matters for a game's own
+   modules.
 
 ### 3.4 Hooks, reachable
 
@@ -450,7 +465,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 1b | **Package hygiene** (parked with the licence) | `exports` maps on the packages that go public, `license` fields, root `LICENSE` and an aggregated third-party notices file | **Low.** Metadata only | Blocked on the licence choice — see [§5](#5-the-licence-is-deferred-on-purpose) |
 | 2 | **`GameProject` resolver** | `@mmo-engine/sdk` with `game.json` schema + resolver. Engine reads paths from it, defaulting to today's `content/` so current behaviour is byte-identical | **Low–medium.** 40 path sites in 19 files. Mitigated: default resolver returns exactly today's paths; a test asserts every resolved path equals the old constant | A test per seam asserting old path == new resolved path; boot smoke unchanged |
 | 3 | **Reach the hooks** | Load `game.json.hooks`, pass to `loadGameRules`. One line at `server.ts:354` plus a loader | **Low.** Absent hooks = today's behaviour | A test game pack that overrides `computeDamage` and changes a measured damage number |
-| 4 | **Service registry** | Typed resolve/publish replacing the 18 `assembled.byName[...]` and 4 `extensions[...]` reads. Both paths live side by side at first | **Medium.** This is boot wiring; a mistake shows up as a null system mid-tick. Mitigated: keep `byName` as the backing store, make the registry a typed view over it, convert one seam per commit | Full `npm test`; a play-mode run; `npm run valgrind:perf` unchanged (boot-only change, so the tick should not move) |
+| 4 | **Service registry** ✅ | Typed resolve replacing the 18 `assembled.byName[...]` and 4 `extensions[...]` reads, plus `game.json`'s `modules` block. Delivered as a typed view over the same two bags, which is why nothing had to live side by side | **Medium**, as judged. What it actually caught: `navigation` was cast to a non-null type at `server.ts:1687` although its consumer takes `NavigationSystem \| null`, and three refs were carrying hand-written structural types because a cast stood in the way of the real ones | Engine-core's 1,991 tests green; booted three ways (defaults, a manifest setting a module's value, a required module disabled); no workload imports `server.ts`, `modules.ts` or `services.ts`, so the tick cannot move |
 | 5 | **Kits** | `@mmo-engine/kit-combat`, `-progress`, `-economy`, `-quests`, `-dungeons`, `-social`. Code moves out of `engine-core/src` into kit packages; modules import the kit, not `dist/`. Each kit is written to be **forked and edited**, not just configured: small files, no cross-kit imports, and a `README` that says which hook or system to change for the common edits | **High.** ~13,000 LOC moving. Mitigated: one kit per PR, pure file moves with import rewrites and **no behaviour change in the same commit**; the roadmap row records the before/after test counts | Per kit: that kit's tests plus the full root suite; a measured duel and a measured loot roll identical before and after. Plus: the kit still builds with one system deleted, proving a game can drop part of it |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |

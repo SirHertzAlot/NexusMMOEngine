@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { assembleServerSystems } from "../src/modules.js";
+import { ENGINE_ROOT, openGameProject } from "@mmo-engine/sdk";
+import { assembleServerSystems, mergeModuleConfig } from "../src/modules.js";
 import type { SimSystem } from "../src/systems.js";
 
 const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -90,7 +91,90 @@ describe("server modules: the sample module", () => {
     const r = await assembleServerSystems({ modulesDir: sampleRoot(), setFile: setFile(SET), provided: { core: coreProvided() }, ctx: { sim: {} as never, log: (m) => logs.push(m) } });
     const hb = r.systems.find((s) => s.name === "sample-heartbeat")!;
     for (let i = 0; i < 1200; i++) hb.step({} as never, 1 / 30);
-    assert.equal(logs.length, 2);
+    // Its interval at boot, then one line per 600 ticks.
+    assert.deepEqual(logs, ["[sample-heartbeat] every 600 ticks", "[sample-heartbeat] 600 ticks", "[sample-heartbeat] 1200 ticks"]);
+  });
+
+  it("takes its interval from a game's settings (ES4)", async () => {
+    const logs: string[] = [];
+    const r = await assembleServerSystems({
+      modulesDir: sampleRoot(),
+      setFile: setFile(SET),
+      provided: { core: coreProvided() },
+      ctx: { sim: {} as never, log: (m) => logs.push(m), config: { "sample-heartbeat": { everyTicks: 45 } } },
+    });
+    const hb = r.systems.find((s) => s.name === "sample-heartbeat")!;
+    for (let i = 0; i < 135; i++) hb.step({} as never, 1 / 30);
+    assert.deepEqual(logs, [
+      "[sample-heartbeat] every 45 ticks",
+      "[sample-heartbeat] 45 ticks",
+      "[sample-heartbeat] 90 ticks",
+      "[sample-heartbeat] 135 ticks",
+    ]);
+  });
+});
+
+/**
+ * ES4: a game's `game.json` `modules` block reaches a module through
+ * `ctx.config`, end to end — the resolver reads the manifest, the merge
+ * layers it under the host's own wiring, and the module's entry sees the
+ * result.
+ */
+describe("server modules: settings from game.json", () => {
+  const readsConfig = `export function createSystems(ctx){
+  const c = ctx.config?.m ?? {};
+  return { x: { name: "x", seen: { ...c }, step(){} } };
+}`;
+  const temp = (): string => {
+    const root = mkdtempSync(join(tmpdir(), "mmo-cfg-"));
+    for (const [n, m] of [
+      ["core", { name: "core", version: "0.1.0", server: { systems: CORE_ORDER.map((name) => ({ name })) } }],
+      ["m", { name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x" }] } }],
+    ] as [string, object][]) {
+      mkdirSync(join(root, n, "server"), { recursive: true });
+      writeFileSync(join(root, n, "module.json"), JSON.stringify(m));
+    }
+    writeFileSync(join(root, "m", "server", "index.js"), readsConfig);
+    return root;
+  };
+  /** A project folder with a manifest that configures module `m`. */
+  const game = (modules: object): string => {
+    const dir = mkdtempSync(join(tmpdir(), "mmo-game-"));
+    writeFileSync(join(dir, "game.json"), JSON.stringify({ name: "cfg-game", modules }));
+    return dir;
+  };
+  const assemble = async (root: string, config: Record<string, Record<string, unknown>>): Promise<Record<string, unknown>> => {
+    const r = await assembleServerSystems({
+      modulesDir: root,
+      setFile: setFile(["m"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, config },
+    });
+    return (r.byName["x"] as unknown as { seen: Record<string, unknown> }).seen;
+  };
+
+  it("hands the module what the manifest sets", async () => {
+    const dir = game({ m: { pace: 7, label: "from the file" } });
+    const project = openGameProject({ dir, env: {}, cwd: dir });
+    const seen = await assemble(temp(), mergeModuleConfig({}, project.moduleConfig));
+    assert.deepEqual(seen, { pace: 7, label: "from the file" });
+  });
+
+  it("keeps what the host sets and fills only what it leaves unset", async () => {
+    const dir = game({ m: { pace: 7, label: "from the file" } });
+    const project = openGameProject({ dir, env: {}, cwd: dir });
+    const host = { m: { pace: 99, label: undefined, live: () => 1 } };
+    const seen = await assemble(temp(), mergeModuleConfig(host, project.moduleConfig));
+    assert.equal(seen.pace, 99, "the host's value, as a MMO_* variable would give");
+    assert.equal(seen.label, "from the file");
+    assert.equal(typeof seen.live, "function", "the host's own wiring survives the merge");
+  });
+
+  it("changes nothing for a game with no manifest", async () => {
+    const project = openGameProject({ env: {}, cwd: ENGINE_ROOT, exists: () => false });
+    assert.deepEqual(project.moduleConfig, {});
+    const seen = await assemble(temp(), mergeModuleConfig({ m: { pace: 1 } }, project.moduleConfig));
+    assert.deepEqual(seen, { pace: 1 });
   });
 });
 

@@ -117,8 +117,8 @@ Most of these are opt-in speed or safety switches. The defaults are the safe pat
 | `MMO_LOG` | on | `0` starts no log worker; events are only counted as ring drops. Boot banners and fatal errors always go to the console. |
 | `MMO_LOG_DIR` | `<data dir>/logs` | Where the log worker writes. |
 | `MMO_HOST_ID` | the hostname | This host's id when the world assigns regions (assignment mode). |
-| `MMO_RESIDENTS_MAX` | `800` | The most resident entities (people living in the towns) at once. |
-| `MMO_RESIDENTS_FULL` | `300` | How many of them are simulated in full (`maxFull` in the residents system; see [SETTLEMENTS.md](SETTLEMENTS.md)). |
+| `MMO_RESIDENTS_MAX` | `800` | The most resident entities (people living in the towns) at once. Also settable as `modules.residents.maxEntities` in a game's [`game.json`](BUILDING-A-GAME.md#the-manifest-gamejson), which this variable overrides for one run. |
+| `MMO_RESIDENTS_FULL` | `300` | How many of them are simulated in full (`maxFull` in the residents system; see [SETTLEMENTS.md](SETTLEMENTS.md)). Also `modules.residents.maxFull` in `game.json`. |
 
 ## Content file locations
 

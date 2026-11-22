@@ -7373,7 +7373,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "dd3f83db3599f7ff42097caa4634a331956a5f45",
+    "builtFromCommit": "844eb1e957eb70871e6d564fc995e137f789037b",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7610,7 +7610,7 @@
       "packages/engine-core/src/logging/civic-metrics.ts": "063e532040fe0e474f77ae52b5f51ffa0c48f06ddf970ca429a8ea2efed3c134",
       "packages/engine-core/src/logging/index.ts": "8f779c11f4087bd2f9090fb0c5d57db07c2b3da04d85653390120a3bb0d8618a",
       "packages/engine-core/src/magic.ts": "d2f573df38947ab93d51588d2460e5265e83e52c9e985340d5185650a51dd8ea",
-      "packages/engine-core/src/modules.ts": "43e76f572d931d353218b9d59b8a34b4bd345a5b2bf0f0802154f03e3f68806c",
+      "packages/engine-core/src/modules.ts": "f7fe08deb3614291a5ebfda500f6778d2254e3efb05c5a621e7443b0dfd2073f",
       "packages/engine-core/src/movement.ts": "d98de3101f890473b1ec19e177f56ba127debd37004449e45cdf985072aa5a80",
       "packages/engine-core/src/native-systems.ts": "9f4167145b1bf2e1477215a8c3f62fdb745afbfab6b74456a50722e15d36a5a0",
       "packages/engine-core/src/navigation/backend.ts": "e817c9bafddd7e4819cb81b2b4a3964d0949cfb840889ac0fb12180f1cecaa89",
@@ -7697,7 +7697,8 @@
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
       "packages/engine-core/src/scene-spawn.ts": "0c9002f0aa75dc79c28ed8a1f0e9d6b468858a4acef96e18a4bb8b335cfd41a1",
       "packages/engine-core/src/server-settings.ts": "644264d10ee891ef74170c742cab78b7fe35012fa962129e7e2127b7a1c69236",
-      "packages/engine-core/src/server.ts": "2d01ac5a038cd53a7799e554c921a3148c52ffd400ce06dd6b5fa1bbf7ebcf14",
+      "packages/engine-core/src/server.ts": "045742a748a87625d65a4ed5127c741035e1b986ca8cead2eeb66b2caa84d391",
+      "packages/engine-core/src/services.ts": "a80698ea3c9a6822f58a8e40d47319be405ea5b690e1c521e24d369cbc58abda",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
