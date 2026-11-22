@@ -92,6 +92,61 @@ you want is already a parameter. Most of the time it is.
 The editor exposes much of this as grids and tables, so a designer can tune
 without a text editor or a Git client. See [The editor](EDITOR.md).
 
+### The manifest: `game.json`
+
+Your content does not have to live in this checkout's `content/`. A
+`game.json` says where it is, and the engine reads every path through it:
+
+```json
+{
+  "name": "my-game",
+  "content": "content",
+  "assets": "assets",
+  "paths": {
+    "rulesDir": "rules",
+    "scenesDir": "scenes",
+    "biomesFile": "world/biomes.json"
+  },
+  "hooks": "rules/hooks.mjs"
+}
+```
+
+- `content` and `assets` are relative to the folder the manifest sits in, so
+  a game outside this repository keeps its own layout.
+- `paths` moves one seam at a time, relative to `content` unless you give an
+  absolute path. Every key is listed in
+  [`packages/sdk/src/seams.ts`](../packages/sdk/src/seams.ts), each with the
+  variable that overrides it and what it is; an unknown key fails the boot
+  with the known ones listed.
+- `hooks` names the module from [§3](#3-then-rules-hooks).
+- With no manifest, every path is the engine's own, exactly as before. The
+  engine finds one in its own folder, or wherever `MMO_GAME` points;
+  `MMO_GAME=0` ignores it.
+- The `MMO_*` path variables in
+  [Configuration](CONFIGURATION.md#content-file-locations) still win over
+  the manifest, so one run can point anywhere without editing the file.
+
+The boot log names the manifest, the content root, which paths you moved
+and a hash of that layout:
+
+```
+[server] game: my-game (/srv/my-game/game.json), content /srv/my-game/content,
+         2 paths moved: rulesDir, scenesDir, layout 09d388019c8e
+```
+
+That hash is the layout, not the content. Every region of a fleet should
+print the same one; a region that prints a different hash is reading a
+different game, which is worth catching before players do.
+
+Two things the manifest does not change. Some sample data ships *inside*
+the engine rather than under `content/` — the biome registry, the ecology
+plan and the wildlife tables live in `packages/engine-core/content/` — so
+point `biomesFile`, `ecologyFile`, `wildlifeTableFile` and
+`naturalWeaponsFile` at your own files and none of ours is read. And the
+settlement CLIs still read their own copy of these variables
+(`packages/settlement/src/paths.ts`), so a bake takes the flags and
+variables it always did.
+
 ## 3. Then rules hooks
 
 `packages/rules` defines eight hooks where a game can override a formula
