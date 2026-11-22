@@ -5,7 +5,8 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createRapierPhysicsWorld, PHYSICS_SUBSTEPS, RAGDOLL_PARTS, type PhysicsWorld } from "../src/physics/index.js";
+import { createRapierPhysicsWorld } from "../src/physics/rapier-world.js";
+import { PHYSICS_SUBSTEPS, RAGDOLL_PARTS, type PhysicsWorld } from "../src/physics/index.js";
 
 const DT = 1 / 60;
 const CELLS = 64;

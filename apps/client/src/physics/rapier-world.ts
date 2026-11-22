@@ -1,7 +1,15 @@
 /**
- * The physics seam on Rapier (WASM, `@dimforge/rapier3d-compat`). Chosen over
- * Jolt by `scripts/bench-physics.mjs` (see the PR body): equal or faster for
- * awake rigs, which is the budget case.
+ * The physics seam on Rapier (WASM, `@dimforge/rapier3d-compat`).
+ *
+ * **Not shipped.** The client runs on PhysX alone (`./index.ts`); this is the
+ * seam's second implementation, kept because the `physx-js-webidl` build we
+ * pin is compiled for the web and throws "not compiled for this environment"
+ * under Node, so it cannot drive a test. Two implementations also keep the
+ * seam honest: anything that leaks a backend's own behaviour into the
+ * interface shows up here first.
+ *
+ * Import it from this file, never from `./index.ts`, so a stray import cannot
+ * pull Rapier into the client bundle.
  */
 
 import RAPIER from "@dimforge/rapier3d-compat";

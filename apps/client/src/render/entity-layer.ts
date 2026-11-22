@@ -343,7 +343,7 @@ export class EntityLayer {
         if (json && !this.disposed) this.clipMap = indexClipMap(parseClipMap(json));
       })
       .catch((e: unknown) => console.info(`[world] default clip map: ${e instanceof Error ? e.message : e}`));
-    createClientPhysicsWorld("physx")
+    createClientPhysicsWorld()
       .then((world) => {
         if (this.disposed) {
           world.dispose();

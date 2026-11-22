@@ -1,7 +1,5 @@
-import { createRapierPhysicsWorld } from "./rapier-world.js";
 import { createPhysxPhysicsWorld } from "./physx-world.js";
 import type { PhysicsWorld } from "./physics-world.js";
-export { createRapierPhysicsWorld } from "./rapier-world.js";
 export { createPhysxPhysicsWorld } from "./physx-world.js";
 export {
   PHYSICS_SUBSTEPS,
@@ -12,12 +10,15 @@ export {
 } from "./physics-world.js";
 export { WalkerPredictor, type PredictionOptions, type Snapshot } from "./walker-prediction.js";
 
-export type ClientPhysicsBackend = "physx" | "rapier";
-
 /**
- * The client's physics world. PhysX is the default (the client library chosen
- * for CPU performance and the browser target); Rapier stays selectable as a fallback.
+ * The client's physics world: PhysX, the library chosen for CPU performance
+ * and the browser target.
+ *
+ * There is one backend in the client. Rapier was selectable here and is not
+ * any more: `./rapier-world.ts` stays as the seam's second implementation for
+ * tests, because the PhysX build we pin is compiled for the web and refuses
+ * to start under Node. Nothing the client ships imports it.
  */
-export async function createClientPhysicsWorld(backend: ClientPhysicsBackend = "physx"): Promise<PhysicsWorld> {
-  return backend === "rapier" ? createRapierPhysicsWorld() : createPhysxPhysicsWorld();
+export async function createClientPhysicsWorld(): Promise<PhysicsWorld> {
+  return createPhysxPhysicsWorld();
 }
