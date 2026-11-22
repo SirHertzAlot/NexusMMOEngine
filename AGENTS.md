@@ -13,8 +13,9 @@ This document establishes mandatory architectural rules, documentation conventio
 - **No planning artefacts in `docs/`.** Phase reports, sprint notes, audits,
   handoffs, spikes, build plans and "we decided X on date Y" write-ups do not
   belong there. Git history keeps them; the documentation set is not an
-  archive. The exceptions are `ROADMAP.md` (the live task board) and
-  `DECISIONS.md` (the rationale record contributors are pointed at).
+  archive. The one exception is `ROADMAP.md`, the live task board. Rationale
+  a reader needs belongs in the guide for that topic, as a line of reasoning
+  beside the thing it explains, not in a decisions page of its own.
 - **No competitive comparisons.** Do not add benchmark shootouts against
   other engines, SWOT analyses or disparaging commentary. `PERFORMANCE.md`
   reports what *this* engine costs and says plainly where a number is a miss.
@@ -121,11 +122,11 @@ Every PR that changes engine behavior, performance, or architecture must include
 3. **Performance numbers** — before/after at 1k / 10k / 50k entities, with measured p50/p99/max tick times and heap allocation deltas.
 4. **Test results** — full suite counts (e.g. "22/22 green", "60/60 tests green"), including regression suites.
 5. **Images / charts** — benchmark charts, Mermaid diagrams, or screenshots where performance or visual claims are made. No performance claim without a chart.
-6. **Documentation sync** — list of docs files updated (`ROADMAP.md` always, plus `ARCHITECTURE.md`, `CAPABILITIES.md`, `PERFORMANCE.md`, `CONFIGURATION.md`, `DECISIONS.md` as the change touches them) in the same PR.
+6. **Documentation sync** — list of docs files updated (`ROADMAP.md` always, plus `ARCHITECTURE.md`, `CAPABILITIES.md`, `PERFORMANCE.md`, `CONFIGURATION.md` as the change touches them) in the same PR.
 
 ### 7.2 Documentation Synchronization Invariant
 
-- **Code and docs move together.** If a PR changes a system, its tick share, its port status (TS vs. native), or a feature flag, the corresponding row in `docs/ROADMAP.md` and the relevant entry in `docs/DECISIONS.md` must be updated in the same PR. If it changes what a user can do or what a user must know, the user-facing doc for that area changes too.
+- **Code and docs move together.** If a PR changes a system, its tick share, its port status (TS vs. native), or a feature flag, the corresponding row in `docs/ROADMAP.md` must be updated in the same PR. If it changes what a user can do or what a user must know, the user-facing doc for that area changes too.
 - **Never claim "landed" without verification.** Use `git merge-base --is-ancestor` + `git diff --stat` to confirm a change is actually in `main` before citing it as built. Distinguish local / tests / runtime-verified / pushed / PR / merged / accepted.
 - **Pre-existing failures are documented, not inherited.** If `main` has known breakage (e.g. engine-core tsc errors), work around it and note it; never silently inherit it.
 

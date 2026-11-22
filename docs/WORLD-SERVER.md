@@ -1,6 +1,6 @@
 # The world server
 
-The registry, leases, migration hand-offs and the stress harness are all built, and the world server embeds SurrealDB. Direct region-to-region transfer was considered and deliberately not built: the stress runs showed it was unnecessary. The measured limits are in [Performance and constraints](PERFORMANCE.md). Companion to `docs/DECISIONS.md`
+The registry, leases, migration hand-offs and the stress harness are all built, and the world server embeds SurrealDB. Direct region-to-region transfer was considered and deliberately not built: the stress runs showed it was unnecessary. The measured limits are in [Performance and constraints](PERFORMANCE.md).
 ("Region/world split" entry) and `docs/MESSAGE-CATALOG.md` (client↔region
 protocol, unchanged by this spec).
 
@@ -329,7 +329,7 @@ is "N regions per micro server before degradation."
   gateway validates via world (cached), register/login flows unchanged
   on the wire.
 - **Slice D — harness + number.** Build the stress harness, run the
-  sweep, publish the number, record it in DECISIONS.
+  sweep and publish the number.
 - **Later:** queue consumer adapter, embedded stub adapter, global
   services (chat/mail/auction/leaderboards), remote-SurrealDB
   graduation.

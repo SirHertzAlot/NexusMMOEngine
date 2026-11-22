@@ -1,9 +1,9 @@
 # Architecture
 
 How the engine is put together, one tick at a time. If you want to run it
-first, read [GETTING-STARTED.md](GETTING-STARTED.md); if you want the
-reasoning behind a choice, read [DECISIONS.md](DECISIONS.md). This document
-describes what exists now.
+first, read [Getting started](GETTING-STARTED.md). Where a choice here is not
+obvious, the reasoning is given beside it. This document describes what
+exists now.
 
 ## The shape of the thing
 
@@ -80,8 +80,8 @@ Terrain chunks and entities with no position live in a **global sector** (`g`) t
 
 ## Locked decisions
 
-These are recorded in [DECISIONS.md](DECISIONS.md) and are not open for
-casual revision:
+These are load-bearing and not open for casual revision. Each one carries the
+measurement or constraint that settled it:
 
 - **JS world (bitECS) with C++ systems** for physics, collision, pathfinding
   and procgen. The benchmark ran the same C++ kernel over a bitECS world and
@@ -90,8 +90,9 @@ casual revision:
 - **SQLite embedded in the region process** (`region.db`, a hot cache) for region state, with the
   **world server as the source of truth** for world-level records when `WORLD_URL` is set. The
   world store is embedded SurrealDB (SurrealKV by default); the recommended durable shape is the
-  SurrealMX server, which is also where the data plane's ledger goes. See
-  [DECISIONS.md](DECISIONS.md) (2026-10-28 and 2026-11-02).
+  SurrealMX server, which is also where the data plane's ledger goes. A region's SQLite file is a
+  cache, so losing it costs a resync and not the game's record — see
+  [The world server](WORLD-SERVER.md).
 - **FlatBuffers** is the C++ ↔ JS contract, owned by
   `packages/schema/mmo_engine.fbs`.
 - **30 Hz fixed sim tick.**
@@ -457,5 +458,4 @@ SQLite stores, which is the normal development setup. See
 | terrain, biomes, scenery | [WORLD-BUILDING.md](WORLD-BUILDING.md) |
 | the art packs and conversion | [ART-PIPELINE.md](ART-PIPELINE.md) |
 | the areas and dungeons | [Procedural generation](PROCEDURAL-GENERATION.md), [DUNGEONS-AND-LOOT.md](DUNGEONS-AND-LOOT.md) |
-| why any of this was chosen | [DECISIONS.md](DECISIONS.md) |
 | what is planned | [World building](WORLD-BUILDING.md), [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md), [CHARACTERS-AND-SOCIAL.md](CHARACTERS-AND-SOCIAL.md) |

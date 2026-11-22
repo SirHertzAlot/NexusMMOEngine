@@ -33,7 +33,13 @@ put the logic.
 - `snapshot-interpolator.ts` buffers authoritative states and plays them back
   one tick behind, so an entity moves smoothly between 30 Hz updates.
 - `walker-prediction.ts` moves the local player immediately on input and
-  reconciles when the server's version arrives.
+  reconciles when the server's version arrives. It corrects by showing the
+  error as a visual offset that decays over `blendSeconds` rather than
+  snapping, and only snaps past `snapMetres`. That is deliberate: the client's
+  physics is a different engine from the server's, so a prediction can never
+  agree with the server bit for bit, and a correct-looking walk matters more
+  than an exact one. The simulated position stays authoritative underneath —
+  `predicted` is the drawn position, with the offset applied.
 
 Everything else on screen is interpolated, not predicted. Input therefore
 costs at least a round trip plus one interpolation tick (about 33 ms) before

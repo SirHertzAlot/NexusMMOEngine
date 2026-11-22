@@ -63,7 +63,6 @@ a worked example; they are not a specification you must keep.
 | Doc | What it is |
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | The official task board: built, in progress, planned, with an update log |
-| [DECISIONS.md](DECISIONS.md) | Why things are the way they are, for contributors |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Branch workflow, tests, code standards |
 
 [internals/](internals/) holds subsystem design references that source code

@@ -126,7 +126,10 @@ JavaScript systems.
 
 `npm run build:native` compiles every module with a `native.entry` through
 node-gyp. A missing `.node` file disables the module with an error pointing
-at that command rather than failing obscurely.
+at that command rather than failing obscurely. node-gyp does the whole build:
+there is no CMake step and no shell script in the path, so an addon compiles
+from a plain checkout on Windows and Linux alike with nothing installed but a
+compiler.
 
 Copy `packages/addons/template` to start. The boundary rule is absolute:
 **pass bulk typed arrays once per tick, never inspect JavaScript objects

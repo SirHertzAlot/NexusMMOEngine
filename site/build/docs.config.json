@@ -65,8 +65,7 @@
       "title": "Project",
       "blurb": "What is built, what is next, and why things are the way they are.",
       "pages": [
-        { "slug": "roadmap", "file": "ROADMAP.md" },
-        { "slug": "decisions", "file": "DECISIONS.md" }
+        { "slug": "roadmap", "file": "ROADMAP.md" }
       ]
     }
   ]
