@@ -60,6 +60,7 @@ import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** What a striker swings: the rules technique, the item's physics and its reach (m). */
 export interface Weapon {
@@ -226,6 +227,8 @@ export function aimFromLookPitch(
 }
 
 export class CombatSystem implements SimSystem {
+  /** Offered to the host as the `combat` port: the blows it struck this tick, and a player's stance. */
+  readonly [PORTS] = ["combat"];
   readonly name = "combat";
   readonly access: SystemAccess = {
     system: "combat",

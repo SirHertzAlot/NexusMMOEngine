@@ -21,6 +21,7 @@ import { God, Health, Transform } from "./components.js";
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 export type TelegraphShape =
   | { kind: "circle"; x: number; z: number; r: number }
@@ -84,6 +85,8 @@ export function inShape(shape: TelegraphShape, x: number, z: number): boolean {
 }
 
 export class TelegraphSystem implements SimSystem {
+  /** Offered to the host as the `telegraphs` port: the attacks it telegraphed. */
+  readonly [PORTS] = ["telegraphs"];
   readonly name = "telegraph";
   readonly access: SystemAccess = {
     system: "telegraph",

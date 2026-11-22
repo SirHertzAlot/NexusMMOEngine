@@ -148,6 +148,34 @@ module may provide — that is the module's own `module.json`. A game with its
 own entry point writes its own table over `openServiceRegistry` from
 `@mmo-engine/sdk` and uses none of ours.
 
+**Being read by the gateway.** A service is how the *server's entry point*
+reaches a system. The region gateway has its own, narrower need: a handful of
+systems it must reach every tick to turn their events into client messages,
+and reach again when a key press arrives. It asks for those by **port**, not
+by class.
+
+A port is a name plus the methods behind it. `packages/engine-core/src/net/ports.ts`
+declares the ones our gateway reads — `combat`, `life`, `abilities`,
+`telegraphs`, `statuses`, `duels` — and a system offers one by naming it:
+
+```ts
+import { PORTS } from "@mmo-engine/sdk";
+
+export class MyCombatSystem implements SimSystem {
+  readonly name = "combat";
+  readonly [PORTS] = ["combat"];
+  drainHits(): HitEvent[] { /* … */ }
+  setStance(e: number, technique?: string | null, aim?: string | null): string | null { /* … */ }
+}
+```
+
+Replace the engine's combat system with your own and the gateway finds yours,
+because it never looked for a class in the first place. Offer a port without
+the methods it needs and the boot ends naming the system and the methods it
+lacks; offer none of them and the gateway simply sends none of those messages,
+which is what a game with no duels wants. A game with its own gateway declares
+its own ports over `openPorts` from `@mmo-engine/sdk`.
+
 **3. Try it.** Add `"sample-heartbeat"` to `content/modules.json` (or tick it in the editor's Modules workspace and press **Apply modules**). The boot line lists the system between `crowd` and `intent`, and the log shows the heartbeat.
 
 Game rules belong in data, not in a module's code: put tunables in `content/rules/` and read them through the rules package ([ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data)).
@@ -303,3 +331,4 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 - [BUILDING-A-GAME.md](BUILDING-A-GAME.md) — when to reach for a module, and when data or a rules hook is enough.
 - [ARCHITECTURE.md](ARCHITECTURE.md#the-tick) — what a tick does, so you know where your system sits in it.
 - `packages/modules/src/index.ts` — the manifest schema and the resolver, with every problem message.
+- `packages/engine-core/src/net/ports.ts` — the ports the gateway reads, and what each one must answer.
