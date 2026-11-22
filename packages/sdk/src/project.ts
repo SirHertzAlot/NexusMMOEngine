@@ -50,6 +50,15 @@ export interface GameProject {
   readonly paths: GamePaths;
   /** The rule hooks module the manifest names (ES3), if any. */
   readonly hooksFile?: string;
+  /**
+   * Per-module settings from the manifest's `modules` block, by module name.
+   * Empty when there is no manifest. The host merges these *under* what it
+   * passes a module itself, so a run's `MMO_*` variable still wins; see
+   * {@link moduleSettings}.
+   */
+  readonly moduleConfig: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /** One module's settings, or an empty object. Never `undefined`, so a caller can spread it. */
+  moduleSettings(module: string): Readonly<Record<string, unknown>>;
   readonly sources: Readonly<Record<SeamKey | "contentDir" | "assetsDir", PathSource>>;
   /**
    * A hash of the layout, not of the content: the name plus every path that
@@ -74,6 +83,8 @@ export interface OpenGameProjectOptions {
 }
 
 const isFlagValue = (v: string): boolean => v === "0" || v === "1";
+
+const EMPTY_SETTINGS: Readonly<Record<string, unknown>> = Object.freeze({});
 
 /** `true` when `child` is inside `parent` (or is it). */
 export const isInside = (child: string, parent: string): boolean => {
@@ -183,6 +194,10 @@ export function openGameProject(opts: OpenGameProjectOptions = {}): GameProject 
         ? resolve(manifest.hooks)
         : resolve(contentDir, manifest.hooks);
 
+  const moduleConfig: Record<string, Readonly<Record<string, unknown>>> = Object.freeze(
+    Object.fromEntries(Object.entries(manifest?.modules ?? {}).map(([k, v]) => [k, Object.freeze({ ...v })])),
+  );
+
   const name = manifest?.name ?? "engine defaults";
   const moved = SEAMS.filter((s) => sources[s.key] !== "default");
   const layout: Record<string, string> = { name };
@@ -208,6 +223,8 @@ export function openGameProject(opts: OpenGameProjectOptions = {}): GameProject 
     paths: Object.freeze(paths) as GamePaths,
     ...(hooksFile === undefined ? {} : { hooksFile }),
     sources: Object.freeze(sources) as GameProject["sources"],
+    moduleConfig,
+    moduleSettings: (module: string) => moduleConfig[module] ?? EMPTY_SETTINGS,
     layoutHash,
     summary,
   };

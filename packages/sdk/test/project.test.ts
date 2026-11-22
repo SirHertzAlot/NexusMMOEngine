@@ -222,6 +222,47 @@ describe("the layout hash", () => {
   });
 });
 
+describe("per-module settings", () => {
+  it("are empty with no manifest, and spreadable either way", () => {
+    const p = openGameProject({ env: {}, cwd: ENGINE_ROOT, exists: () => false });
+    assert.deepEqual(p.moduleConfig, {});
+    assert.deepEqual({ ...p.moduleSettings("residents") }, {});
+  });
+
+  it("reach the host by module name, with the module's own keys", () => {
+    const dir = withManifest({
+      name: "g",
+      modules: { residents: { maxEntities: 1200, fullM: 60 }, "my-own-module": { anything: [1, 2] } },
+    });
+    const p = openGameProject({ dir, env: {}, cwd: dir });
+    assert.deepEqual({ ...p.moduleSettings("residents") }, { maxEntities: 1200, fullM: 60 });
+    assert.deepEqual({ ...p.moduleSettings("my-own-module") }, { anything: [1, 2] });
+    assert.deepEqual({ ...p.moduleSettings("not-configured") }, {});
+  });
+
+  it("are frozen, so one module cannot edit another's settings at runtime", () => {
+    const dir = withManifest({ name: "g", modules: { residents: { maxEntities: 1200 } } });
+    const p = openGameProject({ dir, env: {}, cwd: dir });
+    assert.throws(() => {
+      (p.moduleSettings("residents") as Record<string, unknown>).maxEntities = 1;
+    }, TypeError);
+  });
+
+  it("refuse a block that is not an object of settings", () => {
+    const dir = withManifest({ name: "g", modules: { residents: 1200 } });
+    assert.throws(() => openGameProject({ dir, env: {}, cwd: dir }), /modules\.residents/);
+  });
+
+  it("stay out of the layout hash, which is about where files are read from", () => {
+    const plain = withManifest({ name: "same", content: "c" });
+    const tuned = withManifest({ name: "same", content: "c", modules: { residents: { maxEntities: 9 } } });
+    assert.equal(
+      openGameProject({ dir: plain, env: {}, cwd: plain }).layoutHash,
+      openGameProject({ dir: tuned, env: {}, cwd: tuned }).layoutHash,
+    );
+  });
+});
+
 describe("loadManifest", () => {
   it("accepts a manifest with nothing but a name", () => {
     assert.deepEqual(loadManifest("x.json", () => '{"name":"bare"}'), { name: "bare" });
