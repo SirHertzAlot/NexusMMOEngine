@@ -74,6 +74,10 @@ export const DEFAULT_CLIP_MAP: ClipMap = {
     { id: ClipId.Sleep, name: "sleep", clip: "Creature_Sleep_Loop", loop: true, fade: 0.3 },
     { id: ClipId.Threaten, name: "threaten", clip: "Creature_Threaten_Loop", loop: true, fade: 0.15 },
     { id: ClipId.DeathFall, name: "death fall", clip: "Creature_DeathFall", loop: false, fade: 0.1 },
+    { id: ClipId.Drink, name: "drink", clip: "Creature_Drink_Loop", loop: true, fade: 0.25 },
+    { id: ClipId.Bathroom, name: "bathroom", clip: "Creature_Bathroom_Loop", loop: true, fade: 0.25 },
+    { id: ClipId.MatingDisplay, name: "mating display", clip: "Creature_MatingDisplay_Loop", loop: true, fade: 0.2 },
+    { id: ClipId.SocialPlay, name: "social play", clip: "Creature_SocialPlay_Loop", loop: true, fade: 0.2 },
   ],
 };
 

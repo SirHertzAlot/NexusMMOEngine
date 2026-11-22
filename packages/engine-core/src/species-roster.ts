@@ -16,11 +16,19 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSpecies, type Roster } from "@mmo-engine/species";
 
-/** The repo's content/species/species.json (this file is dist/src/species-roster.js). */
-export const DEFAULT_SPECIES_FILE = fileURLToPath(new URL("../../../../content/species/species.json", import.meta.url));
+function resolveSpeciesFile(): string {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const candidate4 = path.resolve(here, "../../../../content/species/species.json");
+  if (existsSync(candidate4)) return candidate4;
+  const candidate3 = path.resolve(here, "../../../content/species/species.json");
+  if (existsSync(candidate3)) return candidate3;
+  return path.resolve(process.cwd(), "content/species/species.json");
+}
+export const DEFAULT_SPECIES_FILE = resolveSpeciesFile();
 
 export interface ServerRoster {
   roster: Roster;

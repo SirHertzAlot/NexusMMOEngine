@@ -18,6 +18,8 @@ export interface RateLimitOptions {
   windowMs?: number;
   /** Clock for window math; default Date.now. Inject in tests. */
   clock?: () => number;
+  /** IPs exempt from rate limiting (e.g. loopback in local dev/testing). */
+  exemptIps?: Iterable<string>;
 }
 
 const DEFAULT_MAX_FAILURES = 5;
@@ -28,11 +30,13 @@ export class AuthRateLimiter {
   private readonly maxFailures: number;
   private readonly windowMs: number;
   private readonly clock: () => number;
+  private readonly exemptIps: Set<string>;
 
   constructor(opts: RateLimitOptions = {}) {
     this.maxFailures = opts.maxFailures ?? DEFAULT_MAX_FAILURES;
     this.windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
     this.clock = opts.clock ?? Date.now;
+    this.exemptIps = new Set(opts.exemptIps ?? []);
     if (!Number.isInteger(this.maxFailures) || this.maxFailures < 1) {
       throw new RangeError(
         `rate-limiter: maxFailures must be an integer >= 1 (got ${opts.maxFailures})`,
@@ -47,11 +51,13 @@ export class AuthRateLimiter {
 
   /** True when this IP has exhausted its failure budget. */
   isLimited(ip: string): boolean {
+    if (this.exemptIps.has(ip)) return false;
     return this.recent(ip).length >= this.maxFailures;
   }
 
   /** Record a failed auth attempt from this IP. */
   recordFailure(ip: string): void {
+    if (this.exemptIps.has(ip)) return;
     const list = this.recent(ip);
     list.push(this.clock());
     this.failures.set(ip, list);

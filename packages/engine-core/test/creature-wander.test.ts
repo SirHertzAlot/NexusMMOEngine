@@ -100,4 +100,43 @@ describe("wandering", () => {
     assert.equal(C.Transform.px[d], 0);
     assert.equal(C.Transform.pz[d], 0);
   });
+
+  it("packs spread out organically across grazing territory and scouts venture further", () => {
+    const w = setup(kind({ wanderM: 12, wanderPauseS: 2, activity: "cathemeral" }));
+    // The wide scatter is the grazing spread, which ambient wildlife asks for;
+    // a hand-placed pack stays anchored (see the next test).
+    const eids = w.sys.spawnPack(w.sim, "deer", 0, 0, [6, 6], { mode: "grazing" });
+    assert.equal(eids.length, 6);
+
+    // Initial spawn dispersion: members must be spread out across > 5m, not cramped in a tight 1.5-3m clump
+    const dists = eids.map((eid) => Math.hypot(C.Transform.px[eid]!, C.Transform.pz[eid]!));
+    const maxSpawnDist = Math.max(...dists);
+    const minSpawnDist = Math.min(...dists);
+
+    assert.ok(maxSpawnDist > 8.0, `pack spread reaches outer grazing area (max spawn dist: ${maxSpawnDist.toFixed(2)} m)`);
+    assert.ok(maxSpawnDist - minSpawnDist > 4.0, `pack members occupy varied grazing radii (spread delta: ${(maxSpawnDist - minSpawnDist).toFixed(2)} m)`);
+
+    // Natural scale: deer size reflects natural human-height proportions (~0.42)
+    assert.ok(Math.abs(C.Transform.sx[eids[0]!] - 0.42) < 1e-4, "deer scale matches natural scale 0.42");
+
+    // Run simulation: pack members graze asynchronously and adventurous scouts venture further out
+    let maxGrazingDist = 0;
+    for (let i = 0; i < 600; i++) {
+      w.run(1);
+      for (const eid of eids) {
+        const d = Math.hypot(C.Transform.px[eid]!, C.Transform.pz[eid]!);
+        if (d > maxGrazingDist) maxGrazingDist = d;
+      }
+    }
+    assert.ok(maxGrazingDist > 14.0, `scouts/grazers venture out beyond base wander radius (max: ${maxGrazingDist.toFixed(2)} m)`);
+  });
+
+  it("a pack with no spread asked for stays anchored on its spot", () => {
+    // A camp or any hand-placed pack must stay where the scene put it: the
+    // tight clump is the default, so only wildlife scatters.
+    const w = setup(kind({ wanderM: 12, wanderPauseS: 2, activity: "cathemeral" }));
+    const eids = w.sys.spawnPack(w.sim, "deer", 0, 0, [6, 6]);
+    const max = Math.max(...eids.map((eid) => Math.hypot(C.Transform.px[eid]!, C.Transform.pz[eid]!)));
+    assert.ok(max <= 3.0, `anchored pack stays within the 3 m clump (max: ${max.toFixed(2)} m)`);
+  });
 });

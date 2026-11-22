@@ -10,8 +10,15 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setCombatMoves, validateCombatMoves } from "@mmo-engine/protocol";
 
-/** The repo's file (this module runs from packages/engine-core/dist/src). */
-export const DEFAULT_COMBAT_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../content/combat/moves.json");
+function resolveCombatFile(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidate4 = path.resolve(here, "../../../../content/combat/moves.json");
+  if (fs.existsSync(candidate4)) return candidate4;
+  const candidate3 = path.resolve(here, "../../../content/combat/moves.json");
+  if (fs.existsSync(candidate3)) return candidate3;
+  return path.resolve(process.cwd(), "content/combat/moves.json");
+}
+export const DEFAULT_COMBAT_FILE = resolveCombatFile();
 
 /** Load the moves; returns a boot-log line (null: no file, built-in moves in force). */
 export function loadCombatContent(file = DEFAULT_COMBAT_FILE): string | null {

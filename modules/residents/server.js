@@ -121,6 +121,7 @@ export function createSystems(ctx) {
     replaceMs: config.replaceMs,
     attachShop: config.attachShop,
     detachShop: config.detachShop,
+    livingSim: config.livingSim,
     steer: ctx.shared?.navBackend?.crowd !== undefined, // a crowd runs: residents walk between anchors
   });
   ctx.log(`[residents] ${towns.length} town(s), ${towns.reduce((n, t) => n + t.npcs.length, 0)} people`);
