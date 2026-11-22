@@ -162,6 +162,23 @@ export type HookOverrides = {
   [K in keyof RuleHooks]?: (input: Parameters<RuleHooks[K]>[0], base: RuleHooks[K]) => ReturnType<RuleHooks[K]>;
 };
 
+/**
+ * Every hook a game may replace. The list is the SDK's own, so a loader
+ * can check a game's overrides against it instead of guessing.
+ */
+export const HOOK_NAMES = [
+  "computeDamage",
+  "resolveLanding",
+  "resolveDefence",
+  "resolveTreatment",
+  "skillGain",
+  "onInjury",
+  "onDeath",
+  "onRespawn",
+] as const satisfies readonly (keyof RuleHooks)[];
+
+export type HookName = (typeof HOOK_NAMES)[number];
+
 // ------------------------------------------------------------- formulas
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));

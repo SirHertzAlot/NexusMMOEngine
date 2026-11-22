@@ -39,3 +39,35 @@ hook (`computeDamage`, `resolveLanding`, `skillGain`, `onInjury`,
 
 A missing file is the engine default; an empty folder is a neutral game
 (one-part body, no skills, no decay).
+
+## Hooks: the rules you write in code
+
+Eight decisions are code rather than data, because a formula is a poor
+fit for a JSON file: `computeDamage`, `resolveLanding`, `resolveDefence`,
+`resolveTreatment`, `skillGain`, `onInjury`, `onDeath` and `onRespawn`.
+The engine ships a default for each, computed from the files above.
+
+A game replaces the ones it wants by putting a `hooks.mjs` in this
+folder (`MMO_RULES_HOOKS` names one elsewhere, `MMO_RULES_HOOKS=0`
+ignores it). Each replacement is handed the engine's own version, so it
+can wrap it:
+
+```js
+export default {
+  computeDamage: (input, base) => {
+    const hit = base(input);
+    return input.part === "head" ? { ...hit, amount: hit.amount * 1.25 } : hit;
+  },
+};
+```
+
+Export a function instead and it is handed the loaded rules, and re-runs
+on every hot reload. [`hooks.example.mjs`](hooks.example.mjs) is a
+working copy of both forms, and
+[`packages/rules/src/hooks.ts`](../../packages/rules/src/hooks.ts) is
+what each hook is handed and must return.
+
+A hooks file that names a hook that does not exist stops the boot, with
+the eight listed. Nothing here limits what a game may do with its own
+copy of the engine: hooks are the path that survives an engine upgrade,
+not a boundary.

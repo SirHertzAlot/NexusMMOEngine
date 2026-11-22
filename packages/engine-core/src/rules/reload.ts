@@ -15,7 +15,7 @@ import { RulesError, type RuleHooks } from "@mmo-engine/rules";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 import { LogProducerClient, logRulesReloadRefused, stdioLog } from "../logging/index.js";
-import { loadGameRules, type GameRules } from "./boot.js";
+import { loadGameRules, type GameRules, type GameRulesSource } from "./boot.js";
 
 /**
  * A RuleHooks that forwards to `current`: combat and death hold this one
@@ -52,6 +52,14 @@ export class HooksDelegate implements RuleHooks {
 export interface RulesReloaderOptions {
   /** Quiet time after the last file event before reloading (an editor save writes a temp file, then renames). */
   debounceMs?: number;
+  /**
+   * The game's rules and hooks (see ./boot.ts `openGameRules`). Pass this
+   * and a reload keeps the game's hook overrides; without it a reload
+   * falls back to the engine's own defaults, which silently undoes a
+   * game's combat, death and skill rules the first time it saves a file.
+   */
+  source?: GameRulesSource;
+  /** Load the rules yourself; wins over `source`, and is meant for tests. */
   load?: (dir: string) => GameRules;
   log?: (line: string) => void;
   /** Log-ring producer: refused reloads become records instead of seam lines. */
@@ -74,7 +82,8 @@ export class RulesReloader implements SimSystem {
     opts: RulesReloaderOptions = {},
   ) {
     this.debounceMs = opts.debounceMs ?? 150;
-    this.load = opts.load ?? ((d) => loadGameRules(d));
+    const source = opts.source;
+    this.load = opts.load ?? (source ? (d) => source.load(d) : (d) => loadGameRules(d));
     this.log = opts.log ?? stdioLog;
     this.logProducer = opts.logProducer;
   }
