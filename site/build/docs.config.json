@@ -31,6 +31,7 @@
       "blurb": "Build the world, the towns, the dungeons, the creatures and the art.",
       "pages": [
         { "slug": "world-building", "file": "WORLD-BUILDING.md" },
+        { "slug": "geology", "file": "GEOLOGY.md" },
         { "slug": "procedural-generation", "file": "PROCEDURAL-GENERATION.md" },
         { "slug": "settlements", "file": "SETTLEMENTS.md" },
         { "slug": "dungeons-and-loot", "file": "DUNGEONS-AND-LOOT.md" },
@@ -63,9 +64,11 @@
     {
       "id": "project",
       "title": "Project",
-      "blurb": "What is built, what is next, and why things are the way they are.",
+      "blurb": "What is built, what is next, where the engine ends, and what it depends on.",
       "pages": [
-        { "slug": "roadmap", "file": "ROADMAP.md" }
+        { "slug": "roadmap", "file": "ROADMAP.md" },
+        { "slug": "engine-core-split", "file": "ENGINE-CORE-SPLIT.md" },
+        { "slug": "dependencies", "file": "DEPENDENCIES.md" }
       ]
     }
   ]
