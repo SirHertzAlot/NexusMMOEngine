@@ -53,6 +53,7 @@
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
+import { PORTS } from "@mmo-engine/sdk";
 import { engineDefaults, type CombatRules, type DamageInput, type ItemBaseRules, type PartState, type RuleHooks } from "@mmo-engine/rules";
 import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
@@ -60,7 +61,6 @@ import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
-import { PORTS } from "@mmo-engine/sdk";
 import type { Weapon } from "./vocabulary.js";
 
 // Weapon is shared vocabulary, not this system's own: see vocabulary.ts.

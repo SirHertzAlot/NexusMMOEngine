@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "6c38a68cdb4265da4948c3d75f5b6478e5a580b6",
+    "builtFromCommit": "89d7d1f5e8a8108c5173923ead7551c0e8d5d14d",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7739,7 +7739,7 @@
       "packages/engine-core/src/civic/foundry-pivot.ts": "1be0b7b0fd92b3d9c3454bf34c0b9db5d9f369d1a3375a43dca4074f8bdbe2a2",
       "packages/engine-core/src/civic/index.ts": "0fe309dca3325f06947ffdb83a2be07b716b54f1ecacb45a9de19d3a617a6e27",
       "packages/engine-core/src/combat-content.ts": "9565958f3a28834cb01124fa134818b418184f8a055a507b16deb0bd025f6ae0",
-      "packages/engine-core/src/combat.ts": "0488798fc4e7a207cfc9e59ab0c5f0ff20b637eb0f5f24c55ce288c7f77ef66a",
+      "packages/engine-core/src/combat.ts": "2472dc6895aa0b03008485c7e48555f85ec6c90b44821d676f7365846bb62747",
       "packages/engine-core/src/components.ts": "fa91dc4abf8867d063c16d80fd4d3a5cd902c8dc5993db6eaa7d24939b0c0cb3",
       "packages/engine-core/src/crafting/crafting-service.ts": "06d4b5abaf0e208f8a7c885224d3b2e74651b9d9f8066cde5fcf85aef2ecc7c6",
       "packages/engine-core/src/creatures.ts": "4142bd62c51ad68deb15c2d516d7baff7bfd27d626991142fc58614691ec17c7",
@@ -7810,7 +7810,7 @@
       "packages/engine-core/src/net/intent.ts": "33c0cbcef59870c980c864a95744492cee5889a552e9030ec58a8929c292df76",
       "packages/engine-core/src/net/interest.ts": "0554d26dd7bb2469133c05501f2520861e6e35a091767b8dfc5017695d02e3cd",
       "packages/engine-core/src/net/native-fanout.ts": "a6ee7243ee1abed8b13a44a534ac705bd71eebb7ef85e6018df2c7225f28713e",
-      "packages/engine-core/src/net/ports.ts": "676ac57fe8fddf5ee6dcc75c39e0fded4e56e8e83fe6edfd6e8c84e6cb498259",
+      "packages/engine-core/src/net/ports.ts": "d94a6ba3337b0f7e6b1f35340b3446291e4e10fcc0b2cc2ffa2f5d81082310c7",
       "packages/engine-core/src/net/rpc-http.ts": "6a1fb2ffb497d94edb331cb2c079e5770a16bdf793e716bb03a185231cbd55d0",
       "packages/engine-core/src/net/sector.ts": "9f3f6551511ac993f7a54dcba97bc4edc310f8ab79c89d0e84513b972c92dcc4",
       "packages/engine-core/src/net/transport-bench.ts": "c7f8d7fdfaae1686528b234f9b8f021612e268b8880242a790338673638cedf1",
