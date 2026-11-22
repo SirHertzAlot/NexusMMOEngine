@@ -8,6 +8,28 @@ Everything the engine does beyond its tick loop is a **module**: a folder `modul
 - **In the editor**, the Modules workspace turns modules on and off. **Apply modules** restarts the play server, because the server reads the set once, at boot.
 - **At boot** the server resolves the dependency order and one tick order, then builds the systems. **Any problem stops the boot and every problem is named**: a dependency that is not installed or not enabled, a dependency cycle, an unknown system id in an `after` or `before`, or a declared system the entry did not return. The engine would rather refuse to start than run half a game.
 
+### What the engine actually needs
+
+Three: `core`, `physics` and `character`. A set of just those boots, listens
+and ticks, with no items, combat, economy, quests, dungeons, creatures or
+residents — the engine holds a chunk back until its terrain colliders are in,
+and a player needs ground height, bounds and a sheet, so those two modules are
+the engine's own rather than a game's design. Everything else is a feature
+that is simply absent when its module is off.
+
+Leave one out that the server does need and it says which, all of them at
+once, before it starts:
+
+```
+[server] fatal: MissingServicesError: 1 service the server needs is not available:
+  - physics (the Jolt world, and the terrain collider hook the streamer needs),
+    provided by the physics module — enable physics in the module set
+```
+
+The boot also prints what this run has: `[modules] services: 17/19, off: bots,
+residents`. The list of what the server reads and what it can do without is
+one table, `packages/engine-core/src/services.ts`.
+
 ## The manifest, `module.json`
 
 Unknown keys are refused. The folder name must match `name`.
