@@ -1,7 +1,9 @@
 /**
- * The physics seam on Rapier (WASM, `@dimforge/rapier3d-compat`). Chosen over
- * Jolt by `scripts/bench-physics.mjs` (see the PR body): equal or faster for
- * awake rigs, which is the budget case.
+ * The physics seam on Rapier (WASM, `@dimforge/rapier3d-compat`), one of the
+ * two backends a game may choose; see `./index.ts` for what each costs.
+ *
+ * Rapier is the smaller bundle and the slower tick, and it is the only one of
+ * the two that runs outside a browser, so the seam's tests exercise it.
  */
 
 import RAPIER from "@dimforge/rapier3d-compat";

@@ -31,6 +31,7 @@ tells you how to use it well.
 | Doc | What it is |
 |---|---|
 | [WORLD-BUILDING.md](WORLD-BUILDING.md) | Design or regenerate a world: specs, biomes, baking, terrain editing |
+| [GEOLOGY.md](GEOLOGY.md) | The optional macro-geology province snapshot under the survey, and the GeoForge evaluation |
 | [PROCEDURAL-GENERATION.md](PROCEDURAL-GENERATION.md) | PICG graphs, scatter plans and procedural assets |
 | [SETTLEMENTS.md](SETTLEMENTS.md) | Procedural towns, roads and the places between them |
 | [DUNGEONS-AND-LOOT.md](DUNGEONS-AND-LOOT.md) | Dungeon generation, species, ranks, loot, crafting |
@@ -63,6 +64,8 @@ a worked example; they are not a specification you must keep.
 | Doc | What it is |
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | The official task board: built, in progress, planned, with an update log |
+| [ENGINE-CORE-SPLIT.md](ENGINE-CORE-SPLIT.md) | Where the engine ends and our game begins, and the staged plan to split them |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | Every dependency and vendored library, its licence, and what shipping one obliges (see [../NOTICES.md](../NOTICES.md)) |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Branch workflow, tests, code standards |
 
 [internals/](internals/) holds subsystem design references that source code

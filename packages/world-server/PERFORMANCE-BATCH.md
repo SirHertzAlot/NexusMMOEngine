@@ -1,6 +1,6 @@
 # Batched character-state writes — store layer (2026-10-28)
 
-Directive (Joey): "We should be batching OPs to maximize MX ops."
+Directive (the owner): "We should be batching OPs to maximize MX ops."
 This slice batches the save-sweep write path at the store layer, on
 top of the SurrealMX adoption (`docs/SURREALMX-ADOPTION-REPORT.md`).
 Branch: `arlo/surreal-mx` (local; not pushed).

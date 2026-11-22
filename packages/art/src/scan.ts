@@ -1,7 +1,7 @@
 /**
  * Asset pack directory scanner.
  *
- * Derives an AssetManifest from a pack folder on disk so Joey (or build
+ * Derives an AssetManifest from a pack folder on disk so the owner (or build
  * tooling) doesn't have to hand-write `manifest.json` for every pack:
  *
  *   <root>/models/**    (*.glb, *.gltf — recursive)

@@ -187,7 +187,7 @@ None of these changes the C++ mapping's determinism story (64-sample curve table
 seeded PRNG, fixed timestep all unaffected). Estimated shape of the change: one
 schema revision (v2), converter support for UV frame selection, editor field
 additions. **Not built by this spec** — it is the decision this PoC puts in front
-of Joey.
+of the owner.
 
 ---
 
@@ -219,7 +219,7 @@ a guest-artist pack), not as the default pipeline.
    at medium; low-tier reduction set applied and re-checked (7 emitters / 298).
 3. A/B: same capture angles for Version A once the v2 extension exists; judge on
    style fit against the locked art direction, not on nostalgia.
-4. Visual verification is by Joey's eyes on a real client — sandbox headless GL
+4. Visual verification is by the owner's eyes on a real client — sandbox headless GL
    cannot verify rendered output (standing limit); nothing in this spec claims a
    visual result.
 
