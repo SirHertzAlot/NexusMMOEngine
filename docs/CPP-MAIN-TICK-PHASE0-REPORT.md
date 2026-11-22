@@ -39,7 +39,7 @@ The transport benchmark (`packages/engine-core/src/net/transport-bench.ts`) meas
 
 ### uWS numbers
 
-Not measurable on this host: the uWebSockets.js prebuilt binary does not support Node.js v25 on Windows. Per the spec's known environment limit, uWS network numbers must be produced on real hardware (Joey's Windows machine) and labeled accordingly. The decision below addresses how to prevent silent degradation in production.
+Not measurable on this host: the uWebSockets.js prebuilt binary does not support Node.js v25 on Windows. Per the spec's known environment limit, uWS network numbers must be produced on real hardware (the owner's Windows machine) and labeled accordingly. The decision below addresses how to prevent silent degradation in production.
 
 ---
 
@@ -129,7 +129,7 @@ Vendoring the prebuilt `uWebSockets.js` binary for the target deployment platfor
 2. At boot, if `MMO_TRANSPORT=uws` or `auto` and uWS is requested, verify the vendored binary loads; if not, exit with a clear error rather than falling back to ws.
 3. Document the vendored binary's Node.js version/OS/architecture constraint in `DECISIONS.md` and `ROADMAP.md`.
 
-**Status: DECISION MADE** — vendored binary. Implementation pending Joey's approval.
+**Status: DECISION MADE** — vendored binary. Implementation pending the owner's approval.
 
 ---
 
@@ -146,6 +146,6 @@ Vendoring the prebuilt `uWebSockets.js` binary for the target deployment platfor
 
 ## 6. Next steps
 
-1. **uWS bench numbers on real hardware** — run `npm run bench:transport -- 250 500 1000 2000` on Joey's Windows machine where uWS binary loads; update this report with uWS rows.
+1. **uWS bench numbers on real hardware** — run `npm run bench:transport -- 250 500 1000 2000` on the owner's Windows machine where uWS binary loads; update this report with uWS rows.
 2. **Vendored binary implementation** — commit the uWS `.node` binary for the target platform; add boot-time integrity check; update `DECISIONS.md` and `ROADMAP.md`.
 3. **JS production tick full-gateway baseline** — this bench measures one kernel pass; the full gateway tick (delta encode + fan-out) needs the same 51k re-baseline before Phase 1 system ports.

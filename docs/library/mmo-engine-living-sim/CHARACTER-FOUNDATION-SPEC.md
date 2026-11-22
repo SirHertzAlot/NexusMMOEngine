@@ -1,6 +1,6 @@
 # Character Foundation — Archetypes, Descriptors, and the Resolved Profile
 
-**Status:** Foundation spec, 2026-10-26, at Joey's direction. Defines the
+**Status:** Foundation spec, 2026-10-26, at the owner's direction. Defines the
 complete foundation for character definition across the whole game — every
 generated character, every tier, every town. The two worked traces in §14
 are validation fixtures, not the scope; the scope is the full system.
@@ -566,7 +566,7 @@ digest shows the character block.
 Each phase ends with its gate; no phase starts until the previous gate
 is green — the standing discipline.
 
-## 18. Open questions (for Joey)
+## 18. Open questions (for the owner)
 
 - Descriptor slots: four (demeanor/social/moral/drive) as specced, or
   should `drive` split into ambition vs. appetite later? v1 holds at

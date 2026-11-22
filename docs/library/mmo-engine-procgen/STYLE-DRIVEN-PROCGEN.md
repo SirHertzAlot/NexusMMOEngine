@@ -10,7 +10,7 @@ infinite content that looks like *your* game, not generic noise.
 
 ## 0. The two ideas and how they connect
 
-Joey brought two ideas that turn out to be two halves of one pipeline:
+The owner brought two ideas that turn out to be two halves of one pipeline:
 
 1. **Sine waves can generate anything.** The talk's underlying principle is
    Fourier synthesis: any periodic signal decomposes into summed sines, so any
@@ -43,7 +43,7 @@ organic motion. This is why sines feel like they "generate anything" — with
 enough layers you can approximate any cyclic behavior, and each layer stays
 independently art-directable (change one amplitude, keep the rest).
 
-The likely talk Joey remembers is in the Freya Holmér lineage — her math
+The likely talk the owner remembers is in the Freya Holmér lineage — her math
 visualization threads and shader course teach sine-layered procedural motion
 as core gamedev literacy (Holmér, "Math Visualization" Twitter threads;
 *Shaders for Game Devs* course). The 3Blue1Brown Fourier-series exposition is
@@ -108,7 +108,7 @@ it, argue with it, and tune it; generators only read it.
 
 ### 2.2 The academic grounding
 
-Joey's intuition — infer the rules from examples, then generate new instances
+The owner's intuition — infer the rules from examples, then generate new instances
 — is **inverse procedural modeling**, with a real literature:
 
 - **Št'ava et al. 2010**, "Inverse Procedural Modeling by Automatic Generation
@@ -123,7 +123,7 @@ Joey's intuition — infer the rules from examples, then generate new instances
 - **Hermans et al. 2021**, "SIGI: Shape Inference and Grammar Induction for
   Example-based Procedural Generation": infers a shape grammar from
   grid-based 3D building examples and generates **new buildings in a similar
-  style**. The closest published analog to what Joey wants for structures.
+  style**. The closest published analog to what the owner wants for structures.
 - **Guo et al. 2020** (SIGGRAPH Asia): inverse procedural modeling of
   branching structures via L-system inference — the vegetation path.
 - **2025 (arXiv:2501.17044)**: transformer-based inversion of procedural
@@ -223,7 +223,7 @@ is the thing that enforces it.**
 - **Not ML.** No training runs, no GPUs at bake time, no black boxes. If the
   transformer-based inversion (2025) matures into something shippable, it's a
   documented future — not this pipeline.
-- **Not a style change.** The analyzer measures the *current* assets; if Joey
+- **Not a style change.** The analyzer measures the *current* assets; if the owner
   changes the art direction, the profiles regenerate and the generators follow
   automatically. The pipeline is direction-agnostic by design.
 
@@ -259,7 +259,7 @@ doi:10.48550/arXiv.2501.17044.
 
 ## Field note 2026-10-22 — Sketchit ASCII RPG: data-first hydrology
 
-Source: Joey-shared YouTube Short (@The_Sketchit, "browser ASCII RPG - now with a day and night cycle!", uploaded Sep 3 2026). Verified by watching: a 3D RPG rendered entirely from monospace text glyphs in ONE self-contained HTML file (241 KB, ~5,000 lines of JS — the font is the only texture); day/night shading done with a glyph-density ladder (heavier/lighter characters instead of brightness).
+Source: The owner-shared YouTube Short (@The_Sketchit, "browser ASCII RPG - now with a day and night cycle!", uploaded Sep 3 2026). Verified by watching: a 3D RPG rendered entirely from monospace text glyphs in ONE self-contained HTML file (241 KB, ~5,000 lines of JS — the font is the only texture); day/night shading done with a glyph-density ladder (heavier/lighter characters instead of brightness).
 
 The terrain technique worth keeping: the world is a heightmap grid and the river was NOT hand-carved — the grid was flooded and steepest-descent flow cut the valley itself. Simple elevation data in, believable world out.
 

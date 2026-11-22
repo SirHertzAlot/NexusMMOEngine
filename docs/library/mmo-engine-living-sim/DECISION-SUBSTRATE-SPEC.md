@@ -1,6 +1,6 @@
 # Decision-Substrate Specification — Living Sim
 
-**Status:** Spec approved by Joey 2026-10-09. Not implemented.
+**Status:** Spec approved by the owner 2026-10-09. Not implemented.
 **Scope:** the generic decision service for the living simulation ("decide
 with decision models, speak with something else").
 **Parent docs:** `LIVING-SIM-DEEP-DIVE.md` (NPC stack, perception, tiered
@@ -261,7 +261,7 @@ logged decisions replay deterministically and the threshold tuning doc
 exists.
 
 Each phase ends with its gate; no phase starts until the previous gate
-is green. Nothing here requires Joey mid-flight except the Phase 5
+is green. Nothing here requires the owner mid-flight except the Phase 5
 license verdicts, which are his call.
 
 ## 12. Audit and telemetry

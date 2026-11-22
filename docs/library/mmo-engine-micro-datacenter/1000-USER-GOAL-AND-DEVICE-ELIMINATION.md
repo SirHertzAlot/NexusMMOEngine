@@ -12,7 +12,7 @@ benchmarks already rule out, so money is only spent on survivors.
 
 ## 1. The goal, defined precisely (G1)
 
-Joey's words (2026-10-02): *"For my first architecture I'd like to be able
+The owner's words (2026-10-02): *"For my first architecture I'd like to be able
 to host 1000 concurrent users at max load without dropping off or losing
 connections or stalling out the resources on the compute device it'll
 live on."*

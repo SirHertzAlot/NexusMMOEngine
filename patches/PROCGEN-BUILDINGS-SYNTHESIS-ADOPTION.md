@@ -1,13 +1,13 @@
 # Procedural Buildings — adoption into decomposition, synthesis, and the settlement bake
 
-Written 2026-11-13 on Joey's direction. Seed: @githubsignals reel
+Written 2026-11-13 on the owner's direction. Seed: @githubsignals reel
 (2026-10-04) — a web app that executes Blender Geometry Nodes
 building generators in the browser: a Parisian apartment, a New York
 corner tower, and a Chinese residential block, parameterized (floor
 count, balcony type, window detail), with its math verified against
 Blender itself. Source repo verified 2026-11-13:
 `achrefelouafi/ProceduralBuildingsThreeJS` — **MIT**, TypeScript,
-133 stars. Joey's proposal, adopted as the design below: take
+133 stars. The owner's proposal, adopted as the design below: take
 Blender references, generate variations quickly, place them through
 the settlement system so variety happens at bake time; fold the
 texture-mapping pass into the same step for personality (vines, moss,
@@ -121,6 +121,6 @@ ships as detail-layer geometry and the splat lane stays R&D.
 - First template family: port one of the MIT repo's three (Parisian
   block is the richest knob space) vs author our own reference in
   the game's style first. Style gate argues ours-first; corpus
-  speed argues port-first. Joey's call.
+  speed argues port-first. The owner's call.
 - Splat experiment scheduling: inside the existing Exp 11 line, on
-  Joey's word.
+  the owner's word.

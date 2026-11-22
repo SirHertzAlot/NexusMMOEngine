@@ -9,7 +9,7 @@ import { LEGACY_SHELL_TEMPLATE_ID, SHELL_TEMPLATE_ID, type Provenance } from "..
 import { createShellPresentation } from "../src/ui/shell-presentation.js";
 import { SHELL } from "../src/ui/shell-composition.js";
 
-const prov: Provenance = { who: { id: "joey", role: "designer" }, what: "shell slot presentation", when: 1, where: "Editor shell", why: "test" };
+const prov: Provenance = { who: { id: "designer-1", role: "designer" }, what: "shell slot presentation", when: 1, where: "Editor shell", why: "test" };
 
 describe("shell presentation", () => {
   it("notifies on a pin move and a rollback, only for the shell slot, and stops after unsubscribe", () => {

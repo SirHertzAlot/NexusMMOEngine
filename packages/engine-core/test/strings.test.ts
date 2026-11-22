@@ -32,7 +32,7 @@ describe("loadStrings", () => {
 
 describe("t", () => {
   it("formats a simple message", () => {
-    assert.equal(t(EN, "player.welcome", { name: "Joey" }), "Welcome, Joey!");
+    assert.equal(t(EN, "player.welcome", { name: "Alice" }), "Welcome, Alice!");
   });
 
   it("handles plurals", () => {

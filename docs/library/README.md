@@ -2,7 +2,7 @@
 
 Design specs, evaluations, audits, and research reports for the Nexus MMO
 Engine, mirrored from Arlo's working document library on 2026-10-27 at
-Joey's request — so the full library lives in this repo (and in local
+The owner's request — so the full library lives in this repo (and in local
 clones) alongside the canonical docs at `docs/` root.
 
 - Organized by the library's original topic folders (`mmo-engine-*`).

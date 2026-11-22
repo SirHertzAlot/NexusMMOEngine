@@ -1,7 +1,7 @@
 # Tooling Integration Plan — gltfpack, gltfjsx, Leva
 
 **Status:** Plan approved for writing 2026-10-09. Not scheduled, not
-assigned. Do not push, merge, or hand to Claude without Joey's explicit
+assigned. Do not push, merge, or hand to Claude without the owner's explicit
 word.
 **Source verdicts:** `THREEJS-TOOLING-REVIEW.md` (adopt: gltfpack,
 gltfjsx, Leva dev-only) and `THREEJS-DIRECTORY-REVIEW.md` (adopt:
@@ -11,13 +11,13 @@ compression story gltfpack starts).
 `meshoptimizer ^1.3.0` used for *simplification* in `src/render/lod.ts`
 — no MeshoptDecoder wired for loading yet); art pipeline is
 `packages/art` (`src/manifest.ts` Zod-validated, `src/convert/` scripts).
-Joey's machine: Windows, Node 25.
+The owner's machine: Windows, Node 25.
 
 ## Conventions for the executor
 
 - Pin every tool version in the plan's Phase 0; never float on `latest`.
 - gltfpack ships as a standalone binary in meshoptimizer GitHub
-  releases, including win64 — the plan must work on Joey's Windows
+  releases, including win64 — the plan must work on the owner's Windows
   machine, not just this Linux box.
 - Every phase ends with a gate. No phase starts until the previous
   gate is green.

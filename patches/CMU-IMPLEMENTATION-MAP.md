@@ -1,6 +1,6 @@
 # CMU Mocap — Implementation Map: from haystack to playable verbs
 
-Written 2026-11-12 (~21:35 ET) on Joey's word: "mark this up and get
+Written 2026-11-12 (~21:35 ET) on the owner's word: "mark this up and get
 it mapped out so we can get it implemented into our game and work out
 how it can expand our game's playability."
 
@@ -9,7 +9,7 @@ content inventory), ANIMATION-PIPELINE-AUDIT.md (breaks B1–B8, phases
 A0–A4), POLYFORK-ASSET-LIBRARY-NOTE.md (creature clips — the other
 half of the animation supply).
 
-## 0. Classification change (the markup Joey asked for)
+## 0. Classification change (the markup the owner asked for)
 
 - **Supersedes:** the 2026-10-27 profession sweep's classification of
   the CMU database as a *backup haystack*, and the animation build
@@ -61,7 +61,7 @@ Slots into the audit's phases; nothing here invents a parallel chain.
 5. **Compress + bake (A3).** ACL at bake (the standing choice);
    bytes measured per clip and per family — the corpus is the first
    real input to the audit's unmeasured-bytes problem (B4).
-6. **Store.** Baked clips land in the **Baked Asset Store** (Joey's
+6. **Store.** Baked clips land in the **Baked Asset Store** (the owner's
    2026-11-12 design): SoA keyframe streams, indexed in the SQLite
    asset DB with family, verb, licence lane, and hash. ClipIds on the
    wire stay as they are — the store is behind AssetProvider.
@@ -88,7 +88,7 @@ Slots into the audit's phases; nothing here invents a parallel chain.
 
 | Source | Sim verb / state | Unlocks | Gain |
 |---|---|---|---|
-| Swim subjects (125, 126; 79, 80) | `swim` state in water volumes | Rivers, lakes, flooded ruins, the reef set Polyfork stocked | Water biomes become playable space instead of a boundary. Scope call for Joey: surface swim only at first — CMU swim is surface pantomime; underwater locomotion is a design problem, not a clip problem |
+| Swim subjects (125, 126; 79, 80) | `swim` state in water volumes | Rivers, lakes, flooded ruins, the reef set Polyfork stocked | Water biomes become playable space instead of a boundary. Scope call for the owner: surface swim only at first — CMU swim is surface pantomime; underwater locomotion is a design problem, not a clip problem |
 
 ### 3.3 Combat forms (presentation for the combat doc's abilities)
 
@@ -120,7 +120,7 @@ Basketball/soccer (minigame fodder, no system owns them yet),
 skateboard (no board item), motorcycle poses (no vehicles in the
 humanoid verb set). Recorded so the census doesn't re-litigate them.
 
-## 4. Playability expansion — the summary Joey asked for
+## 4. Playability expansion — the summary the owner asked for
 
 1. **The world gains a vertical axis.** Climb + vault + jump clips,
    behind climb/vault verbs, turn walls, towers, lofts, and rooftops
@@ -143,7 +143,7 @@ humanoid verb set). Recorded so the census doesn't re-litigate them.
 ## 5. Phasing (each phase lands green before the next)
 
 - **P0 — Census + pin (A0).** Blocked only on the files arriving
-  (Joey hosting; see note). Deliverable: source manifest + census
+  (the owner hosting; see note). Deliverable: source manifest + census
   report + this map's taxonomy applied to real file names.
 - **P1 — Traversal pack.** Climb, vault, roll, duck, crawl, steps +
   their sim states and displacement profiles; one ladder volume and
@@ -161,7 +161,7 @@ First slice on file arrival: **P0 + the P1 climb subset** (subjects
 13/14/143 ladders + 127's vault/roll) — the smallest set that changes
 what a player can *do*.
 
-## 6. Open decisions (Joey's)
+## 6. Open decisions (the owner's)
 
 1. Swim scope: surface-only first (recommended) vs underwater design.
 2. Roll i-frames: combat-doc call — presentation-only dodge vs
@@ -193,11 +193,11 @@ corrects it.
      `validateRetargetedClip` (`retarget.ts`), called from convert at
      a bone budget of 200: loop continuity + bone budget enforced,
      red clips throw and block the library.
-   - Whether Joey gave the word for the Oct 28 landings is **not**
+   - Whether the owner gave the word for the Oct 28 landings is **not**
      established by this check — the commits are by the agent's git
      identity, and the Oct 27 record said the animation-start decision
      was still open. The landing is verified; the authorization is not.
-     That question is Joey's to settle, not this map's to assume.
+     That question is the owner's to settle, not this map's to assume.
 2. **The CMU wiring predates the "backup haystack" label by a month.**
    `45f9ddcc` (2026-09-28) "Art: retarget animation libraries onto
    the modular rig" put `CMU_MAP`, `CMU_TAKES`, and a `cmu-combat`

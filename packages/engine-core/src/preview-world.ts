@@ -15,14 +15,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as zlib from "node:zlib";
+import { png, ramp, type RGB } from "./terrain/png.js";
 import { GREEN_BIOMES, GREEN_MIN_CELLS, greenMask, greenSquares } from "./terrain/green.js";
 import { LAND, surveyWorld, type Survey } from "./terrain/survey.js";
 import { biomeShares, spawnPoint } from "./terrain/world-bake.js";
 import { STRUCTURE_MARGIN_M } from "./procgen/habitat.js";
 import { loadWorldSpec, windVector } from "./terrain/world-spec.js";
-
-type RGB = [number, number, number];
 
 /** Map colour per biome id; unknown biomes are grey. */
 const BIOME_COLOUR: Record<string, RGB> = {
@@ -40,47 +38,6 @@ const BIOME_COLOUR: Record<string, RGB> = {
   forest: [56, 118, 56],
   plains: [132, 172, 88],
 };
-
-function ramp(t: number, stops: RGB[]): RGB {
-  const k = Math.min(1, Math.max(0, t)) * (stops.length - 1);
-  const a = Math.min(Math.floor(k), stops.length - 2);
-  const f = k - a;
-  return stops[a].map((x, j) => x + (stops[a + 1][j] - x) * f) as RGB;
-}
-
-function png(width: number, height: number, rgb: Uint8Array): Buffer {
-  const table = Array.from({ length: 256 }, (_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const crc = (b: Buffer): number => {
-    let c = 0xffffffff;
-    for (const x of b) c = table[(c ^ x) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type: string, data: Buffer): Buffer => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type), data]);
-    const sum = Buffer.alloc(4);
-    sum.writeUInt32BE(crc(body));
-    return Buffer.concat([len, body, sum]);
-  };
-  const raw = Buffer.alloc((width * 3 + 1) * height);
-  for (let y = 0; y < height; y++) Buffer.from(rgb.buffer, rgb.byteOffset + y * width * 3, width * 3).copy(raw, y * (width * 3 + 1) + 1);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // RGB
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", ihdr),
-    chunk("IDAT", zlib.deflateSync(raw)),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-}
 
 /** Biomes | rainfall | temperature | UV, side by side, as RGB. */
 export function drawSurvey(s: Survey): { width: number; height: number; rgb: Uint8Array } {

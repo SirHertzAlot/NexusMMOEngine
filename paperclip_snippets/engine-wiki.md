@@ -1,7 +1,7 @@
 # Nexus MMO Engine — Hierarchical Documentation Wiki
 
 ## Summary
-Commissioned by Joey 2026-10-27. Comprehensive, hierarchical technical wiki documenting the entire engine architecture, design philosophy, subsystems, and developer workflows. Built purely with Markdown (`.md`), strictly focused on our engine without external comparisons or disparaging competition, and linked directly from the root `README.md` and `docs/README.md`.
+Commissioned by the owner 2026-10-27. Comprehensive, hierarchical technical wiki documenting the entire engine architecture, design philosophy, subsystems, and developer workflows. Built purely with Markdown (`.md`), strictly focused on our engine without external comparisons or disparaging competition, and linked directly from the root `README.md` and `docs/README.md`.
 
 ## Structure & Deliverables
 - **Master Technical Specification**: `docs/WIKI.md`

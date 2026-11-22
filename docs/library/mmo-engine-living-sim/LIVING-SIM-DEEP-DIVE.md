@@ -53,7 +53,7 @@ Five pillars, each with a hard constraint:
 
 ### 1.1 Design north star — a real world, not THE real world (2026-10-01)
 
-Joey: *"We simulate A real world that we build, not THE real world
+The owner: *"We simulate A real world that we build, not THE real world
 that's inhabited outside of this pseudo-space... Just enough so that
 when users play they feel a sense of nostalgia and relation, like
 they've been there before, even though it's not a real place."*
@@ -204,7 +204,7 @@ Evaluation order matters: Flocc first, vector stores last.
 
 ### 3.5 Build principles: swappable by design, JS-first where it pays
 
-Joey, 2026-10-01: *"The engine should have been made modular from the
+The owner, 2026-10-01: *"The engine should have been made modular from the
 start so every architectural choice we made could be swapped if
 necessary."* Adopted as a standing principle (also in the mmo-engine
 skill): every subsystem behind a narrow interface — `SimSystem`,
@@ -950,7 +950,7 @@ to `tick-loop.ts`, deterministic, tested.
 
 ### 8.1 Slice S3.5 — town spawner + population balancer
 
-Joey's framing (2026-10-01): *"We really only need to generate the
+The owner's framing (2026-10-01): *"We really only need to generate the
 data. Our cities should be able to balance out based on needs —
 otherwise all NPCs and animals would die out because the balance
 would be too poor."* Exactly right: this slice is 90% data
@@ -1136,7 +1136,7 @@ our own code on our own tick — the references inform, never supply.
 
 ## Addendum (2026-10-01) — external sims as the bake-time data lab
 
-Joey's framing: "we only need the data to be baked and organized —
+The owner's framing: "we only need the data to be baked and organized —
 afterwards we map it to our own game assets and re-work/customize them
 using the graph node interactive ui in the editor." This pins the §3.4
 Flocc role precisely: an agent-based model is a **bake-time data
@@ -1171,7 +1171,7 @@ content.
 ## Addendum (2026-10-01, later the same day) — C++ correction,
 supersedes the sim-lab verdict above
 
-Joey's correction: the bake-time sim lab must be **C++, not JS** —
+The owner's correction: the bake-time sim lab must be **C++, not JS** —
 procedural work of this kind belongs in a C++ microserver, by the same
 reasoning that rejected ROT.js and THREE.terrain (not C++, wrong layer;
 C++ is lower-level and fast enough to keep up with the fast-paced game
@@ -1207,7 +1207,7 @@ C++ addons for procgen.
 
 ## Addendum (2026-10-01, later) — the kernel's build target is Wasm
 
-Joey's resolution of the language debate: use Wasm, because it's
+The owner's resolution of the language debate: use Wasm, because it's
 language agnostic. Verdict: yes — as the kernel's **build target**,
 with sources still written in C++.
 

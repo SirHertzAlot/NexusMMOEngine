@@ -26,6 +26,7 @@ import { TerrainCache } from "../persist/terrain-cache.js";
 import { TerrainTileStore } from "../persist/terrain-tiles.js";
 import { surrealkvUrl, writeWorldCatalog, type CatalogChunk } from "../persist/world-catalog.js";
 import { LAND, surveyWorld, type Survey } from "./survey.js";
+import { geologyRecord } from "./geology/record.js";
 import { WorldHeights } from "./world-heights.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
 import { bakeWorldMasksParallel, bakeWorldPathMask, maskSourceOf, type RoadPolyline } from "./mask-bake.js";
@@ -543,6 +544,15 @@ export async function bakeWorldTerrain(spec: WorldSpec, opts: TerrainBakeOptions
     store.putMap("flow", map(survey.flow));
     store.putMap("river", map(survey.river));
     store.putMap("roughness", map(survey.roughness));
+    // Macro geology: the snapshot itself (not its seed), its province table,
+    // the per-cell fields and a hash, so a reload never has to regenerate.
+    if (survey.geology && spec.geology) {
+      store.putMap("geology_province", map(survey.geology.province));
+      store.putMap("geology_kind", map(survey.geology.kind));
+      store.putMap("geology_plate", map(survey.geology.plate));
+      store.putMap("geology_uplift", map(survey.geology.uplift));
+      store.putDoc("geology_snapshot", geologyRecord(spec.geology, survey.geology));
+    }
 
     // Terrain material masks: derived from the survey, stored per channel.
     if (opts.masks !== false) {

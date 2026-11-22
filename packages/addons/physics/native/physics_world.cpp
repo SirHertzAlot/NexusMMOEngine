@@ -764,6 +764,55 @@ struct mj_physics_world {
     out3[2] = p.GetZ();
   }
 
+  // The character bridge's per-tick pass for many walkers in one call: for
+  // each, a velocity that reaches its target in dt, one update without
+  // gravity, and its position out. The same arithmetic as the per-character
+  // calls (targets and the step in double, each value rounded to float where
+  // those calls round it), so a batch moves every character exactly as the
+  // single calls do. A character more than `teleport` metres from its target
+  // is not updated: out[4i + 3] is 1 and the caller re-creates it there.
+  void followCharacters(int count, const uint64_t *ids, const double *targets,
+                        double dt, double teleport, float *out) {
+    const double teleport2 = teleport * teleport;
+    const float dtf = static_cast<float>(dt);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    JPH::BodyFilter body_filter;
+    JPH::ShapeFilter shape_filter;
+    const auto &bp_filter =
+        mSystem->GetDefaultBroadPhaseLayerFilter(Layers::MOVING);
+    const auto &layer_filter = mSystem->GetDefaultLayerFilter(Layers::MOVING);
+    for (int i = 0; i < count; ++i) {
+      float *o = out + 4 * i;
+      o[3] = 0.0f;
+      auto it = mCharacters.find(ids[i]);
+      if (it == mCharacters.end()) {
+        o[0] = o[1] = o[2] = nan;
+        continue;
+      }
+      JPH::CharacterVirtual &c = *it->second;
+      const JPH::RVec3 p = c.GetPosition();
+      const double dx = targets[3 * i] - static_cast<double>(static_cast<float>(p.GetX()));
+      const double dy = targets[3 * i + 1] - static_cast<double>(static_cast<float>(p.GetY()));
+      const double dz = targets[3 * i + 2] - static_cast<double>(static_cast<float>(p.GetZ()));
+      if (dx * dx + dy * dy + dz * dz > teleport2) {
+        o[3] = 1.0f;
+        continue;
+      }
+      if (dt > 0.0) {
+        c.SetLinearVelocity(JPH::Vec3(static_cast<float>(dx / dt),
+                                      static_cast<float>(dy / dt),
+                                      static_cast<float>(dz / dt)));
+        if (dtf > 0.0f)
+          c.Update(dtf, JPH::Vec3(0.0f, 0.0f, 0.0f), bp_filter, layer_filter,
+                   body_filter, shape_filter, *mTempAllocator);
+      }
+      const JPH::RVec3 q = c.GetPosition();
+      o[0] = q.GetX();
+      o[1] = q.GetY();
+      o[2] = q.GetZ();
+    }
+  }
+
   int characterCount() const { return static_cast<int>(mCharacters.size()); }
 
 private:
@@ -989,6 +1038,13 @@ void mj_character_position(mj_physics_world_t *world, uint64_t id,
     return;
   }
   world->characterPosition(id, out3);
+}
+
+void mj_character_follow(mj_physics_world_t *world, int count,
+                         const uint64_t *ids, const double *targets, double dt,
+                         double teleport, float *out) {
+  if (world != nullptr && count > 0)
+    world->followCharacters(count, ids, targets, dt, teleport, out);
 }
 
 int mj_character_count(mj_physics_world_t *world) {
