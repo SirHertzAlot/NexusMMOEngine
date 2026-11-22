@@ -120,9 +120,9 @@ repository.
 
 ## Licence
 
-This repository does not yet carry a licence, which means the default applies
-and all rights are reserved. That decision is deliberately open. You can read
-and run the code; you cannot yet build and ship on it.
+No licence has been chosen yet, so the repository carries no `LICENSE` file.
+That decision is deliberately still open, and nothing in this repository's
+documentation states terms on the owner's behalf.
 
 Licensed art lives in a git-ignored `assets/` folder and is never in the
 repository. Without it the engine draws its own procedural scenery and
