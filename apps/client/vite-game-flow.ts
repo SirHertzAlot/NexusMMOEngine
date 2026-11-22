@@ -41,6 +41,37 @@ export const materialsDoc = (file: string): Plugin => jsonModule("virtual:materi
 /** content/vfx/budgets.json (particle tier budgets) as `virtual:vfx-budgets` (EG10). */
 export const vfxBudgets = (file: string): Plugin => jsonModule("virtual:vfx-budgets", file);
 
+/** content/rules/spells.json (spell bar + spline spells) as `virtual:rules-spells`. */
+export const rulesSpells = (file: string): Plugin => jsonModule("virtual:rules-spells", file);
+
+/**
+ * A set of EffectDefinition JSON files (`@mmo-engine/render-fx`) as `virtual:spell-vfx-defs`.
+ */
+export function vfxDefinitions(files: string[]): Plugin {
+  const id = "virtual:spell-vfx-defs";
+  return {
+    name: id,
+    resolveId: (req) => (req === id ? `\0${id}` : null),
+    load(req) {
+      if (req !== `\0${id}`) return null;
+      const out: Record<string, unknown> = {};
+      for (const file of files) {
+        this.addWatchFile(file);
+        const doc = JSON.parse(readFileSync(file, "utf8")) as { assetId: string };
+        out[doc.assetId] = doc;
+      }
+      return `export default ${JSON.stringify(out)};`;
+    },
+    configureServer(server) {
+      for (const file of files) server.watcher.add(file);
+      server.watcher.on("change", (f) => {
+        const hit = files.some((file) => f.replace(/\\/g, "/") === file.replace(/\\/g, "/"));
+        if (hit) server.ws.send({ type: "full-reload" });
+      });
+    },
+  };
+}
+
 /**
  * A set of VfxEffect JSON files as `virtual:vfx-effects`: one module
  * exporting a record keyed by each effect's own `id` field, so the

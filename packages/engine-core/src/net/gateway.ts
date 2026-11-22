@@ -85,6 +85,7 @@ import {
   type SkillsMessage,
   type ManaMessage,
   type SpellMessage,
+  type FxMessage,
   type HitMessage,
   type LifeMessage,
   type AbilityMessage,
@@ -665,6 +666,11 @@ const CastSchema = z
     kind: z.literal("cast"),
     spell: z.string().min(1).max(32).optional(),
     target: z.string().regex(/^\d{1,20}$/).optional(),
+    path: z
+      .array(z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]))
+      .min(2)
+      .max(16)
+      .optional(),
     stop: z.boolean().optional(),
   })
   .strict()
@@ -958,6 +964,11 @@ export class Gateway {
   private readonly bodySent = new WeakMap<ClientSession, string>();
   private readonly skillsSent = new WeakMap<ClientSession, string>();
   private readonly manaSent = new WeakMap<ClientSession, string>();
+  /** Per-tick sequence counter and active fxIds for 0x28 FX presentation messages. */
+  private fxSeq = 0;
+  private readonly activeCastFxId = new Map<number, string>();
+  private readonly activeShieldFxId = new Map<number, string>();
+  private readonly activeIceRingFxId = new Map<number, string>();
   /** Play counters and tick timing (T2); read by the admin `stats` command. */
   readonly telemetry = new PlayTelemetry();
   private readonly creatures: GatewayOptions["creatures"] | null;
@@ -1244,6 +1255,23 @@ export class Gateway {
   partyOf(name: string): string[] {
     const members = this.parties.partyOf(name);
     return members.length > 0 ? members : [name];
+  }
+
+  /** True if entities `a` and `b` share a party or guild (friendly/allied players). */
+  areAllies(a: number, b: number): boolean {
+    if (a === b) return true;
+    let nameA: string | null = null;
+    let nameB: string | null = null;
+    for (const s of this.sessions.values()) {
+      if (!s.welcomed || s.playerEntity === null || !s.character) continue;
+      const eid = this.world.resolveWireId(s.playerEntity);
+      if (eid === a) nameA = s.character.name;
+      else if (eid === b) nameB = s.character.name;
+    }
+    if (!nameA || !nameB) return false;
+    const lowB = nameB.toLowerCase();
+    if (this.parties.partyOf(nameA).some((m) => m.toLowerCase() === lowB)) return true;
+    return this.guilds.guildOf(nameA).some((m) => m.toLowerCase() === lowB);
   }
 
   /** Advance the fixed-timestep loop manually (tests). Returns ticks run. */
@@ -2916,7 +2944,7 @@ export class Gateway {
     this.deliver(s, encodeEnvelope(MessageType.Magic, encodeControl(msg)), tick);
   }
 
-  /** Tell casters and targets how their casts go (catalog 0x1c). */
+  /** Tell casters and targets how their casts go (catalog 0x1c) and broadcast 0x28 FX presentation to observers. */
   private sendSpells(sim: SimWorld): void {
     if (!this.magic) return;
     const events = this.magic.drainEvents();
@@ -2925,6 +2953,7 @@ export class Gateway {
       if (!r.welcomed || r.playerEntity === null) continue;
       const avatar = sim.resolveWireId(r.playerEntity);
       for (const ev of events) {
+        if (ev.state !== "started" && ev.state !== "done" && ev.state !== "stopped") continue;
         if (ev.caster !== avatar && ev.target !== avatar) continue;
         const m: SpellMessage = {
           kind: "spell",
@@ -2936,6 +2965,222 @@ export class Gateway {
           ...(ev.amount !== undefined ? { amount: Math.round(ev.amount * 10) / 10 } : {}),
         };
         this.sendEnvelope(r, MessageType.Magic, encodeControl(m));
+      }
+    }
+
+    // Authoritative 0x28 FxMessage fan-out to sessions in interest range.
+    const fxBatch: Array<{ caster: number; target: number; msg: FxMessage }> = [];
+    for (const ev of events) {
+      const spellDef = this.magic.spellOf(ev.spell);
+      const casterWid = String(sim.wireId(ev.caster));
+      const targetWid = String(sim.wireId(ev.target));
+      const isDamage = spellDef?.effect.kind === "damage";
+      const isShield = spellDef?.effect.kind === "shield";
+      const color = spellDef?.vfx?.color ?? (isDamage ? "#ff5522" : isShield ? "#26aeff" : "#4ade80");
+
+      if (ev.state === "started") {
+        const prevCastFx = this.activeCastFxId.get(ev.caster);
+        if (prevCastFx) {
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.caster,
+            msg: { kind: "fx-kill", fxId: prevCastFx, tick: this.tick, seq: ++this.fxSeq, fade: 0.1 },
+          });
+          this.activeCastFxId.delete(ev.caster);
+        }
+        if ((ev.seconds ?? 0) > 0) {
+          const fxId = `spell-cast:${casterWid}:${this.tick}:${++this.fxSeq}`;
+          this.activeCastFxId.set(ev.caster, fxId);
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: {
+              kind: "fx-spawn",
+              fxId,
+              tick: this.tick,
+              seq: this.fxSeq,
+              assetId: spellDef?.vfx?.castAsset ?? (isDamage ? "fx.charged-shot" : "fx.mend-aura"),
+              assetVersion: 1,
+              seed: ((this.tick + ev.caster) * 2654435761) >>> 0,
+              binding: { kind: "entity", entityId: casterWid, offset: [0, 1.1, 0] },
+              phase: "charge",
+              params: { bodyColor: color, charge01: 0.4, power01: 0.85 },
+            },
+          });
+        }
+      } else if (ev.state === "stopped") {
+        const prevCastFx = this.activeCastFxId.get(ev.caster);
+        if (prevCastFx) {
+          this.activeCastFxId.delete(ev.caster);
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.caster,
+            msg: { kind: "fx-kill", fxId: prevCastFx, tick: this.tick, seq: ++this.fxSeq, fade: 0.25 },
+          });
+        }
+      } else if (ev.state === "done") {
+        const prevCastFx = this.activeCastFxId.get(ev.caster);
+        if (prevCastFx) {
+          this.activeCastFxId.delete(ev.caster);
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.caster,
+            msg: { kind: "fx-kill", fxId: prevCastFx, tick: this.tick, seq: ++this.fxSeq, fade: 0.12 },
+          });
+        }
+        if (isShield || spellDef?.vfx?.persistentAsset) {
+          const prevShield = this.activeShieldFxId.get(ev.target);
+          if (prevShield) {
+            fxBatch.push({
+              caster: ev.caster,
+              target: ev.target,
+              msg: { kind: "fx-kill", fxId: prevShield, tick: this.tick, seq: ++this.fxSeq, fade: 0.1 },
+            });
+          }
+          const fxId = `spell-shield:${targetWid}:${this.tick}:${++this.fxSeq}`;
+          this.activeShieldFxId.set(ev.target, fxId);
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: {
+              kind: "fx-spawn",
+              fxId,
+              tick: this.tick,
+              seq: this.fxSeq,
+              assetId: spellDef?.vfx?.persistentAsset ?? "fx.force-shield",
+              assetVersion: 1,
+              seed: ((this.tick + ev.target) * 2654435761) >>> 0,
+              binding: { kind: "entity", entityId: targetWid, offset: [0, 0.95, 0] },
+              phase: "active",
+              params: { color, hp01: 1.0, hexScale: 3.5 },
+            },
+          });
+        } else if (ev.path && ev.path.length >= 2) {
+          const fxId = `spell-spline:${casterWid}:${this.tick}:${++this.fxSeq}`;
+          const detonatePos = ev.detonateAt ?? ev.path[ev.path.length - 1]!;
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: {
+              kind: "fx-spawn",
+              fxId,
+              tick: this.tick,
+              seq: this.fxSeq,
+              assetId: spellDef?.vfx?.impactAsset ?? spellDef?.vfx?.castAsset ?? "fx.spline-fire",
+              assetVersion: 1,
+              seed: ((this.tick + ev.caster + 31) * 2654435761) >>> 0,
+              binding: {
+                kind: "spline",
+                entityId: casterWid,
+                pos: detonatePos,
+                waypoints: ev.path,
+              },
+              phase: "travel",
+              params: {
+                bodyColor: color,
+                power01: 1.0,
+                ...(ev.radiusM !== undefined ? { radiusM: ev.radiusM } : {}),
+              },
+            },
+          });
+        } else {
+          const fxId = `spell-impact:${casterWid}:${targetWid}:${this.tick}:${++this.fxSeq}`;
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: {
+              kind: "fx-spawn",
+              fxId,
+              tick: this.tick,
+              seq: this.fxSeq,
+              assetId: spellDef?.vfx?.impactAsset ?? (isDamage ? "fx.charged-shot" : "fx.mend-aura"),
+              assetVersion: 1,
+              seed: ((this.tick + ev.target + 19) * 2654435761) >>> 0,
+              binding: { kind: "entity", entityId: targetWid, offset: [0, 1.0, 0] },
+              phase: "impact",
+              params: { bodyColor: color, charge01: 1.0, power01: 1.0 },
+            },
+          });
+        }
+      } else if (ev.state === "ice-ring-spawn") {
+        const prevRing = this.activeIceRingFxId.get(ev.target);
+        if (prevRing) {
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: { kind: "fx-kill", fxId: prevRing, tick: this.tick, seq: ++this.fxSeq, fade: 0.1 },
+          });
+        }
+        const fxId = `ice-ring:${targetWid}:${this.tick}:${++this.fxSeq}`;
+        this.activeIceRingFxId.set(ev.target, fxId);
+        fxBatch.push({
+          caster: ev.caster,
+          target: ev.target,
+          msg: {
+            kind: "fx-spawn",
+            fxId,
+            tick: this.tick,
+            seq: this.fxSeq,
+            assetId: "fx.ice-ring",
+            assetVersion: 1,
+            seed: ((this.tick + ev.target + 7) * 2654435761) >>> 0,
+            binding: {
+              kind: "entity",
+              entityId: targetWid,
+              ...(ev.detonateAt ? { pos: ev.detonateAt } : {}),
+            },
+            phase: "active",
+            params: { color: "#67e8f9", radius: ev.amount ?? 1.5 },
+          },
+        });
+      } else if (ev.state === "ice-ring-break") {
+        const fxId = this.activeIceRingFxId.get(ev.target);
+        if (fxId) {
+          this.activeIceRingFxId.delete(ev.target);
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: { kind: "fx-kill", fxId, tick: this.tick, seq: ++this.fxSeq, fade: 0.25 },
+          });
+        }
+      } else if (ev.state === "shield-hit") {
+        const fxId = this.activeShieldFxId.get(ev.target);
+        if (fxId) {
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: {
+              kind: "fx-update",
+              fxId,
+              tick: this.tick,
+              seq: ++this.fxSeq,
+              phase: "hit",
+              params: { hp01: ev.hp01 ?? 0.5 },
+              hit: { pos: ev.hitPos ?? [0, 1.0, 1.0], normal: [0, 0, 1] },
+            },
+          });
+        }
+      } else if (ev.state === "shield-expired") {
+        const fxId = this.activeShieldFxId.get(ev.target);
+        if (fxId) {
+          this.activeShieldFxId.delete(ev.target);
+          fxBatch.push({
+            caster: ev.caster,
+            target: ev.target,
+            msg: { kind: "fx-kill", fxId, tick: this.tick, seq: ++this.fxSeq, fade: 0.35 },
+          });
+        }
+      }
+    }
+
+    if (fxBatch.length > 0) {
+      for (const r of this.sessions.values()) {
+        if (!r.welcomed || r.playerEntity === null) continue;
+        for (const item of fxBatch) {
+          if (this.sees(r, item.caster) || this.sees(r, item.target)) {
+            this.sendEnvelope(r, MessageType.Fx, encodeControl(item.msg));
+          }
+        }
       }
     }
   }
@@ -6115,7 +6360,7 @@ export class Gateway {
       this.sendError(s, 4005, "no one to cast on");
       return;
     }
-    const err = this.magic.cast(sim, caster, parsed.data.spell!, target);
+    const err = this.magic.cast(sim, caster, parsed.data.spell!, target, parsed.data.path);
     if (err) this.sendError(s, 4005, err);
   }
 

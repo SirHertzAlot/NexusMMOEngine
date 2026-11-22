@@ -13,3 +13,4 @@
  */
 export * from "./materials/index.js";
 export * from "./VFXAdapter.js";
+export * from "./spell-fx-layer.js";
