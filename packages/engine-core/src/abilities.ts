@@ -22,6 +22,7 @@
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 export interface AbilityDef {
   id: string;
@@ -59,6 +60,8 @@ interface EntityState {
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
 export class AbilitySystem implements SimSystem {
+  /** Offered to the host as the `abilities` port: the abilities it fired, and the trigger a key press reaches. */
+  readonly [PORTS] = ["abilities"];
   readonly name = "abilities";
   readonly access: SystemAccess = {
     system: "abilities",

@@ -46,3 +46,13 @@ export {
   type ServiceDecl,
   type ServiceSources,
 } from "./services.js";
+
+export {
+  BadPortError,
+  PORTS,
+  PortSet,
+  openPorts,
+  type BadPort,
+  type PortDecl,
+  type PortProvider,
+} from "./ports.js";

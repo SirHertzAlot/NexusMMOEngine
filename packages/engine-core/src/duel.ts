@@ -44,8 +44,11 @@ const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 export class DuelSystem implements SimSystem {
+  /** Offered to the host as the `duels` port: the duel flow a player's client drives. */
+  readonly [PORTS] = ["duels"];
   readonly name = "duel";
   readonly access: SystemAccess = {
     system: "duel",

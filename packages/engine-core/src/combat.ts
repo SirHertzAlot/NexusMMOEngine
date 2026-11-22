@@ -53,6 +53,7 @@
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
+import { PORTS } from "@mmo-engine/sdk";
 import { engineDefaults, type CombatRules, type DamageInput, type ItemBaseRules, type PartState, type RuleHooks } from "@mmo-engine/rules";
 import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
@@ -216,6 +217,8 @@ export function aimFromLookPitch(
 }
 
 export class CombatSystem implements SimSystem {
+  /** Offered to the host as the `combat` port: the blows it struck this tick, and a player's stance. */
+  readonly [PORTS] = ["combat"];
   readonly name = "combat";
   readonly access: SystemAccess = {
     system: "combat",
