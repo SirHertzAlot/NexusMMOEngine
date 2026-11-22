@@ -19,6 +19,7 @@ or planned.
 | [CLI.md](CLI.md) | Every command, admin console commands, chat commands, keys |
 | [GAMEPLAY.md](GAMEPLAY.md) | Movement, combat, bots, skills, body, inventory, quests, and how to extend them |
 | [WORLD-BUILDING.md](WORLD-BUILDING.md) | Design or regenerate a world: specs, biomes, terrain editing |
+| [GEOLOGY.md](GEOLOGY.md) | Macro geology prototype: an optional province snapshot under the survey, and the GeoForge evaluation |
 | [ART-PIPELINE.md](ART-PIPELINE.md) | The art packs, the manifest contract, and the conversion tools |
 | [EDITOR.md](EDITOR.md) | The editor: inspectors, play mode, debugger, world-scale terrain, art pipeline |
 | [EDITOR-ARCHITECTURE.md](EDITOR-ARCHITECTURE.md) | The modular editor plan |

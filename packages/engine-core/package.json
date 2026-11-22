@@ -20,6 +20,7 @@
     "bake:pools": "node dist/src/pools/bake-pools.js",
     "bake:pools:compile": "npm run build && node dist/src/pools/bake-pools.js",
     "preview:world": "npm run build && node dist/src/preview-world.js",
+    "geology:compare": "npm run build && node dist/src/terrain/geology/compare-cli.js",
     "bench:transport": "node dist/src/net/transport-bench.js",
     "bench:contention": "npm run build && node dist/src/sab-contention-bench.js"
   },
