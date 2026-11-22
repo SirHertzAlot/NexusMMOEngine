@@ -446,7 +446,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 
 | # | Stage | Scope | Risk | Gate before merging |
 |---|---|---|---|---|
-| 1a | **Stop the accidental publishes** | `private: true` on the five packages that lack it. Nothing about licensing | **Low.** One field in five `package.json` files, reversible | `npm pack --dry-run` refuses each of the five; `npm test` unaffected |
+| 1a | **Stop the accidental publishes** | `private: true` on the five packages that lack it. Nothing about licensing | **Low.** One field in five `package.json` files, reversible | `npm publish --dry-run` in each ends in "Skipping workspace …, marked as private" (note `npm pack` still packs a private package, so it is not the check); `npm test` unaffected |
 | 1b | **Package hygiene** (parked with the licence) | `exports` maps on the packages that go public, `license` fields, root `LICENSE` and an aggregated third-party notices file | **Low.** Metadata only | Blocked on the licence choice — see [§5](#5-the-licence-is-deferred-on-purpose) |
 | 2 | **`GameProject` resolver** | `@mmo-engine/sdk` with `game.json` schema + resolver. Engine reads paths from it, defaulting to today's `content/` so current behaviour is byte-identical | **Low–medium.** 40 path sites in 19 files. Mitigated: default resolver returns exactly today's paths; a test asserts every resolved path equals the old constant | A test per seam asserting old path == new resolved path; boot smoke unchanged |
 | 3 | **Reach the hooks** | Load `game.json.hooks`, pass to `loadGameRules`. One line at `server.ts:354` plus a loader | **Low.** Absent hooks = today's behaviour | A test game pack that overrides `computeDamage` and changes a measured damage number |
