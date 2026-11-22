@@ -59,6 +59,24 @@ describe("ES4: the service table matches the modules that provide it", () => {
     }
   });
 
+  it("requires only the engine's own: physics, character and mastery (ES4b)", () => {
+    // The measure of the split. Everything else is a game's design, and a
+    // game that wants none of it boots without the modules that provide it:
+    // `core` alone reports exactly these three, and `core`, `physics`,
+    // `character` runs. If this list grows, the engine has re-coupled itself
+    // to something a game should be free to drop — which is what ES8's
+    // kit-less boot job will fail on.
+    assert.deepEqual(
+      SERVICE_TABLE.filter((d) => d.required).map((d) => d.key),
+      ["physics", "character", "mastery"],
+    );
+    // And each of those is the engine's own, not a game's design.
+    assert.deepEqual(
+      [...new Set(SERVICE_TABLE.filter((d) => d.required).map((d) => d.module))].sort(),
+      ["character", "physics"],
+    );
+  });
+
   it("has a unique key, a module, and a sentence per row", () => {
     const keys = SERVICE_TABLE.map((d) => d.key);
     assert.equal(new Set(keys).size, keys.length);
@@ -119,7 +137,8 @@ describe("ES4: a missing service stops the boot", () => {
   it("reads every row when every module is there", () => {
     const r = openEngineServices(everything());
     assert.deepEqual(r.absent, []);
-    assert.equal(r.get("items").constructor, Object);
+    assert.equal(r.get("physics").constructor, Object);
+    assert.equal(r.optional("items")?.constructor, Object);
     assert.match(r.summary, /^services: \d+\/\d+$/);
   });
 
@@ -134,9 +153,9 @@ describe("ES4: a missing service stops the boot", () => {
 
   it("names the module and what it is for when a required one is missing", () => {
     const all = everything();
-    delete all.byName["items"];
-    delete all.extensions["dungeons"];
-    all.modules = all.modules.filter((m) => m !== "dungeons");
+    delete all.byName["physics"];
+    delete all.byName["mastery"];
+    all.modules = all.modules.filter((m) => m !== "physics");
     let err: MissingServicesError | undefined;
     try {
       openEngineServices(all);
@@ -145,10 +164,27 @@ describe("ES4: a missing service stops the boot", () => {
       err = caught;
     }
     assert.ok(err, "a missing required service should stop the boot");
-    assert.deepEqual(err.missing.map((m) => m.key), ["items", "dungeons"]);
-    // items' module ran and did not provide it; the dungeons module is off.
-    assert.match(err.message, /items \(bags, item definitions, provenance\), provided by the items module — that module is enabled but did not provide it/);
-    assert.match(err.message, /enable dungeons in the module set/);
+    assert.deepEqual(err.missing.map((m) => m.key), ["physics", "mastery"]);
+    // The physics module is off; the character module ran without mastery.
+    assert.match(err.message, /enable physics in the module set/);
+    assert.match(
+      err.message,
+      /mastery \(what a character has got better at\), provided by the character module — that module is enabled but did not provide it/,
+    );
+  });
+
+  it("boots with none of the game's modules, which is the point of the split", () => {
+    // Everything optional removed: what is left is the three the engine
+    // itself needs, and the registry hands them over without complaint.
+    const all = everything();
+    for (const d of SERVICE_TABLE.filter((x) => !x.required)) {
+      delete (d.kind === "system" ? all.byName : all.extensions)[d.key];
+    }
+    all.modules = ["core", "physics", "character"];
+    const r = openEngineServices(all);
+    assert.equal(r.absent.length, SERVICE_TABLE.length - 3);
+    assert.ok(r.get("physics"));
+    assert.equal(r.optional("combat"), undefined);
   });
 });
 

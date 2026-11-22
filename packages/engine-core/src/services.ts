@@ -17,11 +17,18 @@
  * our combat module can read this table and see every row to change, and a
  * game with its own entry point writes its own table and uses none of it.
  *
- * `required: false` means the server has a path without it today (the
- * reads are `?.` or `?? null`). `required: true` means it dereferences the
- * service unconditionally, so a missing one is a boot failure either way —
- * the registry turns it into one error at boot naming the module instead
- * of a crash later.
+ * `required: false` means the server boots without it and the features it
+ * carries are simply absent. `required: true` means the boot cannot get as
+ * far as listening without it.
+ *
+ * Shrinking the required list is the measure of the split (ES5–ES8): a
+ * game that wants none of our combat, items, quests or dungeons should not
+ * have to enable the modules that provide them. Booting with `core` alone
+ * prints the list, which is why the error names every missing service at
+ * once instead of the first. What is left is `physics` (the streamer holds
+ * a chunk back until its terrain colliders are in) and `character` with
+ * `mastery` (players need ground height, bounds and a sheet), both of
+ * which are the engine's own rather than a game's design.
  */
 
 import { openServiceRegistry, type ServiceDecl, type ServiceRegistry } from "@mmo-engine/sdk";
@@ -70,19 +77,19 @@ export interface EngineServices {
 
 export const SERVICE_TABLE: readonly ServiceDecl[] = [
   // Items and money.
-  { key: "items", module: "items", kind: "system", required: true, what: "bags, item definitions, provenance" },
-  { key: "dropper", module: "items", kind: "extension", required: true, what: "what a kill leaves on the ground" },
-  { key: "wallet", module: "economy", kind: "system", required: true, what: "coin, which the gateway and the vendors read" },
+  { key: "items", module: "items", kind: "system", required: false, what: "bags, item definitions, provenance" },
+  { key: "dropper", module: "items", kind: "extension", required: false, what: "what a kill leaves on the ground" },
+  { key: "wallet", module: "economy", kind: "system", required: false, what: "coin, which the gateway and the vendors read" },
   { key: "vendor", module: "economy", kind: "system", required: false, what: "shops, attached to a resident who keeps one" },
 
   // The combat cluster.
-  { key: "body", module: "combat", kind: "system", required: true, what: "body parts and wounds, for the physics fall callback" },
-  { key: "magic", module: "combat", kind: "system", required: true, what: "spells, re-read by the rules reloader" },
+  { key: "body", module: "combat", kind: "system", required: false, what: "body parts and wounds, for the physics fall callback" },
+  { key: "magic", module: "combat", kind: "system", required: false, what: "spells, re-read by the rules reloader" },
   { key: "telegraphs", module: "combat", kind: "system", required: false, what: "the warning cones a creature casts before it strikes" },
   { key: "combat", module: "combat", kind: "system", required: false, what: "who struck whom last, for kill credit" },
 
   // Creatures and their movement.
-  { key: "creatures", module: "creatures", kind: "system", required: true, what: "wild creatures, raids, respawns" },
+  { key: "creatures", module: "creatures", kind: "system", required: false, what: "wild creatures, raids, respawns" },
   { key: "bots", module: "creatures", kind: "system", required: false, what: "the practice bots (MMO_BOTS=0 leaves them out)" },
   { key: "crowd", module: "creatures", kind: "system", required: false, what: "steered movement, when a navigation backend is up" },
 
@@ -94,8 +101,8 @@ export const SERVICE_TABLE: readonly ServiceDecl[] = [
   { key: "residents", module: "residents", kind: "system", required: false, what: "the towns' people (off without a scene and a baked manifest)" },
 
   // Gateway extensions: consumed directly, never ticked.
-  { key: "dungeons", module: "dungeons", kind: "extension", required: true, what: "dungeon instances" },
-  { key: "quests", module: "quests", kind: "extension", required: true, what: "quests and dialog" },
+  { key: "dungeons", module: "dungeons", kind: "extension", required: false, what: "dungeon instances" },
+  { key: "quests", module: "quests", kind: "extension", required: false, what: "quests and dialog" },
   { key: "civic", module: "civic", kind: "extension", required: false, what: "contracts, bridge wear, provenance" },
 ];
 

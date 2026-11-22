@@ -808,7 +808,7 @@ async function main(): Promise<void> {
     crowd: import("./navigation/crowd-system.js").CrowdSystem | null;
   } | null = null;
   const creaturesOf = () => {
-    if (!creaturesRef) throw new Error("creatures not yet assembled");
+    if (!creaturesRef) throw new Error("creatures: this path needs the creatures module, which is not enabled");
     return creaturesRef.creatures;
   };
   // Slice 7: character domain comes from the character module.
@@ -817,11 +817,11 @@ async function main(): Promise<void> {
     mastery: import("./stats/mastery-system.js").MasterySystem;
   } | null = null;
   const characterOf = () => {
-    if (!characterRef) throw new Error("character not yet assembled");
+    if (!characterRef) throw new Error("character: this path needs the character module, which is not enabled");
     return characterRef.character;
   };
   const masteryOf = () => {
-    if (!characterRef) throw new Error("character not yet assembled");
+    if (!characterRef) throw new Error("mastery: this path needs the character module, which is not enabled");
     return characterRef.mastery;
   };
   // Character domain (slice 7): the character module builds character,
@@ -1133,7 +1133,7 @@ async function main(): Promise<void> {
   // Closures defined before assembly resolve them lazily via these refs.
   let itemsRef: import("./items/index.js").ItemService | null = null;
   const itemsOf = (): import("./items/index.js").ItemService => {
-    if (!itemsRef) throw new Error("items not yet assembled");
+    if (!itemsRef) throw new Error("items: this path needs the items module, which is not enabled");
     return itemsRef;
   };
   const weaponOf = (e: number): Weapon | null => {
@@ -1484,29 +1484,36 @@ async function main(): Promise<void> {
   // Slices 2-5: items, dropper, dungeons, quests, and the combat cluster
   // come from their modules.
   services = openEngineServices(assembled);
-  itemsRef = services.get("items");
+  // Everything a game may do without (ES5): the module is off, the feature
+  // is absent, and the lazy accessors above say which module to enable if a
+  // path that needs one is ever reached.
+  itemsRef = services.optional("items") ?? null;
   // The economy module owns the wallet; pre-assembly configs use it lazily.
-  walletHolder.current = services.get("wallet");
-  dropperRef = services.get("dropper");
-  const dungeons = services.get("dungeons");
-  questsRef = services.get("quests");
-  const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;
+  walletHolder.current = services.optional("wallet") ?? null;
+  dropperRef = services.optional("dropper") ?? null;
+  const dungeons = services.optional("dungeons") ?? null;
+  questsRef = services.optional("quests") ?? null;
+  const quests = questsRef as import("./net/extension.js").GatewayExtension | null;
   const civic = services.optional("civic") ?? null;
   civicRef = civic;
-  itemsRef.setProvenanceLookup((id) => civic?.provenanceOf(id));
-  itemsRef.setTraitDefs(civicConfig.rules.traits);
+  itemsRef?.setProvenanceLookup((id) => civic?.provenanceOf(id));
+  itemsRef?.setTraitDefs(civicConfig.rules.traits);
   // Combat cluster (slice 5): assign bodyRef for the physics fall callback,
   // magicRef for the rules reloader.
-  bodyRef = services.get("body");
-  magicRef = services.get("magic");
+  bodyRef = services.optional("body") ?? null;
+  magicRef = services.optional("magic") ?? null;
   // Creatures domain (slice 6).
-  creaturesRef = {
-    creatures: services.get("creatures"),
-    bots: services.optional("bots") ?? null,
-    crowd: services.optional("crowd") ?? null,
-  };
+  const creatureSystem = services.optional("creatures");
+  creaturesRef = creatureSystem
+    ? {
+        creatures: creatureSystem,
+        bots: services.optional("bots") ?? null,
+        crowd: services.optional("crowd") ?? null,
+      }
+    : null;
   (startWild as (() => void) | null)?.();
-  // Physics domain (slice 8).
+  // Physics domain (slice 8): the streamer holds a chunk back until its
+  // terrain colliders are in, so this one the server cannot do without.
   physicsRef = services.get("physics");
   // Character domain (slice 7).
   characterRef = {
@@ -1552,7 +1559,7 @@ async function main(): Promise<void> {
   await socialSync?.boot();
   spawnBootScene();
   if (respawnPool.activeCount > 0) {
-    const poolCreatures = creaturesRef.creatures.instantiateFromPool(
+    const poolCreatures = creaturesOf().instantiateFromPool(
       sim,
       respawnPool,
       resolveCreatureKindByHash,
@@ -1691,8 +1698,8 @@ async function main(): Promise<void> {
     },
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery: masteryOf(),
-    body: bodyRef!,
-    magic: magicRef!,
+    ...(bodyRef ? { body: bodyRef } : {}),
+    ...(magicRef ? { magic: magicRef } : {}),
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
     // Interest management: on unless MMO_INTEREST=0 (dungeon instances run their own gateway, which sees everything).
@@ -1701,18 +1708,22 @@ async function main(): Promise<void> {
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: assembled.systems,
-    extensions: [quests, dungeons, craftingService, ...(civic ? [civic] : [])],
-    items: itemsOf(),
+    // Each one is here only while its module is: an absent extension is a
+    // feature the gateway answers "unsupported" for, not a null to guard.
+    extensions: [quests, dungeons, craftingService, civic].filter((x): x is import("./net/extension.js").GatewayExtension => x !== null),
+    ...(itemsRef ? { items: itemsRef } : {}),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
     creatures: {
-      has: (k) => k in game.rules.creatures.creatures,
+      // Without the creatures module there are no creature entities, so the
+      // rules still name the kinds and the three live reads answer empty.
+      has: (k) => creaturesRef !== null && k in game.rules.creatures.creatures,
       // The admin spawnlist names creature kinds from the rules (A3); without this only props show.
-      kinds: () => Object.keys(game.rules.creatures.creatures).sort(),
-      spawnPack: (w, k, x, z) => creaturesOf().spawnPack(w, k, x, z),
-      nameOf: (e) => creaturesOf().nameOf(e),
-      entities: () => creaturesOf().entities(),
+      kinds: () => (creaturesRef === null ? [] : Object.keys(game.rules.creatures.creatures).sort()),
+      spawnPack: (w, k, x, z) => creaturesRef?.creatures.spawnPack(w, k, x, z) ?? [],
+      nameOf: (e) => creaturesRef?.creatures.nameOf(e),
+      entities: () => creaturesRef?.creatures.entities() ?? [],
     },
     spawnPoint: spawn,
     respawnAnchors: Object.values(loadDungeonContent(GAME.paths.dungeonsDir).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
@@ -1911,7 +1922,7 @@ async function main(): Promise<void> {
         /* best-effort pool flush: never block shutdown */
       }
       // Runs still going report now, so their loot is in the ledger flush below.
-      dungeons.endAll();
+      dungeons?.endAll();
       gw.saveCharacters();
       itemLedger.flush();
       itemLedger.close();
