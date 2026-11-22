@@ -17,6 +17,7 @@ import {
   loadGraph,
   runCli,
   validateGraph,
+  whatDiffers,
   type EcsGraph,
 } from "../src/index.js";
 
@@ -371,6 +372,117 @@ test("CLI --check passes on committed artifact and fails cleanly on drift or mis
 
     const missingCode = runCli(["--check", "--in", join(driftDir, "does-not-exist.json"), "--repo", REPO_ROOT]);
     assert.equal(missingCode, 1);
+  } finally {
+    rmSync(driftDir, { recursive: true, force: true });
+  }
+});
+
+test("whatDiffers names the part of the artifact that is stale", () => {
+  interface FakeArtifact {
+    edges: unknown[];
+    meta: {
+      builtFromCommit: string;
+      counts: Record<string, number>;
+      graphHash: string;
+      schemaVersion: number;
+      sourceHashes: Record<string, string>;
+    };
+    nodes: unknown[];
+  }
+  const base: FakeArtifact = {
+    edges: [],
+    meta: {
+      builtFromCommit: "a".repeat(40),
+      counts: { edges: 1, nodes: 2 },
+      graphHash: "f".repeat(64),
+      schemaVersion: 3,
+      sourceHashes: { "modules/a/server.js": "1", "packages/b/src/b.ts": "2" },
+    },
+    nodes: [],
+  };
+
+  // A tracked source file was edited: the graph did not move, so the hash is the
+  // same on both sides and only the file list says what happened.
+  const edited = JSON.parse(JSON.stringify(base)) as FakeArtifact;
+  edited.meta.sourceHashes = { "modules/a/server.js": "9", "packages/c/src/c.ts": "3" };
+  const sourceMsg = whatDiffers(JSON.stringify(base), JSON.stringify(edited));
+  assert.match(sourceMsg, /The graph is unchanged: meta\.graphHash is ffffffffffff…/);
+  assert.match(sourceMsg, /Tracked source files moved \(meta\.sourceHashes\):/);
+  assert.match(sourceMsg, /edited \(1\): modules\/a\/server\.js/);
+  assert.match(sourceMsg, /new \(1\): packages\/c\/src\/c\.ts/);
+  assert.match(sourceMsg, /gone \(1\): packages\/b\/src\/b\.ts/);
+  assert.ok(!sourceMsg.includes("The graph changed"), sourceMsg);
+
+  // The graph itself moved: report the hashes and which counts went with them.
+  const moved = JSON.parse(JSON.stringify(base)) as FakeArtifact;
+  moved.meta.graphHash = "0".repeat(64);
+  moved.meta.counts = { edges: 1, nodes: 3 };
+  const movedMsg = whatDiffers(JSON.stringify(base), JSON.stringify(moved));
+  assert.match(movedMsg, /The graph changed: meta\.graphHash ffffffffffff… -> 000000000000…/);
+  assert.match(movedMsg, /counts: nodes 2 -> 3/);
+  assert.ok(!movedMsg.includes("counts: edges"), movedMsg);
+  assert.ok(!movedMsg.includes("sourceHashes"), movedMsg);
+
+  // Another meta key, and a node list, each get named.
+  const otherKeys = JSON.parse(JSON.stringify(base)) as FakeArtifact;
+  otherKeys.meta.schemaVersion = 4;
+  otherKeys.nodes = [{ id: "component:Health" }];
+  const otherMsg = whatDiffers(JSON.stringify(base), JSON.stringify(otherKeys));
+  assert.match(otherMsg, /Other meta keys differ: schemaVersion\./);
+  assert.match(otherMsg, /Top-level keys differ: nodes\./);
+
+  // Same values, different bytes: say so rather than listing nothing.
+  const formatting = whatDiffers(JSON.stringify(base), JSON.stringify(base, null, 2));
+  assert.match(formatting, /formatting difference/);
+
+  assert.match(whatDiffers("{not json", JSON.stringify(base)), /not valid JSON/);
+
+  // Long lists are capped so one message cannot bury the reader in 317 paths.
+  const many = JSON.parse(JSON.stringify(base)) as FakeArtifact;
+  many.meta.sourceHashes = Object.fromEntries(
+    Array.from({ length: 12 }, (_, i) => [`packages/p${String(i).padStart(2, "0")}/src/x.ts`, "h"]),
+  );
+  const manyMsg = whatDiffers(JSON.stringify(base), JSON.stringify(many));
+  assert.match(manyMsg, /new \(12\): .*and 4 more/);
+  assert.equal(manyMsg.match(/packages\/p\d\d\/src\/x\.ts/g)?.length, 8);
+});
+
+test("CLI --check failure names the edited source file, not two equal hashes", () => {
+  const driftDir = mkdtempSync(join(tmpdir(), "graphify-why-stale-"));
+  try {
+    const parsedArtifact = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "content/graph/ecs-graph.json"), "utf8"),
+    ) as EcsGraph & { meta: { sourceHashes: Record<string, string> } };
+    const tracked = Object.keys(parsedArtifact.meta.sourceHashes).sort()[0];
+    assert.ok(tracked, "the artifact tracks at least one source file");
+
+    const stalePath = join(driftDir, "ecs-graph.json");
+    writeFileSync(
+      stalePath,
+      canonicalJson({
+        ...parsedArtifact,
+        meta: {
+          ...parsedArtifact.meta,
+          sourceHashes: { ...parsedArtifact.meta.sourceHashes, [tracked]: "stale" },
+        },
+      } as EcsGraph),
+      "utf8",
+    );
+
+    let stderr = "";
+    try {
+      execFileSync(process.execPath, [CLI_PATH, "--check", "--in", stalePath, "--repo", REPO_ROOT], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+      });
+      assert.fail("--check should fail on a stale sourceHashes entry");
+    } catch (err) {
+      stderr = String((err as { stderr?: string }).stderr ?? "");
+    }
+    assert.match(stderr, /graphify --check FAIL/);
+    assert.match(stderr, /The graph is unchanged: meta\.graphHash is/);
+    assert.ok(stderr.includes(`edited (1): ${tracked}`), stderr);
+    assert.match(stderr, /npm run graphify:build/);
   } finally {
     rmSync(driftDir, { recursive: true, force: true });
   }

@@ -12,10 +12,11 @@
  * this — and each row carries the methods the gateway calls, so a system
  * that offers a port it cannot answer ends the boot rather than the tick.
  *
- * The event payloads are still declared beside the systems that raise them
+ * Most event payloads are still declared beside the systems that raise them
  * and imported here as types only, so nothing in this file reaches a system
- * at runtime. Moving those payloads into the shared vocabulary is the step
- * that lets the systems themselves move out (`ES5b`).
+ * at runtime. `LifeEvent` already moved to `vocabulary.ts` (`ES5a`); the
+ * rest follow it, which is the step that lets the systems themselves move
+ * out.
  */
 
 import type { PortDecl } from "@mmo-engine/sdk";
@@ -28,10 +29,10 @@ import type { BreakSystem, ChestSystem } from "../interact/index.js";
 import type { ResidentSystem } from "../residents/index.js";
 import type { AbilityEvent, TriggerResult } from "../abilities.js";
 import type { HitEvent } from "../combat.js";
-import type { LifeEvent } from "../death.js";
 import type { DuelEvent } from "../duel.js";
 import type { StatusChange } from "../status.js";
 import type { TelegraphEvent } from "../telegraph.js";
+import type { LifeEvent } from "../vocabulary.js";
 
 /** The blows struck this tick, and the stance a player fights in. */
 export interface CombatPort {

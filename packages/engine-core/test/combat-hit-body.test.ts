@@ -9,7 +9,8 @@ import { addComponent } from "bitecs";
 import { combatMove, IntentButton, Move } from "@mmo-engine/protocol";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
-import { CombatSystem, GUARD_FACTOR, type CombatSkills, type Weapon } from "../src/combat.js";
+import { CombatSystem, GUARD_FACTOR, type CombatSkills } from "../src/combat.js";
+import type { Weapon } from "../src/vocabulary.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
 import { loadGameRules } from "../src/rules/boot.js";
 
