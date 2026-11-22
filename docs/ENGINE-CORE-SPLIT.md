@@ -261,38 +261,39 @@ which is the only way the seams stay honest.
 ### 3.2 The game project manifest
 
 One file replaces 30 environment variables. `game.json`, validated by a
-Zod schema in the SDK, every path relative to the file:
+Zod schema in the SDK, every path relative to the file. **Shipped in
+`ES2`/`ES4`; this is the schema as built, which differs from the sketch
+this section first carried:**
 
 ```jsonc
 {
   "name": "nexus",
-  "engine": ">=0.2.0",
-  "content": {
-    "rules": "content/rules",            // was MMO_RULES
-    "combat": "content/combat/moves.json", // was MMO_COMBAT
-    "quests": "content/quests",          // was MMO_QUESTS
-    "dungeons": "content/dungeons",
-    "species": "content/species/species.json",
-    "scenes": "content/scenes",
-    "prefabs": "content/prefabs",
-    "settlements": "content/settlements",
-    "biomes": "content/biomes.json",
-    "ecology": "content/ecology/wilds.ecology.json",
-    "pcgAssets": "content/pcg",
-    "scale": "content/scale.json",
-    "vendors": "content/vendors.json",
-    "structures": "content/structures.json",
-    "crafting": "content/crafting/recipes.json"
+  "content": "content",                  // the root; every content seam hangs off it
+  "assets": "assets",
+  "paths": {                             // one seam at a time, when a game's layout differs
+    "rulesDir": "rules",                 // was MMO_RULES
+    "combatFile": "combat/moves.json",   // was MMO_COMBAT
+    "biomesFile": "world/biomes.json"    // engine-bundled by default; point it at your own
   },
-  "modules": {
-    "dirs": ["modules", "node_modules/@mmo-engine/kit-combat/module"],
-    "enabled": ["core", "combat", "items", "economy", "quests"]
-  },
-  "world": { "seed": 1337, "spec": "content/world.spec.json" },
-  "hooks": "./hooks.js",                 // the gap at server.ts:354
-  "client": { "entry": "client/main.tsx" }
+  "hooks": "rules/hooks.mjs",            // the gap that was at server.ts:354
+  "modules": {                           // per-module settings, by module name
+    "residents": { "maxEntities": 1200 }
+  }
 }
 ```
+
+Two differences from the sketch, both deliberate. `content` is a *root*
+with a `paths` map beside it rather than one object of 15 paths: the
+common case is a game whose layout matches ours, which then writes one
+line instead of fifteen, and the full list of 34 seams lives in
+`packages/sdk/src/seams.ts` where it can carry each seam's `MMO_*`
+aliases and its default. And `modules` holds per-module *settings*, not
+the module dirs and the enabled set: the set already has a seam
+(`paths.modulesSetFile`, i.e. `content/modules.json`) and so does the
+module folder (`paths.modulesDir`). What is still missing for `ES5` is
+*several* module folders, so a kit can ship its own — that wants a
+`modulesDirs` array when the first kit needs it, not a reshuffle of
+`modules`.
 
 `MMO_*` variables stay as per-run overrides — they are genuinely useful
 for tests and benchmarks — but they stop being the *definition* of a
