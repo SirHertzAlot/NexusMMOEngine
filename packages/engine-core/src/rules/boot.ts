@@ -72,9 +72,16 @@ export async function openGameRules(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<GameRulesSource> {
   const hooks = await loadHooks(dir, env);
+  const file = hooks.file;
   return {
     dir,
-    hooksFile: hooks.file,
-    load: (d = dir) => loadGameRules(d, hooks.make),
+    hooksFile: file,
+    // The boot log is one line: the hooks file joins the rules summary
+    // rather than printing a second one (scripts/lint-no-console.mjs
+    // budgets server.ts's stdio lines, and rightly).
+    load: (d = dir) => {
+      const game = loadGameRules(d, hooks.make);
+      return file ? { ...game, summary: `${game.summary} from ${file}` } : game;
+    },
   };
 }

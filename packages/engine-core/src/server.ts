@@ -365,7 +365,6 @@ async function main(): Promise<void> {
     throw err;
   }
   console.log(`[server] ${game.summary}`);
-  if (rulesSource.hooksFile) console.log(`[server] game hooks: ${rulesSource.hooksFile}`);
   // The engine's skill contract: systems name content-defined skill and
   // technique ids. A pack that declares skills must declare every one the
   // engine needs — fail loud here, never silent 0s mid-game.
