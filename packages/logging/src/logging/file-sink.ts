@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — batched file sink (docs/SAB-LOGGING-LAYER-SPEC.md §2.4)
+ * SAB Logging Layer — batched file sink (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4)
  *
  * One `write` per flush of a pre-allocated buffer — never per-record
  * stream writes (the Snell rule). Size-based rotation:

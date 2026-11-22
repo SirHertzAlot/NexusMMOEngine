@@ -13,7 +13,7 @@
  *
  * Broadcast model (Phase 1): every connected client receives the same
  * delta stream each tick. No interest management — documented as the
- * future scaling lever (docs/DECISIONS.md). Per-client state exists so
+ * future scaling lever (docs/ARCHITECTURE.md). Per-client state exists so
  * reconnects, slow consumers, and later interest filtering have
  * somewhere to live.
  *
@@ -285,7 +285,7 @@ export interface GatewayOptions {
    * heap allocations.
    */
   dataPlaneQueue?: DataPlaneCommandQueue;
-  /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
+  /** SAB Logging producer client (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2). */
   logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;

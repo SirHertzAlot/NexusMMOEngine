@@ -1,5 +1,5 @@
 /**
- * Metrics registry (slice E6 of docs/EDGE-CORE-SPLIT.md): counters, gauges
+ * Metrics registry (slice E6 of docs/internals/EDGE-CORE-SPLIT.md): counters, gauges
  * and histograms, labelled, scraped as Prometheus text.
  *
  * Histograms keep fixed millisecond buckets: Prometheus' text format is

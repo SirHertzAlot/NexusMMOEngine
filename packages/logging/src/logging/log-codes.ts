@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Code Dictionary Definition (docs/SAB-LOGGING-LAYER-SPEC.md §2.3)
+ * SAB Logging Layer — Code Dictionary Definition (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.3)
  *
  * Append-only dictionary of log event codes. Codes are never reused.
  */

@@ -1,5 +1,5 @@
 /**
- * Items on the wire (roadmap M3a, docs/ALPHA-PLAN.md): picking up and
+ * Items on the wire (roadmap M3a): picking up and
  * dropping (C→S 0x13), the player's own bag (S→C 0x14), and what lies on
  * the ground (S→C 0x15). All JSON control messages, like chat and admin.
  *

@@ -3,7 +3,7 @@
  *
  * This module defines the TypeScript interface for the native animation
  * bake pipeline. The actual ozz/acl implementation lives in a native
- * N-API addon (see docs/ANIMATION-BAKE-PIPELINE.md).
+ * N-API addon (see docs/internals/ANIMATION-BAKE-PIPELINE.md).
  *
  * For now, these are stubs that throw. They document the contract
  * that the native addon must fulfill.
@@ -54,7 +54,7 @@ export function retargetClip(
   _targetSkeleton: SkeletonDef
 ): RetargetResult {
   throw new Error(
-    "retargetClip: native ozz addon not implemented (see docs/ANIMATION-BAKE-PIPELINE.md)"
+    "retargetClip: native ozz addon not implemented (see docs/internals/ANIMATION-BAKE-PIPELINE.md)"
   );
 }
 
@@ -67,7 +67,7 @@ export function compressClip(
   _errorThreshold: number
 ): ClipCompressResult {
   throw new Error(
-    "compressClip: native acl addon not implemented (see docs/ANIMATION-BAKE-PIPELINE.md)"
+    "compressClip: native acl addon not implemented (see docs/internals/ANIMATION-BAKE-PIPELINE.md)"
   );
 }
 
@@ -77,7 +77,7 @@ export function compressClip(
  */
 export function validateClip(_clip: ArrayBuffer): ValidationResult {
   throw new Error(
-    "validateClip: native ozz addon not implemented (see docs/ANIMATION-BAKE-PIPELINE.md)"
+    "validateClip: native ozz addon not implemented (see docs/internals/ANIMATION-BAKE-PIPELINE.md)"
   );
 }
 

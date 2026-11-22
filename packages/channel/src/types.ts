@@ -1,4 +1,4 @@
-/** Wire shapes of the internal edge<->core channel (slice E2 of docs/EDGE-CORE-SPLIT.md). */
+/** Wire shapes of the internal edge<->core channel (slice E2 of docs/internals/EDGE-CORE-SPLIT.md). */
 export interface ChannelPacket { type: string; id: string; payload: unknown; }
 export interface ChannelResponse { type: string; id: string; payload: unknown; error?: string; }
 export interface ChannelLike {

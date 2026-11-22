@@ -1,5 +1,5 @@
 /**
- * The gateway's port served through the edge (E3b of docs/EDGE-CORE-SPLIT.md): the edge holds the
+ * The gateway's port served through the edge (E3b of docs/internals/EDGE-CORE-SPLIT.md): the edge holds the
  * players' WebSocket and HTTP connections on the public port and relays them over the edge/core
  * channel, so the core binds no player listener. A third Transport beside uws and ws; the gateway
  * can't tell the difference.

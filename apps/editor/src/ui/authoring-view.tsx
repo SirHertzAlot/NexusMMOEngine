@@ -20,7 +20,7 @@
  * restoring the owner's original 2026-10-17 design ("clicking a game
  * object summons contextual widgets within the viewport"). The
  * floating stack is dismissible (view state only) and re-summons on
- * the next pick. See docs/EDITOR-AUTHORING.md.
+ * the next pick. See docs/internals/EDITOR-AUTHORING.md.
  *
  * Honest scope of this slice:
  * - The stage is a panel, not the 3D viewport: it shows the selected

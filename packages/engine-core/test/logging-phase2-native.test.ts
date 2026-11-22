@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Phase 2 tests (docs/SAB-LOGGING-LAYER-SPEC.md §4 Phase 2)
+ * SAB Logging Layer — Phase 2 tests (docs/internals/SAB-LOGGING-LAYER-SPEC.md §4 Phase 2)
  *
  * Covers: native C++ producers riding the integrate addon's kernels —
  * cross-language record parity (same code+args from TS and C++ decode and

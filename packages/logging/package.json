@@ -1,6 +1,6 @@
 {
   "dependencies": {},
-  "description": "SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): lockless SAB rings, the code dictionary + generated producers/formatters, and the dedicated log worker. A leaf package: every server process (engine-core, world-server, the C++ kernel) hosts its own ring on these primitives.",
+  "description": "SAB logging layer (docs/internals/SAB-LOGGING-LAYER-SPEC.md): lockless SAB rings, the code dictionary + generated producers/formatters, and the dedicated log worker. A leaf package: every server process (engine-core, world-server, the C++ kernel) hosts its own ring on these primitives.",
   "devDependencies": {
     "@types/node": "^25.0.0",
     "typescript": "^5.6.3"

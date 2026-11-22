@@ -1,5 +1,5 @@
 /**
- * Generic packet router (slice E1 of docs/EDGE-CORE-SPLIT.md).
+ * Generic packet router (slice E1 of docs/internals/EDGE-CORE-SPLIT.md).
  *
  * Every client packet is `{ type, id, payload }`. Its `type` is looked up
  * in `content/edge/routes.json`: `"core"` forwards it over the core

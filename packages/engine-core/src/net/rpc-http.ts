@@ -39,7 +39,7 @@ export interface RpcServerOptions {
   /** Largest JSON body accepted, bytes. */
   maxBodyBytes?: number;
   /**
-   * Log-ring producer for 500 diagnostics (docs/SAB-LOGGING-LAYER-SPEC.md
+   * Log-ring producer for 500 diagnostics (docs/internals/SAB-LOGGING-LAYER-SPEC.md
    * §2.4). Without one they print to stderr, as before.
    */
   logger?: LogProducerClient;

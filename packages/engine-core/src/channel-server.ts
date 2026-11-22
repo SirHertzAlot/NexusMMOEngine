@@ -1,6 +1,6 @@
 /**
  * The core's end of the edge/core channel (slice E3 of
- * docs/EDGE-CORE-SPLIT.md). With MMO_EDGE=1 the players' sockets come
+ * docs/internals/EDGE-CORE-SPLIT.md). With MMO_EDGE=1 the players' sockets come
  * through it too (E3b: the `wire.*` and `http` packets, an EdgeRelay);
  * otherwise players connect to the gateway directly and this serves the
  * edge beside it.

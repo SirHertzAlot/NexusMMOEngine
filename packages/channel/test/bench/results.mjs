@@ -1,6 +1,6 @@
 /**
  * E5 bench results: print a JSON summary to stdout and append a dated
- * markdown section to docs/EDGE-SPLIT-RESULTS.md (created if missing).
+ * markdown section to docs/internals/EDGE-SPLIT-RESULTS.md (created if missing).
  */
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
-const FILE = path.join(ROOT, "docs/EDGE-SPLIT-RESULTS.md");
+const FILE = path.join(ROOT, "docs/internals/EDGE-SPLIT-RESULTS.md");
 
 const HEADER = `# Edge / core split: measured results (E5)
 

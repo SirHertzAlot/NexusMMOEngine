@@ -112,7 +112,7 @@ function bearerToken(req: Request): string | null {
 }
 
 export interface WebrpcRouterOptions {
-  /** Log-ring producer for 500 diagnostics (docs/SAB-LOGGING-LAYER-SPEC.md §2.4). */
+  /** Log-ring producer for 500 diagnostics (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4). */
   logger?: LogProducerClient;
 }
 

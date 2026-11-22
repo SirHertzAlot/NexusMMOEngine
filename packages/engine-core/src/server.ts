@@ -98,7 +98,7 @@
  *                  Must match the values the world was baked with.
  *
  *   CORE_CHANNEL_PORT the edge's internal channel, loopback only (default
- *                  4000; see docs/EDGE-CORE-SPLIT.md). Session tokens are
+ *                  4000; see docs/internals/EDGE-CORE-SPLIT.md). Session tokens are
  *                  kept in region.db's sessions table.
  *
  * Region/world (slice A): when WORLD_URL is set (e.g.
@@ -335,7 +335,7 @@ if (!Number.isInteger(STREAM_RADIUS) || STREAM_RADIUS < 0) {
 }
 
 async function main(): Promise<void> {
-  // SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): one ring, one worker thread.
+  // SAB logging layer (docs/internals/SAB-LOGGING-LAYER-SPEC.md): one ring, one worker thread.
   // Steady-state events go through the ring; boot banners and fatal errors stay on
   // stdio on purpose (they must be visible even when the log worker is not up).
   // MMO_LOG=0 starts no worker: events are then only counted as ring drops.

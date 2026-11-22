@@ -1,5 +1,5 @@
 /**
- * Phase 4 Crash Drill Test Suite (docs/CPP-MAIN-TICK-SPEC.md §5 Phase 4)
+ * Phase 4 Crash Drill Test Suite (docs/internals/CPP-MAIN-TICK-SPEC.md §5 Phase 4)
  *
  * Verifies crash containment and state survivability:
  * 1. SimWorker is abruptly killed mid-soak.

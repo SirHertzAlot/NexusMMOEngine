@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — stdio fallback seams (docs/SAB-LOGGING-LAYER-SPEC.md §2.1).
+ * SAB Logging Layer — stdio fallback seams (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.1).
  *
  * A few library seams print to the console when no log ring is attached:
  * standalone CLI runs, tests, and processes that did not boot a log worker.

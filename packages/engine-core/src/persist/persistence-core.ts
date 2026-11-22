@@ -13,7 +13,7 @@
  * Mutations therefore run in maintenance mode only: apply() refuses while a
  * server looks alive (`isServerRunning`), and
  * takes a backup copy of each touched database first. Routing a mutation
- * through the stores between ticks is deferred (docs/EDITOR-ARCHITECTURE.md §7b.1).
+ * through the stores between ticks is deferred (docs/internals/EDITOR-ARCHITECTURE.md §7b.1).
  */
 import Database from "better-sqlite3";
 import * as fs from "node:fs";

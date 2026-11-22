@@ -8,7 +8,7 @@
  *   - normal, occlusion, metallicRoughness → UASTC KTX2
  * - Per-tier resize caps (max texture dimension per quality tier)
  *
- * Full ETC1S KTX2 follows the KTX2 eval gate (see docs/THREEJS-TOOLING.md).
+ * Full ETC1S KTX2 is gated on its own evaluation and is not enabled here.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

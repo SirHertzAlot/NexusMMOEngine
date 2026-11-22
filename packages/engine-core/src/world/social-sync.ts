@@ -1,5 +1,5 @@
 /**
- * SocialWorldSync — PL3c of docs/superpowers/specs/2026-10-23-region-hot-cache-design.md: guilds,
+ * SocialWorldSync — regions are hot caches over the world store: guilds,
  * parties, friends and blocks are world records every region shares; the region's SQLite stores are a
  * working cache of them, and its books (GuildBook, PartyBook, FriendBook, BlockList) read that cache.
  *

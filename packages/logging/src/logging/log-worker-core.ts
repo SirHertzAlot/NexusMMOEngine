@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Log Worker core (docs/SAB-LOGGING-LAYER-SPEC.md §2.4)
+ * SAB Logging Layer — Log Worker core (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4)
  *
  * Owns the ring's dequeue end. Each `pump()` turn: drain what is available
  * (bounded), format once via the generated LOG_FORMATTERS table, stage into

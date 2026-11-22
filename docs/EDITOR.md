@@ -1,4 +1,4 @@
-# MMO Engine — Editor
+# The editor
 
 The editor is a **standalone companion app** (`apps/editor/`, Vite + React + Tailwind): a
 dockable shell of workspaces, assembled from modules ([MODULES.md](MODULES.md)). It began as a

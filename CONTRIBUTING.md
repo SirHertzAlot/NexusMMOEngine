@@ -217,4 +217,5 @@ never from a command-line argument, and are never printed or logged. See
 - [GAMEPLAY.md](docs/GAMEPLAY.md) — movement, combat, bots, and how to extend them.
 - [WORLD-BUILDING.md](docs/WORLD-BUILDING.md) — world specs, scenery and terrain edits.
 - [ART-PIPELINE.md](docs/ART-PIPELINE.md) — the art packs and the conversion tools.
-- [DECISIONS.md](docs/DECISIONS.md) — why the engine is built the way it is.
+- [BUILDING-A-GAME.md](docs/BUILDING-A-GAME.md) — which layer to change, and
+  what each one costs.

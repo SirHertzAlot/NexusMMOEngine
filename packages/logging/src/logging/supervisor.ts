@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Log Worker supervisor (docs/SAB-LOGGING-LAYER-SPEC.md §2.4)
+ * SAB Logging Layer — Log Worker supervisor (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4)
  *
  * Spawns the log worker thread and restarts it if it dies. Crash behavior
  * per spec: worker death loses in-flight records and nothing else — the
