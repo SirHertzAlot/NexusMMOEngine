@@ -293,7 +293,7 @@ measured cost per scene.
 ## 4. Non-goals (stated explicitly)
 
 - **No style prescription.** The DNA is the *machinery*; the soul (character
-  design, palette, timing) belongs to the art team and Joey's supplied assets.
+  design, palette, timing) belongs to the art team and the owner's supplied assets.
 - **No PBR replacement.** The anime-vs-PBR open question (main bundle §7)
   stands; several DNA strands (ramps, wrap, grading) apply to stylized PBR too.
 - **No engine plugins adopted from this research.** OpenGraphic is a map, not

@@ -1,6 +1,6 @@
 # Agent skills — hot-load index
 
-**Workspace-open behaviour (Joey's standing instruction, 2026-11-13):**
+**Workspace-open behaviour (the owner's standing instruction, 2026-11-13):**
 when an agent opens this workspace, load this index, then load the
 `SKILL.md` of any skill whose trigger matches the work at hand. Each
 skill is a self-contained prompt file at `<name>/SKILL.md` with its

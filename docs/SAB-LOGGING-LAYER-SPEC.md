@@ -1,10 +1,10 @@
 # SAB Logging Layer — Specification and Implementation Roadmap
 
-> **Implementation Completed** – All phases (0‑4) gated on Joey's word have been finished, verified, and merged on `feat/sab-logging-phase4`.
+> **Implementation Completed** – All phases (0‑4) gated on the owner's word have been finished, verified, and merged on `feat/sab-logging-phase4`.
 
 
-**Status:** Spec + roadmap, commissioned by Joey 2026-10-27 ("We need a performant logging layer that extends our SAB. Maybe some sort of uWs.js socket or backend queue?"). Extends the direction delivered 2026-10-26. Implementation phases gated on Joey's word per phase.
-**One-line answer to the either/or:** both of Joey's ideas are in the design — each at the layer where it belongs. The SAB ring is the hot path; the uWS socket is the live edge; the backend queue is the world-tier fan-in. Neither the socket nor the queue ever touches the tick.
+**Status:** Spec + roadmap, commissioned by the owner 2026-10-27 ("We need a performant logging layer that extends our SAB. Maybe some sort of uWs.js socket or backend queue?"). Extends the direction delivered 2026-10-26. Implementation phases gated on the owner's word per phase.
+**One-line answer to the either/or:** both of the owner's ideas are in the design — each at the layer where it belongs. The SAB ring is the hot path; the uWS socket is the live edge; the backend queue is the world-tier fan-in. Neither the socket nor the queue ever touches the tick.
 
 ---
 
@@ -149,7 +149,7 @@ When multi-region is real, region log workers ship batches to a collector, and t
 
 ## 4. Implementation Roadmap (Phased, Gated)
 
-Standing rules apply: local branches, tests green, perf phases ship a metrics doc + chart, push/merge only on Joey's word.
+Standing rules apply: local branches, tests green, perf phases ship a metrics doc + chart, push/merge only on the owner's word.
 
 ### Phase 0 — Ring + Dictionary + TS Producers (Gateway First)
 1. `log-codes` dictionary + code generation (TS API, formatter table; C++ header generated but not yet consumed).
@@ -184,7 +184,7 @@ Standing rules apply: local branches, tests green, perf phases ship a metrics do
 
 ## 5. Addendum — Go / Rust Logger Evaluation (2026-10-27)
 
-Joey asked whether the logger should be Go or Rust. Evaluated against this design:
+The owner asked whether the logger should be Go or Rust. Evaluated against this design:
 
 - **Producers are not a language choice.** TS and C++ write the ring; that is fixed by the SAB topology. A separate Go or Rust process cannot attach to a `SharedArrayBuffer` — SAB is shared between threads of one process, not across processes. Putting the consumer in Go/Rust therefore means either (a) an extra forwarding hop from an in-process worker anyway, or (b) redesigning the ring onto an mmap'd file with native bindings in every producer language. Both spend real complexity to buy nothing at v1 rates: the TS worker shares the generated code dictionary and formatter, and batched formatting is not the bottleneck.
 - **Decision: The v1 consumer stays a TS worker thread.** Go is named now as the Phase 4 collector language — a single static binary, independent of Node, goroutine fan-in from many regions, and a mature structured-logging ecosystem (zerolog/zap class). Rust (tracing ecosystem) is the fallback if the collector ever needs to own an mmap ring of its own. Recorded here so Phase 4 doesn't re-litigate it; nothing about Phases 0–3 changes.

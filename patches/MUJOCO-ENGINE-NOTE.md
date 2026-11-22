@@ -1,6 +1,6 @@
 # MuJoCo — engine mapping note
 
-Source: Instagram reel by @index.opensource (2026-10-09), shared by Joey 2026-11-11.
+Source: Instagram reel by @index.opensource (2026-10-09), shared by the owner 2026-11-11.
 Subject: MuJoCo (Multi-Joint dynamics with Contact), Google DeepMind's physics
 engine for robotics and machine learning. Reel demos ran on MuJoCo 3.14.0.
 License: Apache-2.0 (code and example models, per the reel's own sourcing).
@@ -37,7 +37,7 @@ License: Apache-2.0 (code and example models, per the reel's own sourcing).
   its contact quality is the point and determinism doesn't gate. Same lane as
   the Teskooano verdict: bake-time experiment, never the tick.
 - **Soft bodies: noted, not proposed.** The hammock/gripper material borders
-  the client cosmetic-physics module Joey parked on 2026-10-26. Recorded so
+  the client cosmetic-physics module the owner parked on 2026-10-26. Recorded so
   the connection exists if he unparks it; not re-raised as a proposal.
 - **RL-trained NPC locomotion: park.** MuJoCo's home turf, but our NPC layer
   is decision systems (ResidentSystem, Yuka), not learned controllers. No
@@ -49,9 +49,9 @@ REFERENCE overall, with an ADAPT candidate as an offline physics lab.
 License is clean (Apache-2.0) if a spike is ever scheduled. Nothing
 downloaded, nothing integrated, no change to the Jolt decision.
 
-## Addendum — 2026-11-11, Joey's direction: cutscenes
+## Addendum — 2026-11-11, the owner's direction: cutscenes
 
-Joey, same day: "We can use MuJoCo for more detailed scenes like cut
+The owner, same day: "We can use MuJoCo for more detailed scenes like cut
 scenes." Recorded as the adopted use for MuJoCo in Nexus. This supersedes
 the "offline lab, not scheduled" framing above for the cinematic lane only;
 the tick verdict is unchanged.
@@ -82,12 +82,12 @@ knocked through a market stall, tavern brawls, creature entrances (doubles
 as articulation reference for the B6 creature path), death cinematics and
 ragdoll finales.
 
-Status: direction adopted, nothing built. Next step is Joey's pick — spec
+Status: direction adopted, nothing built. Next step is the owner's pick — spec
 the cinematic lane, or spike the bake path first.
 
 ## Addendum 2 — 2026-11-11: spec chosen and delivered
 
-Joey picked "Spec the cutscene lane first." The spec is delivered at
+The owner picked "Spec the cutscene lane first." The spec is delivered at
 `~/workspace/your_files/mmo-engine-cinematics/CUTSCENE-LANE-SPEC.md`:
 authority contract (server owns story, MuJoCo owns motion, nothing read
 back, exit poses script-declared and enforced by an Arrival bake gate),
@@ -97,7 +97,7 @@ retargeter, server trigger via a new `playCinematic` verb + participation
 component, live WASM lane sequenced last (C4) behind a measured Android
 gate with mandatory baked fallback, and build order C0–C4 with the
 props-only market-stall collapse as the C1 showcase. Open questions for
-Joey are in §12 of the spec (group skip, live-in-v1, showcase pick, bake
+The owner are in §12 of the spec (group skip, live-in-v1, showcase pick, bake
 host). Nothing built; implementation awaits his word per phase.
 
 ## Verification addendum — 2026-11-11, live-WASM claims checked

@@ -35,7 +35,7 @@ changes. It is a handoff reference only.
 ## 1. The verdict rubric (the cost/benefit gate)
 
 Every verdict below was issued under the shader program's gate
-(`R&D-INDEX.md`, `SHADER-EXPERIMENTS.md` §0.4). Joey's directive:
+(`R&D-INDEX.md`, `SHADER-EXPERIMENTS.md` §0.4). The owner's directive:
 **push graphics as far as they can go — inside a hard cost/benefit
 gate.** No technique or library merges on stills or vibes. Each must
 declare, measured on named hardware (never borrowed numbers):
@@ -129,7 +129,7 @@ reference, no integration), **REJECT** (evaluated and closed).
   **[Cross-check note]:** the people page records the library has since
   grown (149 models, 108 rigged/animated) and flags the animal packs as
   AI-generated — relevant if a no-AI-art policy is applied; the refresh
-  of Joey's copy was still pending his word at last record.
+  of the owner's copy was still pending his word at last record.
 
 ### 2.7 three-pinata — real-time mesh fracturing / slicing
 - **Source:** shader set, `SHADER-FX-EXTENDED.md` §2 (full evaluation).
@@ -242,7 +242,7 @@ reference, no integration), **REJECT** (evaluated and closed).
 
 ### 2.13 Yuka — game-AI library **[cross-check]**
 - **Source:** people page only (Mugen87); **not in either report set**.
-- **Verdict:** Joey marked it "worth using" for the NPC/enemy-AI layer
+- **Verdict:** The owner marked it "worth using" for the NPC/enemy-AI layer
   (living-sim S12/S13 track): steering, navmesh/pathfinding, state- and
   goal-driven agents, perception, fuzzy logic. Placement rule recorded
   with the verdict: engine-agnostic JS at the AI layer — **it stays

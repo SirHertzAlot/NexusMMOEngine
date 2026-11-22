@@ -14,7 +14,7 @@ lygia is a well-designed granular shader library (GLSL/HLSL/Metal/WGSL/CUDA). Us
 
 ## Alternative path
 
-**Decision (Joey, 2026-10-10): build our own.** Write needed shader functions in-house, referencing:
+**Decision (the owner, 2026-10-10): build our own.** Write needed shader functions in-house, referencing:
 - Standard mathematical algorithms (not copyrightable: FBM, color spaces, etc.)
 - MIT-licensed sources within lygia's lineage (snoise, psrdnoise — but verify each)
 - Inigo Quilez's articles (MIT-licensed code examples)

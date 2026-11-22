@@ -22,7 +22,7 @@ quests, shader/FX experiments, and server operations — with every view
 obeying one MVC contract and one visual language, so the whole product reads
 as designed, not assembled.
 
-## 2. Locked architecture decisions (do not relitigate without Joey)
+## 2. Locked architecture decisions (do not relitigate without the owner)
 
 1. **R3F 9 + drei 10 for editor 3D viewports.** The client already runs
    `@react-three/fiber` 9 + `@react-three/drei` 10; the editor adopts the
@@ -239,7 +239,7 @@ the swap is data-only.
 - **Slice order is fixed:** 1→5 (rebuild spec), then 6→10 here. Tests
   green between slices.
 
-## 8. Veto points for Joey
+## 8. Veto points for the owner
 
 1. **R3F in the editor (Slice 6).** Recommended because the client is
    already R3F 9 + drei 10 — one 3D idiom, drei's camera/gizmo components

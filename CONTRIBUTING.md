@@ -33,6 +33,23 @@ npm test           # the whole suite; must be green before you start
 `npm test` is the gate for everything below. It builds every package first,
 so it also catches type errors.
 
+### Commit identity
+
+The repository is public, so commits carry a GitHub noreply address, never
+a personal one. Set it once per clone:
+
+```bash
+git config user.name  "<your GitHub handle>"
+git config user.email "<id>+<handle>@users.noreply.github.com"
+```
+
+Your noreply address is under GitHub Settings > Emails. The owner's is
+`16549122+SirHertzAlot@users.noreply.github.com`. Each contributor uses
+their own; agents commit under their own bot identity. In the same
+settings, turn on "Keep my email addresses private" (it also covers merges
+made in the GitHub web UI) and "Block command line pushes that expose my
+email".
+
 ## 3. The branch workflow
 
 All work happens on a short-lived branch cut from an up-to-date `main`.

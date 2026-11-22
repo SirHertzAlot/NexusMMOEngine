@@ -73,7 +73,7 @@ A core process with 1000 entities, the edge at default heartbeat (5000 ms × 3),
 
 Blackout: 495 core-bound packets sent, 495 answered (453 with `core.unavailable`), **0 silent hangs**. PASS.
 
-A killed core closes its socket, so the edge knows at once. A hung core is only caught by the heartbeat; until then core-bound packets wait out the 5 s request timeout before answering `core.unavailable`. Whether 15 s detection is acceptable is Joey's call (a config change: `heartbeatMs`, `maxMissed`).
+A killed core closes its socket, so the edge knows at once. A hung core is only caught by the heartbeat; until then core-bound packets wait out the 5 s request timeout before answering `core.unavailable`. Whether 15 s detection is acceptable is the owner's call (a config change: `heartbeatMs`, `maxMissed`).
 
 ## B6: Soak (2026-10-03)
 
@@ -122,7 +122,7 @@ Proposed follow-up slices (not done in E5, which only measures):
   does not count against the tick (it still shares the thread).
 - **Heartbeat (B5, no change made):** a hung core is caught in about 19 s
   at the defaults (5 s × 3, plus the partial first interval). Tightening
-  is a config change, `heartbeatMs` and `maxMissed`, for Joey to decide.
+  is a config change, `heartbeatMs` and `maxMissed`, for the owner to decide.
 
 ## B3: Tick overhead of pushes (2026-10-20)
 

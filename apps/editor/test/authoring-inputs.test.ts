@@ -15,7 +15,7 @@ import {
 } from "../src/authoring/index.js";
 
 const opts = {
-  actor: { id: "joey", role: "designer" as const },
+  actor: { id: "designer-1", role: "designer" as const },
   why: "input fields",
   where: "Haven / Market Square",
   when: 1_800_000_000_000,
@@ -211,11 +211,11 @@ describe("shelf actions — inputs on the verb-shaped entries", () => {
     assert.equal(entry.action.inputs?.[0].source, "vendor-templates");
     const empty = shelfActionParams(entry.action, {});
     assert.equal(empty.templateId, "");
-    const planEmpty = planDispatch(makeVerbCall("attachVendor", empty, { who: { id: "joey", role: "designer" }, what: "Mara", when: 1, where: "Haven", why: "shelf" }));
+    const planEmpty = planDispatch(makeVerbCall("attachVendor", empty, { who: { id: "designer-1", role: "designer" }, what: "Mara", when: 1, where: "Haven", why: "shelf" }));
     assert.equal(planEmpty.kind, "unsupported");
     const filled = shelfActionParams(entry.action, { templateId: "general-store" });
     assert.deepEqual(filled, { entity: "npc-mara", templateId: "general-store" });
-    const plan = planDispatch(makeVerbCall("attachVendor", filled, { who: { id: "joey", role: "designer" }, what: "Mara", when: 1, where: "Haven", why: "shelf" }));
+    const plan = planDispatch(makeVerbCall("attachVendor", filled, { who: { id: "designer-1", role: "designer" }, what: "Mara", when: 1, where: "Haven", why: "shelf" }));
     assert.deepEqual(plan, { kind: "admin", verb: "attachVendor", command: "vendor", args: { sub: "attach", id: "general-store", target: "npc-mara" } });
   });
 

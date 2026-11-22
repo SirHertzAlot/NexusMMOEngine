@@ -1,7 +1,7 @@
 # Three.js Tooling Review — Animation, Optimization & Inspection
 
 **Reviewed:** 2026-10-09, from a "Best Libraries for Three.js in 2026"
-roundup Joey pasted in. Each tool is judged against our stack (R3F mirror
+roundup the owner pasted in. Each tool is judged against our stack (R3F mirror
 client, vanilla-three.js editor, bake-time art pipeline, permissive-only
 licenses, cost/benefit gate).
 **Status:** recommendations, not locked decisions.
