@@ -36,7 +36,16 @@ export function createStore<T>(initial: T, equals: (a: T, b: T) => boolean = Obj
       listeners.forEach((l) => l());
     },
     subscribe,
-    useValue: () => React.useSyncExternalStore(subscribe, () => value),
+    // The third argument is the server snapshot. These stores are module
+    // state, identical before and after hydration, so it is the same
+    // getter — and without it React refuses to render any store-reading
+    // component to static markup, which is how the panels are tested.
+    useValue: () =>
+      React.useSyncExternalStore(
+        subscribe,
+        () => value,
+        () => value,
+      ),
   };
 }
 

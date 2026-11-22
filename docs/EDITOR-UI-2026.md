@@ -254,7 +254,14 @@ list, not a blocker.
 ## 6. Slices
 
 - **EU1** — token layer and chrome metrics; both themes selectable so the old one stays for comparison.
-- **EU2** — shell chrome: breadcrumb, transport, branch chip, integration chips, status bar.
+- **EU2** — shell chrome: breadcrumb and context chips, in
+  `apps/editor/src/ui/forge-chrome.tsx`. The transport stays on the
+  toolbar: it is a control, and duplicating it would give the editor two
+  Play buttons. The chips are read-outs only, over the shared tool store,
+  `editorSelection`, `playUiStore`, `/api/editor/vcs/status` and the
+  shell's problem total. A conflict outranks a change in the branch chip,
+  which is what the reference's "Conflict Guard" signal amounts to over
+  the data `vcs-host.ts` already returns.
 - **EU3** — inspector rebuild over the existing view-model.
 - **EU4** — outliner badges; systems list with counts and signatures.
 - **EU5** — dock regrouped to four tabs; Source Control moves in.
@@ -269,5 +276,18 @@ capability and each needs its own PR with captures.
 
 ## 7. Proof
 
-See the PR this note lands in: EU1 and EU3 built on one real screen,
-importing the existing panels so behaviour cannot drift.
+See the PR this note lands in: EU1, EU2 and EU3 built on real screens,
+importing the existing panels and stores so behaviour cannot drift.
+
+Two harnesses photograph them, both running the editor's own Tailwind
+over the editor's own `app.css` so the Material 3 side of a comparison is
+the shipped thing and not an approximation:
+
+- `src/ui/forge/capture.mjs` — the inspector, before and after, over one
+  fixture snapshot fed through the shipped `EcsInspector` view-model.
+- `src/ui/forge/capture-shell.mjs` — the context bar as a still, and as a
+  GIF. Each GIF frame is the real component reacting to a write to the
+  real store (`setTool`, `editorSelection.select`, `playUiStore.set`),
+  not a storyboard of mock states.
+
+Set `CHROMIUM_PATH` where Playwright's own browser download is absent.

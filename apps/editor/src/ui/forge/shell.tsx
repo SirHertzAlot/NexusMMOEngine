@@ -1,0 +1,138 @@
+/**
+ * Shell-chrome preview for the 2026 design language (slice EU2).
+ *
+ * Mounts the REAL `ForgeContextBar` over the REAL stores it reads in the
+ * running editor — `tool-store`, `editorSelection`, `playUiStore` — with
+ * the forge inspector beneath it so the still shows the bar in a shell
+ * rather than floating on its own. Nothing is reimplemented here.
+ *
+ * `window.__forgeDrive` writes those same stores, which is how
+ * capture.mjs films the bar changing: every frame of the GIF is the real
+ * component reacting to the real store, not a storyboard.
+ */
+
+import * as React from "react";
+import { createRoot } from "react-dom/client";
+import type { EntitySnapshot } from "../../inspectors/ecs.js";
+import { ForgeContextBar } from "../forge-chrome.js";
+import { ForgeEntityInspector } from "../forge-inspector.js";
+import { editorSelection } from "../editor-selection.js";
+import { setTool } from "../tool-store.js";
+import { playUiStore } from "../play-ui-store.js";
+import type { PlayModeState } from "../../play-mode.js";
+import type { VcsFile } from "../../vcs-client.js";
+
+const SNAPSHOT: EntitySnapshot = {
+  tick: 184_210,
+  entities: new Map([
+    [
+      13n,
+      {
+        wireId: 13n,
+        transform: { px: 3, py: 1.6, pz: 2.5, qx: 0, qy: 0, qz: 0, qw: 1, sx: 1, sy: 1, sz: 1 },
+        velocity: { lx: 1.4, ly: 0, lz: -0.35, ax: 0, ay: 0.6, az: 0 },
+        health: { current: 64, max: 100 },
+        chunk: { chunkId: 182n, seed: 90_210n, lod: 0 },
+        body: {
+          shapeKind: 1, halfX: 0.4, halfY: 0.9, halfZ: 0.4, radius: 0.4,
+          mass: 72, motionType: 2, layer: 1, friction: 0.6, restitution: 0.1,
+        },
+      },
+    ],
+  ]),
+};
+
+const fixture = (): EntitySnapshot => SNAPSHOT;
+
+function file(path: string, over: Partial<VcsFile> = {}): VcsFile {
+  return { path, docType: "scene", status: "modified", staged: false, conflicted: false, ...over };
+}
+
+/** The tree states the bar distinguishes, in worsening order. */
+const TREES: Record<string, { branch: string; files: VcsFile[] } | null> = {
+  clean: { branch: "main", files: [] },
+  changed: {
+    branch: "claude/editor-ui-2026",
+    files: [file("content/scenes/arena.json"), file("content/rules/combat.json")],
+  },
+  conflict: {
+    branch: "claude/editor-ui-2026",
+    files: [file("content/scenes/arena.json"), file("content/rules/combat.json", { conflicted: true })],
+  },
+  none: null,
+};
+
+export interface DriveStep {
+  tree?: keyof typeof TREES;
+  tool?: string;
+  play?: PlayModeState;
+  problems?: number;
+  select?: boolean;
+}
+
+function Shell(): React.JSX.Element {
+  const [tree, setTree] = React.useState<keyof typeof TREES>("clean");
+  const [problems, setProblems] = React.useState(0);
+
+  // The capture harness drives the real stores; only the two values the
+  // shell owns in production (the VCS poll and the problem total) are
+  // state here, because in the editor they are the shell's own.
+  React.useEffect(() => {
+    (window as unknown as { __forgeDrive?: (step: DriveStep) => void }).__forgeDrive = (step) => {
+      if (step.tree) setTree(step.tree);
+      if (step.problems !== undefined) setProblems(step.problems);
+      if (step.tool) setTool(step.tool);
+      if (step.play) playUiStore.set((p) => ({ ...p, pmState: step.play as PlayModeState }));
+      if (step.select === true) {
+        editorSelection.select({
+          source: "entity-list",
+          kind: "entity",
+          id: "13",
+          label: "Entity 13",
+          components: [],
+        });
+      }
+      if (step.select === false) editorSelection.clear("entity-list");
+    };
+  }, []);
+
+  return (
+    <div
+      data-shot="chrome"
+      data-theme="forge"
+      style={{
+        width: 1180,
+        height: 560,
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--fg-canvas)",
+        border: "1px solid var(--fg-line)",
+      }}
+    >
+      <ForgeContextBar
+        workspaceLabel="Scene"
+        viewLabel="ECS Inspector"
+        problems={problems}
+        onGoWorkspace={() => undefined}
+        onOpenProblems={() => undefined}
+        vcs={TREES[tree]}
+      />
+      <div style={{ display: "flex", minHeight: 0, flex: 1, gap: 6, padding: 6 }}>
+        {/* Stand-in for the viewport: the bar is what this shot is about. */}
+        <div
+          className="fg-panel"
+          style={{ flex: 1, display: "grid", placeItems: "center" }}
+        >
+          <span className="fg-label">Viewport</span>
+        </div>
+        <div style={{ width: 340, minHeight: 0 }}>
+          <ForgeEntityInspector fixture={fixture} initialSelected="13" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = document.getElementById("root");
+if (!root) throw new Error("forge shell preview: #root missing");
+createRoot(root).render(<Shell />);

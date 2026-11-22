@@ -33,6 +33,8 @@ import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
 import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPanel, revertActive, screenshotViewport } from "./shell-actions.js";
 import { SHELL } from "./shell-composition.js";
+import { useTheme } from "../theme.js";
+import { ForgeContextBar } from "./forge-chrome.js";
 import { useShellComposition } from "./use-shell.js";
 import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import { requestNewScene } from "../open-scene.js";
@@ -256,6 +258,8 @@ export function App(): React.JSX.Element {
   const problems = useDocProblems();
   const diskProblems = useDiskProblems();
   const problemTotal = problemCount(diskProblems, problems);
+  // Which design language the shell is drawn in (docs/EDITOR-UI-2026.md).
+  const theme = useTheme();
   const [dialog, setDialog] = React.useState<"prefs" | "profile" | null>(null);
   const playing = pmState === "running" || pmState === "starting";
 
@@ -659,6 +663,19 @@ export function App(): React.JSX.Element {
         })}
         onResetLayout={() => applyLayout(defaultLayout())}
         currentSnapshot={snapshot()}
+        />
+      )}
+      {/* EU2: the forge context bar. Forge-only — see ui/forge-chrome.tsx. */}
+      {theme === "forge" && shell.has(SHELL.toolBar) && (
+        <ForgeContextBar
+          workspaceLabel={ws.label}
+          viewLabel={ws.views.find((v) => v.id === view)?.label}
+          problems={problemTotal}
+          onGoWorkspace={() => pickWorkspace(workspace)}
+          onOpenProblems={() => {
+            setBottomTab("problems");
+            setDocks((d) => ({ ...d, bottom: true }));
+          }}
         />
       )}
       {palette && (
@@ -2255,10 +2272,12 @@ function BottomPane({ tab, output, problems, disk }: { tab: string; output: Serv
 // ---------------------------------------------------------------- status bar
 
 function StatusBar({ problems, onOpenProblems }: { problems: number; onOpenProblems: () => void }): React.JSX.Element {
+  // fg-statusbar is a no-op outside [data-theme="forge"]: under forge it swaps
+  // the tonal step for the dock ground and a 1px hairline.
   return (
     <footer
-      className="flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
-      style={{ background: "var(--m3-surface-0)", color: "var(--m3-on-surface-variant)" }}
+      className="fg-statusbar flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
+      style={{ color: "var(--m3-on-surface-variant)", background: "var(--m3-surface-0)" }}
     >
       <span className="hidden sm:inline">Server stays authoritative — the editor inspects live state, never a running simulation.</span>
       <span className="sm:hidden">Authoritative server · read-only inspect</span>

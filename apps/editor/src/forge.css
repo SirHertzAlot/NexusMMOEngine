@@ -293,3 +293,49 @@
   outline: 1px solid var(--fg-accent);
   outline-offset: 1px;
 }
+
+/* --------------------------------------------------------- context bar
+ * The strip under the toolbar that says where you are and what the
+ * project is doing (ui/forge-chrome.tsx). Forge-only: there is no
+ * Material 3 counterpart, so the shell does not mount it under m3.
+ */
+[data-theme="forge"] .fg-contextbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: var(--fg-toolbar-h);
+  padding: 0 var(--fg-pad);
+  background: var(--fg-toolbar);
+  border-bottom: 1px solid var(--fg-line);
+  overflow: hidden;
+}
+
+/* A chip is a read-out: an icon in its tone, a mono value, a dim detail. */
+[data-theme="forge"] .fg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid var(--fg-line-soft);
+  border-radius: var(--fg-radius-chip);
+  background: var(--fg-sunken);
+  white-space: nowrap;
+}
+
+[data-theme="forge"] button.fg-chip:hover {
+  border-color: var(--fg-line);
+  background: var(--fg-hover);
+}
+
+/* A crumb that navigates: underline on hover, never a button face. */
+[data-theme="forge"] .fg-crumb {
+  color: var(--fg-text-dim);
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+}
+[data-theme="forge"] .fg-crumb:hover {
+  color: var(--fg-accent-text);
+  text-decoration: underline;
+}

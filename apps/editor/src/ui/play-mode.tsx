@@ -20,7 +20,11 @@ import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
-import { createStore } from "../store.js";
+import {
+  playUiStore,
+  setPlayAutoRefresh,
+  setPlayEntityId,
+} from "./play-ui-store.js";
 import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel, useEdge } from "./play-setup.js";
 import { clientWindows, worldNodeOf } from "./play-launch.js";
 import { getFlow } from "../flow-client.js";
@@ -57,24 +61,15 @@ interface OverlaySnapshot {
   tiles: DebugResponse | null;
 }
 
-/** Shared play-mode UI state: the debug dock drives the same entity-id
- *  and auto-refresh the overlays query, and mirrors the lifecycle state. */
-export interface PlayUiState {
-  entityId: string;
-  autoRefresh: boolean;
-  pmState: PlayModeState;
-  paused: boolean;
-}
-
-export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle", paused: false });
-
-export function setPlayEntityId(entityId: string): void {
-  playUiStore.set((p) => ({ ...p, entityId }));
-}
-
-export function setPlayAutoRefresh(autoRefresh: boolean): void {
-  playUiStore.set((p) => ({ ...p, autoRefresh }));
-}
+// The store moved to play-ui-store.ts so that reading the play state does
+// not pull the 3D client in with it; it is re-exported here so every
+// existing importer keeps working.
+export {
+  playUiStore,
+  setPlayAutoRefresh,
+  setPlayEntityId,
+  type PlayUiState,
+} from "./play-ui-store.js";
 
 /**
  * The live controller, shared with the toolbar: its Pause/Step/Stop

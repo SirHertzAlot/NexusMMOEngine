@@ -13,12 +13,28 @@
  * rather than failing, the same rule editor-prefs.ts follows.
  */
 
+import { createStore } from "./store.js";
+
 export type ThemeId = "m3" | "forge";
 
 export const THEME_KEY = "mmo-editor.theme";
 export const DEFAULT_THEME: ThemeId = "m3";
 
 const THEMES: readonly ThemeId[] = ["m3", "forge"];
+
+/**
+ * The theme as state. `data-theme` on the root is what CSS reads, but a
+ * few components need to know which language they are drawn in — the
+ * forge chrome bar has no Material 3 counterpart, so it mounts only
+ * under `forge` rather than being restyled into nothing.
+ */
+const themeStore = createStore<ThemeId>(DEFAULT_THEME);
+
+/** The theme in force right now. */
+export const currentTheme = themeStore.get;
+
+/** The theme as React state: a component re-renders when it switches. */
+export const useTheme = themeStore.useValue;
 
 function isTheme(value: string | null): value is ThemeId {
   return value !== null && (THEMES as readonly string[]).includes(value);
@@ -54,6 +70,7 @@ export function setTheme(theme: ThemeId, remember = true): ThemeId {
   if (typeof document !== "undefined") {
     document.documentElement.dataset.theme = theme;
   }
+  themeStore.set(theme);
   if (remember) {
     try {
       window.localStorage?.setItem(THEME_KEY, theme);
