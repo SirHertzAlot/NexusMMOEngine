@@ -180,7 +180,7 @@ import { armourFactor, loadCivicRules, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
 import { openGameProject } from "@mmo-engine/sdk";
 import { openGameRules, type GameRules, type GameRulesSource } from "./rules/boot.js";
-import { assembleServerSystems, type ServerModuleContext } from "./modules.js";
+import { assembleServerSystems, mergeModuleConfig, type ServerModuleContext } from "./modules.js";
 /**
  * Where this game's content is: `game.json` if there is one, else the
  * engine's own folders, with the `MMO_*` variables still winning over both
@@ -206,7 +206,8 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
   }
 }
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
+import { type CombatDamage, type CombatSkills } from "./combat.js";
+import type { Weapon } from "./vocabulary.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
 import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
@@ -214,8 +215,7 @@ import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health, Transform } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
-import { DEFAULT_QUEST_DIR } from "./quests/content.js";
-import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent } from "./dungeons/content.js";
+import { loadDungeonContent } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
 import { loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
@@ -244,6 +244,19 @@ import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
 import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
+import { openEngineServices, type EngineServiceRegistry } from "./services.js";
+
+/**
+ * A numeric `MMO_*` variable, or `undefined` when it is unset or empty — so
+ * the key is left out of a module's config and whatever sets it next (a
+ * `game.json` `modules` entry, then the module's own default) applies.
+ */
+const envNumber = (name: string): number | undefined => {
+  const raw = process.env[name];
+  return raw === undefined || raw === "" ? undefined : Number(raw);
+};
+import type { LootDropper } from "./items/loot-dropper.js";
+import type { QuestService } from "./quests/quest-service.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { LivingSimSystem } from "./sim/living-sim-system.js";
@@ -670,7 +683,7 @@ async function main(): Promise<void> {
   let navBackendRef: any = null;
   let obstaclesRef: any = null;
   let chunkNavmeshRef: any = null;
-  let physicsRef: { terrainColliders(s: number): (...a: unknown[]) => unknown } | null = null;
+  let physicsRef: PhysicsSystem | null = null;
   // Unload passes write rows on the tick thread. The snapshot store's
   // background worker already checkpoints region.db after every save, so
   // this connection leaves checkpoints (and their fsync) to it.
@@ -729,9 +742,7 @@ async function main(): Promise<void> {
       const get = (): Hook => {
         if (hook) return hook;
         if (!physicsRef) throw new Error("physics not yet assembled");
-        // physicsRef is loosely typed (see its declaration); the runtime
-        // value is the {add, remove} hook from PhysicsSystem.terrainColliders.
-        hook = physicsRef.terrainColliders(CHUNK_SIZE) as unknown as Hook;
+        hook = physicsRef.terrainColliders(CHUNK_SIZE);
         return hook;
       };
       return {
@@ -783,6 +794,12 @@ async function main(): Promise<void> {
   // The game day at a tick (0 is a Sunday); absent when the server keeps no calendar.
   const gameDayOf = dayClock ? (tick: number) => Math.floor(dayClock.offset + tick / 30 / dayClock.seconds) : undefined;
   // The body system is made below with the hooks; hard landings reach it through this.
+  /**
+   * The enabled modules' services (ES4), read through SERVICE_TABLE. Assigned
+   * right after assembly below; every closure above runs later, in a tick or
+   * a request, which is why they can read it.
+   */
+  let services!: EngineServiceRegistry;
   let bodyRef: BodySystem | null = null;
   let magicRef: import("./magic.js").MagicSystem | null = null;
   // Slice 6: creatures domain comes from the creatures module.
@@ -792,7 +809,7 @@ async function main(): Promise<void> {
     crowd: import("./navigation/crowd-system.js").CrowdSystem | null;
   } | null = null;
   const creaturesOf = () => {
-    if (!creaturesRef) throw new Error("creatures not yet assembled");
+    if (!creaturesRef) throw new Error("creatures: this path needs the creatures module, which is not enabled");
     return creaturesRef.creatures;
   };
   // Slice 7: character domain comes from the character module.
@@ -801,11 +818,11 @@ async function main(): Promise<void> {
     mastery: import("./stats/mastery-system.js").MasterySystem;
   } | null = null;
   const characterOf = () => {
-    if (!characterRef) throw new Error("character not yet assembled");
+    if (!characterRef) throw new Error("character: this path needs the character module, which is not enabled");
     return characterRef.character;
   };
   const masteryOf = () => {
-    if (!characterRef) throw new Error("character not yet assembled");
+    if (!characterRef) throw new Error("mastery: this path needs the character module, which is not enabled");
     return characterRef.mastery;
   };
   // Character domain (slice 7): the character module builds character,
@@ -917,11 +934,11 @@ async function main(): Promise<void> {
     // Wildlife (docs/WILDLIFE.md): the day clock, the warning cones, who hurt a creature, the water, the animal models, the towns raiders go for.
     timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
     warn: (e: number, x: number, z: number, yaw: number, range: number, ms: number, tick: number) => {
-      const tg = (assembled.byName["telegraphs"] as unknown as TelegraphSystem | undefined);
+      const tg = services.optional("telegraphs");
       tg?.cast(sim, { source: e, shape: { kind: "cone", x, z, yaw, range, halfAngle: 0.7 }, warnMs: ms, amount: 0 }, tick);
     },
-    cancelWarn: (e: number, tick: number) => { (assembled.byName["telegraphs"] as unknown as TelegraphSystem | undefined)?.cancelFrom(e, tick); },
-    attackerOf: (e: number) => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    cancelWarn: (e: number, tick: number) => { services.optional("telegraphs")?.cancelFrom(e, tick); },
+    attackerOf: (e: number) => services.optional("combat")?.lastAttacker(e),
     waterSurfaceAt: water ? (x: number, z: number) => surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z) : undefined,
     waterDepthAt: water ? (x: number, z: number) => { const s = surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z); return s === null ? 0 : Math.max(0, s - characterOf().groundHeight(x, z)); } : undefined,
     // Wildlife models first, then the enemies' (EM1); a kind in neither spawns on its stand-in block.
@@ -1117,7 +1134,7 @@ async function main(): Promise<void> {
   // Closures defined before assembly resolve them lazily via these refs.
   let itemsRef: import("./items/index.js").ItemService | null = null;
   const itemsOf = (): import("./items/index.js").ItemService => {
-    if (!itemsRef) throw new Error("items not yet assembled");
+    if (!itemsRef) throw new Error("items: this path needs the items module, which is not enabled");
     return itemsRef;
   };
   const weaponOf = (e: number): Weapon | null => {
@@ -1176,7 +1193,7 @@ async function main(): Promise<void> {
   const { templates: vendorTemplates, byArchetype: shopByArchetype } = loadVendors(GAME.paths.vendorsFile);
   /** Bind a content template to an entity, defining it on the economy's vendor system the first time. Null on success, else why not. */
   const attachVendor = (eid: number, template: string): string | null => {
-    const vs = assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined;
+    const vs = services.optional("vendor");
     if (!vs) return "this server has no economy";
     const t = vendorTemplates.get(template);
     if (!t) return `no vendor template "${template}"`;
@@ -1201,7 +1218,7 @@ async function main(): Promise<void> {
     pool: respawnPool,
     // Mending a building spends the pouch (gathered materials).
     materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
-    killerOf: (e: number): number | undefined => (assembled.byName["combat"] as unknown as CombatSystem | undefined)?.lastAttacker(e),
+    killerOf: (e: number): number | undefined => services.optional("combat")?.lastAttacker(e),
     onBreak: (s, ev) => {
       collapse.partBroken(s, ev.eid);
       if (ev.loot === undefined) return;
@@ -1213,7 +1230,7 @@ async function main(): Promise<void> {
   // Quests and dialog (P1, slice 4): the quests module builds the service
   // from this config during assembly. See modules/quests/server.js.
   const questsConfig = {
-    questDir: process.env.MMO_QUESTS || DEFAULT_QUEST_DIR,
+    questDir: GAME.paths.questsDir,
     dataDir: DATA_DIR,
     getSpeciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
     getItemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemsOf().defs.ofBase(b).length > 0),
@@ -1296,7 +1313,7 @@ async function main(): Promise<void> {
   // now live on moduleCtx.stores (built by the character/dungeons modules);
   // train reads the character store lazily — it only runs during live runs.
   const dungeonsConfig = {
-    dungeonDir: process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT,
+    dungeonDir: GAME.paths.dungeonsDir,
     dataDir: DATA_DIR,
     instanceHost: process.env.MMO_INSTANCE_HOST || "localhost",
     scale,
@@ -1350,7 +1367,7 @@ async function main(): Promise<void> {
     getCreaturesPlace: (s: unknown, e: number) => creaturesOf().place(sim, e),
     getGateway: () => gw,
     // A fallen resident lies where it fell (ResidentSystem removes it and brings someone new later); creatures rise on their own timers.
-    getRespawnSeconds: (e: number) => ((assembled.byName["residents"] as unknown as import("./residents/index.js").ResidentSystem | undefined)?.isResident(e) ? Number.POSITIVE_INFINITY : creaturesOf().respawnSeconds(e)),
+    getRespawnSeconds: (e: number) => (services.optional("residents")?.isResident(e) ? Number.POSITIVE_INFINITY : creaturesOf().respawnSeconds(e)),
     getDropper: () => dropperRef,
     getQuests: () => questsRef,
     getKindOf: (e: number) => creaturesOf().kindOf(e),
@@ -1365,13 +1382,9 @@ async function main(): Promise<void> {
   // which owns the spawn grid); bots rise where they fell.
   // The dropper comes from the items module (slice 2); the death callback
   // resolves it lazily via the mutable ref assigned after assembly.
-  let dropperRef: {
-    onDeath(s: unknown, ev: unknown): void;
-    setCreatures(c: unknown): void;
-    setTables(t: unknown): void;
-  } | null = null;
+  let dropperRef: LootDropper | null = null;
   // Slice 4: quests comes from the quests module; lazy ref for the death callback.
-  let questsRef: { onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void } | null = null;
+  let questsRef: QuestService | null = null;
   let civicRef: import("./civic/index.js").CivicService | null = null;
   let civicWorldBridgeRef: CivicWorldBridge | null = null;
   const civicMetrics = new CivicTelemetryMetrics();
@@ -1419,8 +1432,10 @@ async function main(): Promise<void> {
     catalog: characterCatalog,
     timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
-    maxEntities: Number(process.env.MMO_RESIDENTS_MAX ?? 800),
-    maxFull: Number(process.env.MMO_RESIDENTS_FULL ?? 300),
+    // Unset leaves the key out, so game.json's `modules.residents` can set it
+    // and the system's own default (800 / 300) applies when neither does.
+    maxEntities: envNumber("MMO_RESIDENTS_MAX"),
+    maxFull: envNumber("MMO_RESIDENTS_FULL"),
     // Deaths are kept (places.db); someone new moves in three game days after.
     raided: () => creaturesOf().raids(),
     store: placesStore,
@@ -1429,7 +1444,7 @@ async function main(): Promise<void> {
       const template = shopByArchetype[archetype] ?? shopByArchetype["*"];
       if (template) attachVendor(eid, template);
     },
-    detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
+    detachShop: (eid: number) => void services.optional("vendor")?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
     livingSim,
     // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
@@ -1439,7 +1454,15 @@ async function main(): Promise<void> {
     sim,
     log: (m) => logServerModuleLog(worldLog, m),
     // Slices 2-6: modules read their bootstrap config from here.
-    config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
+    // Slices 2-6: the host's own wiring, with game.json's `modules` block
+    // layered under it (ES4) — a key the host sets wins, one it leaves unset
+    // comes from the manifest, one neither sets is the module's default. A
+    // module the host wires nothing for still reads its manifest settings,
+    // which is how a game's own module is configured without touching this.
+    config: mergeModuleConfig(
+      { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
+      GAME.moduleConfig,
+    ),
   };
   const assembled = await assembleServerSystems({
     modulesDir: GAME.paths.modulesDir,
@@ -1461,40 +1484,42 @@ async function main(): Promise<void> {
   });
   // Slices 2-5: items, dropper, dungeons, quests, and the combat cluster
   // come from their modules.
-  itemsRef = assembled.byName["items"] as import("./items/index.js").ItemService;
+  services = openEngineServices(assembled);
+  // Everything a game may do without (ES5): the module is off, the feature
+  // is absent, and the lazy accessors above say which module to enable if a
+  // path that needs one is ever reached.
+  itemsRef = services.optional("items") ?? null;
   // The economy module owns the wallet; pre-assembly configs use it lazily.
-  walletHolder.current = assembled.byName["wallet"] as import("./economy/wallet.js").WalletSystem;
-  dropperRef = assembled.extensions["dropper"] as unknown as {
-    onDeath(s: unknown, ev: unknown): void;
-    setCreatures(c: unknown): void;
-    setTables(t: unknown): void;
-  };
-  const dungeons = assembled.extensions["dungeons"] as unknown as import("./dungeons/manager.js").InstanceManager;
-  questsRef = assembled.extensions["quests"] as unknown as {
-    onDeath(s: unknown, ev: unknown, kindOf: (e: number) => string | undefined): void;
-  };
-  const quests = questsRef as unknown as import("./net/extension.js").GatewayExtension;
-  const civic = (assembled.extensions["civic"] as unknown as import("./civic/index.js").CivicService | undefined) ?? null;
+  walletHolder.current = services.optional("wallet") ?? null;
+  dropperRef = services.optional("dropper") ?? null;
+  const dungeons = services.optional("dungeons") ?? null;
+  questsRef = services.optional("quests") ?? null;
+  const quests = questsRef as import("./net/extension.js").GatewayExtension | null;
+  const civic = services.optional("civic") ?? null;
   civicRef = civic;
-  itemsRef.setProvenanceLookup((id) => civic?.provenanceOf(id));
-  itemsRef.setTraitDefs(civicConfig.rules.traits);
+  itemsRef?.setProvenanceLookup((id) => civic?.provenanceOf(id));
+  itemsRef?.setTraitDefs(civicConfig.rules.traits);
   // Combat cluster (slice 5): assign bodyRef for the physics fall callback,
   // magicRef for the rules reloader.
-  bodyRef = assembled.byName["body"] as unknown as import("./body.js").BodySystem;
-  magicRef = assembled.byName["magic"] as unknown as import("./magic.js").MagicSystem;
+  bodyRef = services.optional("body") ?? null;
+  magicRef = services.optional("magic") ?? null;
   // Creatures domain (slice 6).
-  creaturesRef = {
-    creatures: assembled.byName["creatures"] as unknown as import("./creatures.js").CreatureSystem,
-    bots: (assembled.byName["bots"] as unknown as import("./bots.js").BotSystem) ?? null,
-    crowd: (assembled.byName["crowd"] as unknown as import("./navigation/crowd-system.js").CrowdSystem) ?? null,
-  };
+  const creatureSystem = services.optional("creatures");
+  creaturesRef = creatureSystem
+    ? {
+        creatures: creatureSystem,
+        bots: services.optional("bots") ?? null,
+        crowd: services.optional("crowd") ?? null,
+      }
+    : null;
   (startWild as (() => void) | null)?.();
-  // Physics domain (slice 8).
-  physicsRef = assembled.byName["physics"] as unknown as { terrainColliders(s: number): (...a: unknown[]) => unknown };
+  // Physics domain (slice 8): the streamer holds a chunk back until its
+  // terrain colliders are in, so this one the server cannot do without.
+  physicsRef = services.get("physics");
   // Character domain (slice 7).
   characterRef = {
-    character: assembled.byName["character"] as unknown as import("./index.js").CharacterSystem,
-    mastery: assembled.byName["mastery"] as unknown as import("./stats/mastery-system.js").MasterySystem,
+    character: services.get("character"),
+    mastery: services.get("mastery"),
   };
   if (civic) {
     civicWorldBridgeRef = new CivicWorldBridge({
@@ -1535,7 +1560,7 @@ async function main(): Promise<void> {
   await socialSync?.boot();
   spawnBootScene();
   if (respawnPool.activeCount > 0) {
-    const poolCreatures = creaturesRef.creatures.instantiateFromPool(
+    const poolCreatures = creaturesOf().instantiateFromPool(
       sim,
       respawnPool,
       resolveCreatureKindByHash,
@@ -1557,6 +1582,8 @@ async function main(): Promise<void> {
       `(scatter plan ${populator.planHash.slice(0, 12)}…)`,
   );
   console.log(`[modules] ${assembled.modules.join(", ")} | tick order: ${assembled.order.map((s) => s.name).join(" ")}`);
+  // Which of the table's services this boot has, and which are off (ES4).
+  console.log(`[modules] ${services.summary}`);
   // Session tokens survive a restart (E3): the edge's resync finds them.
   const sessionStore = new SqliteSessionStore(path.join(DATA_DIR, "region.db"));
   // Cross-region presence (S2): the gateway reports online names and asks
@@ -1672,8 +1699,8 @@ async function main(): Promise<void> {
     },
     // The same instance as in the systems list below: its sheets are what get saved.
     mastery: masteryOf(),
-    body: bodyRef!,
-    magic: magicRef!,
+    ...(bodyRef ? { body: bodyRef } : {}),
+    ...(magicRef ? { magic: magicRef } : {}),
     // Per-session intent/pickup budgets and the frame cap (roadmap T1).
     ingress: game.rules.ingress,
     // Interest management: on unless MMO_INTEREST=0 (dungeon instances run their own gateway, which sees everything).
@@ -1682,21 +1709,25 @@ async function main(): Promise<void> {
     // The streamer runs first: chunks it loads this tick are in this
     // tick's delta, and physics picks up their bodies in the same tick.
     systems: assembled.systems,
-    extensions: [quests, dungeons, craftingService, ...(civic ? [civic] : [])],
-    items: itemsOf(),
+    // Each one is here only while its module is: an absent extension is a
+    // feature the gateway answers "unsupported" for, not a null to guard.
+    extensions: [quests, dungeons, craftingService, civic].filter((x): x is import("./net/extension.js").GatewayExtension => x !== null),
+    ...(itemsRef ? { items: itemsRef } : {}),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).
     groundHeightAt: (x, z) => characterOf().groundHeight(x, z),
     creatures: {
-      has: (k) => k in game.rules.creatures.creatures,
+      // Without the creatures module there are no creature entities, so the
+      // rules still name the kinds and the three live reads answer empty.
+      has: (k) => creaturesRef !== null && k in game.rules.creatures.creatures,
       // The admin spawnlist names creature kinds from the rules (A3); without this only props show.
-      kinds: () => Object.keys(game.rules.creatures.creatures).sort(),
-      spawnPack: (w, k, x, z) => creaturesOf().spawnPack(w, k, x, z),
-      nameOf: (e) => creaturesOf().nameOf(e),
-      entities: () => creaturesOf().entities(),
+      kinds: () => (creaturesRef === null ? [] : Object.keys(game.rules.creatures.creatures).sort()),
+      spawnPack: (w, k, x, z) => creaturesRef?.creatures.spawnPack(w, k, x, z) ?? [],
+      nameOf: (e) => creaturesRef?.creatures.nameOf(e),
+      entities: () => creaturesRef?.creatures.entities() ?? [],
     },
     spawnPoint: spawn,
-    respawnAnchors: Object.values(loadDungeonContent(process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
+    respawnAnchors: Object.values(loadDungeonContent(GAME.paths.dungeonsDir).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
     // "Start from": characters enter at the chosen point, not where they were saved.
     spawnOverridden: spawnOverride !== null,
     // Baked worlds: extent + coarse map for the client's far horizon.
@@ -1722,7 +1753,7 @@ async function main(): Promise<void> {
     // The overlay draws what pathfinding can use: the tiles loaded now.
     debugSource: makeDebugSource({
       world: sim,
-      navigation: assembled.byName["navigation"] as unknown as import("./navigation/system.js").NavigationSystem,
+      navigation: services.optional("navigation") ?? null,
       loadedTileBounds: () => chunkNavmeshRef!.bounds(),
     }),
   });
@@ -1892,7 +1923,7 @@ async function main(): Promise<void> {
         /* best-effort pool flush: never block shutdown */
       }
       // Runs still going report now, so their loot is in the ledger flush below.
-      dungeons.endAll();
+      dungeons?.endAll();
       gw.saveCharacters();
       itemLedger.flush();
       itemLedger.close();

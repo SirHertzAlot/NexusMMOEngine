@@ -1,7 +1,7 @@
 {
   "name": "sample-heartbeat",
   "version": "0.1.0",
-  "description": "Sample server module: one system that logs a heartbeat every 600 ticks. Enable it, press Apply modules, and the play server's boot line lists it between crowd and intent.",
+  "description": "Sample server module: one system that logs a heartbeat every 600 ticks, or every `everyTicks` a game sets under modules[\"sample-heartbeat\"] in its game.json. Enable it, press Apply modules, and the play server's boot line lists it between crowd and intent.",
   "dependsOn": ["core"],
   "server": {
     "entry": "server/index.js",

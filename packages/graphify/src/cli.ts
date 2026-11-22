@@ -203,6 +203,110 @@ export function explainWhy(graph: EcsGraph, query: string): string {
   return lines.join("\n");
 }
 
+/** Shape of the artifact as the `--check` failure path reads it: by key, not by schema. */
+interface CheckedArtifact {
+  readonly meta?: Record<string, unknown>;
+  readonly [key: string]: unknown;
+}
+
+const MAX_NAMED_FILES = 8;
+
+const shortHash = (value: unknown): string =>
+  typeof value === "string" && value.length > 12 ? `${value.slice(0, 12)}…` : String(value);
+
+const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+/** `label (n): a, b, c, and 4 more`, or nothing when the list is empty. */
+function namedFiles(label: string, files: readonly string[]): string[] {
+  if (files.length === 0) return [];
+  const shown = files.slice(0, MAX_NAMED_FILES);
+  const rest = files.length - shown.length;
+  return [`    ${label} (${files.length}): ${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`];
+}
+
+/**
+ * Explain why the byte comparison failed, in terms the reader can act on.
+ *
+ * `--check` compares the whole file, so editing any file in `meta.sourceHashes`
+ * fails it even though the graph itself — and so `meta.graphHash` — is
+ * unchanged. Printing the hash alone then showed the same string twice and read
+ * like a bug in the checker rather than a stale artifact.
+ */
+export function whatDiffers(existingText: string, expectedText: string): string {
+  let existing: CheckedArtifact;
+  let expected: CheckedArtifact;
+  try {
+    existing = JSON.parse(existingText) as CheckedArtifact;
+    expected = JSON.parse(expectedText) as CheckedArtifact;
+  } catch {
+    return "  The on-disk artifact is not valid JSON.\n";
+  }
+
+  const lines: string[] = [];
+  const oldMeta = asRecord(existing.meta);
+  const newMeta = asRecord(expected.meta);
+
+  if (!sameValue(oldMeta.graphHash, newMeta.graphHash)) {
+    lines.push(
+      `  The graph changed: meta.graphHash ${shortHash(oldMeta.graphHash)} -> ${shortHash(newMeta.graphHash)}.`,
+    );
+    const oldCounts = asRecord(oldMeta.counts);
+    const newCounts = asRecord(newMeta.counts);
+    const moved = [...new Set([...Object.keys(oldCounts), ...Object.keys(newCounts)])]
+      .sort()
+      .filter((key) => !sameValue(oldCounts[key], newCounts[key]))
+      .map((key) => `${key} ${JSON.stringify(oldCounts[key]) ?? "missing"} -> ${JSON.stringify(newCounts[key]) ?? "missing"}`);
+    if (moved.length > 0) lines.push(`    counts: ${moved.join(", ")}`);
+  } else {
+    lines.push(`  The graph is unchanged: meta.graphHash is ${shortHash(newMeta.graphHash)} on both sides.`);
+  }
+
+  const oldSources = asRecord(oldMeta.sourceHashes);
+  const newSources = asRecord(newMeta.sourceHashes);
+  if (!sameValue(oldSources, newSources)) {
+    const changed: string[] = [];
+    const added: string[] = [];
+    const removed: string[] = [];
+    for (const file of new Set([...Object.keys(oldSources), ...Object.keys(newSources)]).values()) {
+      const had = file in oldSources;
+      const has = file in newSources;
+      if (had && has) {
+        if (!sameValue(oldSources[file], newSources[file])) changed.push(file);
+      } else if (has) {
+        added.push(file);
+      } else {
+        removed.push(file);
+      }
+    }
+    lines.push("  Tracked source files moved (meta.sourceHashes):");
+    lines.push(...namedFiles("edited", changed.sort()));
+    lines.push(...namedFiles("new", added.sort()));
+    lines.push(...namedFiles("gone", removed.sort()));
+  }
+
+  const otherMeta = [...new Set([...Object.keys(oldMeta), ...Object.keys(newMeta)])]
+    .sort()
+    .filter((key) => key !== "graphHash" && key !== "counts" && key !== "sourceHashes")
+    .filter((key) => !sameValue(oldMeta[key], newMeta[key]));
+  if (otherMeta.length > 0) lines.push(`  Other meta keys differ: ${otherMeta.join(", ")}.`);
+
+  const otherTop = [...new Set([...Object.keys(existing), ...Object.keys(expected)])]
+    .sort()
+    .filter((key) => key !== "meta")
+    .filter((key) => !sameValue(existing[key], expected[key]));
+  if (otherTop.length > 0) lines.push(`  Top-level keys differ: ${otherTop.join(", ")}.`);
+
+  if (lines.length === 1 && lines[0]?.startsWith("  The graph is unchanged")) {
+    lines.push("  No part of the artifact differs by value, so this is a formatting difference; rebuilding fixes it.");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function parseFlag(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
   if (idx === -1 || idx + 1 >= args.length) return undefined;
@@ -244,9 +348,10 @@ export function runCli(argv: readonly string[]): number {
       return 1;
     }
     const existingBuf = readFileSync(inPath);
+    const existingText = existingBuf.toString("utf8");
     let parsedExisting: { meta?: { builtFromCommit?: unknown; graphHash?: unknown } };
     try {
-      parsedExisting = JSON.parse(existingBuf.toString("utf8")) as {
+      parsedExisting = JSON.parse(existingText) as {
         meta?: { builtFromCommit?: unknown; graphHash?: unknown };
       };
     } catch {
@@ -266,12 +371,9 @@ export function runCli(argv: readonly string[]): number {
     const expectedText = canonicalJson(fresh);
     const expectedBuf = Buffer.from(expectedText, "utf8");
     if (!existingBuf.equals(expectedBuf)) {
-      const existingHash =
-        typeof parsedExisting.meta?.graphHash === "string" ? parsedExisting.meta.graphHash : "missing";
       process.stderr.write(
         `graphify --check FAIL: artifact ${inPath} is out of date.\n` +
-          `  on-disk hash:  ${existingHash}\n` +
-          `  expected hash: ${fresh.meta.graphHash}\n` +
+          whatDiffers(existingText, expectedText) +
           `  Run \`npm run graphify:build\` (or \`node packages/graphify/dist/src/cli.js build\`) to regenerate.\n`,
       );
       return 1;

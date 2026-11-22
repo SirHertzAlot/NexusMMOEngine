@@ -54,6 +54,8 @@
 import * as crypto from "node:crypto";
 import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
+import { openPorts, type PortSet } from "@mmo-engine/sdk";
+import { GATEWAY_PORTS, type GatewayPorts } from "./ports.js";
 import { TickTimings } from "../tick-timings.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
@@ -184,12 +186,6 @@ import * as builtInChat from "../chat.js";
 import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { clearOfStatics } from "../prop-collision.js";
 import type { ScaleResolver } from "../scale.js";
-import { CombatSystem } from "../combat.js";
-import { DeathSystem } from "../death.js";
-import { AbilitySystem } from "../abilities.js";
-import { StatusSystem } from "../status.js";
-import { TelegraphSystem } from "../telegraph.js";
-import { DuelSystem } from "../duel.js";
 import { WalletSystem } from "../economy/wallet.js";
 import { runCivicAdminCommand, type CivicService } from "../civic/index.js";
 import { lessonCost, lessonPoints, type Lessons } from "../residents/lessons.js";
@@ -917,6 +913,8 @@ export class Gateway {
   readonly overlayTracker = new EntityFieldTracker();
   public readonly logger: LogProducerClient;
   private readonly systems: SimSystem[];
+  /** The systems behind the ports this gateway reads; see `net/ports.ts`. */
+  private readonly ports: PortSet<GatewayPorts>;
   private readonly damageStages: GatewayOptions["damageStages"];
   public readonly dataPlaneQueue?: DataPlaneCommandQueue;
   private dataPlaneEnqueuedIntents = 0;
@@ -1079,7 +1077,8 @@ export class Gateway {
         `gateway: maxClientPayloadBytes must be a positive integer (got ${opts.maxClientPayloadBytes})`,
       );
     }
-    this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new CombatSystem(TICK_HZ), new IntegrateSystem()];
+    this.systems = opts.systems ?? [new StatsSystem(), new IntentSystem(), new IntegrateSystem()];
+    this.ports = openPorts<GatewayPorts>(GATEWAY_PORTS, this.systems);
     this.logger = opts.logger ?? new LogProducerClient(LogProducer.GATEWAY, new LogRingBuffer(1024));
     const nf = loadNativeFanout();
     this.fanout = nf.fanout;
@@ -1534,8 +1533,7 @@ export class Gateway {
   /** Tell every welcomed player about the blows struck this tick (catalog 0x16). */
   private sendHits(sim: SimWorld, tick: number): HitMessage[] {
     const all: HitMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof CombatSystem)) continue;
+    for (const s of this.ports.all("combat")) {
       const hits = s.drainHits();
       if (hits.length === 0) continue;
       for (const h of hits) {
@@ -1675,8 +1673,7 @@ export class Gateway {
    */
   private sendLife(sim: SimWorld, tick: number): LifeMessage[] {
     const all: LifeMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof DeathSystem)) continue;
+    for (const s of this.ports.all("life")) {
       const events = s.drainEvents();
       if (events.length === 0) continue;
       const msgs: LifeMessage[] = [];
@@ -1713,8 +1710,7 @@ export class Gateway {
   /** Fan out ability events this tick (catalog 0x1d, M5). */
   private sendAbilities(sim: SimWorld, tick: number): AbilityMessage[] {
     const all: AbilityMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof AbilitySystem)) continue;
+    for (const s of this.ports.all("abilities")) {
       const events = s.drainEvents();
       if (events.length === 0) continue;
       const msgs = events.map((e): AbilityMessage => ({
@@ -1737,8 +1733,7 @@ export class Gateway {
   /** Fan out telegraph warnings, resolutions and cancellations (catalog 0x1e, M5). */
   private sendTelegraphs(sim: SimWorld, tick: number): TelegraphMessage[] {
     const all: TelegraphMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof TelegraphSystem)) continue;
+    for (const s of this.ports.all("telegraphs")) {
       const events = s.drainEvents();
       if (events.length === 0) continue;
       const msgs = events.map((e): TelegraphMessage => ({
@@ -1765,8 +1760,7 @@ export class Gateway {
   /** Fan out buff/debuff changes (catalog 0x1f, M5). */
   private sendStatuses(sim: SimWorld, tick: number): StatusMessage[] {
     const all: StatusMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof StatusSystem)) continue;
+    for (const s of this.ports.all("statuses")) {
       const changes = s.drainChanges();
       if (changes.length === 0) continue;
       const msgs = changes.map((c): StatusMessage => ({
@@ -1789,8 +1783,7 @@ export class Gateway {
   /** Fan out duel events (catalog 0x20, M5). */
   private sendDuels(sim: SimWorld, tick: number): DuelMessage[] {
     const all: DuelMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof DuelSystem)) continue;
+    for (const s of this.ports.all("duels")) {
       const events = s.drainEvents();
       if (events.length === 0) continue;
       const msgs = events.map((e): DuelMessage => ({
@@ -3449,7 +3442,7 @@ export class Gateway {
   /** End `eid`'s duel and drop its challenges (disconnect, logout, leaving the region). */
   private forgetDuels(eid: number): void {
     if (eid < 0) return;
-    for (const x of this.systems) if (x instanceof DuelSystem) x.forget(eid, this.tick);
+    for (const x of this.ports.all("duels")) x.forget(eid, this.tick);
   }
 
   /** Drop a live session (heartbeat timeout). Grace period still applies. */
@@ -5418,7 +5411,7 @@ export class Gateway {
    * A bad shape is 4003, an unknown technique or part 4005.
    */
   private onStance(s: ClientSession, payload: Uint8Array): void {
-    const combat = this.systems.find((x): x is CombatSystem => x instanceof CombatSystem);
+    const combat = this.ports.first("combat");
     if (!combat || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "stance outside the world");
       return;
@@ -5453,7 +5446,7 @@ export class Gateway {
    * `ability` event next tick.
    */
   private onAbility(s: ClientSession, payload: Uint8Array): void {
-    const abilities = this.systems.find((x): x is AbilitySystem => x instanceof AbilitySystem);
+    const abilities = this.ports.first("abilities");
     if (!abilities || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "ability outside the world");
       return;
@@ -5486,7 +5479,7 @@ export class Gateway {
    * DuelSystem owns the flow; its events drain next tick.
    */
   private onDuel(s: ClientSession, payload: Uint8Array): void {
-    const duels = this.systems.find((x): x is DuelSystem => x instanceof DuelSystem);
+    const duels = this.ports.first("duels");
     if (!duels || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "duel outside the world");
       return;

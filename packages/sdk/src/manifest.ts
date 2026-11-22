@@ -37,6 +37,16 @@ export const GameManifestSchema = z.strictObject({
   paths: z.partialRecord(z.enum(SEAM_KEYS), PathString).optional(),
   /** The rule hooks module (ES3), relative to the content root (or absolute). */
   hooks: PathString.optional(),
+  /**
+   * Per-module settings, by module name: `{"residents": {"maxEntities": 1200}}`.
+   *
+   * Reaches the module as `ctx.config[name]`, under whatever the host passes
+   * for that module, so a value a run's `MMO_*` variable set still wins and a
+   * key the host does not set falls through to the module's own default. The
+   * keys are the module's own, not a list the engine fixes: a game's own
+   * module reads its own settings here with no engine change.
+   */
+  modules: z.record(z.string().min(1), z.record(z.string().min(1), z.unknown())).optional(),
 });
 
 export type GameManifest = z.infer<typeof GameManifestSchema>;

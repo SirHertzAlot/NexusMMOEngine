@@ -4,4 +4,4 @@ export * from "./introspect.js";
 export * from "./ast-extract.js";
 export * from "./harvest.js";
 export * from "./validate.js";
-export { explainWhy, loadGraph, resolveGraphNode, runCli } from "./cli.js";
+export { explainWhy, loadGraph, resolveGraphNode, runCli, whatDiffers } from "./cli.js";

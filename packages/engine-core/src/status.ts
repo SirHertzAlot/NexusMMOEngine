@@ -24,6 +24,7 @@
 import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 export interface StatMod {
   /** The stat this touches ("power", "armour", "speed" — the rules' names). */
@@ -84,6 +85,8 @@ interface Active {
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
 export class StatusSystem implements SimSystem {
+  /** Offered to the host as the `statuses` port: the buffs and debuffs it applied. */
+  readonly [PORTS] = ["statuses"];
   readonly name = "status";
   readonly access: SystemAccess = {
     system: "status",

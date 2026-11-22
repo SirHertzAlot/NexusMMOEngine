@@ -21,6 +21,34 @@ import { discoverModules, readEnabledSet, resolveModuleSet, type DiscoveredModul
 import type { SimSystem } from "./systems.js";
 import type { SimWorld } from "./world.js";
 
+/**
+ * Layer `game.json`'s `modules` block under what the host passes each module
+ * (ES4).
+ *
+ * The rule is one line: a key the host sets wins, a key it leaves `undefined`
+ * comes from the manifest, and a key neither sets is the module's own
+ * default. That keeps a run's `MMO_*` variable ahead of the file — the host
+ * reads the variable and passes the key when it is set — and it means the
+ * host's own wiring (callbacks, live engine objects) can never be replaced by
+ * a value out of a JSON file, which is also what stops a manifest from
+ * breaking a boot.
+ *
+ * A module the host passes nothing for still gets its manifest settings, so a
+ * game's own module is configured from `game.json` with no engine change.
+ */
+export function mergeModuleConfig(
+  host: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  fromManifest: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): Record<string, Record<string, unknown>> {
+  const merged: Record<string, Record<string, unknown>> = {};
+  for (const name of new Set([...Object.keys(fromManifest), ...Object.keys(host)])) {
+    const settings: Record<string, unknown> = { ...fromManifest[name] };
+    for (const [k, v] of Object.entries(host[name] ?? {})) if (v !== undefined) settings[k] = v;
+    merged[name] = settings;
+  }
+  return merged;
+}
+
 /** What a server module's entry receives. */
 export interface ServerModuleContext {
   sim: SimWorld;

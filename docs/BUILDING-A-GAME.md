@@ -107,7 +107,10 @@ Your content does not have to live in this checkout's `content/`. A
     "scenesDir": "scenes",
     "biomesFile": "world/biomes.json"
   },
-  "hooks": "rules/hooks.mjs"
+  "hooks": "rules/hooks.mjs",
+  "modules": {
+    "residents": { "maxEntities": 1200, "fullM": 60 }
+  }
 }
 ```
 
@@ -119,6 +122,12 @@ Your content does not have to live in this checkout's `content/`. A
   variable that overrides it and what it is; an unknown key fails the boot
   with the known ones listed.
 - `hooks` names the module from [§3](#3-then-rules-hooks).
+- `modules` sets a module's own values, by module name; they arrive as
+  `ctx.config[name]` under whatever the server wires for that module, so a
+  run's `MMO_*` variable still wins and a key nobody sets is the module's own
+  default. The keys are the module's, not a list the engine fixes, so a
+  module you write is configured here the day you write it — see
+  [MODULES.md](MODULES.md#writing-a-server-module).
 - With no manifest, every path is the engine's own, exactly as before. The
   engine finds one in its own folder, or wherever `MMO_GAME` points;
   `MMO_GAME=0` ignores it.
@@ -134,7 +143,8 @@ and a hash of that layout:
          2 paths moved: rulesDir, scenesDir, layout 09d388019c8e
 ```
 
-That hash is the layout, not the content. Every region of a fleet should
+That hash is the layout, not the content, and not the `modules` settings
+either: it covers where files are read from. Every region of a fleet should
 print the same one; a region that prints a different hash is reading a
 different game, which is worth catching before players do.
 

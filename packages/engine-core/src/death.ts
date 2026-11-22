@@ -17,28 +17,17 @@
 
 import { defineQuery, entityExists, hasComponent, Not } from "bitecs";
 import type { DeathInput, DeathOutcome, RespawnOutcome, RuleHooks } from "@mmo-engine/rules";
+import type { LifeEvent } from "./vocabulary.js";
 import { Action, Breakable, Health, PlayerIntent, Transform, Velocity } from "./components.js";
 import { INVALID_POOL_HANDLE, RespawnKind, SlotState, SpawnPoolSoA } from "./pools/spawn-pool-soa.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
 import type { DuelSystem } from "./duel.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** A death or a respawn, for the gateway to tell clients. */
-export interface LifeEvent {
-  tick: number;
-  target: number;
-  state: "dead" | "alive";
-  killer?: number;
-  /** Tick the body respawns (dead events). */
-  respawnAt?: number;
-  outcome?: DeathOutcome;
-  /** Where it fell (dead events). */
-  x?: number;
-  z?: number;
-  /** What killed it (dead events). */
-  cause?: DeathInput;
-}
+// LifeEvent is shared vocabulary, not this system's own: see vocabulary.ts.
 
 /** What DeathSystem asks of the body (M2): why it died, and putting it right on respawn. */
 export interface DeathBody {
@@ -109,6 +98,8 @@ interface Corpse {
 }
 
 export class DeathSystem implements SimSystem {
+  /** Offered to the host as the `life` port: the deaths and respawns it recorded. */
+  readonly [PORTS] = ["life"];
   readonly name = "death";
   readonly access: SystemAccess = {
     system: "death",

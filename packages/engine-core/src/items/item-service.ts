@@ -23,7 +23,7 @@ import {
   type ItemView,
 } from "@mmo-engine/protocol";
 import { DEFAULT_CIVIC_RULES, type LootRules, type VeinTraitDef } from "@mmo-engine/rules";
-import type { Weapon } from "../combat.js";
+import type { Weapon } from "../vocabulary.js";
 import { AssetRef, Transform, WorldItem } from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { SimSystem } from "../systems.js";
