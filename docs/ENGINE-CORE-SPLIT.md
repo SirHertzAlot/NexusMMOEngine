@@ -37,12 +37,17 @@ game without editing our source:
    skill and technique ids, and one engine schema names our bestiary in a
    `strictObject`, so a game without goblins cannot author a valid
    wildlife table.
-4. **Nothing is publishable.** There is **no `LICENSE` file** in a public
-   repo, no package declares a license, and no package has an `exports`
-   map. As it stands, nobody may legally build on this.
+4. **Nothing is publishable.** No package has an `exports` map, and five
+   are missing `private: true` so they would publish by accident. There
+   is also no `LICENSE` file, which is **deliberately on hold** — see
+   [§5](#5-the-licence-is-deferred-on-purpose).
 
-The proposal is three tiers — **core / kits / game** — reached in eight
-stages, the first four of which are additive and break nothing.
+The proposal is three tiers — **core / kits / game** — reached in nine
+stages, the first four of which are additive and break nothing. Per the
+decision on this PR, the engine keeps a playable starting point, but as a
+**set of swappable starter kits** a developer forks and edits, not one
+blessed template: the brief is the fastest *and* most flexible route to
+someone else's game, including a game that replaces our kits entirely.
 
 ## 1. What already landed
 
@@ -193,11 +198,13 @@ Each of these is a specific file and line, and each is a blocker for
    folder cannot contribute an editor panel. The workspace tab list
    itself is also a hardcoded array (`App.tsx:88`) — a game can add a
    view inside an existing workspace, not a new workspace.
-8. **Nothing is licensed or publishable.** No `LICENSE` file; no package
-   sets `license`; no package sets `exports`. Five are missing
+8. **Nothing is packaged for consumption.** No package sets `exports`,
+   so there is no import surface to promise. Five are missing
    `private: true` and so are publishable by accident:
    `packages/mirror` (which declares `UNLICENSED`), `addons/geometry`,
-   `addons/navigation`, `addons/perf-probe`, `addons/physics`.
+   `addons/navigation`, `addons/perf-probe`, `addons/physics`. That last
+   one is a safety fix independent of the licence question, and it is
+   `ES1a` below.
 
 ### 2.6 Boundary problems worth fixing in the same pass
 
@@ -219,7 +226,8 @@ Each of these is a specific file and line, and each is a blocker for
 - **No root third-party notices.** Vendored third-party code sits in
   seven `third_party/` folders plus `packages/dungeon` and `apps/client`,
   each with its own `THIRD_PARTY_NOTICES.md`. There is no aggregated root
-  notices file, which stage 1 needs alongside the `LICENSE`.
+  notices file. It is needed whenever the licence lands, and is parked
+  with it.
 
 ## 3. Part 2 — The proposed alpha skeleton
 
@@ -243,7 +251,7 @@ Each of these is a specific file and line, and each is a blocker for
 │  kit-combat   kit-progress  │   │  game.json                │
 │  kit-economy  kit-quests    │   │  content/   modules/      │
 │  kit-dungeons kit-social    │   │  client/    editor/       │
-│  our design, swappable      │   │  → imports @mmo-engine/sdk│
+│  forkable starter packs     │   │  → imports @mmo-engine/sdk│
 └─────────────────────────────┘   └───────────────────────────┘
 ```
 
@@ -363,31 +371,54 @@ A game not using it is free of our vocabulary. Mechanically this is a
 move of `rules/skill-contract.ts` plus a per-kit registration call — the
 check itself stays as it is, because it is good.
 
-### 3.6 `create-mmo-game`: what a starter contains
+### 3.6 `create-mmo-game`: several starting points, not one
+
+The decision on this PR asks for the fastest *and* the most flexible
+route to someone else's game: a simple starting point for a dev who
+wants to be playing today, and a set of starting points for a dev who
+wants to tear ours apart. So the starter is a template picker, not a
+single scaffold:
+
+```
+npx create-mmo-game my-game --template <name>
+
+  bare       core + SDK only. No kits. A world you can walk, nothing to fight.
+             The honest floor: proves what the engine gives you with no design in it.
+  survival   kit-combat + kit-progress. Creatures, damage, skills by use, death.
+  sandbox    kit-economy + kit-social. Gathering, crafting, vendors, parties. No combat.
+  full       every kit. What our own game is built on, minus our content.
+```
+
+Each template is the same shape, and every file in it belongs to the
+developer:
 
 ```
 my-game/
-  game.json                 the manifest above
-  package.json              deps: @mmo-engine/sdk, @mmo-engine/kit-*
+  game.json                 the manifest above; lists which kits are on
+  package.json              deps: @mmo-engine/sdk, the template's kits
   hooks.js                  one hook, commented, showing base() wrapping
   content/
-    rules/                  copied from the engine's neutral defaults
+    rules/                  the engine's neutral defaults, copied in to edit
     world.spec.json         a 4 km island, one seed
     scenes/start.scene.json one spawn point, flat ground, one prop
     species/species.json    two creatures, data only
-    combat/moves.json       three moves
   modules/
     my-first-system/        module.json + index.ts, a system that logs
   client/
     main.tsx                the engine client shell + one HUD panel
   editor/                   empty; panels drop in here
-  README.md                 npm run bake:world · npm start · npm run client
+  README.md                 what to edit for the ten most common changes
 ```
 
-Target: `npx create-mmo-game my-game && cd my-game && npm start` gives a
-walkable world with one creature, in under five minutes, with **zero
-files from the engine edited**. That is the alpha acceptance test for
-this whole effort, and it should be a CI job, not a claim.
+Two targets, and both should be CI jobs rather than claims:
+
+1. **Fast:** `npx create-mmo-game my-game && npm start` gives a walkable
+   world with one creature in under five minutes, with **zero files from
+   the engine edited**.
+2. **Flexible:** the `bare` template boots and runs with **no kit
+   installed at all**. If that fails, design has leaked back into the
+   core and the split has regressed — which makes it the single most
+   valuable test in this whole plan.
 
 ### 3.7 The editor as an engine tool
 
@@ -411,21 +442,24 @@ project to be a parameter.
 ## 4. Part 3 — Staged migration
 
 Stages 1–4 are additive: nothing moves, nothing breaks, each is
-independently shippable and useful on its own. Stages 5–8 move code.
+independently shippable and useful on its own. Stages 5–9 move code.
 
 | # | Stage | Scope | Risk | Gate before merging |
 |---|---|---|---|---|
-| 1 | **`LICENSE` + package hygiene** | Root license; `license` on every package; `private: true` on the five that lack it; `exports` on the packages that will be public | **Low.** Metadata only | `npm test` green; `npm pack --dry-run` lists no source it should not |
+| 1a | **Stop the accidental publishes** | `private: true` on the five packages that lack it. Nothing about licensing | **Low.** One field in five `package.json` files, reversible | `npm pack --dry-run` refuses each of the five; `npm test` unaffected |
+| 1b | **Package hygiene** (parked with the licence) | `exports` maps on the packages that go public, `license` fields, root `LICENSE` and an aggregated third-party notices file | **Low.** Metadata only | Blocked on the licence choice — see [§5](#5-the-licence-is-deferred-on-purpose) |
 | 2 | **`GameProject` resolver** | `@mmo-engine/sdk` with `game.json` schema + resolver. Engine reads paths from it, defaulting to today's `content/` so current behaviour is byte-identical | **Low–medium.** 40 path sites in 19 files. Mitigated: default resolver returns exactly today's paths; a test asserts every resolved path equals the old constant | A test per seam asserting old path == new resolved path; boot smoke unchanged |
 | 3 | **Reach the hooks** | Load `game.json.hooks`, pass to `loadGameRules`. One line at `server.ts:354` plus a loader | **Low.** Absent hooks = today's behaviour | A test game pack that overrides `computeDamage` and changes a measured damage number |
 | 4 | **Service registry** | Typed resolve/publish replacing the 18 `assembled.byName[...]` and 4 `extensions[...]` reads. Both paths live side by side at first | **Medium.** This is boot wiring; a mistake shows up as a null system mid-tick. Mitigated: keep `byName` as the backing store, make the registry a typed view over it, convert one seam per commit | Full `npm test`; a play-mode run; `npm run valgrind:perf` unchanged (boot-only change, so the tick should not move) |
-| 5 | **Kits** | `@mmo-engine/kit-combat`, `-progress`, `-economy`, `-quests`, `-dungeons`, `-social`. Code moves out of `engine-core/src` into kit packages; modules import the kit, not `dist/` | **High.** ~13,000 LOC moving. Mitigated: one kit per PR, pure file moves with import rewrites and **no behaviour change in the same commit**; the roadmap row records the before/after test counts | Per kit: that kit's tests plus the full root suite; a measured duel and a measured loot roll identical before and after |
+| 5 | **Kits** | `@mmo-engine/kit-combat`, `-progress`, `-economy`, `-quests`, `-dungeons`, `-social`. Code moves out of `engine-core/src` into kit packages; modules import the kit, not `dist/`. Each kit is written to be **forked and edited**, not just configured: small files, no cross-kit imports, and a `README` that says which hook or system to change for the common edits | **High.** ~13,000 LOC moving. Mitigated: one kit per PR, pure file moves with import rewrites and **no behaviour change in the same commit**; the roadmap row records the before/after test counts | Per kit: that kit's tests plus the full root suite; a measured duel and a measured loot roll identical before and after. Plus: the kit still builds with one system deleted, proving a game can drop part of it |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |
-| 8 | **`create-mmo-game` + de-IP the schemas** | The starter; the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | The five-minute starter test as a CI job; existing `content/wildlife` still validates |
+| 8 | **`create-mmo-game` + de-IP the schemas** | The template picker (`bare`, `survival`, `sandbox`, `full`); the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | Both CI jobs from §3.6: the five-minute walkable world, **and** `bare` booting with no kit installed. Existing `content/wildlife` still validates |
+| 9 | **Editor as an engine tool** | The panel registry loads from the open project at runtime instead of the build-time Vite glob (`modules-panel.tsx:32`); `WORKSPACES` (`App.tsx:88`) becomes a registry a module can add to | **Medium.** Touches editor boot, and the glob is how every panel loads today | The editor opens a generated `my-game` outside the engine repo and shows its module's panel. Folds into the planned editor rebuild rather than being done twice |
 
-Sequencing note: stages 1–3 can run in parallel with each other and with
-the perf and editor work already in flight. Stage 4 must land before 5.
+Sequencing note: `1a`, `2` and `3` can run in parallel with each other
+and with the perf and editor work already in flight; `1b` waits on the
+licence. Stage 4 must land before 5.
 Stage 6 should wait for 5, because `kit-logistics` is easier to carve
 once the kit pattern exists.
 
@@ -450,11 +484,49 @@ once the kit pattern exists.
   SDK, the manifest and reachable hooks without moving a line of gameplay
   code. If the effort stops there, the engine is still meaningfully more
   reusable than it is today.
-- **The licence question is urgent and independent.** The repo is public
-  with no `LICENSE`. Until stage 1 lands, the default is all rights
-  reserved: nobody may build on this, which is the opposite of the goal.
+- **Several starting points cost more than one.** Each kit a developer
+  can fork is a kit we keep working, test and document. Three or four
+  well-separated kits is the useful number; a dozen is a maintenance
+  burden that makes none of them trustworthy. The gate in stage 5 (the
+  kit still builds with one system deleted) is what keeps them genuinely
+  separable rather than one template in six folders.
+- **The licence is deferred, so the audience is still internal.** Until
+  it lands, "another team builds a game on this" is a capability we are
+  building, not one anyone may exercise. That is a deliberate choice, not
+  an oversight — see [§5](#5-the-licence-is-deferred-on-purpose) — but it
+  does mean the five-minute starter test in stage 8 proves the seams
+  work, not that the engine is adoptable yet.
 
-## 5. What is not verified
+## 5. The licence is deferred on purpose
+
+**Decided 2026-11-22: no licence is chosen yet**, pending the call on
+whether this becomes a monetized venture. Nothing in this plan picks one,
+and no `LICENSE` file is added.
+
+What that does and does not block:
+
+| | Status |
+|---|---|
+| `private: true` on the five packages that would publish by accident | **Goes ahead** (`ES1a`). A safety fix in either direction: unlicensed code publishing by accident is the bad outcome whichever licence is later chosen |
+| `exports` maps, `license` fields, root `LICENSE`, aggregated third-party notices | **Parked** (`ES1b`). Each of these is a statement about how others may consume the code, so each waits for the decision |
+| Everything else, `ES2` through `ES9` | **Unaffected.** The SDK, the manifest, reachable hooks, the kits and the templates are all internal engineering. They are worth doing for our own game regardless |
+
+The honest consequence: until a licence lands, the repo is public but
+all rights reserved, so "another team builds a game on this" stays a
+capability we are building rather than one anyone may use. That does not
+weaken the case for the split — our own game is the first consumer of
+these seams, and it is the only thing that keeps them honest — but it
+does mean the adoption story is on hold, not the engineering.
+
+One thing worth knowing before the monetization call, because it
+constrains it: the engine already vendors third-party code under its own
+terms — Jolt, Recast/Detour, FastNoise2, manifold, Clipper2, Dungeon
+Forge (MIT) and others, across seven `third_party/` folders. Those
+licences will shape what the engine itself can be released as, so the
+aggregated notices file in `ES1b` is worth producing as *input* to the
+decision rather than as a consequence of it.
+
+## 6. What is not verified
 
 Honest limits of this document:
 
