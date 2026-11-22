@@ -24,9 +24,17 @@ export const BONE_FR = 4;
 export const BONE_HL = 5;
 export const BONE_HR = 6;
 export const BONE_LOWER = 7;
-export const BONE_COUNT = 11;
+/** Lumbar spine (pelvis/haunches): the hind legs and the tail hang off it, so its flexion carries them. */
+export const BONE_LOIN = 11;
+/** Neck: steadies the head against the chest's pitch. */
+export const BONE_NECK = 12;
+/** Tail chain: BONE_TAIL is the root, TAIL1 and TAIL2 follow with a lag (a whip, not a plank). */
+export const BONE_TAIL1 = 13;
+export const BONE_TAIL2 = 14;
+export const BONE_COUNT = 15;
 export const BONE_NAMES = [
-  "body", "head", "tail", "upperFL", "upperFR", "upperHL", "upperHR", "lowerFL", "lowerFR", "lowerHL", "lowerHR",
+  "chest", "head", "tail0", "upperFL", "upperFR", "upperHL", "upperHR",
+  "lowerFL", "lowerFR", "lowerHL", "lowerHR", "loin", "neck", "tail1", "tail2",
 ] as const;
 
 export type ModelRigType = "quadruped" | "avian" | "serpentine" | "aquatic" | "arachnid" | "flora";
@@ -36,6 +44,16 @@ export const SERPENTINE_BONE_NAMES = ["spine0", "spine1", "spine2", "spine3", "t
 export const AQUATIC_BONE_NAMES = ["body", "head", "tail", "finL", "finR", "dorsal"] as const;
 export const ARACHNID_BONE_NAMES = ["body", "head", "leg1L", "leg1R", "leg2L", "leg2R", "leg3L", "leg3R", "leg4L", "leg4R"] as const;
 export const FLORA_BONE_NAMES = ["root", "trunk", "branchL", "branchR", "canopy"] as const;
+
+/**
+ * Quadruped bone parenting: the head hangs off the neck, the neck and the front legs off the
+ * chest, the hind legs and the tail root off the loin (so the loin's flexion carries the
+ * haunches), and the tail chain follows itself. Index order is BONE_*.
+ */
+export const QUADRUPED_PARENTS: readonly number[] = [
+  -1, BONE_NECK, BONE_LOIN, BONE_BODY, BONE_BODY, BONE_LOIN, BONE_LOIN,
+  BONE_FL, BONE_FR, BONE_HL, BONE_HR, BONE_BODY, BONE_BODY, BONE_TAIL, BONE_TAIL1,
+];
 
 export interface Frame {
   /** Rotation about +Y (radians) that turns the mesh to face +Z. */
@@ -201,6 +219,21 @@ function findKnee(pts: Float32Array, n: number, legTop: number, W: number): numb
   return best < 0 ? 0.5 : Math.min(0.58, Math.max(0.42, lo + ((best + 0.5) / slices) * (hi - lo)));
 }
 
+/** Where the tail starts: walking forward from the tip, the first rear slice that is body-wide, not tail-thin. */
+function findTailRoot(pts: Float32Array, n: number, zMin: number, L: number, W: number): number {
+  const slices = 12, span = Math.min(0.45 * L, 0.5 * L);
+  for (let s = 0; s < slices; s++) {
+    const z0 = zMin + (span * s) / slices, z1 = zMin + (span * (s + 1)) / slices;
+    let hw = 0, cnt = 0;
+    for (let i = 0; i < n; i++) {
+      const z = pts[i * 3 + 2];
+      if (z >= z0 && z < z1) { cnt++; const ax = Math.abs(pts[i * 3]); if (ax > hw) hw = ax; }
+    }
+    if (cnt > 0 && hw > 0.28 * W) return z0;
+  }
+  return zMin + 0.3 * L;
+}
+
 /** Cut a quadruped mesh into bones. Null when it does not look like a four-legged animal. */
 export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHints = {}): Segmentation | null {
   const frame = findFrame(positions, hints);
@@ -228,7 +261,13 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
   const kneeY = (hints.knee ?? findKnee(pts, n, legTop, W)) * legTop;
   const zMid = (zMin + zMax) / 2;
   const zNeck = zMax - 0.3 * L;
-  const zRoot = zMin + 0.16 * L;
+  // Where the tail starts (found from the shape) and where the chest becomes the loin.
+  const zTailRoot = findTailRoot(pts, n, zMin, L, W);
+  const zLoin = zMid - 0.05 * L;
+  // The leg column reaches up the haunch and the shoulder (the femur and the scapula carry their
+  // own mass), but tall vertices far from their own hip belong to the trunk, not the leg.
+  const upperTop = Math.min(legTop * 1.6, H * 0.95);
+  const zHip = [zMid + 0.22 * L, zMid + 0.22 * L, zMid - 0.25 * L, zMid - 0.25 * L];
   // Knee blend: below the knee the lower leg bone, above the upper; wide enough to bend smoothly.
   const kb = 0.14 * legTop;
 
@@ -236,27 +275,46 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
   const skinWeight = new Float32Array(n * 4);
   // Weighted centroids of each leg's own vertices give the hip pivots (the knee sits under the hip).
   const hipSum = [0, 1, 2, 3].map(() => ({ w: 0, x: 0, z: 0 }));
-  let headY = 0, headW = 0, tailY = 0, tailW = 0;
+  let headY = 0, headW = 0, neckY = 0, neckW = 0, neckZ = 0;
+  const tailStat = [
+    { w: 0, y: 0, z: 0 }, { w: 0, y: 0, z: 0 }, { w: 0, y: 0, z: 0 },
+  ];
   const cand = new Float32Array(BONE_COUNT);
   for (let i = 0; i < n; i++) {
     const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
     const ax = Math.abs(x);
-    const lateral = smooth(0.1 * W, 0.22 * W, ax); // 0 on the centreline (belly, tail), 1 out at a leg
-    const legW = (1 - smooth(legTop * 0.6, legTop * 1.2, y)) * lateral;
-    const front = smooth(zMid - 0.06 * L, zMid + 0.06 * L, z);
+    const lateral = smooth(0.08 * W, 0.2 * W, ax); // 0 on the centreline (belly, tail), 1 out at a leg
+    const legW = (1 - smooth(upperTop * 0.7, upperTop, y)) * lateral;
+    const tall = smooth(legTop * 0.9, upperTop, y); // 0 on the free leg, 1 up in the trunk
     const left = smooth(-0.08 * W, 0.08 * W, x);
+    const frontBack = smooth(zMid - 0.06 * L, zMid + 0.06 * L, z);
     const lowerF = 1 - smooth(kneeY - kb, kneeY + kb, y);
-    const q = [legW * front * left, legW * front * (1 - left), legW * (1 - front) * left, legW * (1 - front) * (1 - left)];
     for (let k = 0; k < 4; k++) {
-      cand[BONE_FL + k] = q[k] * (1 - lowerF);
-      cand[BONE_LOWER + k] = q[k] * lowerF;
+      const side = k % 2 === 0 ? left : 1 - left;
+      const fore = k < 2 ? frontBack : 1 - frontBack;
+      // Tall vertices only count for the leg whose hip they are near (haunch, shoulder); the rest is trunk.
+      const nearHip = 1 - smooth(0.1 * L, 0.18 * L, Math.abs(z - zHip[k]));
+      const q = legW * fore * side * (1 - tall * (1 - nearHip));
+      cand[BONE_FL + k] = q * (1 - lowerF);
+      cand[BONE_LOWER + k] = q * lowerF;
     }
-    const room = 1 - legW;
-    cand[BONE_HEAD] = room * smooth(zNeck - 0.05 * L, zNeck + 0.08 * L, z) * smooth(legTop * 0.9, legTop * 1.3, y);
-    cand[BONE_TAIL] = room * (1 - smooth(zMin + 0.1 * L, zMin + 0.22 * L, z)) * (1 - lateral) * smooth(0.35 * legTop, 0.6 * legTop, y);
-    let sum = 0;
-    for (let b = 1; b < BONE_COUNT; b++) sum += cand[b];
-    cand[BONE_BODY] = Math.max(0, 1 - sum);
+    const room = Math.max(0, 1 - legW);
+    // Head and neck: the neck is the column between the withers and the skull.
+    const headGate = smooth(zNeck + 0.02 * L, zNeck + 0.1 * L, z) * smooth(legTop * 0.9, legTop * 1.3, y);
+    const neckGate = smooth(zNeck - 0.12 * L, zNeck - 0.02 * L, z) * (1 - smooth(zNeck, zNeck + 0.06 * L, z)) * smooth(legTop * 0.85, legTop * 1.25, y);
+    cand[BONE_HEAD] = room * headGate;
+    cand[BONE_NECK] = room * neckGate;
+    // Tail: the thin centreline mass behind the tail root, split root/middle/tip along its length.
+    const tailSpan = Math.max(1e-4, zTailRoot - zMin);
+    const uTail = Math.min(1, Math.max(0, (zTailRoot - z) / tailSpan));
+    const tailGate = room * (1 - lateral) * (1 - smooth(zTailRoot, zTailRoot + 0.06 * L, z));
+    cand[BONE_TAIL] = tailGate * (1 - smooth(0.25, 0.55, uTail));
+    cand[BONE_TAIL1] = tailGate * smooth(0.25, 0.55, uTail) * (1 - smooth(0.7, 0.95, uTail));
+    cand[BONE_TAIL2] = tailGate * smooth(0.7, 0.95, uTail);
+    // Trunk: the chest (withers) forward of the loin split, the loin (pelvis) behind it.
+    const trunk = room * (1 - headGate) * (1 - neckGate) * (1 - smooth(0, 0.35, tailGate));
+    cand[BONE_LOIN] = trunk * (1 - smooth(zLoin - 0.07 * L, zLoin + 0.07 * L, z));
+    cand[BONE_BODY] = trunk * smooth(zLoin - 0.07 * L, zLoin + 0.07 * L, z);
     // Top four influences, normalised.
     let w4 = 0;
     for (let k = 0; k < 4; k++) {
@@ -278,17 +336,27 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
       if (b >= BONE_FL && b < BONE_FL + 4 && w > 0.8) {
         const s = hipSum[b - BONE_FL];
         s.w += 1; s.x += x; s.z += z;
-      } else if (b >= BONE_LOWER && w > 0.8) {
+      } else if (b >= BONE_LOWER && b < BONE_LOWER + 4 && w > 0.8) {
         const s = hipSum[b - BONE_LOWER];
         s.w += 1; s.x += x; s.z += z;
-      } else if (b === BONE_HEAD && w > 0.8 && Math.abs(z - zNeck) < 0.06 * L) { headY += y; headW++; }
-      else if (b === BONE_TAIL && w > 0.8 && z < zRoot + 0.05 * L) { tailY += y; tailW++; }
+      } else if (b === BONE_HEAD && w > 0.8 && Math.abs(z - zNeck) < 0.15 * L) { headY += y; headW++; }
+      else if (b === BONE_NECK && w > 0.8) { neckY += y; neckZ += z; neckW++; }
+      else if ((b === BONE_TAIL || b === BONE_TAIL1 || b === BONE_TAIL2) && w > 0.8) {
+        const t = tailStat[b === BONE_TAIL ? 0 : b === BONE_TAIL1 ? 1 : 2];
+        t.w += 1; t.y += y; t.z += z;
+      }
     }
   }
   const pivots: Array<[number, number, number]> = [];
   pivots[BONE_BODY] = [0, legTop, zMid];
+  pivots[BONE_LOIN] = [0, legTop * 1.05, zLoin - 0.05 * L];
+  pivots[BONE_NECK] = [0, neckW > 0 ? neckY / neckW : legTop + 0.45 * (H - legTop), neckW > 0 ? neckZ / neckW : zNeck - 0.05 * L];
   pivots[BONE_HEAD] = [0, headW > 0 ? headY / headW : 0.7 * H, zNeck];
-  pivots[BONE_TAIL] = [0, tailW > 0 ? tailY / tailW : legTop * 1.05, zRoot];
+  const tailZ = [zTailRoot, (zTailRoot + zMin) / 2, zMin + 0.15 * (zTailRoot - zMin)];
+  for (let t = 0; t < 3; t++) {
+    const s = tailStat[t];
+    pivots[[BONE_TAIL, BONE_TAIL1, BONE_TAIL2][t]!] = [0, s.w > 0 ? s.y / s.w : legTop * 1.05, tailZ[t]!];
+  }
   const quad = [
     [0.18 * W, zMid + 0.25 * L], [-0.18 * W, zMid + 0.25 * L],
     [0.18 * W, zMid - 0.25 * L], [-0.18 * W, zMid - 0.25 * L],
@@ -302,7 +370,7 @@ export function segmentQuadruped(positions: ArrayLike<number>, hints: SegmentHin
   return {
     type: "quadruped",
     boneNames: BONE_NAMES,
-    parentIndices: [-1, 0, 0, 0, 0, 0, 0, 3, 4, 5, 6],
+    parentIndices: QUADRUPED_PARENTS,
     frame,
     length: L,
     height: H,

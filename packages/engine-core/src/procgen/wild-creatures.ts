@@ -18,11 +18,15 @@ import type { ChunkContentsHook } from "../streaming/chunk-streamer.js";
 import type { SimWorld } from "../world.js";
 import { planChunkPacks, type BiomeRegistry, type PlannedPack } from "./biome-registry.js";
 import { packChunk } from "../streaming/chunk-streamer.js";
+import type { PackSpread } from "../creatures.js";
+
+/** Wild packs graze: this is the one place that asks for the wide spread. */
+const GRAZING: PackSpread = { mode: "grazing" };
 
 /** The CreatureSystem methods WildCreatures uses. */
 export interface PackSpawner {
   has(kind: string): boolean;
-  spawnPack(sim: SimWorld, kind: string, x: number, z: number, size?: readonly [number, number]): number[];
+  spawnPack(sim: SimWorld, kind: string, x: number, z: number, size?: readonly [number, number], spread?: PackSpread): number[];
   /** Still one of its creatures (an id freed by an admin despawn may be reused). */
   isCreature(e: number): boolean;
 }
@@ -75,7 +79,9 @@ export class WildCreatures implements ChunkContentsHook {
     const ids: number[] = [];
     for (const p of this.plan(cx, cz)) {
       if (this.opts.blocked?.(p.x, p.z, p.aquatic === true)) continue;
-      const made = this.opts.spawner.spawnPack(sim, p.kind, p.x, p.z, p.pack);
+      // Ambient wildlife grazes: a herd spreads across its territory rather than
+      // standing in a clump. A hand-placed pack stays anchored (see PackSpread).
+      const made = this.opts.spawner.spawnPack(sim, p.kind, p.x, p.z, p.pack, GRAZING);
       ids.push(...made);
       this.counters.spawned++;
       this.opts.log?.(`[wildlife] ${p.kind} x${made.length} at ${p.x.toFixed(0)}, ${p.z.toFixed(0)} (${p.biome}${p.aquatic ? ", water" : ""})`);

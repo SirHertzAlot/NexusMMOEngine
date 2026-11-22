@@ -99,6 +99,7 @@ mirrored positions and never feeds back into the simulation.
 | Layer | Files | What it does |
 |---|---|---|
 | Shared GLSL | `glsl.ts` | Hash, value-noise, FBM and ridged-noise snippets. Terrain and elemental shaders import from here instead of duplicating noise code. |
+| Spell VFX | `vfx/spell-fx-layer.ts`, `vfx/spell-content.ts` | The `0x28` spell effects the server spawns, drawn with procedural GLSL rather than art: the ground aim ribbon and sigil reticle while a spell is armed, then the pillar, wave crest, fissure, cyclone shell, shield dome, frost disc or ice prison the server named. Per-spell mechanics and the shader each maps to are in [internals/SPLINE-SPELL-VFX-REPORT.md](internals/SPLINE-SPELL-VFX-REPORT.md). |
 | Terrain FX | `terrain-fx.ts` | `onBeforeCompile` injection on the chunk material: noise albedo, pulsing energy veins, shimmering water pools. Deterministic per chunk via `ChunkRow.seed`. |
 | Entity FX | `entity-fx.ts` | Spawn portal, selection ring, player aura, motion-trail ribbon, hover highlight. |
 | Elemental orbs | `element-fx.ts`, `showcase.ts` | Six procedural `ShaderMaterial` orbs (water, fire, wind, earth, snow, lava) with runtime canvas textures. No downloaded assets. |

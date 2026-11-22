@@ -44,6 +44,8 @@ import { EMITTER_REGISTRY } from "./emitter-content.js";
 import { NpcMarkers } from "./npc-markers.js";
 import { DungeonEntrances } from "./dungeon-entrances.js";
 import { Telegraphs } from "./telegraphs.js";
+import { SpellFxLayer } from "./vfx/spell-fx-layer.js";
+import { SPELL_VFX_DEFS, SPELL_BUDGET_SLOTS, type SpellBarEntry } from "./vfx/spell-content.js";
 import { DungeonAmbience } from "./dungeon-look.js";
 import type { Bindings } from "../input/bindings.js";
 import type { AssetProvider } from "./assets.js";
@@ -211,6 +213,12 @@ export interface WorldCanvasProps {
   streamingRef?: React.MutableRefObject<{ onRegionChange: (endpoint: string) => void } | null>;
   /** The audio engine for weather sound (rain bed). */
   audio?: AudioEngine | null;
+  /** Currently armed spline spell waiting for mouse-drag path drawing. */
+  armedSpell?: SpellBarEntry | null;
+  /** Called on mouse release after drawing a spline path on the ground. */
+  onSplineCast?: (spellId: string, path: [number, number, number][]) => void;
+  /** Called when the player cancels spline aiming (right-click). */
+  onCancelSpline?: () => void;
 }
 
 /** The player's health and the target, as the frames show them (U12a). */
@@ -374,6 +382,26 @@ function PhysicalSkyHost({
   return null;
 }
 
+function pickSplineGroundPoint(
+  ray: THREE.Ray,
+  terrain: TerrainRenderer,
+  fallbackY: number,
+): [number, number, number] | null {
+  const gp = groundPoint(
+    { ox: ray.origin.x, oy: ray.origin.y, oz: ray.origin.z, dx: ray.direction.x, dy: ray.direction.y, dz: ray.direction.z },
+    terrain,
+    fallbackY,
+  );
+  if (gp) {
+    const h = terrain.heightAt(gp.x, gp.z) ?? fallbackY;
+    return [gp.x, h, gp.z];
+  }
+  if (Math.abs(ray.direction.y) < 1e-6) return null;
+  const t = (fallbackY - ray.origin.y) / ray.direction.y;
+  if (t < 0) return null;
+  return [ray.origin.x + ray.direction.x * t, fallbackY, ray.origin.z + ray.direction.z * t];
+}
+
 interface Runtime {
   /** IM8: one entity layer per neighbouring region's observer mirror. */
   observerLayers: Map<MirrorClient, EntityLayer>;
@@ -388,6 +416,8 @@ interface Runtime {
   drops: DropLabels;
   resources: ResourceNodes;
   emitters: EmitterFxLayer;
+  /** Authoritative 0x28 spell VFX + spline CurveEmitter runtime layer. */
+  spellFx: SpellFxLayer;
   /** CF4: hair, capes and tails bound to bones; nothing is bound by default. */
   chains: FollowChainLayer;
   npcs: NpcMarkers;
@@ -445,6 +475,9 @@ function MirrorWorld({
   numbersCanvas,
   streamingRef,
   audio,
+  armedSpell,
+  onSplineCast,
+  onCancelSpline,
 }: WorldCanvasProps & { settings: QualitySettings; screen: { current: ScreenState }; physicalSky: { current: PhysicalSky | null }; numbersCanvas: { current: HTMLCanvasElement | null } }): null {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -452,8 +485,8 @@ function MirrorWorld({
   const rt = useRef<Runtime | null>(null);
   // Latest props for the effects and the frame loop, without re-creating the world.
   // Latest ref includes stance, equipped items, and reticle callback.
-  const latest = useRef({ onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings });
-  latest.current = { onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings };
+  const latest = useRef({ onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings, armedSpell, onSplineCast, onCancelSpline });
+  latest.current = { onGroundPick, observers, listener, onFootstep, wireframe, showcase, onHud, onBag, onStance, onTreat, onMend, onUseHotkey, onNearDrop, onNearResource, onNearChest, onQuests, onNearNpc, onNearEntrance, combat, onCombat, stance, equippedMain, equippedOff, equippedMainColor, onReticle, lastStateAt, onLoading, settings, armedSpell, onSplineCast, onCancelSpline };
   const fpsCamState = useRef(createFirstPersonCameraState());
   const fpsMotion = useRef<FirstPersonMotionSample>({
     right: 0,
@@ -542,6 +575,7 @@ function MirrorWorld({
     const resources = new ResourceNodes();
     // VfxEmitter rows (shrines): particles drawn by the entity layer's QuarksFx.
     const emitters = new EmitterFxLayer(layer.vfx, EMITTER_REGISTRY);
+    const spellFx = new SpellFxLayer(SPELL_VFX_DEFS, SPELL_BUDGET_SLOTS, latest.current.settings.tier);
     const chains = new FollowChainLayer();
     scene.add(chains.group);
     const npcs = new NpcMarkers();
@@ -557,7 +591,7 @@ function MirrorWorld({
     const weatherFeel = new WeatherFeel();
     weatherFeel.setAudio(audio ?? null);
     const fpsRig = new FirstPersonRig(layer.syntyProps);
-    scene.add(sky.group, terrain.group, water.group, layer.group, fpsRig.root, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh, emitters.group);
+    scene.add(sky.group, terrain.group, water.group, layer.group, fpsRig.root, particles.group, drops.group, npcs.group, entrances.group, telegraphs.group, clouds.group, rain.mesh, emitters.group, spellFx.group);
     ambience?.hideWhileLit(sky.group, water.group, clouds.group, rain.mesh);
     // A dungeon instance (D4) has no terrain: a stand-in stone floor just under y = 0, where the
     // server keeps bodies, so the run isn't drawn in a void. The dungeon's own shell (walls,
@@ -571,7 +605,9 @@ function MirrorWorld({
 
     const canvas = gl.domElement;
     const input = new InputState();
+    let splineSuppressLockUntil = 0;
     const unbind = bindInput(canvas, input, {
+      canLockPointer: () => !latest.current.armedSpell && performance.now() > splineSuppressLockUntil,
       // Interface keys (M3a): pick up the drop in range (else talk to the npc in range, else ask at the dungeon entrance), open the bag.
       onAction: (action) => {
         if (action === "bag") latest.current.onBag?.();
@@ -604,6 +640,12 @@ function MirrorWorld({
       e.preventDefault();
       camDistance.current = clampCamDistance(camDistance.current + e.deltaY * 0.01);
     };
+    let drawingSpline = false;
+    let splinePath: [number, number, number][] = [];
+    const currentPlayerY = (): number => {
+      const pid = client.playerEntity;
+      return (pid ? client.state.entities.get(pid)?.transform?.py : undefined) ?? 0;
+    };
     const onPointerMove = (e: PointerEvent): void => {
       const rect = canvas.getBoundingClientRect();
       pointer.current.set(
@@ -611,10 +653,56 @@ function MirrorWorld({
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       loop.current.pointerMoved = true;
+      const armed = latest.current.armedSpell;
+      if (drawingSpline && armed?.target === "spline" && rt.current) {
+        raycaster.current.setFromCamera(pointer.current, camera);
+        const pt = pickSplineGroundPoint(raycaster.current.ray, rt.current.terrain, currentPlayerY());
+        if (pt) {
+          const raised: [number, number, number] = [pt[0], pt[1] + 0.35, pt[2]];
+          const last = splinePath[splinePath.length - 1];
+          if (last) {
+            const dx = raised[0] - last[0];
+            const dz = raised[2] - last[2];
+            if (dx * dx + dz * dz >= 0.45 * 0.45 && splinePath.length < 16) {
+              splinePath.push(raised);
+            }
+          } else {
+            splinePath.push(raised);
+          }
+          if (splinePath.length >= 2) {
+            rt.current.spellFx.setPreview(splinePath, armed.elementColor);
+          } else if (splinePath.length === 1) {
+            rt.current.spellFx.setPreview([splinePath[0]!, raised], armed.elementColor);
+          }
+        }
+      }
     };
-    // A left click on another body makes it the target (U12a).
+    // A left click on another body makes it the target (U12a), or draws a spline spell if armed.
     const onMouseDown = (e: MouseEvent): void => {
+      const armed = latest.current.armedSpell;
+      if (e.button === 2 && armed) {
+        drawingSpline = false;
+        splinePath = [];
+        rt.current?.spellFx.clearPreview();
+        latest.current.onCancelSpline?.();
+        return;
+      }
       if (e.button !== 0) return;
+      if (armed?.target === "spline" && rt.current) {
+        splineSuppressLockUntil = performance.now() + 300;
+        const rect = canvas.getBoundingClientRect();
+        pointer.current.set(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        raycaster.current.setFromCamera(pointer.current, camera);
+        const pt = pickSplineGroundPoint(raycaster.current.ray, rt.current.terrain, currentPlayerY());
+        if (pt) {
+          drawingSpline = true;
+          splinePath = [[pt[0], pt[1] + 0.35, pt[2]]];
+        }
+        return;
+      }
       const h = layer.hovered;
       if (h !== null && h !== client.playerEntity) {
         latest.current.combat?.select(h);
@@ -633,9 +721,46 @@ function MirrorWorld({
         if (p) pick(p.x, p.z);
       }
     };
+    const onMouseUp = (e: MouseEvent): void => {
+      if (!drawingSpline || e.button !== 0) return;
+      drawingSpline = false;
+      splineSuppressLockUntil = performance.now() + 300;
+      const armed = latest.current.armedSpell;
+      if (armed?.target === "spline" && rt.current) {
+        raycaster.current.setFromCamera(pointer.current, camera);
+        const pt = pickSplineGroundPoint(raycaster.current.ray, rt.current.terrain, currentPlayerY());
+        if (pt) {
+          const raised: [number, number, number] = [pt[0], pt[1] + 0.35, pt[2]];
+          const last = splinePath[splinePath.length - 1];
+          if (last) {
+            const dx = raised[0] - last[0];
+            const dz = raised[2] - last[2];
+            if (dx * dx + dz * dz >= 0.09 && splinePath.length < 16) {
+              splinePath.push(raised);
+            }
+          }
+        }
+        if (splinePath.length >= 2) {
+          latest.current.onSplineCast?.(armed.id, splinePath);
+        }
+      }
+      splinePath = [];
+      rt.current?.spellFx.clearPreview();
+    };
+    const onContextMenu = (e: MouseEvent): void => {
+      if (latest.current.armedSpell) {
+        e.preventDefault();
+        drawingSpline = false;
+        splinePath = [];
+        rt.current?.spellFx.clearPreview();
+        latest.current.onCancelSpline?.();
+      }
+    };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", onMouseUp);
+    canvas.addEventListener("contextmenu", onContextMenu);
 
     // Textured ground, when the surfaces were fetched (npm run surfaces:fetch); flat colours until then.
     let surfaces: Surfaces | null = null;
@@ -651,12 +776,12 @@ function MirrorWorld({
       .catch((e: unknown) => console.warn(`[client] terrain surfaces: ${e instanceof Error ? e.message : String(e)}`));
 
     const observerLayers = new Map<MirrorClient, EntityLayer>();
-    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, emitters, chains, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
+    rt.current = { observerLayers, sky, particles, map, terrain, water, layer, fpsRig, input, drops, resources, emitters, spellFx, chains, npcs, entrances, telegraphs, streaming, weather, clouds, rain, weatherFeel, ambience };
     particles.setBudget(budgetMultiplierForTier(latest.current.settings.tier));
     layer.setQuality(latest.current.settings);
     // Dev builds: a handle for probes (layer stats, scenery, input, client, capture).
     if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
-      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { gl, scene, camera, layer, fpsRig, input, client };
+      (window as unknown as { __mmoDebug?: unknown }).__mmoDebug = { gl, scene, camera, layer, fpsRig, input, client, spellFx };
       (window as unknown as { __mmoCapture?: () => Promise<string> }).__mmoCapture = () => {
         return new Promise<string>((resolve) => {
           (window as unknown as { __mmoCapturePending?: ((dataUrl: string) => void) | null }).__mmoCapturePending = resolve;
@@ -671,6 +796,8 @@ function MirrorWorld({
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onMouseUp);
+      canvas.removeEventListener("contextmenu", onContextMenu);
       scene.remove(terrain.group, water.group);
       closed = true;
       terrain.setSurfaces(null);
@@ -678,6 +805,8 @@ function MirrorWorld({
       sky.dispose();
       particles.dispose();
       emitters.dispose();
+      scene.remove(spellFx.group);
+      spellFx.dispose();
       scene.remove(chains.group);
       chains.dispose();
       scene.remove(emitters.group);
@@ -711,7 +840,12 @@ function MirrorWorld({
   useEffect(() => {
     rt.current?.particles.setBudget(budgetMultiplierForTier(settings.tier));
     rt.current?.layer.setQuality(settings);
+    rt.current?.spellFx.setQuality(settings.tier);
   }, [settings]);
+
+  useEffect(() => {
+    if (!armedSpell) rt.current?.spellFx.clearPreview();
+  }, [armedSpell]);
 
   useEffect(() => {
     rt.current?.terrain.setWireframe(wireframe);
@@ -817,8 +951,19 @@ function MirrorWorld({
       // Attack telegraphs (M5): new warnings in, fills and fades advanced.
       for (const tg of combat.telegraphs) r.telegraphs.apply(tg, client.tickHz, (x, z) => r.terrain.heightAt(x, z), now / 1000);
       combat.telegraphs.length = 0;
+      // Authoritative 0x28 spell VFX events: drain queue into ManagedEffectRuntime.
+      for (const fx of combat.fxQueue) {
+        r.spellFx.applyFxMessage(fx, client.serverTick, client.tickHz || 30);
+      }
+      combat.fxQueue.length = 0;
     }
     r.telegraphs.update(now / 1000);
+    r.spellFx.update(Math.min(delta, 0.05), camera, (wid, out) => {
+      const tr = client.state.get(wid)?.transform;
+      if (!tr) return false;
+      out.set(tr.px, tr.py, tr.pz);
+      return true;
+    });
     // Resource nodes: which one the interact key would gather from, and the worked-out ones drawn low.
     r.resources.sync(client.state, client.resources, r.layer.player, GATHER_PROMPT_RANGE);
     r.layer.setDepleted(r.resources.depleted);
@@ -1080,7 +1225,7 @@ function MirrorWorld({
       }
     }
 
-    r.terrain.update(camera.position);
+    r.terrain.update(camera.position, 2);
     r.water.update(seconds);
     updateTerrainFx(seconds);
 

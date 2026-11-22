@@ -224,6 +224,26 @@ export type {
 export { NavigationSystem, WaypointStore } from "./navigation/system.js";
 export { CrowdSystem } from "./navigation/crowd-system.js";
 export { CreatureSystem, type CreatureOptions } from "./creatures.js";
+export {
+  calculateWorldCycle,
+  DEFAULT_SEASON_CLOCK,
+  type Season,
+  type SeasonClock,
+  type WorldCycleState,
+} from "./sim/world-cycle.js";
+export {
+  getSpeciesBioProfile,
+  type Chronotype,
+  type DietType,
+  type MatingSeasonKind,
+  type SpeciesBioProfile,
+} from "./sim/species-metabolism.js";
+export {
+  LivingSimSystem,
+  type LivingAction,
+  type LivingSimOptions,
+  type LivingSimState,
+} from "./sim/living-sim-system.js";
 export { NavObstacleSystem } from "./navigation/obstacle-system.js";
 export type { NavObstacleOptions } from "./navigation/obstacle-system.js";
 export { loadScale, scaleResolver, type ScaleResolver } from "./scale.js";
@@ -382,7 +402,14 @@ export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social
 export { SqliteFriendStore } from "./friend-store.js";
 
 export { DeathSystem, type DeathBody, type LifeEvent } from "./death.js";
-export { Mana, MagicSystem, type SpellEvent } from "./magic.js";
+export {
+  Mana,
+  MagicSystem,
+  type SpellEvent,
+  type ActiveIceRing,
+  type MagicCreatureInfo,
+  type MagicSystemHooks,
+} from "./magic.js";
 export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
 export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent, type Weapon } from "./combat.js";
 export { BotSystem } from "./bots.js";

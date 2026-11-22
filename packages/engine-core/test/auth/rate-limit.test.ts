@@ -57,4 +57,17 @@ describe("auth: AuthRateLimiter", () => {
     assert.throws(() => new AuthRateLimiter({ maxFailures: 0 }), /maxFailures/);
     assert.throws(() => new AuthRateLimiter({ windowMs: -1 }), /windowMs/);
   });
+
+  it("never limits exempt IPs", () => {
+    const rl = new AuthRateLimiter({
+      maxFailures: 1,
+      windowMs: 60_000,
+      exemptIps: ["127.0.0.1", "::1"],
+    });
+    rl.recordFailure("127.0.0.1");
+    rl.recordFailure("127.0.0.1");
+    assert.equal(rl.isLimited("127.0.0.1"), false, "loopback never limited");
+    rl.recordFailure("8.8.8.8");
+    assert.equal(rl.isLimited("8.8.8.8"), true, "non-exempt is limited");
+  });
 });

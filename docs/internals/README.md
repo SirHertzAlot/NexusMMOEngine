@@ -18,6 +18,7 @@ in the code sends you.
 | [EDITOR-ARCHITECTURE.md](EDITOR-ARCHITECTURE.md) | The modular editor's shell and panel model | `apps/editor/src/ui/App.tsx`, `packages/engine-core/src/persist/persistence-core.ts` |
 | [EDITOR-AUTHORING.md](EDITOR-AUTHORING.md) | The view-centered authoring model | `apps/editor/src/ui/authoring-view.tsx` |
 | [VFX-SHADER-POSTFX-BLUEPRINT.md](VFX-SHADER-POSTFX-BLUEPRINT.md) | The VFX, shader and post-processing contract | `packages/render-fx/src/types.ts` |
+| [SPLINE-SPELL-VFX-REPORT.md](SPLINE-SPELL-VFX-REPORT.md) | Spline spell casting: the authoritative mechanics per spell and the GLSL shader each maps to | `apps/client/src/render/vfx/spell-fx-layer.ts`, `packages/engine-core/src/magic.ts`, `modules/combat/server.js` |
 | [VFX-CPP-MAPPING.md](VFX-CPP-MAPPING.md) | The VFX structures a C++ backend would consume | `packages/art/src/vfx-convert.ts`, `packages/art/src/vfx-schema.ts` |
 | [TERRAIN-MASK.md](TERRAIN-MASK.md) | Terrain material masks and the bake envelope | `packages/art/src/media/terrain-mask.ts`, `packages/engine-core/src/terrain/mask-bake.ts` |
 | [CEL-SHADING-AUDIT.md](CEL-SHADING-AUDIT.md) | Where cel shading is and is not applied | `apps/client/src/render/shading/world-classes.ts` |

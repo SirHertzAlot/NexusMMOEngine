@@ -215,14 +215,35 @@ export class PropCollisionSystem implements SimSystem {
   /** Static obstacles binned by XZ cell, rebuilt each tick (statics do not move; the set can change). */
   private readonly grid = new StaticGrid();
 
+  // Scratch SoA for zero-allocation mover-mover separation
+  private moverCap = 0;
+  private validMovers = new Int32Array(0);
+  private moverR = new Float32Array(0);
+  private moverY0 = new Float32Array(0);
+  private moverY1 = new Float32Array(0);
+  private moverM = new Float32Array(0);
+
   /** Walkers driven by a physics character (CharacterBridgeSystem) resolve there, not here. */
   constructor(private readonly bridged?: { has(e: number): boolean }) {}
+
+  private ensureMoverCap(n: number): void {
+    if (n <= this.moverCap) return;
+    const c = Math.max(32, n * 2);
+    this.moverCap = c;
+    this.validMovers = new Int32Array(c);
+    this.moverR = new Float32Array(c);
+    this.moverY0 = new Float32Array(c);
+    this.moverY1 = new Float32Array(c);
+    this.moverM = new Float32Array(c);
+  }
 
   step(sim: SimWorld): void {
     const movers = this.movers(sim.ecs);
     if (movers.length === 0) return;
     const obstacles = this.obstacles(sim.ecs);
     this.grid.build(obstacles);
+    this.ensureMoverCap(movers.length);
+    let validCount = 0;
     const foot = this.foot;
     for (let i = 0; i < movers.length; i++) {
       const e = movers[i] as number;
@@ -268,6 +289,67 @@ export class PropCollisionSystem implements SimSystem {
         if (hit) {
           Transform.px[e] += PUSH.x;
           Transform.pz[e] += PUSH.z;
+        }
+      }
+
+      // Record valid mover for creature-creature & mover-mover mutual separation
+      this.validMovers[validCount] = e;
+      this.moverR[validCount] = rm;
+      this.moverY0[validCount] = my0;
+      this.moverY1[validCount] = my1;
+      this.moverM[validCount] = BodyConfig.mass[e] > 0 ? BodyConfig.mass[e] : 80;
+      validCount++;
+    }
+
+    // 2. Mutual Mover-Mover Capsule Collision Pushout:
+    // Keeps creatures, characters and bots from occupying the same space or getting stuck
+    for (let i = 0; i < validCount; i++) {
+      const e1 = this.validMovers[i];
+      const r1 = this.moverR[i];
+      let x1 = Transform.px[e1];
+      let z1 = Transform.pz[e1];
+      const y0_1 = this.moverY0[i];
+      const y1_1 = this.moverY1[i];
+      const m1 = this.moverM[i];
+
+      for (let j = i + 1; j < validCount; j++) {
+        const e2 = this.validMovers[j];
+        const r2 = this.moverR[j];
+        const want = r1 + r2;
+        const x2 = Transform.px[e2];
+        const z2 = Transform.pz[e2];
+        const dx = x1 - x2;
+        const dz = z1 - z2;
+        if (dx > want || dx < -want || dz > want || dz < -want) continue;
+
+        const y0_2 = this.moverY0[j];
+        const y1_2 = this.moverY1[j];
+        if (y1_1 <= y0_2 || y1_2 <= y0_1) continue;
+
+        const distSq = dx * dx + dz * dz;
+        if (distSq >= want * want) continue;
+
+        const m2 = this.moverM[j];
+        const totalMass = m1 + m2;
+        const w1 = totalMass > 0 ? m2 / totalMass : 0.5;
+        const w2 = totalMass > 0 ? m1 / totalMass : 0.5;
+
+        if (distSq > 1e-6) {
+          const dist = Math.sqrt(distSq);
+          const push = (want - dist) / dist;
+          const pushX = dx * push;
+          const pushZ = dz * push;
+          x1 += pushX * w1;
+          z1 += pushZ * w1;
+          Transform.px[e1] = x1;
+          Transform.pz[e1] = z1;
+          Transform.px[e2] -= pushX * w2;
+          Transform.pz[e2] -= pushZ * w2;
+        } else {
+          // Concentric: push along +X axis
+          x1 += want * 0.5 * w1;
+          Transform.px[e1] = x1;
+          Transform.px[e2] -= want * 0.5 * w2;
         }
       }
     }

@@ -17,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { CreaturesRules } from "@mmo-engine/rules";
+import { SPECIES_NATURAL_SCALE } from "../creatures.js";
 import type { WildlifeTable } from "./wildlife-table.js";
 
 export const DEFAULT_NATURAL_WEAPONS = fileURLToPath(new URL("../../../content/wildlife/natural.json", import.meta.url));
@@ -67,7 +68,7 @@ export function wildlifeCreatures(t: WildlifeTable, natural: NaturalWeapons): Cr
         activity: s.activity,
         habitat: s.habitat === "water" ? "water" : "land",
         ...(s.depthM ? { depthM: [s.depthM[0], s.depthM[1]] as [number, number] } : {}),
-        size: 1,
+        size: SPECIES_NATURAL_SCALE[id] ?? 1,
       },
     };
   }

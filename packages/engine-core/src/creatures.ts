@@ -30,7 +30,7 @@
  */
 
 import { addComponent, defineQuery, entityExists, hasComponent } from "bitecs";
-import { IntentButton, LocomotionMode } from "@mmo-engine/protocol";
+import { ClipId, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import { type CreaturesRules, type ItemBaseRules, CreatureAiSchema, type CreatureAiRules } from "@mmo-engine/rules";
 import { fnv1a32 } from "@mmo-engine/scatter";
 import * as C from "./components.js";
@@ -41,6 +41,9 @@ import type { SystemAccess } from "./system-access.js";
 import { clearOfStatics } from "./prop-collision.js";
 import type { SimWorld } from "./world.js";
 import { hash } from "./procgen/ecology.js";
+import { LivingSimSystem } from "./sim/living-sim-system.js";
+import type { SeasonClock } from "./sim/world-cycle.js";
+import type { DayClock } from "@mmo-engine/protocol";
 
 export interface CreatureOptions {
   creatures: CreaturesRules["creatures"];
@@ -57,6 +60,12 @@ export interface CreatureOptions {
   massPower?: number;
   /** Time of day 0..1 (0 = midnight) at a tick; null or absent: no day cycle, everyone is awake. */
   timeOfDay?: (tick: number) => number | null;
+  /** Day clock for living simulation and seasonal cycles. */
+  dayClock?: DayClock;
+  /** Season clock for macro world seasonal cycles (Spring, Summer, Autumn rut, Winter dormancy). */
+  seasonClock?: SeasonClock;
+  /** Living simulation system (biological needs, digestion, sleep, excretion, breeding). */
+  livingSim?: LivingSimSystem;
   /** Show a warning cone at (x, z) facing yaw for `ms` (the TelegraphSystem, damage 0). */
   warn?: (e: number, x: number, z: number, yaw: number, range: number, ms: number, tick: number) => void;
   /** Cancel the warnings creature `e` has up. */
@@ -115,7 +124,63 @@ interface Brain {
   wanderX: number;
   wanderZ: number;
   wanderUntil: number;
+  /** WL2/Graze: individual wander multiplier and scout flag for natural herd dispersion. */
+  wanderMultiplier: number;
+  isScout?: boolean;
 }
+
+/**
+ * Natural SI scale multipliers for species models.
+ * Normalizes varied authored asset heights to realistic real-world SI proportions (1.0 = 1.0 m, human height = 1.80 m).
+ * Deer stands ~1.76 m (matching human height); wolves stand ~0.94 m head / ~0.80 m shoulder; etc.
+ */
+export const SPECIES_NATURAL_SCALE: Readonly<Record<string, number>> = Object.freeze({
+  deer: 0.42,
+  stag: 0.48,
+  elk: 0.48,
+  wolf: 0.35,
+  "dire-wolf": 0.50,
+  fox: 0.22,
+  coyote: 0.30,
+  bobcat: 0.32,
+  cougar: 0.55,
+  "sabre-tooth": 0.65,
+  bear: 1.10,
+  "short-faced-bear": 1.45,
+  boar: 1.00,
+  horse: 0.44,
+  donkey: 0.34,
+  cow: 0.36,
+  bull: 0.38,
+  sheep: 0.34,
+  goat: 0.34,
+  alpaca: 0.34,
+  bighorn: 0.36,
+  pig: 0.70,
+  rabbit: 0.45,
+  hare: 0.45,
+  porcupine: 0.50,
+  raccoon: 0.40,
+  otter: 0.38,
+  squirrel: 0.35,
+  quail: 0.25,
+  raven: 0.30,
+  hen: 0.35,
+  duck: 0.35,
+  frog: 0.25,
+  monkey: 0.40,
+  snake: 0.50,
+  "giant-spider": 0.90,
+  mammoth: 1.80,
+  "woolly-rhino": 1.30,
+  "giant-ground-sloth": 1.50,
+  fish: 0.40,
+  shark: 1.00,
+  orca: 1.40,
+  squid: 0.60,
+  "giant-squid": 1.80,
+  megalodon: 2.20,
+});
 
 /** A wandering creature's pace, as a share of its run speed. */
 const WANDER_PACE = 0.35;
@@ -137,11 +202,25 @@ export function isAwake(activity: string, t: number | null): boolean {
   }
 }
 
+/**
+ * How far a pack scatters from the point it spawns at.
+ *
+ * `anchored` (the default) keeps a hand-placed pack at its node: a scene's
+ * camp, a dungeon room, an admin spawn. `grazing` is for ambient wildlife,
+ * which spreads a herd across its territory. `radiusM` overrides whichever
+ * radius the mode would pick.
+ */
+export interface PackSpread {
+  readonly mode: "anchored" | "grazing";
+  readonly radiusM?: number;
+}
+
 export class CreatureSystem implements SimSystem {
   readonly name = "creatures";
   readonly access: SystemAccess = {
     system: "creatures",
     reads: [
+      { component: "Animation", fields: ["clipId"] },
       "BodyConfig",
       "CharacterRef",
       { component: "Health", fields: ["current", "max"] },
@@ -151,6 +230,7 @@ export class CreatureSystem implements SimSystem {
     ],
     writes: [
       { component: "Action", fields: ["move"] },
+      { component: "Animation", fields: ["clipId", "layerMask", "rate", "startTick"] },
       { component: "AssetRef", fields: ["assetHash", "variant"] },
       "FarVisible",
       { component: "Health", fields: ["current", "max"] },
@@ -180,6 +260,7 @@ export class CreatureSystem implements SimSystem {
   private poolScratchSlots: Int32Array | undefined;
 
   private readonly opts: CreatureOptions;
+  readonly livingSim: LivingSimSystem;
 
   constructor(opts: CreatureOptions) {
     this.opts = { ...opts };
@@ -192,6 +273,13 @@ export class CreatureSystem implements SimSystem {
     }
     this.rebuildKindHashes();
     this.setAi(opts.ai ?? DEFAULT_AI);
+    this.livingSim = opts.livingSim ?? new LivingSimSystem({
+      dayClock: opts.dayClock,
+      seasonClock: opts.seasonClock,
+      tickHz: this.tickHz,
+      waterSurfaceAt: opts.waterSurfaceAt,
+      groundHeightAt: opts.groundHeightAt,
+    });
   }
 
   private rebuildKindHashes(): void {
@@ -330,7 +418,7 @@ export class CreatureSystem implements SimSystem {
     b.raidIdx = -1;
     b.wanderX = NaN;
     b.wanderZ = NaN;
-    b.wanderUntil = 0;
+    b.wanderUntil = sim.currentTick + Math.floor(this.rand() * (def?.behavior?.wanderPauseS ?? 6) * this.tickHz);
     b.hungryAt = sim.currentTick + this.hungerTicks(def);
     this.stop(e);
     return true;
@@ -398,28 +486,61 @@ export class CreatureSystem implements SimSystem {
 
   /**
    * Spawn one pack of `kind` around (x, z): a random size in the creature's
-   * pack range (or `size`, a biome's own), each a few metres from the
-   * centre. Returns the entity ids.
+   * pack range (or `size`, a biome's own). Returns the entity ids.
+   *
+   * `spread` says how far from (x, z) the pack may scatter, and defaults to
+   * `anchored`: a hand-placed pack stays within a few metres of the node
+   * that placed it, because whoever placed a camp meant its occupants to be
+   * at the camp. Ambient wildlife passes `grazing`, which spreads a herd
+   * across its territory and sends one or two scouts to the perimeter.
+   * `radiusM` overrides the radius either mode would pick.
    */
-  spawnPack(sim: SimWorld, kind: string, x: number, z: number, size?: readonly [number, number]): number[] {
+  spawnPack(
+    sim: SimWorld,
+    kind: string,
+    x: number,
+    z: number,
+    size?: readonly [number, number],
+    spread?: PackSpread,
+  ): number[] {
     const def = this.opts.creatures[kind];
     if (!def) throw new Error(`unknown creature "${kind}"`);
     const [min, max] = size ?? def.pack;
     const n = min + Math.floor(this.rand() * (max - min + 1));
     const out: number[] = [];
     const group = this.nextGroup++;
+    const grazing = spread?.mode === "grazing";
+    // A grazing herd spreads organically across its territory; an anchored
+    // pack keeps the tight 1.5-3 m clump around the point that placed it.
+    const baseRadius = n <= 1
+      ? 0
+      : spread?.radiusM !== undefined
+        ? Math.max(0, spread.radiusM)
+        : grazing
+          ? Math.max(5.0, Math.min(22.0, 3.5 * Math.sqrt(n)))
+          : 0;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + this.rand() * 0.8;
-      const r = n === 1 ? 0 : 1.5 + this.rand() * 1.5;
-      out.push(this.spawn(sim, kind, x + Math.cos(a) * r, z + Math.sin(a) * r, i, group));
+      const a = (i / n) * Math.PI * 2 + (this.rand() - 0.5) * 0.8;
+      // In a grazing herd 1 or 2 individuals (index 0 in packs >= 3, and the
+      // middle one from 6 up) act as scouts, venturing further out to graze
+      // along the ridge or the perimeter when it feels safe. An anchored pack
+      // has none: its members belong to the thing that placed them.
+      const isScout = grazing && n >= 3 && (i === 0 || (n >= 6 && i === Math.floor(n / 2)));
+      const r = n === 1
+        ? 0
+        : baseRadius > 0
+          ? (isScout ? baseRadius * (1.4 + this.rand() * 0.6) : baseRadius * (0.35 + 0.65 * Math.sqrt(this.rand())))
+          : 1.5 + this.rand() * 1.5;
+      out.push(this.spawn(sim, kind, x + Math.cos(a) * r, z + Math.sin(a) * r, i, group, isScout));
     }
     return out;
   }
 
-  spawn(sim: SimWorld, kind: string, x: number, z: number, index = 0, group = 0): number {
-    return this.spawnInternal(sim, kind, x, z, index, group);
+  spawn(sim: SimWorld, kind: string, x: number, z: number, index = 0, group = 0, isScout = false): number {
+    return this.spawnInternal(sim, kind, x, z, index, group, undefined, isScout);
   }
 
+  // `isScout` comes last so the pool call sites, which pass `poolMeta` positionally, keep working.
   private spawnInternal(
     sim: SimWorld,
     kind: string,
@@ -428,6 +549,7 @@ export class CreatureSystem implements SimSystem {
     index = 0,
     group = 0,
     poolMeta?: { slotHandle?: number; homeY?: number; modelHashOverride?: number },
+    isScout = false,
   ): number {
     const def = this.opts.creatures[kind];
     if (!def) throw new Error(`unknown creature "${kind}"`);
@@ -439,10 +561,12 @@ export class CreatureSystem implements SimSystem {
     // Never inside a baked building; the cleared spot is also home. (Water is no place for a building.)
     if (!aquatic) ({ x, z } = clearOfStatics(sim, x, z, CHARACTER_CAPSULE.radius));
     const eid = sim.spawn();
-    for (const c of [C.Transform, C.Velocity, C.PlayerIntent, C.Health, C.Locomotion, C.Action, C.NavAgent]) {
+    for (const c of [C.Transform, C.Velocity, C.PlayerIntent, C.Health, C.Locomotion, C.Action, C.NavAgent, C.Animation]) {
       addComponent(sim.ecs, c, eid);
     }
-    const size = beh?.size ?? 1;
+    const size = (beh?.size !== undefined && beh.size !== 1)
+      ? beh.size
+      : (SPECIES_NATURAL_SCALE[kind] ?? beh?.size ?? 1);
     C.Transform.px[eid] = x;
     C.Transform.pz[eid] = z;
     C.Transform.py[eid] = this.spawnY(def, x, z, poolMeta?.homeY ?? 0);
@@ -453,6 +577,10 @@ export class CreatureSystem implements SimSystem {
     C.Locomotion.abilities[eid] = 1;
     C.Locomotion.breath[eid] = 1;
     C.Action.move[eid] = 0;
+    C.Animation.clipId[eid] = ClipId.Idle;
+    C.Animation.startTick[eid] = 0;
+    C.Animation.rate[eid] = 1;
+    C.Animation.layerMask[eid] = 1;
     this.walkSpeed = sim.movement.walkSpeed;
     C.NavAgent.speed[eid] = this.runSpeed(def) * this.walkSpeed;
     C.NavAgent.tx[eid] = NaN;
@@ -472,7 +600,7 @@ export class CreatureSystem implements SimSystem {
     }
     // ColliderSystem skips entities with an AssetRef (scatter props), so a creature with a model would have no
     // body: it would never collide and the client would draw it as scenery. Give it the collider here.
-    if (!hasComponent(sim.ecs, C.BodyConfig, eid)) attachDefaultCollider(sim, eid);
+    if (!hasComponent(sim.ecs, C.BodyConfig, eid)) attachDefaultCollider(sim, eid, size);
     // damageX scales the blow: damage goes as mass^massPower, so mass goes as damageX^(1/massPower).
     const mass = base.mass * Math.pow(def.damageX ?? 1, 1 / (this.opts.massPower ?? 0.5));
     this.brains.set(eid, {
@@ -500,8 +628,15 @@ export class CreatureSystem implements SimSystem {
       nextScan: 0,
       wanderX: NaN,
       wanderZ: NaN,
-      wanderUntil: 0,
+      wanderUntil: sim.currentTick + Math.floor(this.rand() * (beh?.wanderPauseS ?? 6) * this.tickHz),
+      wanderMultiplier: group === 0
+        ? 1.0
+        : isScout
+          ? 1.6 + this.rand() * 0.6
+          : 0.7 + this.rand() * 0.55,
+      isScout,
     });
+    this.livingSim.getOrCreateState(eid, kind, x, C.Transform.py[eid], z);
     return eid;
   }
 
@@ -590,6 +725,7 @@ export class CreatureSystem implements SimSystem {
       this.setRules(this.opts.creatures, this.opts.bases);
     }
     const tick = sim.currentTick;
+    this.livingSim.step(sim, 1 / this.tickHz);
     const players = this.characters(sim.ecs);
     const tod = this.opts.timeOfDay?.(tick) ?? null;
     for (const [e, b] of this.brains) {
@@ -601,6 +737,7 @@ export class CreatureSystem implements SimSystem {
           }
         }
         this.brains.delete(e);
+        this.livingSim.remove(e);
         continue;
       }
       C.PlayerIntent.mx[e] = 0;
@@ -636,6 +773,13 @@ export class CreatureSystem implements SimSystem {
       const hp = C.Health.current[e];
       const hurt = hp < b.lastHealth - 1e-3;
       b.lastHealth = hp;
+      if (hurt) {
+        const ls = this.livingSim.getState(e);
+        if (ls && ls.action === "sleeping") {
+          ls.action = "idle";
+          ls.fatigue = Math.min(ls.fatigue, 0.35);
+        }
+      }
       // What it notices: its radius, less while asleep (outside its hours) or lying in wait.
       let notice = beh?.noticeM ?? def.aggroRadius;
       if (beh) {
@@ -643,6 +787,67 @@ export class CreatureSystem implements SimSystem {
         if (beh.tactics === "ambush") notice *= this.ai.ambushNotice;
       }
       this.think(sim, e, b, def, beh, notice, hurt, players, tick);
+      const livingState = this.livingSim.getState(e);
+      if (b.mode === "idle" && !hurt && livingState) {
+        if (livingState.action === "sleeping") {
+          C.PlayerIntent.mx[e] = 0;
+          C.PlayerIntent.mz[e] = 0;
+          this.stop(e);
+          this.setLivingClip(e, ClipId.Sleep, tick);
+          continue;
+        }
+        if (livingState.action === "bathroom") {
+          C.PlayerIntent.mx[e] = 0;
+          C.PlayerIntent.mz[e] = 0;
+          this.stop(e);
+          this.setLivingClip(e, ClipId.Bathroom, tick);
+          continue;
+        }
+        if (livingState.action === "mating_display") {
+          C.PlayerIntent.mx[e] = 0;
+          C.PlayerIntent.mz[e] = 0;
+          this.stop(e);
+          this.setLivingClip(e, ClipId.MatingDisplay, tick);
+          continue;
+        }
+        if (livingState.action === "drinking") {
+          C.PlayerIntent.mx[e] = 0;
+          C.PlayerIntent.mz[e] = 0;
+          this.stop(e);
+          this.setLivingClip(e, ClipId.Drink, tick);
+          continue;
+        }
+        if (livingState.action === "entertaining") {
+          C.PlayerIntent.mx[e] = 0;
+          C.PlayerIntent.mz[e] = 0;
+          this.stop(e);
+          this.setLivingClip(e, ClipId.SocialPlay, tick);
+          continue;
+        }
+        if (livingState.action === "seeking_shelter") {
+          const distToShelter = Math.hypot(livingState.shelterX - C.Transform.px[e], livingState.shelterZ - C.Transform.pz[e]);
+          if (distToShelter > 3.0) {
+            this.setLivingClip(e, ClipId.Idle, tick);
+            this.walk(e, b, tick, livingState.shelterX, livingState.shelterZ, 0.75);
+          } else {
+            C.PlayerIntent.mx[e] = 0;
+            C.PlayerIntent.mz[e] = 0;
+            this.stop(e);
+            this.setLivingClip(e, ClipId.Sleep, tick);
+          }
+          continue;
+        }
+        if (livingState.action === "foraging") {
+          if (tick % 60 < 35) {
+            C.PlayerIntent.mx[e] = 0;
+            C.PlayerIntent.mz[e] = 0;
+            this.stop(e);
+            this.setLivingClip(e, ClipId.Graze, tick);
+            continue;
+          }
+        }
+      }
+      this.setLivingClip(e, ClipId.Idle, tick);
       if (b.mode === "idle" && beh && beh.wanderM > 0 && !hurt && isAwake(beh.activity, tod)) this.wander(e, b, beh, tick);
       if (beh?.habitat === "water") this.swim(e, def);
     }
@@ -932,7 +1137,10 @@ export class CreatureSystem implements SimSystem {
   private wander(e: number, b: Brain, beh: Behavior, tick: number): void {
     if (Number.isNaN(b.wanderX)) {
       if (tick < b.wanderUntil) return; // pausing
-      const r = beh.wanderM * Math.sqrt(this.rand());
+      const baseWanderM = beh.wanderM > 0 ? beh.wanderM : (b.group > 0 ? 14 : 0);
+      if (baseWanderM <= 0) return;
+      const wanderRadius = baseWanderM * (b.wanderMultiplier ?? 1.0);
+      const r = wanderRadius * Math.sqrt(this.rand());
       const a = this.rand() * 2 * Math.PI;
       b.wanderX = b.homeX + r * Math.cos(a);
       b.wanderZ = b.homeZ + r * Math.sin(a);
@@ -941,7 +1149,9 @@ export class CreatureSystem implements SimSystem {
     if (d < 0.5) {
       b.wanderX = NaN;
       b.wanderZ = NaN;
-      b.wanderUntil = tick + Math.round(beh.wanderPauseS * this.tickHz);
+      const pauseBase = beh.wanderPauseS > 0 ? beh.wanderPauseS : 6;
+      const pauseMult = 0.5 + this.rand() * 1.0;
+      b.wanderUntil = tick + Math.round(pauseBase * pauseMult * this.tickHz);
       this.stop(e);
       C.PlayerIntent.mx[e] = 0;
       C.PlayerIntent.mz[e] = 0;
@@ -954,7 +1164,11 @@ export class CreatureSystem implements SimSystem {
     const dz = z - C.Transform.pz[e];
     const d = Math.hypot(dx, dz);
     const def = this.opts.creatures[b.kind];
-    if (this.opts.steer === true && C.NavAgent.state[e] !== C.NavAgentState.Invalid && def?.behavior?.habitat !== "water") {
+    const crowdValid = this.opts.steer === true &&
+      C.NavAgent.state[e] !== C.NavAgentState.Invalid &&
+      C.NavAgent.state[e] !== C.NavAgentState.NoPath &&
+      def?.behavior?.habitat !== "water";
+    if (crowdValid) {
       if (def) C.NavAgent.speed[e] = this.runSpeed(def) * this.walkSpeed * pace;
       if (tick >= b.nextGive) {
         this.give(e, x, z);
@@ -967,6 +1181,18 @@ export class CreatureSystem implements SimSystem {
       C.PlayerIntent.lookYaw[e] = Math.atan2(dx, dz);
     }
     return d;
+  }
+
+  private setLivingClip(e: number, clipId: number, tick: number): void {
+    const cur = C.Animation.clipId[e];
+    if (cur === clipId) return;
+    if (clipId === ClipId.Idle && (cur < ClipId.Graze || cur > ClipId.SocialPlay || cur === ClipId.DeathFall)) {
+      return;
+    }
+    C.Animation.clipId[e] = clipId;
+    C.Animation.startTick[e] = tick;
+    C.Animation.rate[e] = 1;
+    C.Animation.layerMask[e] = 1;
   }
 
   private stop(e: number): void {

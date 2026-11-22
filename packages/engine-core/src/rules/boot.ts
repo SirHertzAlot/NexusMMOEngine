@@ -10,12 +10,21 @@
  */
 
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createHooks, loadRules, type HookOverrides, type RuleHooks, type Rules } from "@mmo-engine/rules";
 import { loadHooks, validateHookOverrides, type HookOverridesInput } from "./hook-overrides.js";
 
-/** The repo's rules (this file runs from packages/engine-core/dist/src/rules). */
-export const DEFAULT_RULES_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../content/rules");
+/** The repo's rules (resolves whether running from dist/src/rules or src/rules). */
+function resolveRulesDir(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidate5 = path.resolve(here, "../../../../../content/rules");
+  if (fs.existsSync(candidate5)) return candidate5;
+  const candidate4 = path.resolve(here, "../../../../content/rules");
+  if (fs.existsSync(candidate4)) return candidate4;
+  return path.resolve(process.cwd(), "content/rules");
+}
+export const DEFAULT_RULES_DIR = resolveRulesDir();
 
 export interface GameRules {
   rules: Rules;

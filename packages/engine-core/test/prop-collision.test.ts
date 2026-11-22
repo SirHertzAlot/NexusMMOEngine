@@ -208,3 +208,19 @@ test("a walker is blocked by a prop that straddles a grid cell boundary, among m
     `stuck too far from the boundary prop: x=${Transform.px[player]}, face=${face}`,
   );
 });
+
+test("two movers overlapping push apart to avoid stacking or walking through each other", () => {
+  const sim = new SimWorld();
+  const sys = new PropCollisionSystem();
+  // Two movers placed at distance 0.2m (want >= 0.7m for 2 * 0.35m radius)
+  const e1 = spawnWalker(sim, 0, 0, 0);
+  const e2 = spawnWalker(sim, 0.2, 0, 0);
+
+  sys.step(sim);
+
+  const dx = Transform.px[e2] - Transform.px[e1];
+  const dz = Transform.pz[e2] - Transform.pz[e1];
+  const dist = Math.hypot(dx, dz);
+  assert.ok(dist >= 0.699, `movers did not push apart: dist=${dist}`);
+});
+
