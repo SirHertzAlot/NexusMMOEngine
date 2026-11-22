@@ -22,6 +22,7 @@ import { INVALID_POOL_HANDLE, RespawnKind, SlotState, type SpawnPoolSoA } from "
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 export interface GatheringStore {
   /** A node's saved stock and regrow time (unix ms; null: none due), or undefined when never saved. */
@@ -92,6 +93,8 @@ export function materialName(id: string): string {
 }
 
 export class GatheringSystem implements SimSystem {
+  /** Offered to the host as the `gathering` port: its resource nodes and the pouch they fill. */
+  readonly [PORTS] = ["gathering"];
   readonly name = "gathering";
   readonly access: SystemAccess = {
     system: "gathering",

@@ -40,6 +40,7 @@ import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import type { LivingSimSystem } from "../sim/living-sim-system.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** The parts of a baked npc the system needs (settlement's Npc). */
 export interface ResidentNpc {
@@ -170,6 +171,8 @@ interface Live {
 const WALK_LIMIT_S = 90;
 
 export class ResidentSystem implements SimSystem {
+  /** Offered to the host as the `residents` port: the residents a player can talk to. */
+  readonly [PORTS] = ["residents"];
   readonly name = "residents";
   readonly access: SystemAccess = {
     system: "residents",

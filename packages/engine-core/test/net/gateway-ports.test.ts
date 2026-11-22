@@ -20,6 +20,13 @@ import { DeathSystem } from "../../src/death.js";
 import { DuelSystem } from "../../src/duel.js";
 import { StatusSystem } from "../../src/status.js";
 import { TelegraphSystem } from "../../src/telegraph.js";
+import { AuctionSystem } from "../../src/economy/auction.js";
+import { TradeSystem } from "../../src/economy/trade.js";
+import { VendorSystem } from "../../src/economy/vendor.js";
+import { WalletSystem } from "../../src/economy/wallet.js";
+import { GatheringSystem } from "../../src/gathering/index.js";
+import { BreakSystem, ChestSystem } from "../../src/interact/index.js";
+import { ResidentSystem } from "../../src/residents/index.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import {
   GATEWAY_PORTS,
@@ -45,12 +52,98 @@ const _duels: Conforms<DuelSystem, DuelPort> = true;
 void [_combat, _life, _abilities, _telegraphs, _statuses, _duels];
 
 /** Compile-time: the table's keys are exactly the typed map's keys. */
-const _keys: readonly (keyof GatewayPorts)[] = ["combat", "life", "abilities", "telegraphs", "statuses", "duels"];
+const _keys: readonly (keyof GatewayPorts)[] = [
+  "combat",
+  "life",
+  "abilities",
+  "telegraphs",
+  "statuses",
+  "duels",
+  "trade",
+  "wallet",
+  "auction",
+  "vendors",
+  "gathering",
+  "chests",
+  "breaks",
+  "residents",
+];
 void _keys;
+
+/** The system that answers each port today, by prototype so nothing is built. */
+const ANSWERED_BY: Readonly<Record<keyof GatewayPorts, object>> = {
+  combat: CombatSystem.prototype,
+  life: DeathSystem.prototype,
+  abilities: AbilitySystem.prototype,
+  telegraphs: TelegraphSystem.prototype,
+  statuses: StatusSystem.prototype,
+  duels: DuelSystem.prototype,
+  trade: TradeSystem.prototype,
+  wallet: WalletSystem.prototype,
+  auction: AuctionSystem.prototype,
+  vendors: VendorSystem.prototype,
+  gathering: GatheringSystem.prototype,
+  chests: ChestSystem.prototype,
+  breaks: BreakSystem.prototype,
+  residents: ResidentSystem.prototype,
+};
+
+/** `method`, `getter`, `field` or `missing`, without running a getter. */
+function memberKind(proto: object, name: string): string {
+  for (let p: object | null = proto; p !== null; p = Object.getPrototypeOf(p) as object | null) {
+    const desc = Object.getOwnPropertyDescriptor(p, name);
+    if (!desc) continue;
+    return typeof desc.value === "function" ? "method" : desc.get ? "getter" : "field";
+  }
+  return "missing";
+}
+
+test("every member the table names is one the answering system has", () => {
+  // The table's names are strings, so nothing but this stops a typo in one
+  // from rejecting at boot the very system it describes, in a build where
+  // every type checks out. A `methods` entry that is really a getter is the
+  // same bug: `openPorts` wants a function there.
+  for (const decl of GATEWAY_PORTS) {
+    const proto = ANSWERED_BY[decl.key as keyof GatewayPorts];
+    assert.ok(proto, `no system is mapped for the "${decl.key}" port`);
+    for (const method of decl.methods) {
+      assert.equal(
+        memberKind(proto, method),
+        "method",
+        `the "${decl.key}" port calls ${method}, which is not a method of its system`,
+      );
+    }
+    // A field may be a getter, an own field set in the constructor (so not
+    // on the prototype at all), or declared on a base.
+    for (const field of decl.fields ?? []) {
+      assert.notEqual(
+        memberKind(proto, field),
+        "method",
+        `the "${decl.key}" port reads ${field} as data, but it is a method`,
+      );
+    }
+  }
+  assert.deepEqual(Object.keys(ANSWERED_BY).sort(), GATEWAY_PORTS.map((d) => d.key).sort());
+});
 
 test("the port table names every port the gateway reads, once", () => {
   const keys = GATEWAY_PORTS.map((d) => d.key);
-  assert.deepEqual([...keys].sort(), ["abilities", "combat", "duels", "life", "statuses", "telegraphs"]);
+  assert.deepEqual([...keys].sort(), [
+    "abilities",
+    "auction",
+    "breaks",
+    "chests",
+    "combat",
+    "duels",
+    "gathering",
+    "life",
+    "residents",
+    "statuses",
+    "telegraphs",
+    "trade",
+    "vendors",
+    "wallet",
+  ]);
   assert.equal(new Set(keys).size, keys.length);
   for (const decl of GATEWAY_PORTS) {
     assert.ok(decl.methods.length > 0, `${decl.key} declares no methods`);
@@ -72,8 +165,20 @@ test("the real systems answer the ports they offer", () => {
   // `openPorts` is fail-closed: a renamed method, or a system that stopped
   // declaring its port, ends the boot here rather than in the first tick.
   const ports = openPorts<GatewayPorts>(GATEWAY_PORTS, systems);
-  assert.deepEqual(ports.absent, []);
-  assert.equal(ports.summary, "ports: 6/6");
+  assert.deepEqual(ports.absent, [
+    "auction",
+    "breaks",
+    "chests",
+    "gathering",
+    "residents",
+    "trade",
+    "vendors",
+    "wallet",
+  ]);
+  assert.equal(
+    ports.summary,
+    "ports: 6/14, off: auction, breaks, chests, gathering, residents, trade, vendors, wallet",
+  );
   assert.equal(ports.first("combat"), systems[0]);
   assert.equal(ports.first("life"), systems[1]);
   assert.equal(ports.first("abilities"), systems[2]);
@@ -91,15 +196,33 @@ test("the real systems answer the ports they offer", () => {
 test("a run with none of these systems opens every port empty", () => {
   // A system of a game's own that offers nothing the gateway reads.
   const ports = openPorts<GatewayPorts>(GATEWAY_PORTS, [{ name: "weather", update: (): void => {} }]);
-  assert.deepEqual(ports.absent, ["abilities", "combat", "duels", "life", "statuses", "telegraphs"]);
-  assert.equal(ports.summary, "ports: 0/6, off: abilities, combat, duels, life, statuses, telegraphs");
+  assert.equal(ports.absent.length, GATEWAY_PORTS.length);
+  assert.match(ports.summary, /^ports: 0\/14, off: abilities, auction, breaks, /);
   assert.equal(ports.first("combat"), undefined);
+  assert.equal(ports.first("vendors"), undefined);
   assert.deepEqual(ports.all("duels"), []);
+  assert.deepEqual(ports.all("trade"), []);
 });
 
 test("gateway.ts finds no system by class", () => {
   const src = readFileSync(SRC, "utf8");
-  for (const cls of ["CombatSystem", "DeathSystem", "AbilitySystem", "StatusSystem", "TelegraphSystem", "DuelSystem"]) {
+  const classes = [
+    "CombatSystem",
+    "DeathSystem",
+    "AbilitySystem",
+    "StatusSystem",
+    "TelegraphSystem",
+    "DuelSystem",
+    "TradeSystem",
+    "WalletSystem",
+    "AuctionSystem",
+    "VendorSystem",
+    "GatheringSystem",
+    "ChestSystem",
+    "BreakSystem",
+    "ResidentSystem",
+  ];
+  for (const cls of classes) {
     assert.ok(!src.includes(`instanceof ${cls}`), `gateway.ts still scans for ${cls} by class`);
     assert.ok(
       !new RegExp(`^import \\{[^}]*\\b${cls}\\b`, "m").test(src),
@@ -107,7 +230,7 @@ test("gateway.ts finds no system by class", () => {
     );
   }
   // The port lookups it uses instead, so a rewrite that drops them is noticed.
-  for (const key of ["combat", "life", "abilities", "telegraphs", "statuses", "duels"]) {
+  for (const key of GATEWAY_PORTS.map((d) => d.key)) {
     assert.ok(
       src.includes(`this.ports.all("${key}")`) || src.includes(`this.ports.first("${key}")`),
       `gateway.ts reads no "${key}" port`,

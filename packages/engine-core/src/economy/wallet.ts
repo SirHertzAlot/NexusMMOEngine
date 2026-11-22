@@ -13,6 +13,7 @@
 
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 export interface WalletStore {
   /** Gold for `charId`; 0 when never seen. */
@@ -28,6 +29,8 @@ export interface WalletChange {
 }
 
 export class WalletSystem implements SimSystem {
+  /** Offered to the host as the `wallet` port: a character's gold. */
+  readonly [PORTS] = ["wallet"];
   readonly name = "wallet";
   private readonly balances = new Map<number, number>();
   private changes: WalletChange[] = [];
