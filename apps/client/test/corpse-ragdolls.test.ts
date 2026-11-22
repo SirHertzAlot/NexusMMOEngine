@@ -5,8 +5,7 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createRapierPhysicsWorld } from "../src/physics/rapier-world.js";
-import { RAGDOLL_PARTS, type PhysicsWorld } from "../src/physics/index.js";
+import { createRapierPhysicsWorld, RAGDOLL_PARTS, type PhysicsWorld } from "../src/physics/index.js";
 import { CorpseRagdolls, type CorpseOptions } from "../src/physics/corpse-ragdolls.js";
 
 const DT = 1 / 60;

@@ -5,8 +5,7 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createRapierPhysicsWorld } from "../src/physics/rapier-world.js";
-import { type PhysicsWorld, WalkerPredictor } from "../src/physics/index.js";
+import { createRapierPhysicsWorld, type PhysicsWorld, WalkerPredictor } from "../src/physics/index.js";
 
 const DT = 1 / 60;
 const START = { x: 0, y: 0.9, z: 0 };

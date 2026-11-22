@@ -1,15 +1,9 @@
 /**
- * The physics seam on Rapier (WASM, `@dimforge/rapier3d-compat`).
+ * The physics seam on Rapier (WASM, `@dimforge/rapier3d-compat`), one of the
+ * two backends a game may choose; see `./index.ts` for what each costs.
  *
- * **Not shipped.** The client runs on PhysX alone (`./index.ts`); this is the
- * seam's second implementation, kept because the `physx-js-webidl` build we
- * pin is compiled for the web and throws "not compiled for this environment"
- * under Node, so it cannot drive a test. Two implementations also keep the
- * seam honest: anything that leaks a backend's own behaviour into the
- * interface shows up here first.
- *
- * Import it from this file, never from `./index.ts`, so a stray import cannot
- * pull Rapier into the client bundle.
+ * Rapier is the smaller bundle and the slower tick, and it is the only one of
+ * the two that runs outside a browser, so the seam's tests exercise it.
  */
 
 import RAPIER from "@dimforge/rapier3d-compat";
