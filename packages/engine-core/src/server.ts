@@ -124,7 +124,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { loadPersistenceSettings, loadWorldSettings } from "./server-settings.js";
 import { HybridDataPlaneServer } from "./data-plane-server.js";
 import { resolveDataPlaneCredentials, resolveDataPlaneDbUrl } from "./persist-worker.js";
@@ -178,9 +178,16 @@ import { CivicWorldBridge, SqliteCivicStore } from "./civic/index.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, loadCivicRules, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
+import { openGameProject } from "@mmo-engine/sdk";
 import { openGameRules, type GameRules, type GameRulesSource } from "./rules/boot.js";
 import { assembleServerSystems, type ServerModuleContext } from "./modules.js";
-const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+/**
+ * Where this game's content is: `game.json` if there is one, else the
+ * engine's own folders, with the `MMO_*` variables still winning over both
+ * (ES2, @mmo-engine/sdk). Resolved once and read from everywhere below, so
+ * a game that lives outside this checkout needs no engine file edited.
+ */
+const GAME = openGameProject();
 
 /**
  * Load the chat module's rule bundle (complete-modularity slice 1).
@@ -189,7 +196,7 @@ const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
  */
 async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | undefined> {
   try {
-    const entry = path.join(REPO_ROOT, "modules", "chat", "server.js");
+    const entry = path.join(GAME.paths.modulesDir, "chat", "server.js");
     if (!fs.existsSync(entry)) return undefined;
     const mod = await import(pathToFileURL(entry).href);
     return mod as import("./net/gateway.js").ChatRules;
@@ -211,7 +218,7 @@ import { DEFAULT_QUEST_DIR } from "./quests/content.js";
 import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
-import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR, loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
+import { loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
 import type { SceneDoc } from "@mmo-engine/scene";
 import { editedPack, loadServerRoster, type ServerRoster } from "./species-roster.js";
 import { EMPTY_CRAFTING_RULES, loadCraftingRules, type CraftingRules } from "@mmo-engine/crafting";
@@ -229,7 +236,7 @@ import { FormationTileStore } from "./persist/formation-tiles.js";
 import { ItemLedger } from "./persist/item-ledger.js";
 import { migrateLegacyRegionDb } from "./persist/region-db.js";
 import { biomeLookup } from "./terrain/biome-lookup.js";
-import { checkBiomeRegistry, DEFAULT_BIOME_REGISTRY, loadBiomeRegistry } from "./procgen/biome-registry.js";
+import { checkBiomeRegistry, loadBiomeRegistry } from "./procgen/biome-registry.js";
 import { WildCreatures } from "./procgen/wild-creatures.js";
 import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./procgen/wildlife-table.js";
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
@@ -314,12 +321,12 @@ const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 /** The scenes MMO_SCENE names (read once: the spawn, the settlements and the residents share them). */
 let bootScenesRead: SceneDoc[] | null = null;
 const bootScenes = (): SceneDoc[] =>
-  (bootScenesRead ??= loadScenes(process.env.MMO_SCENES || process.env.MMO_SCENES_DIR || DEFAULT_SCENES_DIR, process.env.MMO_SCENE ?? ""));
+  (bootScenesRead ??= loadScenes(GAME.paths.scenesDir, process.env.MMO_SCENE ?? ""));
 // Save cadence and history (content/server/persistence.json, EG13; MMO_SERVER_SETTINGS overrides the folder).
-const persistenceSettings = loadPersistenceSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+const persistenceSettings = loadPersistenceSettings(GAME.paths.serverSettingsDir);
 if (persistenceSettings.problem) console.warn(`[server] persistence settings ignored: ${persistenceSettings.problem}`);
 // The day cycle and bots (content/server/world.json, EG14); the MMO_DAY_* and MMO_BOTS* variables still win.
-const worldSettings = loadWorldSettings(process.env.MMO_SERVER_SETTINGS || undefined);
+const worldSettings = loadWorldSettings(GAME.paths.serverSettingsDir);
 if (worldSettings.problem) console.warn(`[server] world settings ignored: ${worldSettings.problem}`);
 /** The tick runs at 30 Hz (tick-loop.ts). */
 const SAVE_EVERY_TICKS = Math.max(1, Math.round(persistenceSettings.settings.saveEverySeconds * 30));
@@ -355,7 +362,12 @@ async function main(): Promise<void> {
   // cannot quietly drop a game back to the engine's own defaults.
   let rulesSource: GameRulesSource;
   try {
-    rulesSource = await openGameRules(process.env.MMO_RULES || undefined);
+    // The manifest may name the hooks module; MMO_RULES_HOOKS still wins over it.
+    const rulesEnv =
+      GAME.hooksFile === undefined || process.env.MMO_RULES_HOOKS !== undefined
+        ? process.env
+        : { ...process.env, MMO_RULES_HOOKS: GAME.hooksFile };
+    rulesSource = await openGameRules(GAME.paths.rulesDir, rulesEnv);
     game = rulesSource.load();
   } catch (err) {
     if (err instanceof RulesError) {
@@ -364,7 +376,7 @@ async function main(): Promise<void> {
     }
     throw err;
   }
-  console.log(`[server] ${game.summary}`);
+  console.log(`[server] ${GAME.summary} | ${game.summary}`);
   // The engine's skill contract: systems name content-defined skill and
   // technique ids. A pack that declares skills must declare every one the
   // engine needs — fail loud here, never silent 0s mid-game.
@@ -383,7 +395,7 @@ async function main(): Promise<void> {
   let crafting: CraftingRules | null;
   try {
     speciesRoster = loadServerRoster();
-    crafting = loadCraftingRules(process.env.MMO_CRAFTING || undefined);
+    crafting = loadCraftingRules(GAME.paths.craftingFile);
   } catch (err) {
     console.error(`[server] ${(err as Error).message}`);
     process.exit(1);
@@ -395,7 +407,7 @@ async function main(): Promise<void> {
       : `[crafting: no crafting content]`,
   );
   // The combat moves (content/combat/moves.json, MMO_COMBAT): timing, chaining and travel the fight runs on.
-  const combatLine = loadCombatContent(process.env.MMO_COMBAT || undefined);
+  const combatLine = loadCombatContent(GAME.paths.combatFile);
   if (combatLine) console.log(`[server] ${combatLine}`);
 
   // region.db is the region hot cache (see persist/region-db.ts). Earlier builds named it world.db.
@@ -674,7 +686,7 @@ async function main(): Promise<void> {
       ? null
       : waterSurfaceFromMaps({ level: tiles.getMap("water_level"), water: tiles.getMap("water") }, Number(seaLevelMeta));
   // What each biome holds: scatter multipliers and creature tables.
-  const biomesFile = process.env.MMO_BIOMES || DEFAULT_BIOME_REGISTRY;
+  const biomesFile = GAME.paths.biomesFile;
   const { registry: biomes } = loadBiomeRegistry(biomesFile);
   const biomeAt = biomeLookup(store, tiles);
   const worldBiomes = store.getMeta("world_biomes");
@@ -752,9 +764,7 @@ async function main(): Promise<void> {
   // credentialStore stays here: auth is irreducible core.
   // The licensed modular pack is only on machines that have the art
   // (assets/ is never committed): elsewhere looks are checked structurally.
-  const catalogFile =
-    process.env.MMO_CHARACTER_CATALOG ||
-    fileURLToPath(new URL("../../../../assets/models/glb/modular-fantasy-hero/Rigged/catalog.json", import.meta.url));
+  const catalogFile = GAME.paths.characterCatalogFile;
   const characterCatalog = loadCharacterCatalog(catalogFile);
   console.log(
     characterCatalog
@@ -841,7 +851,7 @@ async function main(): Promise<void> {
     loadEnemyModels(enemyModelsFile, (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
   );
   const wildlifeSettlements: RaidSettlement[] =
-    wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR)) : [];
+    wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(GAME.paths.prefabsDir)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
   const botHome = process.env.MMO_BOTS_HOME?.split(",").map(Number) ?? worldSettings.settings.bots.home ?? undefined;
   const respawnPoolPath = path.join(DATA_DIR, "pools", "world-respawns.sab.bin");
@@ -1131,7 +1141,7 @@ async function main(): Promise<void> {
   });
   // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
   // Shops placed in scenes (IX8): content/vendors.json templates, defined on the economy's vendor system the first time a node names one.
-  const { templates: vendorTemplates, byArchetype: shopByArchetype } = loadVendors(process.env.MMO_VENDORS || path.join(REPO_ROOT, "content", "vendors.json"));
+  const { templates: vendorTemplates, byArchetype: shopByArchetype } = loadVendors(GAME.paths.vendorsFile);
   /** Bind a content template to an entity, defining it on the economy's vendor system the first time. Null on success, else why not. */
   const attachVendor = (eid: number, template: string): string | null => {
     const vs = assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined;
@@ -1151,7 +1161,7 @@ async function main(): Promise<void> {
     }
     return vs.attach(eid, template) ? null : "could not attach";
   };
-  const structureKinds = loadStructureBreakables(process.env.MMO_STRUCTURES || path.join(REPO_ROOT, "content", "structures.json"));
+  const structureKinds = loadStructureBreakables(GAME.paths.structuresFile);
   // Buildings that fall when their parts break (DE4): parts stay static until one breaks.
   const collapse = new CollapseSystem({ store: placesStore });
   const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
@@ -1189,7 +1199,7 @@ async function main(): Promise<void> {
   const spawnBootScene = (): void => {
   if (process.env.MMO_SCENE) {
     const scenes = bootScenes();
-    const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+    const prefabs = loadPrefabs(GAME.paths.prefabsDir);
     const r = spawnSceneOnBoot(
       scenes,
       {
@@ -1335,7 +1345,7 @@ async function main(): Promise<void> {
   const civicMetrics = new CivicTelemetryMetrics();
   const civicConfig = {
     dataDir: DATA_DIR,
-    rules: loadCivicRules(process.env.MMO_CIVIC_RULES || path.join(REPO_ROOT, "content", "rules", "civic.json")),
+    rules: loadCivicRules(GAME.paths.civicRulesFile),
     dayOf: () => (gameDayOf ? gameDayOf(sim.currentTick) : Math.floor(Date.now() / 86_400_000)),
     countMaterial: (charId: number, material: string) => gathering.countOf(charId, material),
     takeMaterial: (charId: number, material: string, qty: number) => gathering.take(charId, material, qty),
@@ -1370,10 +1380,10 @@ async function main(): Promise<void> {
   const residentsConfig = {
     structurePositions: (): Map<string, { x: number; z: number }> | null => {
       if (!process.env.MMO_SCENE) return null;
-      const prefabs = loadPrefabs(process.env.MMO_PREFABS || DEFAULT_PREFABS_DIR);
+      const prefabs = loadPrefabs(GAME.paths.prefabsDir);
       return new Map(bootScenes().flatMap((s) => worldNodes(expandPrefabs(s, prefabs).doc)).map((w) => [w.node.id, { x: w.position[0], z: w.position[2] }]));
     },
-    manifestsDir: process.env.MMO_SETTLEMENTS || path.join(REPO_ROOT, "content", "settlements"),
+    manifestsDir: GAME.paths.settlementsDir,
     catalog: characterCatalog,
     timeOfDay: dayClock ? (tick: number) => timeOfDayAt(dayClock, tick, 30) : undefined,
     groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
@@ -1399,8 +1409,8 @@ async function main(): Promise<void> {
     config: { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
   };
   const assembled = await assembleServerSystems({
-    modulesDir: path.join(REPO_ROOT, "modules"),
-    setFile: process.env.MMO_MODULES || path.join(REPO_ROOT, "content", "modules.json"),
+    modulesDir: GAME.paths.modulesDir,
+    setFile: GAME.paths.modulesSetFile,
     provided: {
       core: {
         reloader,
@@ -1610,7 +1620,7 @@ async function main(): Promise<void> {
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
     needs: game.rules.needs,
-    lessons: loadLessons(process.env.MMO_LESSONS || path.join(REPO_ROOT, "content", "lessons.json")),
+    lessons: loadLessons(GAME.paths.lessonsFile),
     // A pupil takes one lesson a game day (a real day with no calendar).
     gameDay: gameDayOf,
     // GET /health and GET /metrics/civic (EA19, C7a); PCG's handler composes with it.

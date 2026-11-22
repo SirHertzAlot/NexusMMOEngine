@@ -116,7 +116,8 @@
     "packages/playtest",
     "packages/render-fx",
     "packages/synthesis",
-    "packages/graphify"
+    "packages/graphify",
+    "packages/sdk"
   ],
   "dependencies": {
     "@surrealdb/node": "^3.1.0",

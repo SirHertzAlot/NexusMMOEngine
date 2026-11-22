@@ -124,9 +124,13 @@ Most of these are opt-in speed or safety switches. The defaults are the safe pat
 
 Each of these points a content file or folder somewhere other than its default under `content/`.
 
+A game that moves more than one or two of them writes a [`game.json`](BUILDING-A-GAME.md#the-manifest-gamejson) instead and names them all in one place; these variables still win over it, for one run.
+
 | Variable | Default | What it points at |
 |---|---|---|
+| `MMO_GAME` | `game.json` beside the engine, if there is one | The game manifest: where this game's content lives. `0` ignores any manifest and runs the engine's own paths. |
 | `MMO_CHARACTER_RULES` | `content/settlements/character.json` | The settlement character rules. |
+| `MMO_CIVIC_RULES` | `content/rules/civic.json` | Civic and logistics rules (bridge wear, escrow, provenance, foundries, veins). |
 | `MMO_LESSONS` | `content/lessons.json` | Lessons a pupil can take. |
 | `MMO_SETTLEMENTS` | `content/settlements` | Settlement manifests. |
 | `MMO_SPECIES_DIR` | `content/species` | Species definitions. |
