@@ -129,14 +129,6 @@ Hooks are not a fence around the engine — you can equally edit the formula in
 upgrade, because it lives beside your rules rather than inside engine source
 you would then have to merge.
 
-> **In flight, 2026-11-22.** Until now the booted server called
-> `loadGameRules` with no overrides argument, so hooks worked in tests and in
-> code calling `loadGameRules` directly but could not be reached from a
-> running server. The `hooks.mjs` wiring described above is landing in a
-> separate pull request. If your checkout predates it, check whether
-> `packages/engine-core/src/server.ts` passes overrides before you build on
-> hooks.
-
 ## 4. Then a module
 
 Everything the engine does beyond its tick loop is a module: a folder
