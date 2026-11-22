@@ -83,7 +83,7 @@ A core process with 1000 entities, the edge at default heartbeat (5000 ms × 3),
 
 Blackout: ${sent} core-bound packets sent, ${answers.length} answered (${unavailable} with \`core.unavailable\`), **${hung} silent hangs**. ${hung === 0 ? "PASS." : "FAIL."}
 
-A killed core closes its socket, so the edge knows at once. A hung core is only caught by the heartbeat; until then core-bound packets wait out the 5 s request timeout before answering \`core.unavailable\`. Whether 15 s detection is acceptable is Joey's call (a config change: \`heartbeatMs\`, \`maxMissed\`).
+A killed core closes its socket, so the edge knows at once. A hung core is only caught by the heartbeat; until then core-bound packets wait out the 5 s request timeout before answering \`core.unavailable\`. Whether 15 s detection is acceptable is the owner's call (a config change: \`heartbeatMs\`, \`maxMissed\`).
 `);
 client.close(); edge.close(); core.proc.kill("SIGKILL");
 process.exit(0);

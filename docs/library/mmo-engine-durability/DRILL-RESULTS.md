@@ -2,7 +2,7 @@
 
 Slice: V1 live-SurrealDB + V2 crash drills · branch `arlo/durability-verification` · worktree `~/workspace/wt-verify` · started 2026-10-20 after "Keep working."
 
-Status: **results landed 2026-10-20 ~17:31 UTC** (reported in-chat by the main agent; filed here the same day so they persist with sources instead of living only in a chat message). Integration prep: the new main (`ef0ce1f`, persistence + atomic-operations merge) has been merged into the verification branch as `82b58c8` — origin/main is an ancestor of the verification tip. Landing on main awaits Joey's word (widget pending at 17:54 UTC).
+Status: **results landed 2026-10-20 ~17:31 UTC** (reported in-chat by the main agent; filed here the same day so they persist with sources instead of living only in a chat message). Integration prep: the new main (`ef0ce1f`, persistence + atomic-operations merge) has been merged into the verification branch as `82b58c8` — origin/main is an ancestor of the verification tip. Landing on main awaits the owner's word (widget pending at 17:54 UTC).
 
 ## V1 — live SurrealDB
 
@@ -36,5 +36,5 @@ Convention from the build: any real bug a drill catches gets fixed minimally wit
 
 - Native addons are unbuilt in this sandbox, so drills run at the highest real level available (real processes, real HTTP, real DB) — the region's durability stack wired exactly as `server.ts` wires it. A full `server.ts` production boot stays unverified.
 - The Surreal SDK's `connect()` has no timeout — it can hang forever against an unreachable server. Robustness follow-up candidate, open.
-- Persistence + atomic-operations stack MERGED to main 2026-10-20 as `ef0ce1f` (fast-forward, byte-identical failure set vs pristine main). The verification branch merged origin/main in as `82b58c8`; landing the verification fixes (`185d1cd`, `e673c10`, `0dfbec4`) onto main awaits Joey's word.
-- Parked item from the stack, now on main: fleet-auction economics (offline-seller buyouts fail closed; world-settled auctions pay seller FULL price, no 5% house cut — fleet vs standalone economics differ) still awaits Joey's ruling. The drills don't touch it.
+- Persistence + atomic-operations stack MERGED to main 2026-10-20 as `ef0ce1f` (fast-forward, byte-identical failure set vs pristine main). The verification branch merged origin/main in as `82b58c8`; landing the verification fixes (`185d1cd`, `e673c10`, `0dfbec4`) onto main awaits the owner's word.
+- Parked item from the stack, now on main: fleet-auction economics (offline-seller buyouts fail closed; world-settled auctions pay seller FULL price, no 5% house cut — fleet vs standalone economics differ) still awaits the owner's ruling. The drills don't touch it.

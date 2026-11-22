@@ -1,0 +1,556 @@
+/**
+ * Style kit: components.
+ *
+ * Every class here is built only from the tokens in tokens.css. No class
+ * below invents a colour, a light direction, a radius or a spacing value.
+ * That constraint is the system: it is what stops the twentieth panel from
+ * drifting away from the first.
+ *
+ * Shading uses hard-stop gradients throughout. A hard-stop gradient is the
+ * 2D form of the engine's cel ramp — flat bands with a crisp terminator —
+ * so a panel shades the way a character does. Nothing here uses a smooth
+ * gradient, and nothing uses a black overlay for shadow.
+ *
+ * Needs tokens.css imported first, and an ancestor carrying the .kit class.
+ */
+
+/* ------------------------------------------------------------------ base */
+
+.kit {
+  font-family: var(--kit-font-body);
+  font-size: var(--kit-text-body);
+  line-height: var(--kit-leading-body);
+  color: var(--kit-ink);
+}
+
+/* --------------------------------------------------------------- surfaces
+   Three grounds. Each is a tiling texture over its base colour, so the
+   colour shows if the texture ever fails to load and the panel never
+   falls back to a bare white box. */
+
+.kit-surface-leather {
+  background-color: var(--kit-leather);
+  background-image: var(--kit-tex-leather);
+  background-repeat: repeat;
+  color: var(--kit-ink);
+}
+
+.kit-surface-iron {
+  background-color: var(--kit-iron);
+  background-image: var(--kit-tex-iron);
+  background-repeat: repeat;
+  color: var(--kit-ink);
+}
+
+.kit-surface-parchment {
+  background-color: var(--kit-parchment);
+  background-image: var(--kit-tex-parchment);
+  background-repeat: repeat;
+  color: var(--kit-ink-dark);
+}
+
+/* ----------------------------------------------------------------- panel
+   The 9-slice frame. border-image keeps the corners at native size and
+   repeats the edges, so a panel is any width and height and the moulding
+   never stretches. This is the thing a painted panel image cannot do: at
+   a different size it either smears or has to be redrawn.
+
+   border-width equals --kit-frame-slice so the band renders 1:1 and the
+   bevel stays exactly as generated. */
+
+.kit-panel {
+  position: relative;
+  border-style: solid;
+  border-width: var(--kit-frame-slice);
+  border-image-source: var(--kit-tex-frame-bronze);
+  border-image-slice: 14;
+  border-image-repeat: repeat;
+  border-radius: var(--kit-radius-panel);
+  /* The frame's transparent inner margin lets the ground show through
+     right up to the moulding. */
+  background-clip: padding-box;
+}
+
+.kit-panel--iron {
+  border-image-source: var(--kit-tex-frame-iron);
+}
+
+/* The panel's own drop shadow: offset along the fixed light direction, so
+   the panel sits above the scene the same way every raised edge does. */
+.kit-panel {
+  box-shadow: 3px 4px 0 0 rgb(0 0 0 / 0.38);
+}
+
+.kit-panel__body {
+  padding: var(--kit-space-3);
+}
+
+/* ------------------------------------------------------------- ornament
+   One corner motif, mirrored into the other three corners. Mirroring is
+   why the ornament is a flat silhouette: a baked highlight would end up
+   lit from the wrong side once flipped, which is exactly the drifting
+   light direction the kit exists to prevent. Colour comes from a token,
+   so one change restyles all four. */
+
+.kit-ornament {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  background-color: var(--kit-bronze-light);
+  -webkit-mask-image: var(--kit-tex-ornament);
+  mask-image: var(--kit-tex-ornament);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  opacity: 0.85;
+}
+
+/* Offset by the frame slice so the motif sits ON the moulding corner.
+   Inside the padding box it would land on top of the content. */
+.kit-ornament--tl { top: calc(var(--kit-frame-slice) * -1); left: calc(var(--kit-frame-slice) * -1); }
+.kit-ornament--tr { top: calc(var(--kit-frame-slice) * -1); right: calc(var(--kit-frame-slice) * -1); transform: scaleX(-1); }
+.kit-ornament--bl { bottom: calc(var(--kit-frame-slice) * -1); left: calc(var(--kit-frame-slice) * -1); transform: scaleY(-1); }
+.kit-ornament--br { bottom: calc(var(--kit-frame-slice) * -1); right: calc(var(--kit-frame-slice) * -1); transform: scale(-1, -1); }
+
+/* -------------------------------------------------------------- divider
+   Two layers: the boss sits once at the centre, the bar tiles behind it to
+   whatever width the panel is. One image holding both would repeat the
+   boss across the line or stretch it. */
+
+.kit-divider {
+  height: 11px;
+  border: 0;
+  margin: var(--kit-space-2) 0;
+  background-image: var(--kit-tex-divider-boss), var(--kit-tex-divider-bar);
+  background-repeat: no-repeat, repeat-x;
+  background-position: center, center;
+  opacity: 0.9;
+}
+
+/* ------------------------------------------------------------------ type
+   One scale. Display serif for titles and names, body sans for everything
+   small. Letter-spacing is part of the period look and is tokenised too. */
+
+.kit-title {
+  font-family: var(--kit-font-display);
+  font-size: var(--kit-text-title);
+  line-height: var(--kit-leading-tight);
+  letter-spacing: var(--kit-tracking-title);
+  font-weight: 600;
+  color: var(--kit-ink);
+  margin: 0;
+}
+
+.kit-heading {
+  font-family: var(--kit-font-display);
+  font-size: var(--kit-text-heading);
+  line-height: var(--kit-leading-tight);
+  letter-spacing: var(--kit-tracking-title);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* A small-caps label, for column headers and slot names. */
+.kit-label {
+  font-family: var(--kit-font-body);
+  font-size: var(--kit-text-tiny);
+  letter-spacing: var(--kit-tracking-label);
+  text-transform: uppercase;
+  color: var(--kit-ink-soft);
+}
+
+.kit-body { font-size: var(--kit-text-body); }
+.kit-small { font-size: var(--kit-text-small); }
+.kit-tiny { font-size: var(--kit-text-tiny); }
+
+.kit-soft { color: var(--kit-ink-soft); }
+.kit-dim { color: var(--kit-ink-dim); }
+
+/* Numbers that change in place must not reflow: tabular figures only. */
+.kit-num {
+  font-family: var(--kit-font-numeral);
+  font-variant-numeric: tabular-nums;
+}
+
+.kit-good { color: var(--kit-good); }
+.kit-bad { color: var(--kit-bad); }
+.kit-warn { color: var(--kit-warn); }
+
+/* ----------------------------------------------------------------- slot
+   An inventory well. The bevel runs the opposite way to a panel's — lit
+   on the bottom-right, shaded on the top-left — which is what makes it
+   read as a hole rather than a tile. Both use the same light. */
+
+.kit-slot {
+  position: relative;
+  background-color: var(--kit-iron-shadow);
+  background-image: linear-gradient(rgb(23 25 28 / 0.55), rgb(23 25 28 / 0.55)), var(--kit-tex-iron);
+  border-style: solid;
+  border-width: 3px;
+  border-image-source: var(--kit-tex-slot);
+  border-image-slice: 3;
+  border-image-repeat: repeat;
+  border-radius: var(--kit-radius);
+}
+
+/* Drop feedback. The tint is the state colour at low alpha over the well,
+   never a different border geometry, so nothing shifts by a pixel when
+   the verdict changes. */
+.kit-slot--good { box-shadow: inset 0 0 0 9999px rgb(134 179 106 / 0.26); }
+.kit-slot--bad { box-shadow: inset 0 0 0 9999px rgb(216 117 96 / 0.26); }
+
+/* --------------------------------------------------------------- button
+   Four states from one geometry. Rest is raised, hover brightens the
+   face, active drops it by exactly --kit-bevel and swaps the bevel ends
+   so the button reads as pressed in, disabled flattens it. The element
+   never changes size between states. */
+
+.kit-btn {
+  font-family: var(--kit-font-body);
+  font-size: var(--kit-text-small);
+  letter-spacing: 0.02em;
+  color: var(--kit-ink);
+  padding: var(--kit-space-1) var(--kit-space-3);
+  border: var(--kit-border) solid var(--kit-bronze-shadow);
+  border-radius: var(--kit-radius);
+  cursor: pointer;
+  /* Hard stops: two flat bands and a terminator, not a smooth fade. */
+  background-image: linear-gradient(
+    180deg,
+    var(--kit-bronze) 0%,
+    var(--kit-bronze) 48%,
+    var(--kit-bronze-shadow) 48%,
+    var(--kit-bronze-shadow) 100%
+  );
+  /* The bevel: lit edge up and left, shaded edge down and right. */
+  box-shadow:
+    inset 1px 1px 0 0 var(--kit-bronze-light),
+    inset -1px -1px 0 0 var(--kit-bronze-shadow);
+}
+
+.kit-btn:hover:not(:disabled) {
+  background-image: linear-gradient(
+    180deg,
+    var(--kit-bronze-light) 0%,
+    var(--kit-bronze-light) 48%,
+    var(--kit-bronze) 48%,
+    var(--kit-bronze) 100%
+  );
+  color: var(--kit-ink);
+}
+
+.kit-btn:active:not(:disabled) {
+  /* Pressed: bevel inverted, face dropped by one bevel depth. */
+  transform: translate(var(--kit-bevel), var(--kit-bevel));
+  box-shadow:
+    inset -1px -1px 0 0 var(--kit-bronze-light),
+    inset 1px 1px 0 0 var(--kit-bronze-shadow);
+}
+
+.kit-btn:disabled {
+  cursor: default;
+  color: var(--kit-ink-dim);
+  background-image: linear-gradient(180deg, var(--kit-iron) 0%, var(--kit-iron) 48%, var(--kit-iron-shadow) 48%, var(--kit-iron-shadow) 100%);
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+/* A quieter button for secondary actions: iron instead of bronze, same
+   geometry and the same four states. */
+.kit-btn--iron {
+  border-color: var(--kit-iron-shadow);
+  background-image: linear-gradient(180deg, var(--kit-iron) 0%, var(--kit-iron) 48%, var(--kit-iron-shadow) 48%, var(--kit-iron-shadow) 100%);
+  box-shadow:
+    inset 1px 1px 0 0 var(--kit-iron-light),
+    inset -1px -1px 0 0 var(--kit-iron-shadow);
+}
+
+.kit-btn--iron:hover:not(:disabled) {
+  background-image: linear-gradient(180deg, var(--kit-iron-light) 0%, var(--kit-iron-light) 48%, var(--kit-iron) 48%, var(--kit-iron) 100%);
+}
+
+/* One focus ring for every interactive element in the kit. Visible against
+   both leather and parchment, and it never moves layout. */
+.kit-btn:focus-visible,
+.kit-slot:focus-visible,
+.kit-focusable:focus-visible {
+  outline: 2px solid var(--kit-focus);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ bar
+   A meter: banded fill, ramped track, no smooth gradient. */
+
+.kit-bar {
+  height: 10px;
+  border: var(--kit-border) solid var(--kit-iron-shadow);
+  border-radius: var(--kit-radius);
+  background-color: var(--kit-iron-shadow);
+  overflow: hidden;
+}
+
+.kit-bar__fill {
+  height: 100%;
+  background-image: linear-gradient(
+    180deg,
+    var(--kit-bronze-light) 0%,
+    var(--kit-bronze-light) 40%,
+    var(--kit-bronze) 40%,
+    var(--kit-bronze) 100%
+  );
+}
+
+/* --------------------------------------------------------------- tooltip
+   Parchment, because a tooltip is a read: dark ink on a light ground is
+   easier at length than light ink on a dark one. The frame is the iron
+   9-slice so it reads as a different object to the panel behind it. */
+
+.kit-tooltip {
+  border-style: solid;
+  border-width: var(--kit-frame-slice);
+  border-image-source: var(--kit-tex-frame-iron);
+  border-image-slice: 14;
+  border-image-repeat: repeat;
+  background-color: var(--kit-parchment);
+  background-image: var(--kit-tex-parchment);
+  background-clip: padding-box;
+  color: var(--kit-ink-dark);
+  box-shadow: 3px 4px 0 0 rgb(0 0 0 / 0.45);
+}
+
+.kit-tooltip .kit-soft,
+.kit-surface-parchment .kit-soft { color: var(--kit-ink-dark-soft); }
+
+.kit-tooltip .kit-label,
+.kit-surface-parchment .kit-label { color: var(--kit-ink-dark-soft); }
+
+/* On a light ground, gain and loss swap to the dark pair. Same meaning,
+   readable colour — the alternative is a green that vanishes on paper. */
+.kit-tooltip .kit-good,
+.kit-surface-parchment .kit-good { color: var(--kit-good-dark); }
+
+.kit-tooltip .kit-bad,
+.kit-surface-parchment .kit-bad { color: var(--kit-bad-dark); }
+
+.kit-tooltip .kit-warn,
+.kit-surface-parchment .kit-warn { color: #6b4a08; }
+
+/* ---------------------------------------------------------------- layout
+   Reusable arrangements. These carry no colour of their own; they only
+   place things on the 4px spacing step from tokens.css, so a screen built
+   from them lines up with every other screen without anyone measuring. */
+
+/* A two-column label/value table. Numbers right-align on a tabular figure
+   so a changing value never shifts the column. */
+.kit-statgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: var(--kit-space-3);
+  row-gap: 1px;
+}
+
+.kit-statrow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--kit-space-2);
+}
+
+.kit-btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kit-space-2);
+  margin-top: var(--kit-space-2);
+}
+
+/* ------------------------------------------------------------ equipment */
+
+.kit-equiprow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--kit-space-1);
+  margin: var(--kit-space-1) 0 var(--kit-space-2);
+}
+
+.kit-equipgrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--kit-space-1);
+  margin: var(--kit-space-1) 0 var(--kit-space-2);
+}
+
+/* One well, one size, whether it holds a weapon or a ring. */
+.kit-equip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: var(--kit-space-1);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.kit-equip__name {
+  font-family: var(--kit-font-display);
+  font-size: var(--kit-text-small);
+  line-height: var(--kit-leading-tight);
+  text-align: center;
+}
+
+.kit-equip__empty { opacity: 0.55; }
+
+/* ------------------------------------------------------------- grid bag
+   The cell rule is drawn, not an image: two hard-stop gradients at the
+   cell pitch. It scales to any cell size without resampling, and it
+   shares the frame's light — the rule is a lit edge, so it sits on the
+   top-left of each cell. */
+
+.kit-grid {
+  position: relative;
+  user-select: none;
+  background-color: var(--kit-iron-shadow);
+  background-image:
+    linear-gradient(to right, rgb(105 116 130 / 0.26) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(105 116 130 / 0.26) 1px, transparent 1px),
+    linear-gradient(rgb(23 25 28 / 0.55), rgb(23 25 28 / 0.55)),
+    var(--kit-tex-iron);
+}
+
+/* A cell the bag does not have: filled with the material's shadow stop
+   rather than with black, same as every other shadow in the kit. */
+.kit-grid__blocked {
+  position: absolute;
+  background-color: var(--kit-iron-shadow);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(105 116 130 / 0.16) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* An item lying in the bag. The border takes the server's rarity colour;
+   the geometry, the face and the bevel come from the kit. */
+.kit-item {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 2px;
+  text-align: center;
+  cursor: pointer;
+  border: var(--kit-border) solid;
+  border-radius: var(--kit-radius);
+  background-color: var(--kit-iron);
+  /* A fixed-height lit lip, not a percentage: an item tile is 1-3 cells
+     tall, and a percentage band would cut a tall tile in half. */
+  background-image: linear-gradient(
+    180deg,
+    var(--kit-iron-light) 0,
+    var(--kit-iron-light) 2px,
+    var(--kit-iron) 2px,
+    var(--kit-iron) 100%
+  );
+  box-shadow:
+    inset 1px 1px 0 0 rgb(255 255 255 / 0.12),
+    inset -1px -1px 0 0 rgb(0 0 0 / 0.35);
+}
+
+.kit-item__label {
+  font-family: var(--kit-font-display);
+  font-size: var(--kit-text-tiny);
+  line-height: var(--kit-leading-tight);
+}
+
+.kit-item__count {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--kit-ink);
+  pointer-events: none;
+}
+
+/* The drag ghost. Allowed and refused differ only in colour: the same
+   border width and radius, so nothing jumps as the verdict flips. */
+.kit-ghost {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid;
+  border-radius: var(--kit-radius);
+}
+
+.kit-ghost--good {
+  border-color: var(--kit-good);
+  background-color: rgb(134 179 106 / 0.25);
+}
+
+.kit-ghost--bad {
+  border-color: var(--kit-bad);
+  background-color: rgb(216 117 96 / 0.25);
+}
+
+/* A plain (non-grid) bag: a wrapping row of equal wells. */
+.kit-slotrow {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--kit-space-1);
+}
+
+.kit-slot--cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------ bag panel */
+
+.kit-bagpanel {
+  position: relative;
+  width: 332px;
+  pointer-events: auto;
+}
+
+.kit-bagpanel__body {
+  border-radius: var(--kit-radius);
+}
+
+.kit-bagpanel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kit-space-2);
+}
+
+.kit-bagpanel__bagwrap { position: relative; }
+
+.kit-bagpanel__gold {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: var(--kit-space-2);
+}
+
+/* The focused item's card: parchment inside the leather panel, so the
+   thing being read is the lightest surface on the screen. */
+.kit-detailcard {
+  padding: var(--kit-space-2);
+  border: var(--kit-border) solid var(--kit-bronze-shadow);
+  border-radius: var(--kit-radius);
+  box-shadow: inset 1px 1px 0 0 rgb(255 255 255 / 0.22);
+}
+
+.kit-tooltip--bag {
+  position: absolute;
+  right: 100%;
+  margin-right: var(--kit-space-2);
+  width: 232px;
+  padding: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.kit-tooltip--bag > * { padding: 0 var(--kit-space-1); }

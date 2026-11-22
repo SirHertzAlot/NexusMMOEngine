@@ -1,6 +1,6 @@
 # Atomic Operations Spec — value-moving exchanges as world-tier DB functions
 
-Status: **adopted by Joey 2026-10-20; building on `arlo/atomic-operations`**
+Status: **adopted by the owner 2026-10-20; building on `arlo/atomic-operations`**
 (stacked on `arlo/persistence-layer` — merges after it).
 Companion to `docs/PERSISTENCE-LAYER-SPEC.md`, whose state plane this
 spec builds on (character records, session locks, item ledger, epoch

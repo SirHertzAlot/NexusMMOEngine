@@ -1,6 +1,6 @@
 # Animation Runtime — Build Plan (DRAFT)
 
-**Date:** 2026-10-06 · **Status: DRAFT for Joey's review — not a directive to Claude.**
+**Date:** 2026-10-06 · **Status: DRAFT for the owner's review — not a directive to Claude.**
 **Source of truth:** `ANIMATION-RUNTIME.md` (research + verdicts, same folder). This plan translates those verdicts into ordered build slices with acceptance gates. Anything here that contradicts the research doc or the repo is wrong — flag it, don't improvise.
 
 **Repo anchor:** `~/workspace/nexus-engine/` (checked 2026-10-06; verify paths against the current commit before building — the plan names files that existed tonight, not a promise they haven't moved).
@@ -130,7 +130,7 @@ From the research doc's verdicts and §6 non-goals — recorded here so nobody r
 
 ---
 
-## Notes for the reviewer (Joey)
+## Notes for the reviewer (the owner)
 
 1. **Slice order is a proposal.** If Claude should take A2 (client-only) first while the ozz vendoring decision settles, the plan survives reordering — only A1 is genuinely load-bearing for the rest.
 2. **The wire addition (A1) is the one irreversible-ish choice** — additive, but persisted snapshots decode by field id, so get the field list right the first time. `clip/start_tick/rate/layer_mask` is the doc's contract; adding a field later is fine, changing one is not.

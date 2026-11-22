@@ -1,6 +1,6 @@
 # The armour formula X/(X+K) → Nexus combat rules note
 
-Filed 2026-11-12 (~14:11 ET) from Joey's Instagram reel (Wyatt Cheng —
+Filed 2026-11-12 (~14:11 ET) from the owner's Instagram reel (Wyatt Cheng —
 Diablo designer — posted 2026-09-21; https://www.instagram.com/reel/
 Ddj3Q8EgSku/). Content recovered via media-understanding; engine state
 checked against origin/main the same session.

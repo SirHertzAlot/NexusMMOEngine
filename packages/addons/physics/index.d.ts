@@ -149,6 +149,16 @@ export declare class PhysicsWorld {
   updateCharacter(id: bigint, dt: number, gx: number, gy: number, gz: number): void;
   /** The character's position; each axis is NaN for an unknown id. */
   characterPosition(id: bigint): [number, number, number];
+  /**
+   * The character bridge's per-tick pass for many walkers in one call. For
+   * character i (ids[i]), targets[3i..3i+2] is where it should be: it gets the
+   * velocity that reaches it in dt and one update without gravity, then
+   * out[4i..4i+2] is its position and out[4i+3] is 0. One more than `teleport`
+   * metres from its target is left alone with out[4i+3] = 1 (re-create it
+   * there). Unknown ids give NaN positions. Moves each character exactly as
+   * characterPosition, setCharacterVelocity and updateCharacter in turn would.
+   */
+  followCharacters(ids: BigUint64Array, targets: Float64Array, count: number, dt: number, teleport: number, out: Float32Array): void;
   characterCount(): number;
   destroy(): void;
 }

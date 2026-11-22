@@ -63,7 +63,7 @@ Every entry: date, decision, rationale. Newest first.
 
 - **2026-11-02 — The data plane's ledger is SurrealMX, durable on its server (Person's direction).** The zero-copy data plane's persist worker used to default to embedded RocksDB. It now defaults to the SurrealMX server that `npm run db` starts (`ws://127.0.0.1:8000/rpc`, AOL with `sync=every`, so every commit is fsynced). Rationale: the 2026-10-28 measurement showed embedded `mem://` ignores MX persistence, so an embedded MX default would lose the ledger on restart; the server is the only SurrealMX shape that survives both process and system crashes. Escape hatch: `MMO_DATA_PLANE_STORE=rocksdb`. `MMO_DATA_PLANE_DB` still overrides everything, and `mem://` stays the volatile opt-out for benches. Remote URLs sign in as root (`MMO_DATA_PLANE_USER` / `MMO_DATA_PLANE_PASS` override). Open: the tick-budget benchmark against the live server is owed before the default is final; if it misses the budget, the default reverts to RocksDB by this same switch.
 
-- **2026-11-02 — The editor changes through versioned interface templates, not panel removals (Joey's decision).** The Phase C removal slate is superseded: standalone panels stay, and the editor's interface — layouts, panes, widgets, bindings, actions — becomes data in interface templates versioned by the existing template pseudo-VC (draft → published → deprecated → retired, presentation pins, defensive resolution) over git-backed document VC. Three defaults ratified by Joey: (1) templates are structured documents with Mustache as the content/expression layer only (layout stays structured so it can be validated and semantically diffed; Mustache was already the EA2 selection for editor templates); (2) template documents live in the repo (`content/ui-templates/`, T3) — they are documents behind the resolver, so a later content-store split is a storage change; (3) anyone on the project may publish — adoption happens by pin, so publishing is low-risk by construction. T1 deepens `ViewTemplateDefinition` into a regions tree of pane instances over a component registry (`INTERFACE_COMPONENTS`), with bindings, visibility predicates, verb-only actions, and Mustache content validated by `validateTemplateDefinition`, which the resolver now enforces. Rationale: interface evolution is mostly arrangement, binding, and wording — that work should be drafted, diffed, published, pinned, and rolled back, never coded or deleted.
+- **2026-11-02 — The editor changes through versioned interface templates, not panel removals (the owner's decision).** The Phase C removal slate is superseded: standalone panels stay, and the editor's interface — layouts, panes, widgets, bindings, actions — becomes data in interface templates versioned by the existing template pseudo-VC (draft → published → deprecated → retired, presentation pins, defensive resolution) over git-backed document VC. Three defaults ratified by the owner: (1) templates are structured documents with Mustache as the content/expression layer only (layout stays structured so it can be validated and semantically diffed; Mustache was already the EA2 selection for editor templates); (2) template documents live in the repo (`content/ui-templates/`, T3) — they are documents behind the resolver, so a later content-store split is a storage change; (3) anyone on the project may publish — adoption happens by pin, so publishing is low-risk by construction. T1 deepens `ViewTemplateDefinition` into a regions tree of pane instances over a component registry (`INTERFACE_COMPONENTS`), with bindings, visibility predicates, verb-only actions, and Mustache content validated by `validateTemplateDefinition`, which the resolver now enforces. Rationale: interface evolution is mostly arrangement, binding, and wording — that work should be drafted, diffed, published, pinned, and rolled back, never coded or deleted.
 
 - **2026-10-31 — The Helgrind gate counts only our own code.** `npm run valgrind:helgrind` blames each thread error on the first frame that isn't the allocator, a runtime helper, or library plumbing (the standard library, the compiler's and Node's headers, node-addon-api). That frame is ours when it lies in the addon's sources and vendored when it lies in `third_party`. Node's and V8's own reports are left out, as memcheck's are, and no suppression list is kept. Jolt's races in physics are vendored: ThreadSanitizer, which models C++ atomics, reports none of them in our code on the physics suite (PR #496). A race inside Jolt therefore no longer fails the gate; the ThreadSanitizer build is the check for that. Without debug info every error in an addon's binary still counts as ours, and the run says so.
 
@@ -71,10 +71,10 @@ Every entry: date, decision, rationale. Newest first.
 - **2026-10-28/29 — DB deep dive follow-ups + the persistence perf stack landed on this branch.** The dive found `op_dedup` had NO index on main: the dedup read in front of every atomic op and unbatched put was a table scan growing linearly forever (1.79 ms @2k rows → 10.44 ms @20k, embedded 3.x); the unique index now installs best-effort at connect (the fold's airtightener). Also landed: the batched credits-drain gate (a 32-save sweep drops from ~37 store calls to ~6), `World.GetCharacterStateMeta` (the pre-save drift check no longer hauls the state blob; full record crosses only on real drift, with the 404/501 rolling-upgrade fallback), op_dedup retention (createdAt stamping, legacy backfill, hourly 7-day sweep), and — cherry-picked from the measured Oct 26–27 stack — batched ledger appends with O(1) head reads, single-statement upserts for all store puts, the atomic-op dedup fold (one op = one store call, dedup inside the commit transaction; race-proven 12/12 against live 3.3.5), and direct record addressing for meta reads.
 
 - **2026-10-28 — Batched character-state writes, wired end-to-end.** The store batch (below) is now the live save path: store batch reads + batched op results; `WorldCore.putCharacterStates` with per-record outcomes (the single put's ceremony per record — a fenced record fails its own outcome only); the `World.PutCharacterStates` wire method (cap 32); and a coalescer in `WorldCharacterSync.save` (10 ms window, ≤2 batches in flight, logout flushes immediately). A world predating the bulk op (404/501) flips the sync to per-record puts for the session, so saves survive rolling upgrades. Same commit completes the MX catalog switch: the terrain test still addressed the baked catalog by its old RocksDB URL after the bake moved to SurrealKV — test updated (it was the only stale caller). Evidence: `packages/world-server/PERFORMANCE-BATCH.md` (wiring section).
-- **2026-10-28 — Batched character-state writes at the store layer (Joey's directive: "batching OPs to maximize MX ops").**
+- **2026-10-28 — Batched character-state writes at the store layer (the owner's directive: "batching OPs to maximize MX ops").**
   Evidence: `packages/world-server/PERFORMANCE-BATCH.md`. `putCharacterState`/`putCharacterLock` were still check-then-write on main (2 round trips per record); both are now single `INSERT ... ON DUPLICATE KEY UPDATE` statements, and the new `WorldStore.putCharacterStates` carries a sweep's upserts in one query per 256-statement chunk — measured ~5.5× the old write path at 500 records on embedded SurrealMX (sandbox floor). The SDK array-upsert form was measured and rejected (errors on this SDK/engine combination). Follow-on designed, not yet built: store batch reads + batched op-results, a bulk core op with per-record outcomes, and a coalescing window in `WorldCharacterSync.save` (saves are event-driven; logout flushes immediately).
 
-- **2026-10-28 — SurrealMX adoption: SurrealDB 3.x engines everywhere, MX for the world tier (Joey's directive).**
+- **2026-10-28 — SurrealMX adoption: SurrealDB 3.x engines everywhere, MX for the world tier (the owner's directive).**
   Full evidence: `docs/SURREALMX-ADOPTION-REPORT.md`.
   1. **Versions aligned:** `@surrealdb/node` 3.0.3 → ^3.1.0 and the `surrealdb` JS SDK 2.0.8 → ^2.2.0 in the root, world-server, and engine-core manifests. Every embedded `mem://` endpoint (persist worker, data-plane server, store tests, benches) runs on SurrealMX, SurrealDB 3.x's in-memory engine.
   2. **Measured constraint:** embedded `mem://` ignores the MX persistence parameters (`aol`/`snapshot`/`sync`) — verified on engines 3.0.3 and 3.1.0: no files written, data gone after reconnect. MX persistence is a server-side feature, so the durable tier gets MX as a **server**, never as a silent embedded downgrade.
@@ -89,7 +89,7 @@ Every entry: date, decision, rationale. Newest first.
   - **Gateway Migration & Parity:** Replaced all 9 legacy `console.*` calls in `packages/engine-core/src/net/gateway.ts` with typed SAB log emissions. Full gateway unit test suite passed (22/22 green) with zero regressions. All Phase 0 gates PASS.
 
 - **2026-10-27 — SAB Logging Layer Commissioning, Architecture & Roadmap.**
-  Commissioned by Joey: implement a performant logging layer extending the SharedArrayBuffer (`docs/SAB-LOGGING-LAYER-SPEC.md`):
+  Commissioned by the owner: implement a performant logging layer extending the SharedArrayBuffer (`docs/SAB-LOGGING-LAYER-SPEC.md`):
   - **Sacred Producer Path:** Fixed 128-byte binary record format written directly to `AtomicMPSCQueue` in tens of nanoseconds with zero locks, zero formatting, and zero heap allocations.
   - **Disposable Sinks & Log Worker:** Background worker thread batches drain, formats entries once, and flushes to independent sinks (batched file sink, atomic metrics counters, and live edge pub/sub topic `logs` via uWebSockets.js for editor telemetry).
   - **World-Tier Fan-In:** Multi-region deployments stream batches to an independent Go collector process backed by Redis Streams for durable storage and GraphQL live-ops queries.
@@ -123,7 +123,7 @@ Every entry: date, decision, rationale. Newest first.
   - Master single-page manual (docs/WIKI.md) and 9-chapter modular hub (docs/wiki/) covering architecture, engine/game decoupling, bitECS SoA, native C++ N-API addons, uWebSockets.js networking, procedural synthesis, client mirror, and developer extension guides.
   - Linked directly from repository root README.md and docs/README.md.
 
-- **2026-10-27 — Joey commissions C++ Main Tick specification and roadmap (docs/CPP-MAIN-TICK-SPEC.md).**
+- **2026-10-27 — The owner commissions C++ Main Tick specification and roadmap (docs/CPP-MAIN-TICK-SPEC.md).**
   Authoritative main tick moves from TypeScript (engine-core) to C++; Node reduces to the networking/session layer on uWebSockets.js; persistence tier (world-server + SurrealDB atomic ops) remains unchanged. Target scale: 1,000 CCU + 50,000 entities/NPCs in ONE region (30 Hz, 33.33ms budget). Phased gated execution (Phase 0: Baselines & transport guarantee; Phase 1: Transpiler pilot fast-path.ts; Phase 2: Production wiring of SAB data-plane topology; Phase 3: System-by-system migration, densest first; Phase 4: Native tick loop and hardening).
 
 - **2026-10-27 — Native Performance & Serialization Roadmap: C++ AVX2 Codec, Native Spatial Grid, and Jolt Multi-Threading.**
@@ -353,7 +353,7 @@ Every entry: date, decision, rationale. Newest first.
   the user's alpha decisions D2 and D3, in `content/rules/loot.json`.
 
 - **2026-09-29 — The client is React all the way down: React Three Fiber
-  for the 3D world (Joey's decision).** The HUD and menus stay React DOM;
+  for the 3D world (the owner's decision).** The HUD and menus stay React DOM;
   the world is a React Three Fiber `<Canvas>` in the same React tree, so
   UI and scene share state and components (nameplates, the character
   creator's preview, editor viewports, selection cards). React 19 and
@@ -367,7 +367,7 @@ Every entry: date, decision, rationale. Newest first.
   prop changes. Canvas is `flat` (no tone mapping) so the picture matches
   plain three.js. New 3D UI is written as R3F components from the start.
 
-- **2026-09-29 — Characters and social systems (Joey's decisions; spec:
+- **2026-09-29 — Characters and social systems (the owner's decisions; spec:
   docs/CHARACTERS-AND-SOCIAL.md, docs/MASTERY-AND-COMBAT.md).** Classless
   mastery: characters improve at what they do by doing it. Skill belongs
   to the technique, not the item, so anything can be used as any kind of
@@ -387,7 +387,7 @@ Every entry: date, decision, rationale. Newest first.
   region-facing event stream. Characters are built before social.
 
 - **2026-09-27 — Editor customization slice: standalone companion + public
-  Rogue bridge (Joey's decision: all three surfaces).** The Rogue Engine
+  Rogue bridge (the owner's decision: all three surfaces).** The Rogue Engine
   Editor customization ships as three inspectors — read-only ECS inspector,
   local authoritative-server play mode, art asset pipeline — each with its
   own inspector view, in a standalone Vite+React companion app
@@ -423,10 +423,10 @@ Every entry: date, decision, rationale. Newest first.
     path-traversal-safe scanner, manifest-backed Three.js provider with
     per-asset placeholder fallback + diagnostics). Folder convention:
     `assets/{manifest.json,models/,textures/}`. The game client now
-    consumes the same package (DRY); placeholders remain until Joey
+    consumes the same package (DRY); placeholders remain until the owner
     supplies real art. An optional Node script imports a pack into a
     Rogue project's `Assets/Models/mmo/`.
-  - Rationale: Joey's "all three" decision; DRY (one art contract, one
+  - Rationale: The owner's "all three" decision; DRY (one art contract, one
     mirror package), SOLID (injected server/client/debug-source seams),
     DOD (bulk/SoA preserved), EDA (gateway is a pure event translator;
     debug answers flow through the narrow injected `DebugSource`
@@ -477,7 +477,7 @@ Every entry: date, decision, rationale. Newest first.
     created server-side via `npm run seed:user`
     (`MMO_DEV_PASSWORD='<password>'`), which never prints the password or
     hash. Never log credentials, hashes, or tokens.
-  - Rationale: Joey's CSV-now decision with the minimal real-auth shape —
+  - Rationale: The owner's CSV-now decision with the minimal real-auth shape —
     argon2id + opaque tokens + rate limiting — behind swappable interfaces
     so the SQLite account store lands without touching the gateway.
 - **2026-09-27 — Gateway reconnect semantics (slice 1.3).** The dev token
@@ -614,7 +614,7 @@ Every entry: date, decision, rationale. Newest first.
   `PathState` component holds flat status + slice descriptor
   (offset/count); waypoints live in the engine-side `WaypointStore` arena
   (fixed slot per entity id). Steering stays JS-side (future slice).
-- **2026-09-27 — Phase 3: mirror client with placeholder visuals (Joey's
+- **2026-09-27 — Phase 3: mirror client with placeholder visuals (the owner's
   choice).** `apps/client/`: React + shadcn-style + Tailwind shell (login,
   server URL, HUD), three.js canvas. The browser holds no game logic —
   it connects/authenticates, applies snapshot → deltas into a MirrorState,
@@ -635,7 +635,7 @@ Every entry: date, decision, rationale. Newest first.
   render as flat shaded planes (wireframe toggle in HUD). A server-served
   chunk-data channel (authoritative heights) is the follow-up; the
   `AssetProvider` interface (`apps/client/src/render/assets.ts`) is the
-  seam it plugs into. Joey supplies real art later via
+  seam it plugs into. The owner supplies real art later via
   `loadAssetPack()` without touching the render loop.
 - **2026-09-27 — Production server entry `packages/engine-core/src/server.ts`
   (`npm run server`).** One Node process: SimWorld + Intent/Integrate
@@ -646,7 +646,7 @@ Every entry: date, decision, rationale. Newest first.
   hook), CSV auth at `<MMO_DATA_DIR>/users.csv`. Env: `MMO_PORT` (7777),
   `MMO_DATA_DIR` (./data), `MMO_WORLD_SEED` (1234), `MMO_CHUNK_SIZE` (16).
 - **2026-09-27 — Wire protocol stays FlatBuffers; no protobuf/webrpc
-  migration.** Joey raised protobufs + webrpc for the API layer; after
+  migration.** The owner raised protobufs + webrpc for the API layer; after
   review he confirmed keeping the current design unchanged. FlatBuffers
   remains the shared contract (single `.fbs` generates C++ and JS/TS
   bindings, zero-copy reads on the 30 Hz data plane); the control plane
@@ -928,7 +928,7 @@ Every entry: date, decision, rationale. Newest first.
      - JS fallback kernel: mean 0.708 ms, p99 2.681 ms (8.0% of budget), 0 spiral events [sandbox].
      - Native kernel: mean 0.233 ms, p99 0.926 ms — ~3× faster for the dense-math slice.
   3. **Boot-time transport assertion:** server logs which transport loaded at boot; `MMO_TRANSPORT=uws` + uWS unavailable → fatal error, no silent `ws` fallback. Gate: PASS.
-  4. **uWS packaging decision:** vendored binary selected — commit the uWS `.node` binary for the target platform, add boot-time integrity check, fail loud on missing/corrupt binary. Decision documented; implementation pending Joey's approval.
+  4. **uWS packaging decision:** vendored binary selected — commit the uWS `.node` binary for the target platform, add boot-time integrity check, fail loud on missing/corrupt binary. Decision documented; implementation pending the owner's approval.
 
 - **2026-10-27 — C++ Main Tick Migration Phase 2: Production Data-Plane Wiring & Security Perimeter.**
   Implemented and verified Phase 2 of the C++ Main Tick migration roadmap (`docs/CPP-MAIN-TICK-SPEC.md`):

@@ -378,7 +378,7 @@ Exact behavior:
 4. Otherwise → `buildQuestChecked` with `BuildRequest { playerRank, metIds, seed, pool: chapter.pool, recipeId: undefined }`, then restrict recipes to `chapter.recipeIds` (filter the recipes array before calling).
 5. After returning a beat or quest, the CALLER records the fact on completion (director never writes facts — read-only).
 
-**Lore extensions — add exactly these records to the four entity files** (names are Joey's placeholders; keep the ids exactly as written):
+**Lore extensions — add exactly these records to the four entity files** (names are the owner's placeholders; keep the ids exactly as written):
 
 Chapter 2 "Rumblings" (rank 6–10): factions: `f_ironpact` (Iron Pact, hostile, home p_borderwatch, "A warband of deserters turned raiders."); places: `p_borderwatch` (Borderwatch, landmark, "An abandoned watchtower."), `p_dustfield` (Dustfield, wilderness, "Dry plains between Emberhold and the hills."); characters: `c_sergeant` (Sergeant Hobb, f_townsguard, p_borderwatch, "sergeant", rank 6, "Holds Borderwatch with six guards."), `c_raider` (Raider Vane, f_ironpact, p_dustfield, "raider", rank 6, "Leads Iron Pact raids."), `c_informant` (Informant Squeak, null, p_emberhold, "informant", rank 7, "Sells rumors for coin."); items: `i_warpapers` (War Papers, key, "Iron Pact orders, stamped and sealed."); relations: (c_sergeant,p_borderwatch,lives_in,5), (c_raider,p_dustfield,lives_in,5), (c_raider,f_ironpact,ally,4), (f_ironpact,f_townsguard,enemy,5), (c_informant,c_trader,ally,3), (c_sergeant,c_captain,ally,4).
 
@@ -493,7 +493,7 @@ packages/quests/README.md              (modify)
 
 **Override format (exact):**
 ```json
-{ "questId": "q_42_0", "field": "brief", "value": "New brief text.", "author": "joey", "tick": 123456 }
+{ "questId": "q_42_0", "field": "brief", "value": "New brief text.", "author": "designer-1", "tick": 123456 }
 ```
 `field` ∈ `title` | `brief` | `steps` | `rewards`. `value` type must match the field (string for title/brief; array for steps; `{xp,gold}` object for rewards) — validated or rejected. `author` is a non-empty string. `tick` is the core tick at write time (the edge fills it from the core tick — never trust the client).
 

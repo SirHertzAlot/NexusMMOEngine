@@ -133,9 +133,9 @@ The C++ Main Tick migration (Phases 0–4) is complete. Phases 1–4 merged (com
 3. **Boot-time transport assertion** — DONE, Gate: PASS:
    - Server logs which transport loaded at boot (`server.ts` via `gw.transportName`).
    - `MMO_TRANSPORT=uws` + uWS unavailable → fatal error (`transport.ts`), no silent `ws` fallback.
-4. **uWS packaging decision** — DECIDED: vendored binary (implementation pending Joey's approval):
+4. **uWS packaging decision** — DECIDED: vendored binary (implementation pending the owner's approval):
    - Commit the uWS `.node` binary for the target platform; add boot-time integrity check; fail loud on missing/corrupt binary.
    - Documented in DECISIONS.md and ROADMAP.md.
 
-> Known environment limit: the transport test suite hangs on uWS inside Arlo's sandbox, so uWS network numbers must be produced on real hardware (Joey's Windows machine) and labeled as such.
+> Known environment limit: the transport test suite hangs on uWS inside Arlo's sandbox, so uWS network numbers must be produced on real hardware (the owner's Windows machine) and labeled as such.
 

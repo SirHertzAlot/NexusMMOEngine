@@ -2,7 +2,7 @@
 
 **Compiled:** 2026-10-10. For Claude: decision-free execution spec.
 **Sources folded in:** `THREEJS-TOOLING-REVIEW.md` (2026-10-09), `THREEJS-DIRECTORY-REVIEW.md` (2026-10-09, 371 listings / 30 categories), `TOOLING-INTEGRATION-PLAN.md` (2026-10-09), animouse deep review (2026-10-10), `ANIMATION-RUNTIME.md` (2026-10-06).
-**Stack facts:** R3F 9 mirror client (`apps/client`), vanilla-three.js editor (`apps/editor`), art bake pipeline (`packages/art`, Zod-validated manifest), server-authoritative (server decides animation clips; client renders bones). Permissive-only licenses. Every technique needs a cost/benefit gate. Joey's machine: Windows, Node 25.
+**Stack facts:** R3F 9 mirror client (`apps/client`), vanilla-three.js editor (`apps/editor`), art bake pipeline (`packages/art`, Zod-validated manifest), server-authoritative (server decides animation clips; client renders bones). Permissive-only licenses. Every technique needs a cost/benefit gate. The owner's machine: Windows, Node 25.
 
 ---
 
@@ -24,7 +24,7 @@ Execute in this order. Each phase ends with a gate; no phase starts until the pr
 1. Pin: gltfpack binary (latest stable meshoptimizer release at execution time), `@gltf-transform/cli` npm, `gltfjsx` npm, `leva` npm, `lil-gui` npm, `animouse` npm (0.8.0 verified 2026-10-10; re-check latest at execution). Record all in `packages/art/README` and in this doc's appendix.
 2. Pick 3 baseline assets: one prop, one character-ish mesh, one baked vista/environment piece from the current corpus.
 3. Per asset record: file bytes, client load time (ms, median of 5), rendered screenshot hash. Check into test fixtures.
-4. Windows check (Joey's machine): `gltfpack -h` runs, `npx gltfjsx --version` runs, `npx @gltf-transform/cli --version` runs **including a trial KTX2 conversion** — the KTX2 codec path is the most likely Windows difference; prove it in Phase 0.
+4. Windows check (the owner's machine): `gltfpack -h` runs, `npx gltfjsx --version` runs, `npx @gltf-transform/cli --version` runs **including a trial KTX2 conversion** — the KTX2 codec path is the most likely Windows difference; prove it in Phase 0.
 
 **Gate:** versions pinned and recorded; 3 baselines checked in; KTX2 trial green on Windows.
 
@@ -174,4 +174,4 @@ Each spike is time-boxed. Pass = meets the bar below; fail = write the reason an
 - lil-gui npm: 0.21.0
 - animouse npm: 0.8.0
 
-Baselines: `packages/art/test/fixtures/baselines/` (prop-crate.glb 1056B, character-humanoid.glb 2084B, vista-terrain.glb 15144B) with `manifest.json`. KTX2 CLI verified on Linux; Windows trial pending (Joey's machine).
+Baselines: `packages/art/test/fixtures/baselines/` (prop-crate.glb 1056B, character-humanoid.glb 2084B, vista-terrain.glb 15144B) with `manifest.json`. KTX2 CLI verified on Linux; Windows trial pending (the owner's machine).

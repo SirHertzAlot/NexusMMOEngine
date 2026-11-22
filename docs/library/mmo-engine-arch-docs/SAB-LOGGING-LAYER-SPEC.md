@@ -1,10 +1,10 @@
 # SAB Logging Layer — Specification and Implementation Roadmap
 
-**Status:** Spec + roadmap, commissioned by Joey 2026-10-27 ("We need a
+**Status:** Spec + roadmap, commissioned by the owner 2026-10-27 ("We need a
 performant logging layer that extends our SAB. Maybe some sort of uWs.js
 socket or backend queue?"). Extends the direction delivered 2026-10-26.
-Implementation phases gated on Joey's word per phase.
-**One-line answer to the either/or:** both of Joey's ideas are in the design —
+Implementation phases gated on the owner's word per phase.
+**One-line answer to the either/or:** both of the owner's ideas are in the design —
 each at the layer where it belongs. The SAB ring is the hot path; the uWS
 socket is the live edge; the backend queue is the world-tier fan-in. Neither
 the socket nor the queue ever touches the tick.
@@ -142,7 +142,7 @@ without ever flooding the ring when enabled.
   else; producers keep dropping-or-buffering per the ring; a supervisor
   restarts the worker. The tick cannot tell the difference.
 
-### 2.5 Joey's two ideas, placed
+### 2.5 the owner's two ideas, placed
 
 **uWS socket — YES, as the live edge (the "live sink").**
 uWebSockets.js is a server library, so the direction is: consumers
@@ -194,7 +194,7 @@ near the producer path would violate rule 1.
 ## 4. Implementation roadmap (phased, gated)
 
 Standing rules apply: local branches, tests green, perf phases ship a
-metrics doc + chart, push/merge only on Joey's word.
+metrics doc + chart, push/merge only on the owner's word.
 
 ### Phase 0 — Ring + dictionary + TS producers (gateway first)
 
@@ -281,7 +281,7 @@ this phase exists so the v1 design doesn't paint it into a corner.
   Redis Streams at world-tier fan-in only; EventEmitter for
   control-plane edges; audit stays on the Tier-1 ledger. Batched-buffer
   file sink rule added (Snell streams analysis). No build authorized.
-- **2026-10-27 — Joey commissions the layer ("extends our SAB", uWS
+- **2026-10-27 — The owner commissions the layer ("extends our SAB", uWS
   socket / backend queue floated). This spec places both: uWS pub/sub
   as the live edge (Phase 3), Redis Streams as the world-tier fan-in
   (Phase 4), SAB MPSC ring as the only producer path. Phases gated on
@@ -289,7 +289,7 @@ this phase exists so the v1 design doesn't paint it into a corner.
 
 ## Addendum — Go / Rust logger evaluation (2026-10-27)
 
-Joey asked whether the logger should be Go or Rust. Evaluated against
+The owner asked whether the logger should be Go or Rust. Evaluated against
 this design:
 
 - **Producers are not a language choice.** TS and C++ write the ring;

@@ -19,7 +19,7 @@ lighting — proven experiment by experiment, nothing merged on vibes.
 
 ## The guiding constraint: as far as possible, within reason
 
-Joey's directive, baked into every verdict below: **push graphics and
+The owner's directive, baked into every verdict below: **push graphics and
 aesthetics as far as they can go — inside a hard cost/benefit gate.**
 Ambition is high; cost justification is mandatory. Two facts drive it:
 

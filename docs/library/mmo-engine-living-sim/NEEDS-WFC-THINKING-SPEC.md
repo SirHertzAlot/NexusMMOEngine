@@ -93,7 +93,7 @@ function suitability(species: SpeciesNeeds, pos: Vec2, fields: Fields): number {
 }
 ```
 
-Worked examples (Joey's, 2026-10-11):
+Worked examples (the owner's, 2026-10-11):
 
 - **Freshwater obligate:** `need:hydration.fresh` has `hardBounds: [0, 0.05]` on `water.salinity`. In ocean or desert (no fresh field above threshold) suitability is 0 — it never spawns there, and no one wrote a desert rule.
 - **Arid-intolerant creature:** temperature/aridity requirement anchors score 0 in arctic/desert bands → effectively excluded.
@@ -121,7 +121,7 @@ The bake-time WFC (already earmarked for settlement layout; Scripting Spec §167
 
 ### A6. Carrying-capacity hookup
 
-`LIVING-SIM-DEEP-DIVE` §8.1's population pipeline (survey → capacity → demand → job slots → households → individuals) consumes `suitability` as the capacity field: a region's carrying capacity for a species is the suitability-weighted area, not a hand-tuned number. Cities balance on needs, so populations don't crash from poor balance (Joey's directive, 2026-10-01).
+`LIVING-SIM-DEEP-DIVE` §8.1's population pipeline (survey → capacity → demand → job slots → households → individuals) consumes `suitability` as the capacity field: a region's carrying capacity for a species is the suitability-weighted area, not a hand-tuned number. Cities balance on needs, so populations don't crash from poor balance (the owner's directive, 2026-10-01).
 
 ---
 
@@ -214,4 +214,4 @@ Like the decision substrate (§7): the thinking layer lives in the NPC edge micr
 5. Migration gradient (A4) — displacement recovery.
 6. Carrying-capacity hookup (A6) — populations stop crashing.
 
-**Open questions for Joey:** (a) the need-intensity curve shape — piecewise anchors are proposed; is a simpler linear/exponential decay acceptable for v1? (b) thinking cadence per tier — proposal: instinct 1Hz, social 0.2Hz, strategic on-demand; (c) whether `prime-aggressor` should be a computed vicinity role or an authored constraint.
+**Open questions for the owner:** (a) the need-intensity curve shape — piecewise anchors are proposed; is a simpler linear/exponential decay acceptable for v1? (b) thinking cadence per tier — proposal: instinct 1Hz, social 0.2Hz, strategic on-demand; (c) whether `prime-aggressor` should be a computed vicinity role or an authored constraint.

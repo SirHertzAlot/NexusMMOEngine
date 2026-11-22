@@ -23,7 +23,7 @@ restore. Slice 5 (biome registry) is next.
 Slice 4 (region chunk-load integration) is next.
 
 Sources: UE "Procedural Content Generation Overview" docs (primary, via
-Joey 2026-09-27) + secondary research (UE5.7 docs mirrors, PCG research
+The owner 2026-09-27) + secondary research (UE5.7 docs mirrors, PCG research
 docs). Epic's docs domain was not directly fetchable during research;
 the architectural picture was consistent across sources.
 

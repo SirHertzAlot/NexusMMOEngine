@@ -39,7 +39,10 @@
         "third_party/FastSIMD/include",
         "generated",
       ],
-      "cflags_cc": ["-std=c++17", "-O2", "-fno-fast-math", "-ffp-contract=off"],
+      # The -Wno-* flags quiet vendored FastSIMD/FastNoise2 headers (SIMD
+      # register templates, an MSVC-only pragma, an unused typedef).
+      # Warning flags only; the generated code is unchanged.
+      "cflags_cc": ["-std=c++17", "-O2", "-fno-fast-math", "-ffp-contract=off", "-Wno-ignored-attributes", "-Wno-unknown-pragmas", "-Wno-unused-local-typedefs"],
       # node-gyp disables C++ RTTI by default (-fno-rtti); FastNoise2's
       # Metadata machinery uses dynamic_cast, so re-enable it here.
       # (Exceptions stay disabled via NAPI_DISABLE_CPP_EXCEPTIONS.)

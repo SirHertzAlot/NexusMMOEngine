@@ -14,7 +14,7 @@ const blacksmith = makeFacts({
 });
 
 const opts = {
-  actor: { id: "joey", role: "designer" as const },
+  actor: { id: "designer-1", role: "designer" as const },
   why: "vendor stock review",
   where: "Haven / Market Square / Blacksmith Mara",
   when: 1_800_000_000_000,
@@ -37,7 +37,7 @@ describe("widget view-models", () => {
     for (const w of widgets) {
       for (const a of w.actions) {
         assert.deepEqual(validateVerbCall(a.call), [], `${w.widgetId}/${a.id}`);
-        assert.equal(a.call.provenance.who.id, "joey");
+        assert.equal(a.call.provenance.who.id, "designer-1");
         assert.equal(a.call.provenance.why, "vendor stock review");
         assert.equal(a.call.provenance.where, "Haven / Market Square / Blacksmith Mara");
       }

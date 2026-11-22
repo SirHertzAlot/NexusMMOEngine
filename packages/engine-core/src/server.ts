@@ -178,7 +178,7 @@ import { CivicWorldBridge, SqliteCivicStore } from "./civic/index.js";
 import { clampSpawn, parseSpawnOverride } from "./spawn-override.js";
 import { armourFactor, loadCivicRules, RulesError } from "@mmo-engine/rules";
 import { DEFAULT_LADDER } from "@mmo-engine/compose";
-import { loadGameRules, type GameRules } from "./rules/boot.js";
+import { openGameRules, type GameRules, type GameRulesSource } from "./rules/boot.js";
 import { assembleServerSystems, type ServerModuleContext } from "./modules.js";
 const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -350,8 +350,13 @@ async function main(): Promise<void> {
   const worldLog = new LogProducerClient(LogProducer.WORLD, logRing);
   // ---- rules first: a bad rules file stops us before the world loads ----
   let game: GameRules;
+  // The game's hooks come in beside its rules (rules/hook-overrides.ts).
+  // `rulesSource` carries them into every later load, so a hot reload
+  // cannot quietly drop a game back to the engine's own defaults.
+  let rulesSource: GameRulesSource;
   try {
-    game = loadGameRules(process.env.MMO_RULES || undefined);
+    rulesSource = await openGameRules(process.env.MMO_RULES || undefined);
+    game = rulesSource.load();
   } catch (err) {
     if (err instanceof RulesError) {
       console.error(`[server] ${err.message}`);
@@ -1103,7 +1108,7 @@ async function main(): Promise<void> {
     gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);
     logRulesReloaded(worldLog, g.summary);
-  });
+  }, { source: rulesSource });
   // Quests and dialog (P1): the gateway's "quest" extension and a system
   // checking places and bags; kills come through the death hook below.
   const rankOrder = DEFAULT_LADDER.ranks.map((r) => r.id);

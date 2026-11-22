@@ -1,13 +1,13 @@
 # View-First Authorship Audit
 
 **Date:** 2026-10-18 · **Repo:** `~/workspace/nexus-engine` @ `7baf039` (checked 2026-10-18T01:05Z; tree clean)
-**Direction being served:** Joey's 2026-10-17 authoring direction — **viewport-only workflow**: the 3D scene is the
+**Direction being served:** The owner's 2026-10-17 authoring direction — **viewport-only workflow**: the 3D scene is the
 primary interface; clicking a game object opens a **modal** with that object's authoring UI, plus a **hierarchical
 breakdown** of what's visibly within a scene. Modules presented as composable units; shared verbs promoted to
 first-class authoring actions instead of duplicated per domain.
 
 This audit answers three questions:
-1. Is Joey's duplication suspicion right? (Mostly no — and that's good news.)
+1. Is the owner's duplication suspicion right? (Mostly no — and that's good news.)
 2. What do the 17 modules actually contribute to authoring?
 3. What does the viewport-only modal need to show for each clickable object?
 
@@ -15,7 +15,7 @@ This audit answers three questions:
 
 ## Part 1 — The duplication verdict
 
-**Headline: the server-side verb layer is already deduplicated.** Joey's suspicion — "give the player an item"
+**Headline: the server-side verb layer is already deduplicated.** The owner's suspicion — "give the player an item"
 implemented separately in quests, vendors, loot drops, and trade — does not survive a code check. There is one
 funnel per verb, and every domain routes through it.
 
@@ -79,7 +79,7 @@ can be toggled per workspace.
 
 **The structural gap this reveals:** the server modules are presented to the designer as *zero* composable units.
 `modules-panel.tsx` in the editor only toggles modules on/off. There is no "pull Quest / Vendor / Encounter off a
-shelf and compose" — which is exactly Joey's "modules aren't presented as modules" complaint. The fix is not
+shelf and compose" — which is exactly the owner's "modules aren't presented as modules" complaint. The fix is not
 reorganizing the server modules (they're fine); it's building the shelf.
 
 ---
@@ -161,7 +161,7 @@ entity kind. No registry UI, no toggles — the selection is the query.
 ### 4. Item / container selection → items widget (click an ItemSpawn node or lootable)
 - Item picker (base + rank) → placement; loot-table picker for containers → resolves to `LootDropper` tables.
 - Shows every other place the same item appears (vendor stock, quest rewards, loot tables) — the connection
-  Joey asked for, made visible: "this sword is also sold by Blacksmith Mira and drops from cave wolves."
+  the owner asked for, made visible: "this sword is also sold by Blacksmith Mira and drops from cave wolves."
 
 ### 5. Scene hierarchy breakdown (the second half of the direction)
 A tree of what's visibly in the scene — zones → NPCs (with role badges: vendor/quest/combat) → spawners →

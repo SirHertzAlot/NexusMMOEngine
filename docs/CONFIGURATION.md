@@ -67,6 +67,7 @@ world specs, ecology plans, PCG graphs.
 | Variable | Default | What it does |
 |---|---|---|
 | `MMO_RULES` | the repo's `content/rules` | The rules folder: skills, disciplines, combat, body parts, death, appearance. Validated **first**, before the world loads; a bad file prints every problem and exits. See [ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data). |
+| `MMO_RULES_HOOKS` | `hooks.mjs` in the rules folder, if it is there | The game's hook overrides: a module default-exporting the eight rule hooks it replaces, or a factory handed the loaded rules. A path names one elsewhere; `0` runs the engine's own defaults. A hook named wrong stops the boot. See [`content/rules/README.md`](../content/rules/README.md#hooks-the-rules-you-write-in-code). |
 
 ### Diagnostics
 

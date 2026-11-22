@@ -1,7 +1,7 @@
 # Editor wire-ready pass + whole-game save — spec
 
-**Status: design, written 2026-11-13 on Joey's ask. Nothing built yet.**
-Joey: "I was also able to find the artifact that held the new editor
+**Status: design, written 2026-11-13 on the owner's ask. Nothing built yet.**
+The owner: "I was also able to find the artifact that held the new editor
 revisions we worked on. It would be nice to flesh it out more and
 basically leave it in a state where it just needs to be wired to the
 backend of the engine itself. We also need to find a way to save the
@@ -14,7 +14,7 @@ crazy."
 revised 2026-10-28): the Tailwind working prototype with the full
 behavior set — IDE mode, VC surfaces, named terminal sessions. The
 older EDITOR-PROTOTYPE.html (49 KB) stays untouched as the
-hand-rolled reference. If Joey means a different artifact, this spec
+hand-rolled reference. If the owner means a different artifact, this spec
 re-points; the design does not change.
 
 ## 1. Recon — where the prototype actually stands (verified 2026-11-13)
@@ -24,7 +24,7 @@ re-points; the design does not change.
   grep count 0 across all four patterns.
 - **One global in-memory `const state`** holds everything; panels
   read and write it directly. Close the tab and the game is gone —
-  exactly the one-sitting problem Joey named.
+  exactly the one-sitting problem the owner named.
 - The VC surfaces, terminal sessions, and IDE mode are
   presentation-only: they render the idea, they don't move data.
 - Already decided elsewhere and reused here (not re-litigated):
@@ -145,7 +145,7 @@ the root, and exports to a single-file bundle for sharing/backup.
 
 ## 5. Decisions
 
-- **(a) Artifact confirmation** — TW prototype, per §0. Joey
+- **(a) Artifact confirmation** — TW prototype, per §0. The owner
   corrects if wrong.
 - **(b) Content-store boundary (closes a standing open
   question).** Recommendation: **the game project is its own
@@ -210,7 +210,7 @@ in-memory scene versions became the persisted version store.
   (`wirePop(document.getElementById("verPill"), …)`), throwing at
   script top level and **silently aborting the rest of the main
   script's initial run** — the boot renders and version seeding
-  never executed; the shell Joey reviewed was running on static
+  never executed; the shell the owner reviewed was running on static
   HTML + hoisted functions. One-line fix to
   `wirePop("verPill","verPop",renderVerPop)`. With it, the full
   intended boot runs (populated hierarchy, contextual shelf, live
@@ -233,7 +233,7 @@ in-memory scene versions became the persisted version store.
 
 ## Addendum — add-object-to-scene slice (2026-11-13)
 
-Joey's restatement of the design law, same day: the editor is an
+The owner's restatement of the design law, same day: the editor is an
 authoring surface that pulls up the modules we hid based on
 context — and we should be able to add game objects to the scene
 we choose. Built into the TW prototype the same day:
@@ -298,7 +298,7 @@ W4 — the HttpBackend is no longer a stub:
   Save still commits to the local mirror. 0 page errors in every
   phase.
 
-W5 — flesh-out, with GSAP at Joey's direction (prototype surface;
+W5 — flesh-out, with GSAP at the owner's direction (prototype surface;
 the shipped client's anime.js call is unchanged):
 
 - GSAP 3.12.5 is inlined in the prototype file (240 KB total) and
