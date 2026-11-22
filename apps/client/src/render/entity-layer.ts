@@ -18,7 +18,7 @@
  * Scenery: props show the art packs' models (SyntyProps) when the art is
  * served, else PICG's cooked meshes, else placeholders.
  *
- * Placeholder visuals (Joey's decision for Phase 3): boxes/spheres per
+ * Placeholder visuals (the owner's decision for Phase 3): boxes/spheres per
  * BodyConfig shape. The AssetProvider abstraction is the seam where real
  * art plugs in later. Static props without an art-pack model (the
  * scatter, well over a thousand around the player) are batched into

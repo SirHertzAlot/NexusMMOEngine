@@ -157,7 +157,7 @@ than frame-perfect.
 ### What combat does *not* do yet
 
 - **Some discipline unlocks** (sweep, lunge, throw down, reattach) are data only so far.
-- **Ragdolls and a physics character controller** are planned. See [RAGDOLL-COST-GATE.md](RAGDOLL-COST-GATE.md) for why ragdolls for every player do not fit one world today.
+- **Ragdolls and a physics character controller** are planned. See [Performance and constraints](PERFORMANCE.md) for why ragdolls for every player do not fit one world today.
 - **Range filtering.** `hit` and `life` events go to every welcomed session in the region, not just those nearby.
 
 ## Attributes and stats

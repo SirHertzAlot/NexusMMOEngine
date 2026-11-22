@@ -13,7 +13,7 @@
  *
  * Broadcast model (Phase 1): every connected client receives the same
  * delta stream each tick. No interest management — documented as the
- * future scaling lever (docs/DECISIONS.md). Per-client state exists so
+ * future scaling lever (docs/ARCHITECTURE.md). Per-client state exists so
  * reconnects, slow consumers, and later interest filtering have
  * somewhere to live.
  *
@@ -190,6 +190,7 @@ import { StatusSystem } from "../status.js";
 import { TelegraphSystem } from "../telegraph.js";
 import { DuelSystem } from "../duel.js";
 import { WalletSystem } from "../economy/wallet.js";
+import { runCivicAdminCommand, type CivicService } from "../civic/index.js";
 import { lessonCost, lessonPoints, type Lessons } from "../residents/lessons.js";
 import { TradeSystem } from "../economy/trade.js";
 import { VendorSystem } from "../economy/vendor.js";
@@ -284,7 +285,7 @@ export interface GatewayOptions {
    * heap allocations.
    */
   dataPlaneQueue?: DataPlaneCommandQueue;
-  /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
+  /** SAB Logging producer client (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2). */
   logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
@@ -3425,7 +3426,7 @@ export class Gateway {
         kind: "admin",
         command: cmd.command,
         ok: true,
-        message: "commands: help, whoami, stats, interest, inspect, find, set, addcomponent, removecomponent, appearance, bots, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step",
+        message: "commands: help, whoami, stats, interest, inspect, find, set, addcomponent, removecomponent, appearance, bots, spawnlist, spawn, despawn, teleport, heal, injure, skill, fly, god, noclip, loglevel, items, give, drop, loot, gold, vendor, time, weather, pause, resume, step, civic",
       };
     } else if (cmd.command === "stats") {
       const t = this.telemetry.snapshot();
@@ -3627,6 +3628,21 @@ export class Gateway {
           if (!other.welcomed || other.playerEntity === null) continue;
           this.sendEnvelope(other, MessageType.Chat, encodeControl({ kind: "weather", weather: r.weather }));
         }
+      }
+    } else if (cmd.command === "civic") {
+      const civicExt = this.extensions.get("civic") as CivicService | undefined;
+      const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+      const r = runCivicAdminCommand(
+        civicExt,
+        cmd.args,
+        s.username,
+        (cid, amt) => wallet?.grant(cid, amt, this.tick) ?? false,
+      );
+      res = { kind: "admin", command: cmd.command, ok: r.ok, message: r.message };
+      if (!res.ok) {
+        this.logAdmin(s.username, cmd.command, false);
+        this.sendError(s, 4003, res.message);
+        return;
       }
     } else {
       this.logAdmin(s.username, cmd.command, false);

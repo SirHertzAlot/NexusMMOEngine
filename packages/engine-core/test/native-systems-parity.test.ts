@@ -1,6 +1,6 @@
 /**
  * Phase 3 Native Simulation Systems Parity & Golden Test Suite
- * (docs/CPP-MAIN-TICK-SPEC.md §5 Phase 3)
+ * (docs/internals/CPP-MAIN-TICK-SPEC.md §5 Phase 3)
  *
  * Verifies:
  * 1. System 1 (Integration): NativeIntegrateSystem produces bit-identical position

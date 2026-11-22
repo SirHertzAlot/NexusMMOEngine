@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Phase 0 item 2: JS production tick re-baseline at 51k entities.
- * (docs/CPP-MAIN-TICK-SPEC.md §4, Phase 0 item 2)
+ * (docs/internals/CPP-MAIN-TICK-SPEC.md §4, Phase 0 item 2)
  *
  * Measures the JS fallback kernel path through SimWorkerRuntime at
  * 51,000 entities (1,000 players + 50,000 NPCs), with intent pressure from

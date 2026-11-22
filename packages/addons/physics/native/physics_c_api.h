@@ -211,6 +211,17 @@ void mj_character_update(mj_physics_world_t *world, uint64_t id, float dt,
                          float gx, float gy, float gz);
 /* Writes the character's position (3 floats); NaN for an unknown id. */
 void mj_character_position(mj_physics_world_t *world, uint64_t id, float *out3);
+/* The bridge's per-tick pass over `count` characters: targets holds x, y, z
+ * per character (double); out holds 4 floats per character. Each character
+ * gets the velocity (target - position) / dt and one update without gravity
+ * (none when dt is not positive), then out gets its position and 0. One more
+ * than `teleport` metres from its target is left alone and out[4i + 3] is 1.
+ * An unknown id gives NaN for the position. Moves each character exactly as
+ * mj_character_position, mj_character_set_velocity and mj_character_update
+ * called in turn with the same values would. */
+void mj_character_follow(mj_physics_world_t *world, int count,
+                         const uint64_t *ids, const double *targets, double dt,
+                         double teleport, float *out);
 int mj_character_count(mj_physics_world_t *world);
 
 #ifdef __cplusplus

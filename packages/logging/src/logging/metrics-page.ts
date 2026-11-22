@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Metrics Sink counter page (docs/SAB-LOGGING-LAYER-SPEC.md §2.4)
+ * SAB Logging Layer — Metrics Sink counter page (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4)
  *
  * A small SharedArrayBuffer of atomic counters. The Log Worker is the only
  * writer; the edge `/metrics` endpoint (or any thread) reads with

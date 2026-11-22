@@ -1,6 +1,6 @@
-# Mastery and Combat
+# Mastery and combat
 
-Status: **built** (slices M0 to M4 here, and M5 after it; see the table in §7), kept as the design record.
+All of this is built. Where this document and the code disagree, the code is right.
 Companion to `docs/CHARACTERS-AND-SOCIAL.md`, whose characters this gives skills, bodies and fights.
 
 Sections 6 and 7 describe the plan as it was written. Where the code differs, the code is right:

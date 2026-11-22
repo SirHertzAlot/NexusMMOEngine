@@ -1,4 +1,4 @@
-# Admin Authoring Cookbook
+# Admin cookbook
 
 How to place and manage every authorable thing in the world while
 in-game as an admin. All commands go through the admin console (0x10)

@@ -1,4 +1,4 @@
-# WebSocket Message Catalog
+# Message catalog
 
 Mirrors Phase 1 plan §2. Envelope for every message: `[u8 type][payload]`.
 Control plane = JSON (debuggable); data plane = FlatBuffers (hot path).

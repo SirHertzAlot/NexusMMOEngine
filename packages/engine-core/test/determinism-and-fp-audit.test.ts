@@ -1,6 +1,6 @@
 /**
  * Phase 4 Determinism, FP Model Audit & Fixed-Step Accumulator Suite
- * (docs/CPP-MAIN-TICK-SPEC.md §5 Phase 4)
+ * (docs/internals/CPP-MAIN-TICK-SPEC.md §5 Phase 4)
  */
 
 import { describe, it } from "node:test";

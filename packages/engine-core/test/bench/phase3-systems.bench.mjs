@@ -1,5 +1,5 @@
 /**
- * Phase 3 Systems Benchmark Suite (docs/CPP-MAIN-TICK-SPEC.md §5 Phase 3)
+ * Phase 3 Systems Benchmark Suite (docs/internals/CPP-MAIN-TICK-SPEC.md §5 Phase 3)
  * Measures performance of TypeScript vs Native C++ Systems across 1k, 10k, and 50k entities.
  */
 

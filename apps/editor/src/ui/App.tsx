@@ -1256,7 +1256,7 @@ function MenuBar({ workspace, onPick, onSearch, docks, onToggleDock, onResetLayo
             a running simulation's ECS state.
           </p>
           <p className="mt-2 font-mono text-[11px]" style={{ color: "var(--m3-outline)" }}>
-            docs/EDITOR.md · docs/EDITOR-ARCHITECTURE.md
+            docs/EDITOR.md · docs/internals/EDITOR-ARCHITECTURE.md
           </p>
         </ShellDialog>
       )}

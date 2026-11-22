@@ -58,6 +58,9 @@ export function createSystems(ctx) {
     dayClock: config.dayClock,
     seasonClock: config.seasonClock,
     livingSim: config.livingSim,
+    pool: config.respawnPool,
+    kindResolver: config.kindResolver,
+    now: config.now,
   });
 
   const needs = new NeedsSystem(rules.needs, config.waterSurfaceAt);

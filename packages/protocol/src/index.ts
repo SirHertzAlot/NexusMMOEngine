@@ -122,7 +122,20 @@ export type { CombatMove, MoveKind } from "./combat.js";
 export { ARMOUR_SLOT_NAMES, BROKEN_VARIANT, GROUND_ITEM_VARIANT } from "./items.js";
 export type { ChestsMessage, ChestView, InteractAction } from "./interact.js";
 export type { PouchMaterial, PouchMessage, ResourceNodeView, ResourcesMessage } from "./gathering.js";
-export type { ArmourSlotName, BodyMessage, PartStateName, StanceMessage, TreatMessage, TreatmentMessage, TreatmentName, SkillsMessage, DisciplineRequirement, CastMessage, ManaMessage, SpellMessage, LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemView, AbilityTrigger, AbilityMessage, TelegraphShapeView, TelegraphMessage, StatusMessage, DuelAction, DuelMessage, TradeAction, TradeMessage, WalletMessage, VendorAction, VendorMessage, AuctionAction, AuctionMessage } from "./items.js";
+export type { ArmourSlotName, BodyMessage, PartStateName, StanceMessage, TreatMessage, TreatmentMessage, TreatmentName, SkillsMessage, DisciplineRequirement, CastMessage, ManaMessage, SpellMessage, LifeMessage, HitMessage, DropsMessage, InventoryMessage, ItemAction, ItemHand, ItemProvenanceView, ItemView, AbilityTrigger, AbilityMessage, TelegraphShapeView, TelegraphMessage, StatusMessage, DuelAction, DuelMessage, TradeAction, TradeMessage, WalletMessage, VendorAction, VendorMessage, AuctionAction, AuctionMessage } from "./items.js";
+export type {
+  CivicClientMessage,
+  CivicContributorView,
+  CivicContractView,
+  CivicFoundryView,
+  CivicHistoryEntryView,
+  CivicServerMessage,
+  CivicSiteStageView,
+  CivicSiteView,
+  CivicVeinView,
+  SurveyBand,
+  SurveyDirection,
+} from "./civic.js";
 export type { DialogMessage, NpcView, NpcsMessage, QuestLogMessage, QuestOp, QuestStepView, QuestView } from "./quests.js";
 export type { DungeonEntranceView, DungeonLook, DungeonMessage, DungeonOp } from "./dungeons.js";
 export type { TimeMessage, WeatherMessage, WeatherOverride } from "./sky.js";

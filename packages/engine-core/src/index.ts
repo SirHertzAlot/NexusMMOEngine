@@ -522,7 +522,7 @@ export {
   COMMAND_SLOT_UINT32_STRIDE,
 } from "./lockless-ring.js";
 
-// SAB Logging Layer Exports (docs/SAB-LOGGING-LAYER-SPEC.md)
+// SAB Logging Layer Exports (docs/internals/SAB-LOGGING-LAYER-SPEC.md)
 export * from "./logging/index.js";
 
 // Admin Inspector & Graphify H4 Selection-Scoped Live Overlay
@@ -545,3 +545,6 @@ export {
   type LiveOverlayField,
   type LiveWriterRecord,
 } from "./admin/live-overlay.js";
+
+export * from "./civic/index.js";
+export * from "./pools/index.js";

@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS world_maps (
   dtype TEXT NOT NULL,
   data BLOB NOT NULL
 );
+CREATE TABLE IF NOT EXISTS world_docs (
+  name TEXT PRIMARY KEY,
+  json TEXT NOT NULL
+);
 `;
 
 function toBlob(heights: Float32Array): Buffer {
@@ -212,6 +216,16 @@ export class TerrainTileStore {
     const data = new Ctor(row.width * row.depth);
     new Uint8Array(data.buffer).set(row.data.subarray(0, data.byteLength)); // copy: blobs may be unaligned
     return { width: row.width, depth: row.depth, cell: row.cell, originX: row.origin_x, originZ: row.origin_z, data };
+  }
+
+  /** Store a JSON document (e.g. the geology snapshot) under a name. */
+  putDoc(name: string, value: unknown): void {
+    this.db.prepare("INSERT INTO world_docs (name, json) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET json = excluded.json").run(name, JSON.stringify(value));
+  }
+
+  getDoc<T = unknown>(name: string): T | null {
+    const row = this.db.prepare("SELECT json FROM world_docs WHERE name = ?").get(name) as { json: string } | undefined;
+    return row ? (JSON.parse(row.json) as T) : null;
   }
 
   count(): number {

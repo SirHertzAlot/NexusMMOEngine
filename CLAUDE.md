@@ -1,7 +1,8 @@
 # Working in this repo
 
-Read `README.md` for layout and setup and `docs/DECISIONS.md` for why things
-are the way they are.
+Read `README.md` for layout and setup. Why things are the way they are is
+explained in the guide for each topic under `docs/`, beside the thing it
+explains; `docs/README.md` is the index.
 
 ## Workflow
 

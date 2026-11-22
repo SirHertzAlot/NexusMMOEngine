@@ -3,7 +3,7 @@
  * already computes: height (slope is its gradient), moisture, flow, biome.
  * Road data is not in the survey: roads are routed by the settlement stage.
  * The path channel is baked by a second, path-only pass (`bakeWorldPathMask`)
- * once the settlements have routed their roads (docs/TERRAIN-MASK.md).
+ * once the settlements have routed their roads (docs/internals/TERRAIN-MASK.md).
  *
  * The bake works on plain arrays (`MaskSource`) so it can run in worker
  * threads. Rows of chunks are split across workers; each worker returns its

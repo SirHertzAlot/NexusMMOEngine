@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * `node scripts/lint-no-console.mjs`: the hygiene guard for the SAB logging
- * layer (docs/SAB-LOGGING-LAYER-SPEC.md §2.6).
+ * layer (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.6).
  *
  * Diagnostics flow through the lock-free ring into the log worker; `console.*`
  * calls compete with the tick for the calling thread (formatting + stdio in a
@@ -37,7 +37,7 @@ const EXEMPT_DIRS = [join(root, "packages", "logging", "src")];
  * stdio is correct there; budgets may only be RAISED together with it.
  */
 const BUDGETS = [
-  // Boot banners + fatal handler (docs/SAB-LOGGING-LAYER-SPEC.md §2.1 note in server.ts):
+  // Boot banners + fatal handler (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.1 note in server.ts):
   // visible even when the log worker is not up.
   { file: "packages/engine-core/src/server.ts", budget: 39, justification: "boot banners + fatal, spec-kept on stdio; + the enemy models file problem line (EM1, boot only); + region.db migration/cache banners (#645)" },
   { file: "packages/world-server/src/server.ts", budget: 8, justification: "boot banners + fatal, spec-kept on stdio; + op-dedup sweeper periodic report and error" },
@@ -46,6 +46,7 @@ const BUDGETS = [
   { file: "packages/engine-core/src/sim.ts", budget: 12, justification: "CLI: the verification report is the product" },
   { file: "packages/engine-core/src/bake-world.ts", budget: 16, justification: "CLI: bake progress report" },
   { file: "packages/engine-core/src/preview-world.ts", budget: 6, justification: "CLI: survey report" },
+  { file: "packages/engine-core/src/terrain/geology/compare-cli.ts", budget: 2, justification: "CLI: geology:compare per-seed timing + result table" },
   { file: "packages/engine-core/src/items/rebake.ts", budget: 1, justification: "CLI: one-line bake report" },
   { file: "packages/engine-core/src/auth/seed-user.ts", budget: 5, justification: "CLI: seed tool usage/report" },
   { file: "packages/engine-core/src/procgen/wildlife-plan.ts", budget: 1, justification: "CLI: one-line table report" },

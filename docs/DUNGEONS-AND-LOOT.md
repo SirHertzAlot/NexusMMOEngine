@@ -1,6 +1,6 @@
-# Dungeons, creatures, loot and crafting: generation by WFC
+# Dungeons, creatures and loot
 
-Status: **built, kept as the design record.** Every slice in §9 is done: the WFC solver and formations (W1 to W3), dungeon layouts, dressing, furnishing, the editor view and instances (D1 to D4, DF1 to DF3), species (S1), ranks and the composer (R1, R2), the loot pool and its drops (L1 to L3), crafting (C1) and quests and dialog (P1). See the [roadmap](ROADMAP.md). Where this document's proposals differ from the repo, the repo is right; §8 says where.
+All of it is built: the WFC solver and formations, dungeon layouts, dressing, furnishing, the editor view and instances, species, ranks and the composer, the loot pool and its drops, crafting, and quests and dialogue. Where this document's proposals differ from the repository, the repository is right; §8 says where.
 
 This covers:
 

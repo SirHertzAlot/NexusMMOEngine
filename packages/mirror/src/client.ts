@@ -41,6 +41,8 @@ import {
   type DungeonEntranceView,
   type DungeonMessage,
   type DungeonOp,
+  type CivicClientMessage,
+  type CivicServerMessage,
   type NpcView,
   type NpcsMessage,
   type QuestLogMessage,
@@ -139,6 +141,8 @@ export interface MirrorEvents {
   onDialog?(d: DialogMessage): void;
   /** Dungeon instances (D4): entrances on entering, a transfer into a run, the run's state, its end. */
   onDungeon?(d: DungeonMessage): void;
+  /** Living Regional Provenance & Civic Logistics (0x11 civic extension). */
+  onCivic?(c: CivicServerMessage): void;
   /** The day clock changed (roadmap A4 `time`): the sky follows from here on. */
   onTime?(t: TimeMessage): void;
   /** The weather override changed (roadmap A4 `weather`). */
@@ -581,6 +585,12 @@ export class MirrorClient {
     this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
   }
 
+  /** Send a civic logistics op (`kind: "civic"` over 0x11). */
+  civic(op: CivicClientMessage): void {
+    if (!this.socket || this.closed) return;
+    this.send(this.socket, encodeEnvelope(MessageType.Chat, encodeControl(op)));
+  }
+
   private async welcomeOf(reply: Promise<JoinReply>): Promise<WelcomeMessage> {
     const r = await reply;
     if (r.kind !== "welcome") throw new Error("mirror-client: expected a welcome");
@@ -908,7 +918,7 @@ export class MirrorClient {
         break;
       }
       case MessageType.Chat: {
-        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage | TimeMessage | WeatherMessage>(payload);
+        const m = decodeControl<ChatBroadcast | PartyState | GuildState | FriendsState | BlocksState | QuestLogMessage | NpcsMessage | DialogMessage | DungeonMessage | CivicServerMessage | TimeMessage | WeatherMessage>(payload);
         if (m.kind === "time") {
           this.day = m.day;
           this.events.onTime?.(m);
@@ -927,6 +937,8 @@ export class MirrorClient {
         else if (m.kind === "dungeon") {
           if (m.op === "entrances") this.entrances = m.entrances;
           this.events.onDungeon?.(m);
+        } else if (m.kind === "civic") {
+          this.events.onCivic?.(m);
         }
         else this.events.onChat?.(m);
         break;

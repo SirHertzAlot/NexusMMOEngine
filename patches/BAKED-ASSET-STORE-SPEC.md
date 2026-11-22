@@ -1,11 +1,11 @@
 # Baked Asset Store — SoA asset pipeline + SQLite index
 
-**Status: DRAFT, 2026-11-13.** Written without Joey's word on the offer to
+**Status: DRAFT, 2026-11-13.** Written without the owner's word on the offer to
 write it (offered 2026-11-12 ~17:44 ET, no answer recorded). Nothing here is
 implemented, pushed, or merged. It is a spec for his approval, change, or
 rejection — not a build order.
 
-**Origin:** Joey's idea, 2026-11-12: bake the entire asset library into the
+**Origin:** The owner's idea, 2026-11-12: bake the entire asset library into the
 client and backend engine using Data Oriented Design and DOTS-like
 performance paradigms to speed up load times dramatically and make the game
 much lighter overall, possibly in a light SQLite store/db.
@@ -35,7 +35,7 @@ columns instead of decoding.
   baked index extends it, it does not fork it.
 - **Client SAB design:** client-side SAB is LOCAL only, never
   server→client sharing — Web Workers decode assets into a shared SAB the
-  main thread reads without copy (Joey, 2026-10-14). With baked data there
+  main thread reads without copy (the owner, 2026-10-14). With baked data there
   is barely any decode left: workers place columns.
 - **First consumer already named:** `CMU-IMPLEMENTATION-MAP.md` §2 step 6 —
   baked clips land in the Baked Asset Store: SoA keyframe streams, indexed
@@ -171,7 +171,7 @@ Baking does not change any licence. The SQLite index carries
   fetch, on-demand streaming. Exit: a fresh client loads base only,
   then streams one kit chunk on entering its region.
 
-## 6. Open decisions (Joey's — none block B0)
+## 6. Open decisions (the owner's — none block B0)
 
 1. Chunk granularity: per-kit, per-region, or both (spec assumes both;
    B0 measures the kit/region overlap first).
@@ -191,4 +191,4 @@ Baking does not change any licence. The SQLite index carries
   provider keeps working throughout.
 - No claim about load-time improvement until B3 measures it.
 - No push to `patches/` or any repo branch — this file lives in
-  `your_files/mmo-engine-arch-docs/` as a draft until Joey says otherwise.
+  `your_files/mmo-engine-arch-docs/` as a draft until the owner says otherwise.

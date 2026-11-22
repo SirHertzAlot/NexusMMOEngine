@@ -66,7 +66,7 @@ The world server keeps the world-level store in its own data folder (`WORLD_DATA
 - Steady-state events go through a lock-free ring to a dedicated **log worker**, which writes batched lines to `<data dir>/logs/engine.log` (the world server writes to `data/logs`; `MMO_LOG_DIR` and `WORLD_LOG_DIR` move them). Files rotate at 10 MiB and the five newest are kept (`engine.log`, `engine.1.log`, and so on). A failing disk drops the batch and counts the error; it can never slow the tick.
 - **Boot banners and fatal errors go to the console on purpose**, so they are visible even if the log worker is not up. `MMO_LOG=0` (`WORLD_LOG=0`) starts no worker, and events are then only counted.
 - **Levels can be changed while running** with the admin command `loglevel`, per producer or for all (see [ADMIN-COOKBOOK.md](ADMIN-COOKBOOK.md)).
-- The design is in [SAB-LOGGING-LAYER-SPEC.md](SAB-LOGGING-LAYER-SPEC.md).
+- The design is in [SAB-LOGGING-LAYER-SPEC.md](internals/SAB-LOGGING-LAYER-SPEC.md).
 
 ## When something fails
 
@@ -95,5 +95,5 @@ A hung core is caught by the edge's heartbeat in about 19 seconds at the default
 ## Related
 
 - [GETTING-STARTED.md](GETTING-STARTED.md): a first run.
-- [wiki chapter 5](wiki/05-networking-and-edge.md) and [EDGE-CORE-SPLIT.md](EDGE-CORE-SPLIT.md): the networking design.
-- [WORLD-SERVER-SPEC.md](WORLD-SERVER-SPEC.md) and [WORLD-STRESS-RESULTS.md](WORLD-STRESS-RESULTS.md): regions and their limits.
+- [ARCHITECTURE.md](ARCHITECTURE.md#how-it-runs-today) and [the edge/core design](internals/EDGE-CORE-SPLIT.md): the networking design.
+- [World server](WORLD-SERVER.md) and [Performance and constraints](PERFORMANCE.md): regions and their limits.

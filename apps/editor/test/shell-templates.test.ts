@@ -14,7 +14,7 @@ import {
 import { composeShell } from "../src/ui/shell-composition.js";
 
 const prov = (why: string): Provenance => ({
-  who: { id: "joey", role: "designer" },
+  who: { id: "designer-1", role: "designer" },
   what: "shell slot presentation",
   when: 1_800_000_000_000,
   where: "Editor shell",

@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Phase 0 Contention Benchmark (docs/SAB-LOGGING-LAYER-SPEC.md §4 Phase 0)
+ * SAB Logging Layer — Phase 0 Contention Benchmark (docs/internals/SAB-LOGGING-LAYER-SPEC.md §4 Phase 0)
  *
  * Measures:
  * 1. Single-thread producer latency (ns per record, allocation-free).
@@ -18,7 +18,7 @@ import {
 } from "../../dist/src/index.js";
 
 const ITERATIONS_PER_THREAD = 100_000;
-const CAPACITY = 16384; // 16k records = 2MB buffer (docs/SAB-LOGGING-LAYER-SPEC.md §2.2 default)
+const CAPACITY = 16384; // 16k records = 2MB buffer (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.2 default)
 
 // =============================================================================
 // Worker Thread Logic (for multi-threaded contention)

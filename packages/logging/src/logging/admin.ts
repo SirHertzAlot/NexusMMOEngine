@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — runtime level control (docs/SAB-LOGGING-LAYER-SPEC.md §2.4)
+ * SAB Logging Layer — runtime level control (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4)
  *
  * `loglevel` admin command: raising verbosity on any producer at runtime is
  * ONE atomic write into the ring header — no restart, no recompile. ERROR

@@ -1,4 +1,4 @@
-# Settlements: procedural towns, baked offline
+# Settlements
 
 Status: **built** (2026-11-11). The generator (SG1), site selection and roads (SG2), spawning in the world (SG3), occupancy (SG3b), structures and the town plan (SG4, SG5), homesteads and roadside places (SG7, SG8) and the residents who live in them (RS1 to RS7) are done; see
 the [roadmap](ROADMAP.md) §4. The full design this follows is the
@@ -322,7 +322,7 @@ Before this, a town was a grid of blocks dealt to districts at random: taverns a
 bakeries sat in housing blocks, the craft and farm districts were scattered, every
 building faced the same way and there was no wall. Generator `settlement-gen/0.2.0`,
 rules `settlement-rules/4` lay it out like a planned medieval town (the history it
-draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
+draws on medieval town and church life):
 
 - **The square.** The block where the two primary roads cross is the town square (a
   village green): no plots, a paved, walk-through `town_square` node and a
@@ -592,9 +592,9 @@ draws on: [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)):
   monastery, apothecary, well). `scale-fit` and `scale-report` size a wall model to its
   piece (`kindRoom`) rather than to a parcel.
 
-Still to do: see "Next steps" in [`MEDIEVAL-TOWN-LIFE.md`](MEDIEVAL-TOWN-LIFE.md)
-(a day by the bells, market days, guild streets, parishes, inner walls), plus roads
-spawned as surfaces and a wall that follows the ground.
+Still to do, tracked on the [roadmap](ROADMAP.md): a day by the bells, market
+days, guild streets, parishes and inner walls, plus roads spawned as surfaces
+and a wall that follows the ground.
 
 ## Green squares
 

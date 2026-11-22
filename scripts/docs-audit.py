@@ -5,7 +5,7 @@ valgrind-out/, which is git-ignored) and prints a short report.
 
     python3 scripts/docs-audit.py
 
-See docs/DOCS-AUDIT.md for how to read the output. Needs Python 3 only.
+Run it before opening a documentation change. Needs Python 3 only.
 """
 import json, os, re, subprocess, sys, glob
 
@@ -19,8 +19,7 @@ def read(p):
     except Exception: return ""
 
 docs = sorted(glob.glob("docs/**/*.md", recursive=True)) + ["README.md", "CONTRIBUTING.md", "AGENTS.md"]
-# docs/DOCS-AUDIT.md quotes the paths it reports, so checking it would flag itself.
-docs = [d for d in docs if os.path.exists(d) and "/library/" not in d and not d.startswith("docs/superpowers") and d != "docs/DOCS-AUDIT.md"]
+docs = [d for d in docs if os.path.exists(d)]
 res = {"docs_checked": len(docs)}
 
 # ---- A. relative links and backticked repo paths

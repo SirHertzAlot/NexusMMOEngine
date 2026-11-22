@@ -15,10 +15,10 @@
   after the PC was asleep or off (StartWhenAvailable).
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File scripts\valgrind\install-watch-task.ps1 -RepoWslPath /home/joey/nexus-engine -EveryHours 6
+  powershell -ExecutionPolicy Bypass -File scripts\valgrind\install-watch-task.ps1 -RepoWslPath /home/<you>/nexus-engine -EveryHours 6
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File scripts\valgrind\install-watch-task.ps1 -RepoWslPath /home/joey/nexus-engine -Distro Ubuntu -EveryHours 12
+  powershell -ExecutionPolicy Bypass -File scripts\valgrind\install-watch-task.ps1 -RepoWslPath /home/<you>/nexus-engine -Distro Ubuntu -EveryHours 12
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\valgrind\install-watch-task.ps1 -Remove
@@ -44,7 +44,7 @@ if ($Remove) {
 }
 
 if (-not $RepoWslPath) {
-    throw "-RepoWslPath is required: the repo's path INSIDE WSL, e.g. /home/joey/nexus-engine"
+    throw "-RepoWslPath is required: the repo's path INSIDE WSL, e.g. /home/<you>/nexus-engine"
 }
 if ($EveryHours -lt 1) { throw "-EveryHours must be at least 1" }
 

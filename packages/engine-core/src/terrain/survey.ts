@@ -6,7 +6,9 @@
  *
  *  1. land: a landmass with a wandering coast, a mountain chain pushed up
  *     across the prevailing wind with spurs branching off it, and a
- *     volcano on the chain (landmass.ts);
+ *     volcano on the chain (landmass.ts); or, when the spec carries a
+ *     geology snapshot, the uplift of its provinces (collision belts,
+ *     rifts, cratons, sutures) in place of the chain (geology/);
  *  2. erosion, driven by a first look at the climate: slopes collapse to
  *     their angle of repose, glaciers grind U-shaped valleys and leave
  *     moraines (glaciers.ts), rivers fed by rain and meltwater cut
@@ -60,6 +62,7 @@ import {
   type Volcano,
 } from "./landmass.js";
 import { worldBounds, type WorldSpec } from "./world-spec.js";
+import { classifyGeology, type GeologyFields } from "./geology/provinces.js";
 
 export { fillDepressions, flowAccumulation, LAKE, LAND, SEA } from "./hydrology.js";
 export type { RangeAxis, Volcano } from "./landmass.js";
@@ -123,6 +126,8 @@ export interface Survey {
   regions: BiomeRegion[];
   ranges: RangeAxis[];
   volcanoes: Volcano[];
+  /** Macro geology fields when the spec has a geology snapshot (else undefined). */
+  geology?: GeologyFields;
   stats: {
     erodedMeanM: number;
     erodedMaxM: number;
@@ -242,20 +247,31 @@ export function surveyWorld(spec: WorldSpec): Survey {
   const height = baseElevation(spec, grid, land, swell);
   const baseLevel = Float32Array.from(height);
   const layout = mulberry32(spec.seed ^ 0x5eed);
-  const ranges = placeRanges(spec, grid, land, layout);
-  const warpU = noiseField(grid, fieldSeed(spec.seed, 10), spec.ranges.ridgeScale * 2);
-  const warpV = noiseField(grid, fieldSeed(spec.seed, 11), spec.ranges.ridgeScale * 2);
-  const uplift = rangeUplift(
-    spec,
-    grid,
-    ranges,
-    noiseField(grid, fieldSeed(spec.seed, 5), spec.ranges.ridgeScale),
-    noiseField(grid, fieldSeed(spec.seed, 6), spec.ranges.length / 3),
-    noiseField(grid, fieldSeed(spec.seed, 9), spec.ranges.ridgeScale * 0.6),
-    warpU,
-    warpV,
-    crestDetail(spec, grid, warpU, warpV),
-  );
+  // Macro relief: the geology snapshot's provinces when the spec has one,
+  // otherwise the wind-placed ranges.
+  const geo = spec.geology;
+  const geology = geo
+    ? classifyGeology(geo, grid, (salt, scale) => noiseField(grid, fieldSeed(geo.seed, 900 + salt), scale))
+    : undefined;
+  const ranges = geology ? [] : placeRanges(spec, grid, land, layout);
+  let uplift: Float32Array;
+  if (geology) {
+    uplift = geology.uplift;
+  } else {
+    const warpU = noiseField(grid, fieldSeed(spec.seed, 10), spec.ranges.ridgeScale * 2);
+    const warpV = noiseField(grid, fieldSeed(spec.seed, 11), spec.ranges.ridgeScale * 2);
+    uplift = rangeUplift(
+      spec,
+      grid,
+      ranges,
+      noiseField(grid, fieldSeed(spec.seed, 5), spec.ranges.ridgeScale),
+      noiseField(grid, fieldSeed(spec.seed, 6), spec.ranges.length / 3),
+      noiseField(grid, fieldSeed(spec.seed, 9), spec.ranges.ridgeScale * 0.6),
+      warpU,
+      warpV,
+      crestDetail(spec, grid, warpU, warpV),
+    );
+  }
   for (let i = 0; i < N; i++) if (land[i]) height[i] += uplift[i];
   // Volcanoes: placed now (their heat shapes the climate the erosion
   // sees), raised after erosion (they are young).
@@ -417,6 +433,7 @@ export function surveyWorld(spec: WorldSpec): Survey {
     regions,
     ranges,
     volcanoes,
+    geology,
     stats: {
       erodedMeanM: erodedSum / N,
       erodedMaxM,

@@ -16,7 +16,7 @@ import {
 } from "../src/authoring/index.js";
 
 const prov = (why: string): Provenance => ({
-  who: { id: "joey", role: "designer" },
+  who: { id: "designer-1", role: "designer" },
   what: "authoring slot presentation",
   when: 1_800_000_000_000,
   where: "Design / Authoring",
@@ -122,7 +122,7 @@ describe("presentation pins", () => {
     assert.deepEqual(pins.get("authoring"), { templateId: LEGACY_TEMPLATE_ID, version: 1 });
     const history = pins.pinHistory();
     assert.equal(history.length, 3);
-    assert.ok(history.every((h) => h.provenance.who.id === "joey"));
+    assert.ok(history.every((h) => h.provenance.who.id === "designer-1"));
     assert.equal(history[1].provenance.why, "move to the new authoring view");
     assert.deepEqual(history[1].from, { templateId: LEGACY_TEMPLATE_ID, version: 1 });
   });

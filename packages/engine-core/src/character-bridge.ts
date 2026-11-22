@@ -33,6 +33,12 @@ export interface CharacterBackend {
   setCharacterVelocity(id: bigint, vx: number, vy: number, vz: number): void;
   updateCharacter(id: bigint, dt: number, gx: number, gy: number, gz: number): void;
   characterPosition(id: bigint): [number, number, number];
+  /**
+   * Optional: the per-walker velocity, update and read-back for many walkers in one call (the physics addon's
+   * followCharacters). With it the bridge makes one native call a tick instead of four per walker, and allocates
+   * no position arrays; the characters move exactly as with the single calls.
+   */
+  followCharacters?(ids: BigUint64Array, targets: Float64Array, count: number, dt: number, teleport: number, out: Float32Array): void;
 }
 
 interface Bridged {
@@ -58,6 +64,11 @@ export class CharacterBridgeSystem implements SimSystem {
   private readonly walkers = defineQuery([Transform, Velocity, BodyConfig]);
   private readonly bridged = new Map<number, Bridged>();
   private readonly seen = new Set<number>();
+  // The batch's buffers (followCharacters), grown as walkers come and kept.
+  private batchE = new Int32Array(0);
+  private batchIds = new BigUint64Array(0);
+  private batchTargets = new Float64Array(0);
+  private batchOut = new Float32Array(0);
 
   /**
    * `enabled: false` makes the system a no-op (nothing is bridged, nothing
@@ -78,6 +89,8 @@ export class CharacterBridgeSystem implements SimSystem {
     if (!this.enabled) return;
     const dt = dtSeconds;
     this.seen.clear();
+    const batch = this.backend.followCharacters !== undefined;
+    let n = 0;
     const list = this.walkers(sim.ecs);
     for (let i = 0; i < list.length; i++) {
       const e = list[i] as number;
@@ -105,6 +118,17 @@ export class CharacterBridgeSystem implements SimSystem {
         if (!this.backend.addCharacter(b.id, radius, halfHeight, px, py + offset, pz)) continue;
         this.bridged.set(e, b);
       }
+      if (batch) {
+        // Queued: the batch below moves them all at once.
+        if (n === this.batchE.length) this.grow(Math.max(64, n * 2));
+        this.batchE[n] = e;
+        this.batchIds[n] = b.id;
+        this.batchTargets[3 * n] = px;
+        this.batchTargets[3 * n + 1] = py + b.offset;
+        this.batchTargets[3 * n + 2] = pz;
+        n++;
+        continue;
+      }
       const cur = this.backend.characterPosition(b.id);
       const tx = px;
       const ty = py + b.offset;
@@ -125,6 +149,33 @@ export class CharacterBridgeSystem implements SimSystem {
       Transform.pz[e] = at[2];
       Transform.py[e] = at[1] - b.offset;
     }
+    if (n > 0) {
+      this.backend.followCharacters!(this.batchIds, this.batchTargets, n, dt, TELEPORT_DISTANCE, this.batchOut);
+      const out = this.batchOut;
+      for (let k = 0; k < n; k++) {
+        const e = this.batchE[k]!;
+        const b = this.bridged.get(e)!;
+        let x = out[4 * k]!;
+        let y = out[4 * k + 1]!;
+        let z = out[4 * k + 2]!;
+        if (out[4 * k + 3] === 1) {
+          // Too far to sweep: re-created at the target.
+          const tx = this.batchTargets[3 * k]!;
+          const ty = this.batchTargets[3 * k + 1]!;
+          const tz = this.batchTargets[3 * k + 2]!;
+          this.backend.removeCharacter(b.id);
+          this.backend.addCharacter(b.id, BodyConfig.radius[e]!, BodyConfig.halfY[e]!, tx, ty, tz);
+          const at = this.backend.characterPosition(b.id);
+          x = at[0];
+          y = at[1];
+          z = at[2];
+        }
+        if (!Number.isFinite(x)) continue;
+        Transform.px[e] = x;
+        Transform.pz[e] = z;
+        Transform.py[e] = y - b.offset;
+      }
+    }
     // Walkers that are gone or no longer bridged release their character.
     for (const [e, b] of this.bridged) {
       if (!this.seen.has(e)) {
@@ -133,5 +184,17 @@ export class CharacterBridgeSystem implements SimSystem {
       }
     }
   }
-}
 
+  private grow(size: number): void {
+    const e = new Int32Array(size);
+    e.set(this.batchE);
+    const ids = new BigUint64Array(size);
+    ids.set(this.batchIds);
+    const targets = new Float64Array(size * 3);
+    targets.set(this.batchTargets);
+    this.batchE = e;
+    this.batchIds = ids;
+    this.batchTargets = targets;
+    this.batchOut = new Float32Array(size * 4);
+  }
+}

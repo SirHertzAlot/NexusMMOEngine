@@ -12,11 +12,49 @@
  */
 import * as THREE from "three";
 import { ParticleFx, budgetMultiplierForTier } from "../fx/particle-fx.js";
-import { QuarksFx } from "../vfx/quarks-fx.js";
+import { QuarksFx, type VfxHandle } from "../vfx/quarks-fx.js";
 import { EntityFxSystem } from "../entity-fx.js";
 import type { MirrorClient } from "@mmo-engine/mirror";
+import type { SurveyBand, SurveyDirection } from "@mmo-engine/protocol";
 import type { TerrainRenderer } from "../terrain/terrain-renderer.js";
 import type { Weather } from "../fx/weather.js";
+
+const SURVEY_DIR_VECTORS: Record<SurveyDirection, { x: number; z: number }> = {
+  here: { x: 0, z: 0 },
+  N: { x: 0, z: -1 },
+  NE: { x: Math.SQRT1_2, z: -Math.SQRT1_2 },
+  E: { x: 1, z: 0 },
+  SE: { x: Math.SQRT1_2, z: Math.SQRT1_2 },
+  S: { x: 0, z: 1 },
+  SW: { x: -Math.SQRT1_2, z: Math.SQRT1_2 },
+  W: { x: -1, z: 0 },
+  NW: { x: -Math.SQRT1_2, z: -Math.SQRT1_2 },
+};
+
+/**
+ * Pure world-XZ direction unit vector matching server `computeSurveyBearing`:
+ * N -> (0, -1), E -> (1, 0), S -> (0, 1), W -> (-1, 0), diagonals normalized.
+ */
+export function directionVector(dir: SurveyDirection): { x: number; z: number } {
+  const v = SURVEY_DIR_VECTORS[dir];
+  return v ? { x: v.x, z: v.z } : { x: 0, z: 0 };
+}
+
+interface SurveyFlareSpec {
+  offsetM: number;
+  radius: number;
+  colorStr: string;
+  colorHex: number;
+  ttlSec: number;
+  withAura: boolean;
+}
+
+const SURVEY_FLARE_SPECS: Record<Exclude<SurveyBand, "none">, SurveyFlareSpec> = {
+  faint: { offsetM: 2.0, radius: 0.45, colorStr: "#60a5fa", colorHex: 0x60a5fa, ttlSec: 0.85, withAura: false },
+  warm: { offsetM: 3.2, radius: 0.85, colorStr: "#fbbf24", colorHex: 0xfbbf24, ttlSec: 1.05, withAura: false },
+  hot: { offsetM: 4.5, radius: 1.25, colorStr: "#f97316", colorHex: 0xf97316, ttlSec: 1.25, withAura: true },
+  pinpoint: { offsetM: 2.2, radius: 1.65, colorStr: "#34d399", colorHex: 0x34d399, ttlSec: 1.5, withAura: true },
+};
 
 export interface VfxEvent {
   type: string;
@@ -43,6 +81,8 @@ export class VfxAdapter {
   private quarksFx: QuarksFx;
   private entityFx: EntityFxSystem;
   private initialized = false;
+  private disposed = false;
+  private activeFlares: Array<{ handle: VfxHandle; remainingSec: number }> = [];
 
   constructor(_options: VfxAdapterOptions) {
     this.particleFx = _options.particleFx;
@@ -51,18 +91,71 @@ export class VfxAdapter {
   }
 
   initialize(): void {
+    if (this.disposed) return;
     this.initialized = true;
     console.info("[VFX] Adapter initialized with existing systems");
   }
 
   setQualityTier(tier: import("@mmo-engine/art/browser").QualityTier): void {
+    if (this.disposed) return;
     const multiplier = budgetMultiplierForTier(tier);
     this.quarksFx.setBudget?.(multiplier);
     this.particleFx.setBudget?.(multiplier);
   }
 
+  /**
+   * Emit a directional compass survey flare toward `direction`, scaled by `band`.
+   * Safe no-op when disposed, when `band === "none"`, or when origin is non-finite.
+   */
+  emitSurveyFlare(
+    origin: { x: number; y?: number; z: number },
+    direction: SurveyDirection,
+    band: SurveyBand,
+  ): void {
+    if (this.disposed || band === "none") return;
+    const oy = origin.y ?? 0;
+    if (!Number.isFinite(origin.x) || !Number.isFinite(oy) || !Number.isFinite(origin.z)) return;
+    const spec = SURVEY_FLARE_SPECS[band];
+    if (!spec) return;
+
+    const dir = directionVector(direction);
+    const fx = origin.x + dir.x * spec.offsetM;
+    const fz = origin.z + dir.z * spec.offsetM;
+
+    const tempObj = new THREE.Object3D();
+    tempObj.position.set(fx, oy + 0.6, fz);
+    if (dir.x !== 0 || dir.z !== 0) {
+      tempObj.rotation.y = Math.atan2(dir.x, dir.z);
+    }
+    tempObj.updateMatrixWorld(true);
+
+    const sparkHandle =
+      this.quarksFx?.attachSignal?.(
+        { kind: "particles", id: "survey_flare", params: { effect: "sparks", radius: spec.radius, color: spec.colorStr } },
+        tempObj,
+      ) ?? null;
+    if (sparkHandle) {
+      this.activeFlares.push({ handle: sparkHandle, remainingSec: spec.ttlSec });
+    }
+
+    if (spec.withAura) {
+      const auraHandle =
+        this.quarksFx?.attachSignal?.(
+          { kind: "aura", id: "survey_flare_aura", params: { color: spec.colorStr, radius: spec.radius } },
+          tempObj,
+        ) ?? null;
+      if (auraHandle) {
+        this.activeFlares.push({ handle: auraHandle, remainingSec: spec.ttlSec });
+      }
+    }
+
+    // Update matrixWorld after parenting emitters so orphaned tempObj children inherit the flare offset.
+    tempObj.updateMatrixWorld(true);
+    this.entityFx?.spawnBurst?.(new THREE.Vector3(fx, oy + 0.08, fz), spec.colorHex);
+  }
+
   handleEvent(event: VfxEvent): void {
-    if (!this.initialized) return;
+    if (!this.initialized || this.disposed) return;
 
     switch (event.type) {
       case "structure_state_changed":
@@ -206,21 +299,42 @@ export class VfxAdapter {
   }
 
   update(dt: number, cameraPos?: THREE.Vector3, weather?: Weather): void {
-    if (!this.initialized) return;
+    if (!this.initialized || this.disposed) return;
+
+    for (let i = this.activeFlares.length - 1; i >= 0; i--) {
+      const flare = this.activeFlares[i]!;
+      flare.remainingSec -= dt;
+      if (flare.remainingSec <= 0) {
+        flare.handle.dispose();
+        this.activeFlares.splice(i, 1);
+      }
+    }
 
     // Weather: null kind = clear
     const clearWeather: Weather = { kind: null, intensity: 0 };
     this.particleFx.update?.(dt, cameraPos ?? new THREE.Vector3(), weather ?? clearWeather);
     this.quarksFx.update?.(dt);
-    this.entityFx.update(dt, performance.now() / 1000);
+    this.entityFx.update?.(dt, performance.now() / 1000);
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.initialized = false;
+    for (const flare of this.activeFlares) {
+      flare.handle.dispose();
+    }
+    this.activeFlares = [];
     this.particleFx.dispose?.();
     this.quarksFx.dispose?.();
     this.entityFx.dispose?.();
+    if (vfxAdapterInstance === this) {
+      vfxAdapterInstance = null;
+    }
   }
 }
+
+export { VfxAdapter as VFXAdapter };
 
 /**
  * Create and initialize the VFX adapter.

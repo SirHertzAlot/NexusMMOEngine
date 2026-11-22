@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — worker_thread entry (docs/SAB-LOGGING-LAYER-SPEC.md §2.4)
+ * SAB Logging Layer — worker_thread entry (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4)
  *
  * Hosts a LogWorkerCore on a dedicated thread. Spawned by `supervisor.ts`;
  * not imported by anything on the tick path.
