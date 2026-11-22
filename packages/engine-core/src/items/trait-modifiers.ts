@@ -5,7 +5,7 @@
  */
 
 import type { VeinTraitDef } from "@mmo-engine/rules";
-import type { Weapon } from "../combat.js";
+import type { Weapon } from "../vocabulary.js";
 
 /** Projected ItemView stats and durability after applying a vein trait. */
 export interface TraitItemViewResult {

@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { addComponent } from "bitecs";
 import { combatMove, IntentButton, Move, type ItemProvenanceView } from "@mmo-engine/protocol";
 import { DEFAULT_CIVIC_RULES, engineDefaults, type LootRules, type VeinTraitDef } from "@mmo-engine/rules";
-import { CombatSystem, type Weapon } from "../../src/combat.js";
+import { CombatSystem } from "../../src/combat.js";
+import type { Weapon } from "../../src/vocabulary.js";
 import * as C from "../../src/components.js";
 import { SqliteCivicStore } from "../../src/civic/index.js";
 import {

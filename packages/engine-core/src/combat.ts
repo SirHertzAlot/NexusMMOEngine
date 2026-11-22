@@ -53,6 +53,7 @@
 
 import { defineQuery, hasComponent } from "bitecs";
 import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
+import { PORTS } from "@mmo-engine/sdk";
 import { engineDefaults, type CombatRules, type DamageInput, type ItemBaseRules, type PartState, type RuleHooks } from "@mmo-engine/rules";
 import { Action, God, Health, Locomotion, PlayerIntent, Stamina, Transform, Velocity } from "./components.js";
 import { blowRng, type BodySystem } from "./body.js";
@@ -60,20 +61,9 @@ import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
-import { PORTS } from "@mmo-engine/sdk";
+import type { Weapon } from "./vocabulary.js";
 
-/** What a striker swings: the rules technique, the item's physics and its reach (m). */
-export interface Weapon {
-  technique: string;
-  item: DamageInput["item"];
-  reach: number;
-  /** The item family familiarity builds with (its base: "sword", "axe"); absent: none. */
-  family?: string;
-  /** Optional percentage of defender armour mitigation bypassed on hit (clamped 0..100). */
-  armourPenetrationPct?: number;
-  /** Optional percentage reduction of attack stamina drain (clamped 0..50). */
-  staminaReductionPct?: number;
-}
+// Weapon is shared vocabulary, not this system's own: see vocabulary.ts.
 
 /** A blow's outcome, for the gateway to tell clients. */
 export interface HitEvent {

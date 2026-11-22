@@ -25,7 +25,7 @@
 import { hasComponent } from "bitecs";
 import type { DialogMessage, NpcsMessage, QuestLogMessage, QuestView } from "@mmo-engine/protocol";
 import * as C from "../components.js";
-import type { LifeEvent } from "../death.js";
+import type { LifeEvent } from "../vocabulary.js";
 import type { SimSystem } from "../systems.js";
 import type { SimWorld } from "../world.js";
 import { hash } from "../procgen/ecology.js";

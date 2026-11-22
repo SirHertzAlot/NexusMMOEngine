@@ -21,10 +21,11 @@
 import type { PortDecl } from "@mmo-engine/sdk";
 import type { AbilityEvent, TriggerResult } from "../abilities.js";
 import type { HitEvent } from "../combat.js";
-import type { LifeEvent } from "../death.js";
 import type { DuelEvent } from "../duel.js";
 import type { StatusChange } from "../status.js";
 import type { TelegraphEvent } from "../telegraph.js";
+// LifeEvent is shared vocabulary now (#753), not the death system's own.
+import type { LifeEvent } from "../vocabulary.js";
 
 /** The blows struck this tick, and the stance a player fights in. */
 export interface CombatPort {

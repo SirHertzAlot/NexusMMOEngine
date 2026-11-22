@@ -34,7 +34,7 @@ import { ClipId, IntentButton, LocomotionMode } from "@mmo-engine/protocol";
 import { type CreaturesRules, type ItemBaseRules, CreatureAiSchema, type CreatureAiRules } from "@mmo-engine/rules";
 import { fnv1a32 } from "@mmo-engine/scatter";
 import * as C from "./components.js";
-import type { Weapon } from "./combat.js";
+import type { Weapon } from "./vocabulary.js";
 import { INVALID_POOL_HANDLE, RespawnKind, SlotState, SpawnPoolSoA } from "./pools/spawn-pool-soa.js";
 import { attachDefaultCollider, CHARACTER_CAPSULE, PLAYER_SPEED, type SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
