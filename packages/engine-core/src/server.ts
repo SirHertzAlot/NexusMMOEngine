@@ -214,8 +214,7 @@ import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
-import { DEFAULT_QUEST_DIR } from "./quests/content.js";
-import { DEFAULT_DUNGEON_CONTENT, loadDungeonContent } from "./dungeons/content.js";
+import { loadDungeonContent } from "./dungeons/content.js";
 import { flushInstanceResults } from "./dungeons/results.js";
 import { expandPrefabs, worldNodes } from "@mmo-engine/scene";
 import { loadPrefabs, loadScenes, spawnSceneOnBoot } from "./scene-spawn.js";
@@ -1198,7 +1197,7 @@ async function main(): Promise<void> {
   // Quests and dialog (P1, slice 4): the quests module builds the service
   // from this config during assembly. See modules/quests/server.js.
   const questsConfig = {
-    questDir: process.env.MMO_QUESTS || DEFAULT_QUEST_DIR,
+    questDir: GAME.paths.questsDir,
     dataDir: DATA_DIR,
     getSpeciesNear: () => Object.entries(game.rules.creatures.creatures).map(([id, c]) => ({ id, name: c.name })),
     getItemBases: () => Object.keys(game.rules.items.bases).filter((b) => itemsOf().defs.ofBase(b).length > 0),
@@ -1281,7 +1280,7 @@ async function main(): Promise<void> {
   // now live on moduleCtx.stores (built by the character/dungeons modules);
   // train reads the character store lazily — it only runs during live runs.
   const dungeonsConfig = {
-    dungeonDir: process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT,
+    dungeonDir: GAME.paths.dungeonsDir,
     dataDir: DATA_DIR,
     instanceHost: process.env.MMO_INSTANCE_HOST || "localhost",
     scale,
@@ -1678,7 +1677,7 @@ async function main(): Promise<void> {
       entities: () => creaturesOf().entities(),
     },
     spawnPoint: spawn,
-    respawnAnchors: Object.values(loadDungeonContent(process.env.MMO_DUNGEONS || DEFAULT_DUNGEON_CONTENT).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
+    respawnAnchors: Object.values(loadDungeonContent(GAME.paths.dungeonsDir).entrances).map((e: any) => ({ name: e.name, x: e.x, z: e.z })),
     // "Start from": characters enter at the chosen point, not where they were saved.
     spawnOverridden: spawnOverride !== null,
     // Baked worlds: extent + coarse map for the client's far horizon.
