@@ -339,3 +339,25 @@
   color: var(--fg-accent-text);
   text-decoration: underline;
 }
+
+/* ------------------------------------------------------------- bar chart
+ * Share-of-budget bars in the profiler (ui/forge-profiler.tsx): a sunken
+ * track with one fill, tinted by what the share costs you.
+ */
+[data-theme="forge"] .fg-bar-track {
+  display: block;
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--fg-sunken);
+  border: 1px solid var(--fg-line-soft);
+  overflow: hidden;
+}
+
+[data-theme="forge"] .fg-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0;
+  transition: width 180ms ease;
+}

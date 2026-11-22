@@ -266,7 +266,14 @@ list, not a blocker.
 - **EU4** — outliner badges; systems list with counts and signatures.
 - **EU5** — dock regrouped to four tabs; Source Control moves in.
 - **EU6** — viewport gizmos, axis widget, mode segment.
-- **EU7** — profiler panel; per-system tick cost (needs a server feed).
+- **EU7** — profiler panel; per-system tick cost. It does NOT need a
+  server feed: `TickTimings` in engine-core has recorded both since the
+  gateway was written and the debug API serves them. What was missing is
+  the budget. `ui/forge-profiler.tsx` draws every system as a share of
+  the 33.33 ms tick. Note the two windows: `p50`/`p99` come from a
+  1,000-tick ring while each system's mean and peak are running totals
+  since the server started. The panel says so; windowing them is a tick
+  change and goes in its own PR (`PERF-TT1` on the roadmap).
 - **EU8** — console; runtime discovery.
 - **EU9** — VS Code handoff (not an embedded IDE).
 - **EU10** — Blender live-link, if still wanted.
@@ -289,6 +296,9 @@ the shipped thing and not an approximation:
   GIF. Each GIF frame is the real component reacting to a write to the
   real store (`setTool`, `editorSelection.select`, `playUiStore.set`),
   not a storyboard of mock states.
+- `src/ui/forge/capture-shell.mjs` also shoots the profiler, over a
+  fixture snapshot the panel's own budget arithmetic turns into every
+  share and tone on screen.
 - `src/ui/forge/capture-viewport.mjs` — the real `SceneView` over a tiny
   scene: a still per gizmo (translate, rotate, scale, and none under
   `select`) with the corner axis triad, and a GIF of the four. Needs a

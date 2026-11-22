@@ -16,6 +16,7 @@ import { createRoot } from "react-dom/client";
 import type { EntitySnapshot } from "../../inspectors/ecs.js";
 import { ForgeContextBar } from "../forge-chrome.js";
 import { ForgeEntityInspector } from "../forge-inspector.js";
+import { ForgeProfilerView, type Timings } from "../forge-profiler.js";
 import { editorSelection } from "../editor-selection.js";
 import { setTool } from "../tool-store.js";
 import { playUiStore } from "../play-ui-store.js";
@@ -133,6 +134,45 @@ function Shell(): React.JSX.Element {
   );
 }
 
+/**
+ * A plausible tick, for the profiler shot. These are shapes of real
+ * numbers (the gateway's own system names, a 30 Hz tick with headroom),
+ * fed through the panel's real budget arithmetic — the panel computes
+ * every share and tone on screen from them.
+ */
+const TIMINGS: Timings = {
+  ticks: 1000,
+  p50: 8.42,
+  p99: 21.7,
+  systems: [
+    { name: "interest", avg: 4.12, max: 18.24 },
+    { name: "movement", avg: 2.48, max: 9.07 },
+    { name: "prop-collision", avg: 1.31, max: 5.6 },
+    { name: "character-bridge", avg: 0.94, max: 3.38 },
+    { name: "combat", avg: 0.77, max: 3.41 },
+    { name: "abilities", avg: 0.41, max: 2.15 },
+    { name: "resident-schedule", avg: 0.33, max: 1.78 },
+    { name: "death", avg: 0.08, max: 0.52 },
+  ],
+};
+
+function ProfilerShot(): React.JSX.Element {
+  return (
+    <div
+      data-shot="profiler"
+      data-theme="forge"
+      style={{ width: 560, height: 460, background: "var(--fg-canvas)", padding: 8 }}
+    >
+      <ForgeProfilerView state={{ kind: "timings", timings: TIMINGS }} />
+    </div>
+  );
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("forge shell preview: #root missing");
-createRoot(root).render(<Shell />);
+createRoot(root).render(
+  <>
+    <Shell />
+    <ProfilerShot />
+  </>,
+);

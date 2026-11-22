@@ -76,21 +76,21 @@ export {
  * buttons act on this instead of just navigating to the panel. Set by
  * the PlayModePanel while mounted; null when the panel is unmounted.
  */
-let sharedController: PlayModeController | null = null;
-
-export function getPlayController(): PlayModeController | null {
-  return sharedController;
-}
+// The slot moved to play-controller-slot.ts so that querying the running
+// server does not pull the 3D client in with it; re-exported here so every
+// existing importer keeps working.
+export { getPlayController } from "./play-controller-slot.js";
+import { getPlayController as sharedControllerOf, setPlayController } from "./play-controller-slot.js";
 
 /** Toolbar Pause/Resume and Step: an admin command to the owned server; Pause toggles. */
 export async function requestPlayTick(command: "pause" | "resume" | "step"): Promise<void> {
-  const r = await sharedController?.admin(command);
+  const r = await sharedControllerOf()?.admin(command);
   if (r?.ok && command !== "step") playUiStore.set((p) => ({ ...p, paused: command === "pause" }));
 }
 
 /** Toolbar / shortcut stop: real controller.stop(), valid while running or starting. */
 export async function requestPlayStop(): Promise<void> {
-  const c = sharedController;
+  const c = sharedControllerOf();
   if (!c) return;
   const s = c.getState();
   if (s === "idle" || s === "stopping") return;
@@ -192,12 +192,7 @@ export function PlayModePanel(): React.JSX.Element {
     );
   }
   const controller = controllerRef.current;
-  React.useEffect(() => {
-    sharedController = controller;
-    return () => {
-      if (sharedController === controller) sharedController = null;
-    };
-  }, [controller]);
+  React.useEffect(() => setPlayController(controller), [controller]);
 
   async function onStart(): Promise<void> {
     let shells: Array<Window | null> = [];

@@ -14,7 +14,7 @@
  */
 
 import * as React from "react";
-import { getPlayController, playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, useLocalStorage } from "./components.js";
 import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
@@ -35,6 +35,7 @@ import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPan
 import { SHELL } from "./shell-composition.js";
 import { useTheme } from "../theme.js";
 import { ForgeContextBar } from "./forge-chrome.js";
+import { ForgeProfilerPanel, useTickTimings } from "./forge-profiler.js";
 import { useShellComposition } from "./use-shell.js";
 import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import { requestNewScene } from "../open-scene.js";
@@ -1983,7 +1984,8 @@ function DebugTree(): React.JSX.Element {
         Auto-refresh overlays
         <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>2 s</span>
       </button>
-      <TickTimingsPanel />
+      {/* EU7: under forge, the budget view replaces the top-five list. */}
+      {useTheme() === "forge" ? <ForgeProfilerPanel /> : <TickTimingsPanel />}
       <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
         Timings come from the running play server via the debug API.
       </p>
@@ -1991,60 +1993,26 @@ function DebugTree(): React.JSX.Element {
   );
 }
 
-/** Live tick timings from the play server (debug API). */
+/** Live tick timings from the play server (debug API).
+ *
+ *  The poll lives in ui/forge-profiler.tsx (`useTickTimings`), which the
+ *  forge profiler mounts too, so the two presentations cannot drift on
+ *  what they are showing or how often they ask for it. */
 function TickTimingsPanel(): React.JSX.Element {
-  const [timings, setTimings] = React.useState<{ ticks: number; p50: number; p99: number; systems: Array<{ name: string; avg: number; max: number }> } | null>(null);
-  const [error, setError] = React.useState("");
-  React.useEffect(() => {
-    let live = true;
-    // One query at a time: a slow server must not pile up a request every 2 s.
-    let inFlight = false;
-    const load = async (): Promise<void> => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        const c = getPlayController();
-        if (!c || c.getState() !== "running") {
-          if (live) {
-            setTimings(null);
-            setError("");
-          }
-          return;
-        }
-        const res = await c.debugTimings();
-        if (!live) return;
-        if (res.query === "timings") {
-          setTimings({ ticks: res.ticks, p50: res.p50, p99: res.p99, systems: res.systems });
-          setError("");
-        }
-      } catch {
-        // Running but unanswered: the query rides the player's client, which Simulate doesn't connect.
-        if (live) {
-          setTimings(null);
-          setError("Tick timings come through the player's client; Simulate runs without one.");
-        }
-      } finally {
-        inFlight = false;
-      }
-    };
-    void load();
-    const t = setInterval(() => void load(), 2000);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-  }, []);
-  if (error) return <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{error}</p>;
-  if (!timings) {
+  const state = useTickTimings();
+  if (state.kind === "unavailable") {
+    return <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{state.reason}</p>;
+  }
+  if (state.kind === "idle") {
     return (
       <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
         Start play mode to see live tick timings.
       </p>
     );
   }
+  const timings = state.timings;
   return (
-    
-        <div className="px-3">
+    <div className="px-3">
       <p className="text-xs font-medium">Tick timings ({timings.ticks} ticks)</p>
       <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
         p50 {timings.p50.toFixed(1)}ms · p99 {timings.p99.toFixed(1)}ms
@@ -2062,6 +2030,7 @@ function TickTimingsPanel(): React.JSX.Element {
     </div>
   );
 }
+
 /** Content browser: real content paths, explorable.
  *  Clicking a document navigates to the workspace that owns it today. */
 function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
