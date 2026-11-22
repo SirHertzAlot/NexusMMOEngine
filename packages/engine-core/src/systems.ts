@@ -512,7 +512,13 @@ export class ColliderSystem implements SimSystem {
 }
 
 /** Give `eid` the collider ColliderSystem would (see there). Exported for spawn code and tests. */
-export function attachDefaultCollider(sim: SimWorld, eid: number): void {
+/** A character's body scale: 1 unless the caller says otherwise, and never absurd. */
+function scaleOf(scale: number | undefined): number {
+  if (scale === undefined || !Number.isFinite(scale) || scale <= 0) return 1;
+  return Math.min(16, Math.max(1 / 16, scale));
+}
+
+export function attachDefaultCollider(sim: SimWorld, eid: number, characterScale?: number): void {
   const ecs = sim.ecs;
   const moves = hasComponent(ecs, Velocity, eid);
   if (!moves) {
@@ -525,12 +531,21 @@ export function attachDefaultCollider(sim: SimWorld, eid: number): void {
   const B = BodyConfig;
   const half = (s: number): number => (s !== 0 ? Math.max(Math.abs(s) * 0.5, 0.05) : 0.5);
   if (hasComponent(ecs, PlayerIntent, eid) || hasComponent(ecs, Locomotion, eid)) {
+    // A body the size of the thing that wears it: a bear's capsule is not a
+    // goblin's. The caller passes the scale, rather than this reading
+    // Transform.sx, because an entity id is recycled and its Transform row
+    // keeps whatever the last entity in that slot left there — a character
+    // spawned into a scaled prop's old slot would otherwise inherit its size.
+    const scale = scaleOf(characterScale);
+    const r = CHARACTER_CAPSULE.radius * scale;
+    const hh = CHARACTER_CAPSULE.halfHeight * scale;
+    const m = CHARACTER_CAPSULE.mass * scale * scale * scale;
     B.shapeKind[eid] = ShapeKind.Capsule;
-    B.halfX[eid] = CHARACTER_CAPSULE.radius;
-    B.halfY[eid] = CHARACTER_CAPSULE.halfHeight;
-    B.halfZ[eid] = CHARACTER_CAPSULE.radius;
-    B.radius[eid] = CHARACTER_CAPSULE.radius;
-    B.mass[eid] = CHARACTER_CAPSULE.mass;
+    B.halfX[eid] = r;
+    B.halfY[eid] = hh;
+    B.halfZ[eid] = r;
+    B.radius[eid] = r;
+    B.mass[eid] = m;
     B.motionType[eid] = MotionType.Kinematic;
     B.layer[eid] = 1;
     B.friction[eid] = 0.5;

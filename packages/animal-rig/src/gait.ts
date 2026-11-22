@@ -33,13 +33,13 @@ interface Row {
 }
 
 /** Lateral-sequence walk, diagonal trot, transverse gallop. */
-export const WALK: Row = { off: [0.25, 0.75, 0, 0.5], duty: 0.65, stride: 1.4, lift: 0.1, bob: 0.015, flexF: 0.7, flexH: 0.55 };
-export const TROT: Row = { off: [0, 0.5, 0.5, 0], duty: 0.5, stride: 2.6, lift: 0.16, bob: 0.03, flexF: 1.1, flexH: 0.9 };
-export const GALLOP: Row = { off: [0.5, 0.6, 0, 0.1], duty: 0.36, stride: 3.6, lift: 0.2, bob: 0.05, flexF: 1.35, flexH: 1.1 };
+export const WALK: Row = { off: [0.25, 0.75, 0, 0.5], duty: 0.75, stride: 1.4, lift: 0.1, bob: 0.018, flexF: 0.7, flexH: 0.55 };
+export const TROT: Row = { off: [0, 0.5, 0.5, 1.0], duty: 0.5, stride: 2.6, lift: 0.16, bob: 0.035, flexF: 1.1, flexH: 0.9 };
+export const GALLOP: Row = { off: [0.5, 0.6, 1.0, 1.1], duty: 0.36, stride: 3.6, lift: 0.2, bob: 0.06, flexF: 1.35, flexH: 1.1 };
 
 /** Froude speeds (v / sqrt(g L)) where walk becomes trot and trot becomes gallop: [from, to]. */
-export const WALK_TO_TROT: readonly [number, number] = [0.45, 0.7];
-export const TROT_TO_GALLOP: readonly [number, number] = [1.1, 1.6];
+export const WALK_TO_TROT: readonly [number, number] = [0.46, 0.9];
+export const TROT_TO_GALLOP: readonly [number, number] = [1.2, 2.0];
 /** Speeds (m/s) below MOVE_FROM are standing still; from MOVE_FULL the legs swing fully. */
 export const MOVE_FROM = 0.05;
 export const MOVE_FULL = 0.4;
@@ -89,7 +89,11 @@ export function gaitAt(speed: number, legLen: number, out: GaitParams = newGait(
   out.moveW = smoothstep(MOVE_FROM, MOVE_FULL, speed);
   out.flexF = mix(WALK.flexF, TROT.flexF, GALLOP.flexF) * out.moveW;
   out.flexH = mix(WALK.flexH, TROT.flexH, GALLOP.flexH) * out.moveW;
-  for (let i = 0; i < 4; i++) out.offsets[i] = mix(WALK.off[i], TROT.off[i], GALLOP.off[i]);
+  for (let i = 0; i < 4; i++) {
+    const raw = mix(WALK.off[i], TROT.off[i], GALLOP.off[i]);
+    const mod = ((raw % 1) + 1) % 1;
+    out.offsets[i] = Math.abs(mod - 1) < 1e-9 ? 0 : mod;
+  }
   out.freq = speed > 1e-3 ? speed / stride : 0;
   // A foot on the ground goes back by speed x stance time = stride x duty; the hip swings it.
   const sweep = Math.asin(Math.min(0.95, (stride * out.duty) / (2 * L)));
@@ -154,6 +158,77 @@ export function attackPose(t: number, hitAt: number, duration: number, out: { wi
 /** Death fall: 0 standing .. 1 down, over `seconds`. */
 export function deathProgress(t: number, seconds = 0.9): number {
   return ease(Math.min(1, Math.max(0, t / seconds)));
+}
+
+/**
+ * Spine and neck motion for one frame of a quadruped gait (writes `out`).
+ *
+ * Real quadrupeds locomote with their whole spine, not just their legs:
+ * - Lateral undulation: the spine snakes sideways once per cycle (strongest at a
+ *   walk and trot, where the footfalls travel along the body), and the loin —
+ *   the flexible segment — leads, the chest follows with a smaller, lagged wave.
+ * - Dorsoventral flexion: at a gallop the loin arches up as the hind legs swing
+ *   under (suspension) and rounds down at landing — the bounding that gives a
+ *   gallop its look. This grows with the gait number as the lateral wave fades.
+ * - The neck counter-pitches against the chest so the head stays level, and the
+ *   shoulder (scapula) protracts with its own leg's swing — handled in the rig.
+ */
+export interface SpineParams {
+  /** Chest yaw (radians), the front of the lateral wave. */
+  chestYaw: number;
+  /** Loin yaw (radians), leading and larger than the chest. */
+  loinYaw: number;
+  /** Loin pitch (radians): + rounds the back down, - arches it up. */
+  loinPitch: number;
+  /** Chest roll (radians), a slight lean into the lateral wave. */
+  chestRoll: number;
+  /** Neck pitch (radians), countering the chest and loin so the head rides level. */
+  neckPitch: number;
+  /** Neck yaw (radians), countering the chest's undulation. */
+  neckYaw: number;
+}
+
+export function spineCurve(
+  phase: number,
+  moveW: number,
+  gait: number,
+  out: SpineParams
+): void {
+  const w = 2 * Math.PI * phase;
+  // Lateral undulation: moderate, stable traveling wave from pelvis to withers.
+  const lateral = moveW * Math.max(0, 1 - Math.max(0, gait - 0.8) * 0.55);
+  out.loinYaw = Math.sin(w - 1.9) * 0.125 * lateral;
+  out.chestYaw = Math.sin(w - 1.2) * 0.06 * lateral;
+  out.chestRoll = Math.sin(w - 1.55) * 0.035 * lateral;
+  // Dorsoventral: controlled lumbar arching during gallop suspension and landing.
+  const bound = moveW * Math.min(1, Math.max(0, gait - 0.4) * 0.9);
+  out.loinPitch = Math.sin(w) * 0.035 * moveW + Math.sin(w - 0.6) * 0.14 * bound;
+  // The neck holds the head steady and firm against spine pitch and yaw.
+  out.neckPitch = -out.loinPitch * 0.45 + Math.sin(w - Math.PI) * 0.03 * moveW;
+  out.neckYaw = -out.chestYaw * 0.7;
+}
+
+/**
+ * Tail chain: `count` yaw angles (radians), each lagging the one before it, so the
+ * tail whips through the stride instead of swinging as one plank. Each segment
+ * also drifts a little on its own when idle (a slow flick), and the amplitude
+ * grows toward the tip. Writes `out` (no allocation).
+ */
+export function tailChain(
+  phase: number,
+  clock: number,
+  moveW: number,
+  count: number,
+  out: Float32Array
+): void {
+  for (let i = 0; i < count; i++) {
+    const lag = 0.5 + 0.45 * i;
+    const amp = 0.16 + 0.09 * i;
+    out[i] =
+      Math.sin(2 * Math.PI * phase - lag) * amp * moveW +
+      Math.sin(clock * 1.1 - 0.5 * i) * 0.09 +
+      Math.sin(clock * 2.3 - 0.8 * i) * 0.03;
+  }
 }
 
 /** Avian flapping and gliding solver. In flight (speed > 1.5), wings flap with harmonic roll & pitch. */

@@ -14,7 +14,15 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-export const DEFAULT_SERVER_SETTINGS_DIR = fileURLToPath(new URL("../../../../content/server", import.meta.url));
+function resolveServerSettingsDir(): string {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const candidate4 = path.resolve(here, "../../../../content/server");
+  if (fs.existsSync(candidate4)) return candidate4;
+  const candidate3 = path.resolve(here, "../../../content/server");
+  if (fs.existsSync(candidate3)) return candidate3;
+  return path.resolve(process.cwd(), "content/server");
+}
+export const DEFAULT_SERVER_SETTINGS_DIR = resolveServerSettingsDir();
 
 /** content/server/persistence.json. Every field has the engine's old constant as its default. */
 export const PersistenceSettingsSchema = z

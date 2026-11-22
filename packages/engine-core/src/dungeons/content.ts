@@ -19,7 +19,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SpawnTableSchema, type SpawnTable } from "@mmo-engine/scatter";
 import { z } from "zod";
@@ -175,7 +175,15 @@ export interface DungeonContent {
   artScales: Record<string, number>;
 }
 
-export const DEFAULT_DUNGEON_CONTENT = fileURLToPath(new URL("../../../../../content/dungeons", import.meta.url));
+function resolveDungeonContent(): string {
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const candidate5 = resolve(here, "../../../../../content/dungeons");
+  if (existsSync(candidate5)) return candidate5;
+  const candidate4 = resolve(here, "../../../../content/dungeons");
+  if (existsSync(candidate4)) return candidate4;
+  return resolve(process.cwd(), "content/dungeons");
+}
+export const DEFAULT_DUNGEON_CONTENT = resolveDungeonContent();
 
 export function parseDungeonContent(rules: unknown, entrances: unknown, props?: unknown, looks?: unknown, art?: unknown): DungeonContent {
   const problems: string[] = [];

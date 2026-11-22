@@ -30,12 +30,13 @@ export function parseEnemyModels(json: unknown, warn: (msg: string) => void = ()
 }
 
 /** Load the file (absent: no enemy models). A file that cannot be read or parsed is reported and ignored. */
-export function loadEnemyModels(file: URL, warn: (msg: string) => void = () => {}, isKnownKind?: (kind: string) => boolean): EnemyModels {
+export function loadEnemyModels(file: URL | string, warn: (msg: string) => void = () => {}, isKnownKind?: (kind: string) => boolean): EnemyModels {
   if (!fs.existsSync(file)) return {};
   try {
     return parseEnemyModels(JSON.parse(fs.readFileSync(file, "utf8")), warn, isKnownKind);
   } catch (err) {
-    warn(`enemy models: ${file.pathname} unreadable (${(err as Error).message}); no enemy models`);
+    const filePath = typeof file === "string" ? file : file.pathname;
+    warn(`enemy models: ${filePath} unreadable (${(err as Error).message}); no enemy models`);
     return {};
   }
 }

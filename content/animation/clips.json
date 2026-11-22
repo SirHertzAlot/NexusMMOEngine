@@ -31,6 +31,10 @@
     { "id": 40, "name": "graze", "clip": "Creature_Graze_Loop", "loop": true, "fade": 0.25 },
     { "id": 41, "name": "sleep", "clip": "Creature_Sleep_Loop", "loop": true, "fade": 0.3 },
     { "id": 42, "name": "threaten", "clip": "Creature_Threaten_Loop", "loop": true, "fade": 0.15 },
-    { "id": 43, "name": "death fall", "clip": "Creature_DeathFall", "loop": false, "fade": 0.1 }
+    { "id": 43, "name": "death fall", "clip": "Creature_DeathFall", "loop": false, "fade": 0.1 },
+    { "id": 44, "name": "drink", "clip": "Creature_Drink_Loop", "loop": true, "fade": 0.25 },
+    { "id": 45, "name": "bathroom", "clip": "Creature_Bathroom_Loop", "loop": true, "fade": 0.25 },
+    { "id": 46, "name": "mating display", "clip": "Creature_MatingDisplay_Loop", "loop": true, "fade": 0.2 },
+    { "id": 47, "name": "social play", "clip": "Creature_SocialPlay_Loop", "loop": true, "fade": 0.2 }
   ]
 }

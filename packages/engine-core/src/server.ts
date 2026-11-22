@@ -246,6 +246,7 @@ import type { TelegraphSystem } from "./telegraph.js";
 import type { CombatSystem } from "./combat.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
+import { LivingSimSystem } from "./sim/living-sim-system.js";
 import { loadLessons } from "./residents/lessons.js";
 import { BreakSystem, breakDefsOf, ChestSystem, CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
@@ -315,7 +316,7 @@ function abilityNames(bits: number): string {
 
 const PORT = Number(process.env.MMO_PORT ?? 7777);
 const EDGE_MODE = process.env.MMO_EDGE === "1";
-const DATA_DIR = path.resolve(process.env.MMO_DATA_DIR ?? "./data");
+const DATA_DIR = path.resolve(GAME.paths.dataDir);
 const WORLD_SEED = BigInt(process.env.MMO_WORLD_SEED ?? 1234);
 const CHUNK_SIZE = Number(process.env.MMO_CHUNK_SIZE ?? 16);
 /** The scenes MMO_SCENE names (read once: the spawn, the settlements and the residents share them). */
@@ -829,9 +830,15 @@ async function main(): Promise<void> {
   // creatures, and needs from this config during assembly.
   // See modules/creatures/server.js.
   // Wildlife: the animal models (gitignored local species -> catalog ids, `npm run wildlife:models`) and the towns of the boot scene.
+  const wildlifeModelsFile = process.env.MMO_WILDLIFE_MODELS || path.join(GAME.contentDir, "wildlife", "models.local.json");
   const wildlifeModels: Record<string, string[]> = (() => {
-    const f = new URL("../../content/wildlife/models.local.json", import.meta.url);
-    try { return wildlifeTable && fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, "utf8")) as Record<string, string[]>) : {}; } catch { return {}; }
+    try {
+      return wildlifeTable && fs.existsSync(wildlifeModelsFile)
+        ? (JSON.parse(fs.readFileSync(wildlifeModelsFile, "utf8")) as Record<string, string[]>)
+        : {};
+    } catch {
+      return {};
+    }
   })();
   const modelPick = new Map<string, number>();
   const wildlifeModelOf = (kind: string): string | undefined => {
@@ -844,12 +851,30 @@ async function main(): Promise<void> {
   // EM1: enemy kinds' art models from the gitignored content/enemies/models.local.json (see enemy-models.ts).
   // Without the licensed art's local map, the committed stand-in map gives the quadrupeds the stand-in models
   // (scripts/gen-placeholder-art.mjs), so an animal gets its rig and corpse on a checkout with no art.
-  const enemyModelsFile = fs.existsSync(new URL("../../content/enemies/models.local.json", import.meta.url))
-    ? new URL("../../content/enemies/models.local.json", import.meta.url)
-    : new URL("../../content/enemies/models.placeholder.json", import.meta.url);
-  const enemyModelOf = enemyModelPicker(
-    loadEnemyModels(enemyModelsFile, (msg) => console.warn(`[enemies] ${msg}`), (kind) => kind in game.rules.creatures.creatures),
+  const enemyModelsFile = (() => {
+    if (process.env.MMO_ENEMY_MODELS && fs.existsSync(process.env.MMO_ENEMY_MODELS)) {
+      return process.env.MMO_ENEMY_MODELS;
+    }
+    const localFile = path.join(GAME.contentDir, "enemies", "models.local.json");
+    if (fs.existsSync(localFile)) return localFile;
+    const pkgLocal = path.join(GAME.engineContentDir, "enemies", "models.local.json");
+    if (fs.existsSync(pkgLocal)) return pkgLocal;
+    const rootPlaceholder = path.join(GAME.contentDir, "enemies", "models.placeholder.json");
+    if (fs.existsSync(rootPlaceholder)) return rootPlaceholder;
+    return path.join(GAME.engineContentDir, "enemies", "models.placeholder.json");
+  })();
+  const parsedEnemyModels = loadEnemyModels(
+    enemyModelsFile,
+    (msg) => console.warn(`[enemies] ${msg}`),
+    (kind) => kind in game.rules.creatures.creatures,
   );
+  const enemyModelOf = enemyModelPicker(parsedEnemyModels);
+
+  const wildlifeSpeciesCount = Object.keys(wildlifeModels).length;
+  const enemyKindsCount = Object.keys(parsedEnemyModels).length;
+  if (wildlifeSpeciesCount > 0 || enemyKindsCount > 0) {
+    logServerModuleLog(worldLog, `[creatures] model mappings loaded: ${wildlifeSpeciesCount} wildlife species, ${enemyKindsCount} enemy kinds`);
+  }
   const wildlifeSettlements: RaidSettlement[] =
     wildlifeTable && process.env.MMO_SCENE ? townSettlements(bootScenes(), loadPrefabs(GAME.paths.prefabsDir)) : [];
   const botCount = Number(process.env.MMO_BOTS ?? worldSettings.settings.bots.count);
@@ -875,6 +900,11 @@ async function main(): Promise<void> {
     }
     return undefined;
   };
+  const livingSim = new LivingSimSystem({
+    dayClock: dayClock ?? undefined,
+    waterSurfaceAt: water ? (x: number, z: number) => surfaceAt(water, seaLevelMeta === null ? undefined : Number(seaLevelMeta), x, z) : undefined,
+    groundHeightAt: (x: number, z: number) => characterOf().groundHeight(x, z),
+  });
   const creaturesConfig = {
     rules: game.rules,
     botCount,
@@ -899,6 +929,8 @@ async function main(): Promise<void> {
     settlements: () => wildlifeSettlements,
     respawnPool,
     kindResolver: resolveCreatureKindByHash,
+    dayClock: dayClock ?? undefined,
+    livingSim,
   };
   // The biomes' wild packs follow loaded chunks (MMO_WILD_CREATURES=1).
   let startWild: (() => void) | null = null;
@@ -922,7 +954,7 @@ async function main(): Promise<void> {
         spawner: {
           has: (k) => creaturesOf().has(k),
           isCreature: (e) => creaturesOf().isCreature(e),
-          spawnPack: (sim, k, x, z, size) => creaturesOf().spawnPack(sim, k, x, z, size ?? editedPack(speciesRoster, k)),
+          spawnPack: (sim, k, x, z, size, spread) => creaturesOf().spawnPack(sim, k, x, z, size ?? editedPack(speciesRoster, k), spread),
         },
         seed: ecologySeed32(worldSeed),
         chunkWorldSize: CHUNK_SIZE,
@@ -1399,6 +1431,7 @@ async function main(): Promise<void> {
     },
     detachShop: (eid: number) => void (assembled.byName["vendor"] as unknown as import("./economy/vendor.js").VendorSystem | undefined)?.detach(eid),
     replaceMs: dayClock ? 3 * dayClock.seconds * 1000 : 3 * 3_600_000,
+    livingSim,
     // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
     dayOf: gameDayOf,
   };
@@ -1606,6 +1639,11 @@ async function main(): Promise<void> {
   const toEdge: { push: EdgePush } = { push: () => {} };
   const edgeRelay = EDGE_MODE ? new ChannelTransport((type, payload) => toEdge.push(type, payload), coreChannelPort()) : null;
   const gw: Gateway = new Gateway({
+    authRateLimit: {
+      maxFailures: Number(process.env.MMO_AUTH_RATE_LIMIT_MAX ?? 100),
+      windowMs: Number(process.env.MMO_AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000),
+      exemptIps: process.env.NODE_ENV === "production" ? [] : ["127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"],
+    },
     ...(dataPlaneServer ? { dataPlaneQueue: dataPlaneServer.gatewayInputQueue } : {}),
     port: PORT,
     ...(edgeRelay ? { transport: edgeRelay } : {}),

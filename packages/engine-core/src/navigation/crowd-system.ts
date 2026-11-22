@@ -22,7 +22,7 @@ import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import { moveSpeedFactor, CHARACTER_CAPSULE } from "../systems.js";
-import { Locomotion, NavAgent, NavAgentState, PlayerIntent, Transform } from "../components.js";
+import { BodyConfig, Locomotion, NavAgent, NavAgentState, PlayerIntent, Transform } from "../components.js";
 import type { CrowdBackend } from "./backend.js";
 
 const characters = defineQuery([Transform, Locomotion]);
@@ -37,6 +37,7 @@ export class CrowdSystem implements SimSystem {
   readonly access: SystemAccess = {
     system: "crowd",
     reads: [
+      { component: "BodyConfig", fields: ["halfY", "radius"] },
       "Locomotion",
       "PlayerIntent",
       { component: "NavAgent", fields: ["seq", "speed", "tx", "ty", "tz"] },
@@ -92,6 +93,10 @@ export class CrowdSystem implements SimSystem {
       this.addIds[adds] = id;
       this.addPos.set(this.pos.subarray(i * 3, i * 3 + 3), adds * 3);
       this.speed[adds] = speed;
+      const r = hasComponent(sim.ecs, BodyConfig, e) && BodyConfig.radius[e] > 0 ? BodyConfig.radius[e] : CHARACTER_CAPSULE.radius;
+      const hy = hasComponent(sim.ecs, BodyConfig, e) && BodyConfig.halfY[e] > 0 ? BodyConfig.halfY[e] : CHARACTER_CAPSULE.halfHeight;
+      this.radius[adds] = r;
+      this.height[adds] = 2 * (hy + r);
       adds++;
     }
     if (adds > 0) {
@@ -148,9 +153,9 @@ export class CrowdSystem implements SimSystem {
       NavAgent.state[e] = state;
       if (!hasComponent(sim.ecs, PlayerIntent, e)) continue;
       if (state !== NavAgentState.Moving) {
-        // Idle, arrived or stuck: stand. Off the mesh, leave the intent to
-        // whoever set it (a brain walking straight where there's no navmesh).
-        if (state !== NavAgentState.Invalid) {
+        // Idle, arrived or stuck: stand. If NoPath or Invalid, leave the intent to
+        // whoever set it (a brain walking straight where there's no navmesh or navigating an obstacle).
+        if (state !== NavAgentState.Invalid && state !== NavAgentState.NoPath) {
           PlayerIntent.mx[e] = 0;
           PlayerIntent.mz[e] = 0;
         }

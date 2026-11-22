@@ -41,6 +41,18 @@ export const MOVE_CLIPS: Record<number, number> = {
 const LAYER_BASE = 1;
 const LAYER_UPPER = 2;
 
+function isLivingBehaviorClip(clip: number): boolean {
+  return (
+    clip === ClipId.Graze ||
+    clip === ClipId.Sleep ||
+    clip === ClipId.Threaten ||
+    clip === ClipId.Drink ||
+    clip === ClipId.Bathroom ||
+    clip === ClipId.MatingDisplay ||
+    clip === ClipId.SocialPlay
+  );
+}
+
 const animated = defineQuery([C.Animation]);
 
 export class AnimationSystem implements SimSystem {
@@ -99,7 +111,10 @@ export class AnimationSystem implements SimSystem {
         if (speed > 6) clip = ClipId.Sprint;
         else if (speed > 3.5) clip = ClipId.Jog;
         else if (speed > 0.5) clip = ClipId.Walk;
-        else clip = ClipId.Idle;
+        else {
+          const cur = C.Animation.clipId[eid];
+          clip = isLivingBehaviorClip(cur) ? cur : ClipId.Idle;
+        }
         // Scale playback to ground speed for walk/jog/sprint.
         if (clip === ClipId.Walk) rate = Math.max(0.5, speed / 2);
         else if (clip === ClipId.Jog) rate = Math.max(0.5, speed / 4);
