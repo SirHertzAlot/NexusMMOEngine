@@ -132,6 +132,17 @@ describe("ES2: the resolver's defaults are the engine's own", () => {
     assert.doesNotMatch(text, /path\.join\(REPO_ROOT, "content"/, "server.ts should read content paths from the project");
   });
 
+  it("leaves no MMO_* || DEFAULT_* pair behind, which would ignore a manifest", () => {
+    // Each of these resolves the same seam the project already resolved, so a
+    // `game.json` that moved it would be read everywhere but here. Three such
+    // pairs survived the first pass (questDir, dungeonDir, respawnAnchors).
+    const text = source("packages/engine-core/src/server.ts");
+    const pairs = [...text.matchAll(/process\.env\.(MMO_[A-Z_]+)\s*(?:\|\||\?\?)\s*(DEFAULT_[A-Z_]+)/g)].map(
+      (m) => `${m[1]} || ${m[2]}`,
+    );
+    assert.deepEqual(pairs, [], `server.ts should read these from the project: ${pairs.join(", ")}`);
+  });
+
   it("agrees with the settlement CLIs' own resolver, which engine-core does not depend on", () => {
     // packages/settlement/src/paths.ts keeps its own copy by design (the
     // packages do not depend on each other), so this reads its text.

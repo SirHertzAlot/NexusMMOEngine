@@ -37,3 +37,12 @@ export {
   type OpenGameProjectOptions,
   type PathSource,
 } from "./project.js";
+
+export {
+  MissingServicesError,
+  ServiceRegistry,
+  openServiceRegistry,
+  type MissingService,
+  type ServiceDecl,
+  type ServiceSources,
+} from "./services.js";

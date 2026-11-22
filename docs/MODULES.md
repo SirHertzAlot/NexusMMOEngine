@@ -83,10 +83,48 @@ A system is a `SimSystem`: a `name` and a `step(sim, dt)` that runs once per tic
 |---|---|
 | `ctx.sim` | The `SimWorld`: the ECS and the tick number. |
 | `ctx.log(message)` | Log a line. |
-| `ctx.config` | Per-module bootstrap data the server supplies (game rules, data dirs, callbacks). Optional: tolerate its absence. |
+| `ctx.config` | Per-module bootstrap data: what the server wires (game rules, data dirs, callbacks) with the game's own settings under it (see below). Optional: tolerate its absence. |
 | `ctx.stores` | Shared domain stores. A module that owns a store (economy's wallet, the character store) publishes it here for the server to wire to the gateway. |
 
 A module may also export `dispose(ctx)`; on shutdown the server runs every module's `dispose` in reverse dependency order.
+
+**Settings from `game.json`.** A game sets a module's values in its manifest's
+`modules` block, by module name, and they arrive as `ctx.config[name]`:
+
+```json
+{
+  "name": "my-game",
+  "modules": {
+    "residents": { "maxEntities": 1200, "fullM": 60 },
+    "my-own-module": { "whatever": "the module reads" }
+  }
+}
+```
+
+The keys are the module's own — nothing in the engine lists them — so a
+module you write is configured from `game.json` the day you write it, with no
+engine change. Three layers, in order:
+
+1. what the host passes for that module, which is where a run's `MMO_*`
+   variable lands;
+2. the `modules` block above;
+3. the module's own default, for a key neither sets.
+
+So a variable still wins over the file for one run, and the host's own wiring
+(a callback, a live engine object) can never be replaced by a value out of a
+JSON file. `residents.maxEntities` is the worked example: `MMO_RESIDENTS_MAX`
+first, then the manifest, then the system's own 800.
+
+**Reading another module's work.** The server reads back what the enabled
+modules built through one table, `packages/engine-core/src/services.ts`: a row
+per service its entry point needs, naming the module that provides it, whether
+it is a tick system or a gateway extension, and whether the server runs without
+it. A missing required service stops the boot naming the module to enable,
+rather than crashing in the first tick that touches it. The table is the
+engine's statement of what *its* entry point couples to, not a list of what a
+module may provide — that is the module's own `module.json`. A game with its
+own entry point writes its own table over `openServiceRegistry` from
+`@mmo-engine/sdk` and uses none of ours.
 
 **3. Try it.** Add `"sample-heartbeat"` to `content/modules.json` (or tick it in the editor's Modules workspace and press **Apply modules**). The boot line lists the system between `crowd` and `intent`, and the log shows the heartbeat.
 
