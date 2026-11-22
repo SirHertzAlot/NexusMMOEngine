@@ -1,8 +1,8 @@
-# World Building
+# World building
 
 How the world is generated, how to change it, and what to do when a change
 needs the world rebuilding. This is the practical companion to
-[OPEN-WORLD-PLAN.md](OPEN-WORLD-PLAN.md), which records the design decisions
+[World building](WORLD-BUILDING.md), which records the design decisions
 and the measured results behind them.
 
 The short version: **terrain is baked once and then it is data, not a
@@ -307,7 +307,7 @@ constraints behind it are designed in
   placeholder shapes rather than failing.
 - Assets and their cooked meshes are served over the gateway's own HTTP
   surface, authenticated by session tokens. See
-  [PCG-SPEC.md](PCG-SPEC.md) for the graph format.
+  [Procedural generation](PROCEDURAL-GENERATION.md) for the graph format.
 
 `MMO_PCG_ASSETS` points at a different library.
 

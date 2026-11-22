@@ -104,7 +104,7 @@ async function connectClient(
 describe("MirrorClient handshake", () => {
   it("sends a credentials hello and resolves connect on welcome", async () => {
     const { client, socket } = await connectClient({
-      username: "joey",
+      username: "alice",
       password: "secret",
     });
     const hello = decodeControl<HelloMessage>(
@@ -113,7 +113,7 @@ describe("MirrorClient handshake", () => {
     assert.equal(hello.protocol, PROTOCOL_VERSION);
     assert.equal(hello.client, "test-client");
     assert.equal(hello.want_snapshot, true);
-    assert.equal(hello.username, "joey");
+    assert.equal(hello.username, "alice");
     assert.equal(hello.password, "secret");
     assert.equal(hello.token, undefined);
 
@@ -131,7 +131,7 @@ describe("MirrorClient handshake", () => {
       onError: () => {},
       onClose: () => {},
     });
-    const p = client.register("ws://localhost:7777", "test-client", "joey", "secretpw");
+    const p = client.register("ws://localhost:7777", "test-client", "alice", "secretpw");
     socket.open();
     // Same ordering as the real network: the register frame leaves before
     // the (fake) server answers with welcome.
@@ -144,7 +144,7 @@ describe("MirrorClient handshake", () => {
     );
     assert.equal(reg.protocol, PROTOCOL_VERSION);
     assert.equal(reg.client, "test-client");
-    assert.equal(reg.username, "joey");
+    assert.equal(reg.username, "alice");
     assert.equal(reg.password, "secretpw");
 
     assert.equal(client.playerEntity, PLAYER);
@@ -208,7 +208,7 @@ describe("MirrorClient handshake", () => {
       onClose: () => {},
     });
     const p = client.connect("ws://x", "test-client", {
-      username: "joey",
+      username: "alice",
       password: "wrong",
     });
     socket.open();
@@ -693,7 +693,7 @@ describe("MirrorClient characters", () => {
     const client = new MirrorClient(() => (socket = new FakeSocket()), {
       onWelcome: () => {}, onState: () => {}, onError: () => {}, onClose: () => {},
     });
-    const joined = client.join("ws://localhost:7777", "game", { username: "joey", password: "secretpw" });
+    const joined = client.join("ws://localhost:7777", "game", { username: "alice", password: "secretpw" });
     socket.open();
     await tick();
     const hello = decodeControl<HelloMessage>(decodeEnvelope(socket.lastOf(MessageType.Hello)).payload);
@@ -724,7 +724,7 @@ describe("MirrorClient characters", () => {
     const client = new MirrorClient(() => (socket = new FakeSocket()), {
       onWelcome: () => {}, onState: () => {}, onError: () => {}, onClose: () => {},
     });
-    const joined = client.join("ws://localhost:7777", "game", { register: { username: "joey", password: "secretpw" } });
+    const joined = client.join("ws://localhost:7777", "game", { register: { username: "alice", password: "secretpw" } });
     socket.open();
     await tick();
     assert.equal(decodeControl<RegisterMessage>(decodeEnvelope(socket.lastOf(MessageType.Register)).payload).characters, true);
@@ -762,7 +762,7 @@ describe("MirrorClient region redirect (bye, WORLD-SERVER-SPEC §6)", () => {
       onClose: () => log.push("close"),
       onRegionChange: (url) => log.push(`region ${url}`),
     });
-    const p = client.connect("ws://region-a:7777", "test-client", { username: "joey", password: "secret" });
+    const p = client.connect("ws://region-a:7777", "test-client", { username: "alice", password: "secret" });
     sockets[0].socket.open();
     await tick();
     sockets[0].socket.receive(welcomeBytes());

@@ -117,7 +117,7 @@ its folder) before engine-core's tests use it.
 | `npm run bench:e5 [-- B1 B4]` | The edge/core split benchmarks B1 to B6 (about 15 minutes). Writes `docs/EDGE-SPLIT-RESULTS.md` |
 | `npm run stress:world [-- --window 30 --sweep 1,2,4,6,8 --entities 500 --players 40]` | World-server stress: regions per box until a stop condition breaks |
 | `npm run bench:persist` | The persistence save benchmark |
-| `npm run bench:ragdoll` | The ragdoll cost gate on the physics benchmark harness (see [RAGDOLL-COST-GATE.md](RAGDOLL-COST-GATE.md)) |
+| `npm run bench:ragdoll` | The ragdoll cost gate on the physics benchmark harness (see [Performance and constraints](PERFORMANCE.md)) |
 | `npm run bench:ragdoll:addon` | The same through the addon, with the contact cap |
 | `npm run bench:sleep:addon` | The sleep-threshold comparison through the addon |
 | `npm run bench:threads:addon` | The ragdoll step with the thread pool, against one thread |

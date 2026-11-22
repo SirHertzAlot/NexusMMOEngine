@@ -1,4 +1,4 @@
-# MMO Engine — Editor
+# The editor
 
 The editor is a **standalone companion app** (`apps/editor/`, Vite + React + Tailwind): a
 dockable shell of workspaces, assembled from modules ([MODULES.md](MODULES.md)). It began as a
@@ -288,7 +288,7 @@ rejected), per-entry diagnostics. **Load pack in browser** instantiates
 `loaded` / `fallback` status with diagnostics — a failed model never
 breaks the pack; it stays on the deterministic placeholder mesh.
 
-Joey supplies the real art later; until then everything renders the
+The owner supplies the real art later; until then everything renders the
 placeholder pipeline (the same one the game client uses — both consume
 `@mmo-engine/art`, one contract).
 

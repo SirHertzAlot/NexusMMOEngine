@@ -72,16 +72,13 @@ export const COMPLINE_HOUR = 21;
  * town goes to church in the morning, and nobody works.
  */
 export function scheduleAt(npc: Npc, timeOfDay: number, town: TownView, day?: number): Placement {
+  // Called for every resident once a game second (ResidentSystem), so it allocates only the Placement it returns:
+  // no closures, no regex.
   const seed = hashOf(npc.id);
   // Block edges shift by up to +-30 minutes, by id.
   const jitter = ((seed % 61) - 30) / 60;
   const hour = (((timeOfDay * 24 + jitter) % 24) + 24) % 24;
   const home = npc.home ?? npc.shelter ?? null;
-  const homeAt = (): Placement => (home ? { anchor: home, outdoors: false, activity: "sleep" } : { anchor: SQUARE, outdoors: true, activity: "sleep" });
-  const at = (anchor: string | undefined, activity: Placement["activity"]): Placement => {
-    if (!anchor || (anchor !== SQUARE && town.archetypeOf(anchor) === undefined)) return { anchor: SQUARE, outdoors: true, activity };
-    return { anchor, outdoors: anchor === SQUARE || OUTDOOR_ARCHETYPES.has(town.archetypeOf(anchor)!), activity };
-  };
 
   const sunday = day !== undefined && day % 7 === 0;
   if (sunday && within(hour, WORSHIP_HOUR, WORSHIP_HOUR + WORSHIP_HOURS)) {
@@ -89,17 +86,33 @@ export function scheduleAt(npc: Npc, timeOfDay: number, town: TownView, day?: nu
     if (church) return { anchor: church, outdoors: false, activity: "worship" };
   }
   if (npc.workplace && WORKING.has(npc.cohort) && !sunday) {
-    const keeper = (town.archetypeOf(npc.workplace) ?? "").match(/^(tavern|inn)$/) !== null;
+    const kind = town.archetypeOf(npc.workplace);
+    const keeper = kind === "tavern" || kind === "inn";
     // Tavern and inn keepers work the afternoon and evening, the rest the day.
-    if (keeper ? within(hour, 12, COMPLINE_HOUR) : within(hour, 8, 17)) return at(npc.workplace, "work");
+    if (keeper ? within(hour, 12, COMPLINE_HOUR) : within(hour, 8, 17)) return placeAt(npc.workplace, kind, "work");
     if (!keeper && within(hour, 17, COMPLINE_HOUR) && seed % 100 < 40) {
       const tavern = town.tavernNear(npc.home);
       if (tavern) return { anchor: tavern, outdoors: false, activity: "tavern" };
     }
-    return homeAt();
+    return homeAt(home);
   }
-  if (within(hour, COMPLINE_HOUR, 6)) return homeAt();
-  if (npc.cohort === "child") return within(hour, 9, 16) ? at(SQUARE, "idle") : homeAt();
-  if (!home) return at(SQUARE, "idle"); // the homeless are about the square all day
-  return within(hour, 9, 17) ? at(SQUARE, "idle") : homeAt();
+  if (within(hour, COMPLINE_HOUR, 6)) return homeAt(home);
+  if (npc.cohort === "child") return within(hour, 9, 16) ? onSquare("idle") : homeAt(home);
+  if (!home) return onSquare("idle"); // the homeless are about the square all day
+  return within(hour, 9, 17) ? onSquare("idle") : homeAt(home);
+}
+
+/** At home asleep, or asleep on the square for the homeless. */
+function homeAt(home: string | null): Placement {
+  return home ? { anchor: home, outdoors: false, activity: "sleep" } : { anchor: SQUARE, outdoors: true, activity: "sleep" };
+}
+
+function onSquare(activity: Placement["activity"]): Placement {
+  return { anchor: SQUARE, outdoors: true, activity };
+}
+
+/** At a structure of archetype `kind` (undefined: unknown to the town, so the square instead). */
+function placeAt(anchor: string, kind: string | undefined, activity: Placement["activity"]): Placement {
+  if (kind === undefined) return onSquare(activity);
+  return { anchor, outdoors: OUTDOOR_ARCHETYPES.has(kind), activity };
 }

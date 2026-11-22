@@ -87,5 +87,6 @@ export const DEFAULT_LAYOUT: HudLayout = {
     "guild-frame": { anchor: "top-left", offset: { x: 16, y: 200 }, visible: true },
     "ability-bar": { anchor: "bottom-center", offset: { x: 0, y: 250 }, visible: true },
     "status-frame": { anchor: "top-right", offset: { x: 16, y: 260 }, visible: true },
+    "civic-panel": { anchor: "center-left", offset: { x: 16, y: 0 }, visible: true },
   },
 };

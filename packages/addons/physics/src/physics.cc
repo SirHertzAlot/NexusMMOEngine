@@ -179,6 +179,7 @@ public:
             InstanceMethod("setCharacterVelocity", &PhysicsWorldWrap::SetCharacterVelocity),
             InstanceMethod("updateCharacter", &PhysicsWorldWrap::UpdateCharacter),
             InstanceMethod("characterPosition", &PhysicsWorldWrap::CharacterPosition),
+            InstanceMethod("followCharacters", &PhysicsWorldWrap::FollowCharacters),
             InstanceMethod("characterCount", &PhysicsWorldWrap::CharacterCount),
         });
     exports.Set("PhysicsWorld", ctor);
@@ -832,6 +833,43 @@ private:
     for (uint32_t i = 0; i < 3; ++i)
       out.Set(i, Napi::Number::New(env, p[i]));
     return out;
+  }
+
+  // followCharacters(ids: BigUint64Array, targets: Float64Array, count, dt,
+  // teleport, out: Float32Array): the bridge's per-tick pass in one call (see
+  // mj_character_follow). targets holds 3 values per character, out 4.
+  void FollowCharacters(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+    if (!requireLive(env))
+      return;
+    const auto typed = [&](size_t i, napi_typedarray_type type) {
+      return info[i].IsTypedArray() &&
+             info[i].As<Napi::TypedArray>().TypedArrayType() == type;
+    };
+    if (info.Length() < 6 || !typed(0, napi_biguint64_array) ||
+        !typed(1, napi_float64_array) || !info[2].IsNumber() ||
+        !info[3].IsNumber() || !info[4].IsNumber() ||
+        !typed(5, napi_float32_array)) {
+      Napi::TypeError::New(env, "followCharacters(ids: BigUint64Array, targets: Float64Array, count, dt, teleport, out: Float32Array)")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    const Napi::BigUint64Array ids = info[0].As<Napi::BigUint64Array>();
+    const Napi::Float64Array targets = info[1].As<Napi::Float64Array>();
+    Napi::Float32Array out = info[5].As<Napi::Float32Array>();
+    const double count = info[2].As<Napi::Number>().DoubleValue();
+    if (!(count >= 0) || count != static_cast<double>(static_cast<size_t>(count)) ||
+        static_cast<size_t>(count) > ids.ElementLength() ||
+        static_cast<size_t>(count) * 3 > targets.ElementLength() ||
+        static_cast<size_t>(count) * 4 > out.ElementLength()) {
+      Napi::RangeError::New(env, "followCharacters: count must be a whole number no larger than ids, targets / 3 and out / 4")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    // With count 0 the C side touches no array (an empty one may have no data).
+    mj_character_follow(mWorld, static_cast<int>(count), ids.Data(),
+                        targets.Data(), info[3].As<Napi::Number>().DoubleValue(),
+                        info[4].As<Napi::Number>().DoubleValue(), out.Data());
   }
 
   Napi::Value CharacterCount(const Napi::CallbackInfo &info) {

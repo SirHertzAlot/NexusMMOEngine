@@ -1,9 +1,9 @@
 # Architecture
 
 How the engine is put together, one tick at a time. If you want to run it
-first, read [GETTING-STARTED.md](GETTING-STARTED.md); if you want the
-reasoning behind a choice, read [DECISIONS.md](DECISIONS.md). This document
-describes what exists now.
+first, read [Getting started](GETTING-STARTED.md). Where a choice here is not
+obvious, the reasoning is given beside it. This document describes what
+exists now.
 
 ## The shape of the thing
 
@@ -49,7 +49,7 @@ process — no IPC, no serialisation at the boundary beyond plain typed arrays:
 | `addon-integrate` | benchmark kernel (particle integration), and the native movement kernel of the data plane |
 | `addon-geometry` | mesh and polygon Booleans (manifold, Clipper2) for bakes such as dungeon shells |
 | `addon-terrain-kernel` | grid-level terrain math: tectonics and erosion on the heightfield |
-| `addon-fanout` | per-tick fan-out: assembles every session's delta envelope and picks the names each session still needs ([NATIVE-FANOUT.md](NATIVE-FANOUT.md)) |
+| `addon-fanout` | per-tick fan-out: assembles every session's delta envelope and picks the names each session still needs ([Performance and constraints](PERFORMANCE.md)) |
 | `addon-template` | the addon skeleton, and a toolchain smoke test |
 
 ## How it runs today
@@ -63,7 +63,7 @@ The diagram above is the engine at its simplest: one process does everything. Th
 | **Data plane** | `MMO_DATA_PLANE=1` | Three threads over one `SharedArrayBuffer`: the gateway pushes packed intents onto a lock-free ring, a 30 Hz sim worker drains them and steps native kernels, and a persistence worker drains a second ring into a durable ledger. If the sim worker dies, client sockets stay open. |
 | **Many regions** | `npm start -- --world`, plus a world server | Each region is its own process owning a range of chunks. A world server (`packages/world-server`) keeps the registry and leases and coordinates hand-offs when a player crosses a border. Player traffic never passes through it, and it never simulates. |
 
-Which of these you want depends on the player counts you plan for. [Performance and constraints](PERFORMANCE.md) has the measured cost and limits of each, and the [wiki's architecture chapter](wiki/01-architecture-overview.md) has the full diagrams.
+Which of these you want depends on the player counts you plan for. [Performance and constraints](PERFORMANCE.md) has the measured cost and limits of each.
 
 ### Interest management
 
@@ -80,18 +80,19 @@ Terrain chunks and entities with no position live in a **global sector** (`g`) t
 
 ## Locked decisions
 
-These are recorded in [DECISIONS.md](DECISIONS.md) and are not open for
-casual revision:
+These are load-bearing and not open for casual revision. Each one carries the
+measurement or constraint that settled it:
 
 - **JS world (bitECS) with C++ systems** for physics, collision, pathfinding
   and procgen. The benchmark ran the same C++ kernel over a bitECS world and
   a pure C++ world: even at 10k entities, bitECS is faster at 100k, both under
-  1% of the tick. See [OPEN-WORLD-PLAN.md](OPEN-WORLD-PLAN.md).
+  1% of the tick. See [World building](WORLD-BUILDING.md).
 - **SQLite embedded in the region process** (`region.db`, a hot cache) for region state, with the
   **world server as the source of truth** for world-level records when `WORLD_URL` is set. The
   world store is embedded SurrealDB (SurrealKV by default); the recommended durable shape is the
-  SurrealMX server, which is also where the data plane's ledger goes. See
-  [DECISIONS.md](DECISIONS.md) (2026-10-28 and 2026-11-02).
+  SurrealMX server, which is also where the data plane's ledger goes. A region's SQLite file is a
+  cache, so losing it costs a resync and not the game's record — see
+  [The world server](WORLD-SERVER.md).
 - **FlatBuffers** is the C++ ↔ JS contract, owned by
   `packages/schema/mmo_engine.fbs`.
 - **30 Hz fixed sim tick.**
@@ -446,7 +447,7 @@ registers, and the state shipper sends it state. **All of that runs off the
 tick loop**, because a slow or absent world server must never stall the
 simulation. Without `WORLD_URL` the game server runs standalone on its local
 SQLite stores, which is the normal development setup. See
-[WORLD-SERVER-SPEC.md](WORLD-SERVER-SPEC.md).
+[World server](WORLD-SERVER.md).
 
 ## Where to look next
 
@@ -456,6 +457,5 @@ SQLite stores, which is the normal development setup. See
 | movement, combat, bots | [GAMEPLAY.md](GAMEPLAY.md) |
 | terrain, biomes, scenery | [WORLD-BUILDING.md](WORLD-BUILDING.md) |
 | the art packs and conversion | [ART-PIPELINE.md](ART-PIPELINE.md) |
-| the areas and dungeons | [PCG-SPEC.md](PCG-SPEC.md), [DUNGEONS-AND-LOOT.md](DUNGEONS-AND-LOOT.md) |
-| why any of this was chosen | [DECISIONS.md](DECISIONS.md) |
-| what is planned | [OPEN-WORLD-PLAN.md](OPEN-WORLD-PLAN.md), [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md), [CHARACTERS-AND-SOCIAL.md](CHARACTERS-AND-SOCIAL.md) |
+| the areas and dungeons | [Procedural generation](PROCEDURAL-GENERATION.md), [DUNGEONS-AND-LOOT.md](DUNGEONS-AND-LOOT.md) |
+| what is planned | [World building](WORLD-BUILDING.md), [MASTERY-AND-COMBAT.md](MASTERY-AND-COMBAT.md), [CHARACTERS-AND-SOCIAL.md](CHARACTERS-AND-SOCIAL.md) |

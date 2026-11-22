@@ -1,5 +1,5 @@
 /**
- * Edge metrics and `GET /metrics` (slice E6 of docs/EDGE-CORE-SPLIT.md).
+ * Edge metrics and `GET /metrics` (slice E6 of docs/internals/EDGE-CORE-SPLIT.md).
  *
  * One scrape covers the whole engine: the edge's own `mmo_edge_*`, the
  * channel's edge side (`mmo_channel_*{side="edge"}`), and the core's

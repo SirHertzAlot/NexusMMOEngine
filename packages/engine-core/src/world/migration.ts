@@ -295,7 +295,7 @@ export class MigrationCoordinator {
   private emit(e: MigrationEvent): void { for (const l of this.listeners) l(e); }
   /**
    * Failure diagnostic: a typed record when a log-ring producer is attached
-   * (docs/SAB-LOGGING-LAYER-SPEC.md §2.4), else the seam line as before.
+   * (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4), else the seam line as before.
    */
   private log(line: string, emit?: (p: LogProducerClient) => void): void {
     if (emit && this.opts.logProducer) emit(this.opts.logProducer);

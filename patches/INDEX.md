@@ -55,7 +55,7 @@ When **Gemini** receives this handoff, execute the patches in the following orde
 
 ---
 
-## 4. Hand-Authored Implementation Plans (added 2026-11-11, Joey's direction)
+## 4. Hand-Authored Implementation Plans (added 2026-11-11, the owner's direction)
 
 The PATCH-01…05 specs above are crawler-generated. The plans below are hand-authored specs created in working sessions and pushed here so they can be picked up and implemented. They follow their own documents' build orders and gates; nothing in this section changes the crawler workflow above.
 

@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Producer Client (docs/SAB-LOGGING-LAYER-SPEC.md §2.1, §2.2)
+ * SAB Logging Layer — Producer Client (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.1, §2.2)
  *
  * Sacred producer path:
  * - Checks atomic level mask (nanoseconds, branchless check).

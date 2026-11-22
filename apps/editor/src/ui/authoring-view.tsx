@@ -8,7 +8,7 @@
  * the selection summons its widget stack + add shelf from the relevance
  * rules — no module panels, no component tables.
  *
- * Layout discipline (Joey, 2026-10-24, refined through the evening):
+ * Layout discipline (the owner, 2026-10-24, refined through the evening):
  * first the centered view pane (quarter / half / quarter), then
  * EMBEDDED panels (the pattern of VSCode / Blender / Unity /
  * PlayCanvas), then — the current model — FLOATING widgets: the
@@ -17,10 +17,10 @@
  * history strip (bottom) dock INSIDE it and collapse, returning
  * their space to the center viewport-focus zone; and the selection
  * widgets FLOAT inside the pane, summoned by the selection —
- * restoring Joey's original 2026-10-17 design ("clicking a game
+ * restoring the owner's original 2026-10-17 design ("clicking a game
  * object summons contextual widgets within the viewport"). The
  * floating stack is dismissible (view state only) and re-summons on
- * the next pick. See docs/EDITOR-AUTHORING.md.
+ * the next pick. See docs/internals/EDITOR-AUTHORING.md.
  *
  * Honest scope of this slice:
  * - The stage is a panel, not the 3D viewport: it shows the selected
@@ -880,7 +880,7 @@ function AuthoringPresentation(): React.JSX.Element {
     : sortNodes(role === "all" ? model.flat : model.flat.filter((n) => roleFilterById(role as RoleFilterId).test(n)), sort);
 
   return (
-    // Embedded-panels workspace with FLOATING selection widgets (Joey,
+    // Embedded-panels workspace with FLOATING selection widgets (the owner,
     // 2026-10-24 evening — the pattern of the editors he named as the
     // reference set: VSCode, Blender, Unity, PlayCanvas). The three
     // workspace columns are gone: the workspace is ONE view pane — a
@@ -891,7 +891,7 @@ function AuthoringPresentation(): React.JSX.Element {
     // pane, and the provenance history is a collapsible strip along the
     // bottom INSIDE the pane (VSCode's panel/console). The selection's
     // widgets are NOT docked at all: they FLOAT over the center
-    // viewport-focus zone, summoned by the selection (Joey's original
+    // viewport-focus zone, summoned by the selection (the owner's original
     // 2026-10-17 design), anchored toward the zone's right-center, and
     // the layout never reflows for them. The docks are at the pane's
     // edges, not columns beside it, and collapsing a dock (edge toggles
@@ -1088,7 +1088,7 @@ function AuthoringPresentation(): React.JSX.Element {
             </div>
 
             {/* ---------- floating selection widgets — summoned by the
-                selection into the pane (Joey's 2026-10-17 design: a
+                selection into the pane (the owner's 2026-10-17 design: a
                 clicked game object summons its contextual widgets
                 WITHIN the viewport). Absolutely positioned over the
                 viewport-focus zone, anchored toward its right-center;

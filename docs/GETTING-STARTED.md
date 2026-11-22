@@ -1,4 +1,4 @@
-# Getting Started
+# Getting started
 
 From a fresh clone to walking around a 4 km world in your browser: about
 fifteen minutes, most of it spent compiling the native addons once.

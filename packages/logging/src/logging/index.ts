@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Entry Point (docs/SAB-LOGGING-LAYER-SPEC.md §2)
+ * SAB Logging Layer — Entry Point (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2)
  */
 
 export * from "./log-codes.js";

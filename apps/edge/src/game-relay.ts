@@ -1,5 +1,5 @@
 /**
- * The game port (E3b of docs/EDGE-CORE-SPLIT.md): the players' WebSocket and HTTP on the public port,
+ * The game port (E3b of docs/internals/EDGE-CORE-SPLIT.md): the players' WebSocket and HTTP on the public port,
  * relayed to the core over the channel, so the core binds no player port. The client connects here
  * exactly as it did to the core's own port: same frames, same /rpc/Pcg downloads. The core's end is
  * engine-core net/channel-transport.ts, which documents the packets.

@@ -4,7 +4,7 @@
  * Framework-independent: no three.js, no react imports allowed in this
  * package (CI greps for them). The client R3F adapter (a later PR) maps
  * these onto THREE objects; the authoritative spec lives in
- * docs/VFX-SHADER-POSTFX-BLUEPRINT.md sections 6-8.
+ * docs/internals/VFX-SHADER-POSTFX-BLUEPRINT.md sections 6-8.
  */
 
 /** Engine quality tiers, verbatim from apps/client/src/render/quality.ts. */

@@ -15,8 +15,15 @@
  */
 
 import { addComponent, defineQuery, entityExists, hasComponent } from "bitecs";
-import { GROUND_ITEM_VARIANT, type DropsMessage, type InventoryMessage, type ItemView } from "@mmo-engine/protocol";
-import type { LootRules } from "@mmo-engine/rules";
+import {
+  GROUND_ITEM_VARIANT,
+  type DropsMessage,
+  type InventoryMessage,
+  type ItemProvenanceView,
+  type ItemView,
+} from "@mmo-engine/protocol";
+import { DEFAULT_CIVIC_RULES, type LootRules, type VeinTraitDef } from "@mmo-engine/rules";
+import type { Weapon } from "../combat.js";
 import { AssetRef, Transform, WorldItem } from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { SimSystem } from "../systems.js";
@@ -26,6 +33,7 @@ import type { Held } from "@mmo-engine/art/character";
 import { HAND_CODE, HAND_NAME, type ItemDefs } from "./item-defs.js";
 import { ItemLedger, LedgerKind, type ItemRow } from "../persist/item-ledger.js";
 import { ARMOUR_SLOTS, ArmourSlot, HandSlot, ItemStore, ItemWhere, type ArmourSlotName } from "./item-store.js";
+import { applyTraitToItemViewStats, applyTraitToWeapon, resolveTraitById } from "./trait-modifiers.js";
 
 /** Height above the ground a lying item rests at, metres. */
 const REST_HEIGHT = 0.06;
@@ -62,9 +70,15 @@ export interface ItemServiceOptions {
    * `giveGranted`. Absent: `giveGranted` is exactly `give`.
    */
   atomicGrant?: AtomicGrantExecutor;
+  /** Optional lookup attaching historical civic provenance to ItemView responses. */
+  provenanceOf?: (itemId: number) => ItemProvenanceView | undefined;
+  /** Optional vein trait definitions for provenance item stat/weapon modifiers. */
+  traits?: readonly VeinTraitDef[];
+  /** Damage mass exponent used by `weaponForCharacter` when scaling weapon power (default 0.5). */
+  massPower?: number;
 }
 
-export type ItemResult = { ok: true; message: string } | { ok: false; error: string };
+export type ItemResult = { ok: true; message: string; itemId?: number } | { ok: false; error: string };
 
 const worldItems = defineQuery([WorldItem]);
 
@@ -95,6 +109,9 @@ export class ItemService implements SimSystem {
   private readonly rankOrder: readonly string[];
   private readonly starterBase: string | null;
   private readonly atomicGrant: AtomicGrantExecutor | null;
+  private provenanceOf: ((itemId: number) => ItemProvenanceView | undefined) | null;
+  private traitDefs: readonly VeinTraitDef[];
+  private massPower: number;
   /** Characters already given their starter weapon this run. */
   private readonly outfitted = new Set<number>();
 
@@ -111,6 +128,19 @@ export class ItemService implements SimSystem {
     this.rankOrder = o.rankOrder ?? [];
     this.starterBase = o.starterBase ?? null;
     this.atomicGrant = o.atomicGrant ?? null;
+    this.provenanceOf = o.provenanceOf ?? null;
+    this.traitDefs = o.traits ? [...o.traits] : DEFAULT_CIVIC_RULES.traits;
+    this.massPower = o.massPower ?? 0.5;
+  }
+
+  /** Attach or replace the item provenance resolver post-assembly (e.g. from the civic module). */
+  setProvenanceLookup(fn: ((itemId: number) => ItemProvenanceView | undefined) | null): void {
+    this.provenanceOf = fn;
+  }
+
+  /** Replace the vein trait definitions applied to provenance item views and character weapons. */
+  setTraitDefs(traits: readonly VeinTraitDef[]): void {
+    this.traitDefs = [...traits];
   }
 
   /**
@@ -321,6 +351,25 @@ export class ItemService implements SimSystem {
     return id ? this.store.defs[this.store.slot(id)] : -1;
   }
 
+  /** Weapon spec for a character's main-hand item, adjusted by any bound provenance vein trait. */
+  weaponForCharacter(charId: number): Weapon | null {
+    const itemId = this.store.hands(charId)[HandSlot.Main];
+    if (!itemId) return null;
+    const slot = this.store.slot(itemId);
+    if (slot < 0) return null;
+    const def = this.store.defs[slot];
+    const d = this.defs;
+    const baseWeapon: Weapon = {
+      technique: d.technique[def],
+      item: { mass: d.mass[def], edge: d.edge[def], point: d.point[def], hardness: d.hardness[def] },
+      reach: d.length[def],
+      family: d.bases[def],
+    };
+    const provenance = this.provenanceOf?.(itemId);
+    const trait = provenance ? resolveTraitById(this.traitDefs, provenance.traitId) : undefined;
+    return applyTraitToWeapon(baseWeapon, trait, this.massPower);
+  }
+
   /**
    * A new character's starter weapon (M3b): the first time a character is
    * seen this run with empty hands, it is given the lowest-ranked item of
@@ -355,7 +404,11 @@ export class ItemService implements SimSystem {
       left -= batch;
     }
     const suffix = firstId ? ` (item ${firstId})` : " (stacked)";
-    return { ok: true, message: `gave ${this.defs.names[def]}${n > 1 ? ` ×${n}` : ""}${suffix}` };
+    return {
+      ok: true,
+      message: `gave ${this.defs.names[def]}${n > 1 ? ` ×${n}` : ""}${suffix}`,
+      ...(firstId ? { itemId: firstId } : {}),
+    };
   }
 
   /**
@@ -662,6 +715,10 @@ export class ItemService implements SimSystem {
     const defs = this.defs;
     const count = this.store.counts[slot] || 1;
     const maxStack = defs.maxStack[d] ?? 1;
+    const provenance = this.provenanceOf?.(item);
+    const baseDurability = Math.round(this.store.durability[slot]);
+    const trait = provenance ? resolveTraitById(this.traitDefs, provenance.traitId) : undefined;
+    const { stats, durability } = applyTraitToItemViewStats(defs.stats[d], baseDurability, trait);
     return {
       id: item,
       def: defs.ids[d],
@@ -671,10 +728,11 @@ export class ItemService implements SimSystem {
       color: defs.colors[d],
       hand: HAND_NAME[defs.hand[d]],
       slot: defs.slot[d],
-      stats: { ...defs.stats[d] },
+      stats,
       ...(maxStack > 1 ? { count, maxStack } : count > 1 ? { count } : {}),
-      durability: Math.round(this.store.durability[slot]),
+      durability,
       model: defs.models[d],
+      ...(provenance ? { provenance } : {}),
     };
   }
 

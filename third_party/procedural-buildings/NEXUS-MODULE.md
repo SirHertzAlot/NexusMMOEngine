@@ -1,6 +1,6 @@
 # Procedural Buildings — vendored standalone module
 
-Vendored 2026-11-13 on Joey's direction ("utilize it standalone as a
+Vendored 2026-11-13 on the owner's direction ("utilize it standalone as a
 module and pass params in procedurally to get an output").
 
 - **Upstream:** https://github.com/achrefelouafi/ProceduralBuildingsThreeJS

@@ -68,6 +68,10 @@ export interface Weapon {
   reach: number;
   /** The item family familiarity builds with (its base: "sword", "axe"); absent: none. */
   family?: string;
+  /** Optional percentage of defender armour mitigation bypassed on hit (clamped 0..100). */
+  armourPenetrationPct?: number;
+  /** Optional percentage reduction of attack stamina drain (clamped 0..50). */
+  staminaReductionPct?: number;
 }
 
 /** A blow's outcome, for the gateway to tell clients. */
@@ -352,7 +356,7 @@ export class CombatSystem implements SimSystem {
           else if (family === "crush") attackMove = Move.Stomp;
           else if (family === "tailslam") attackMove = Move.TailWhip;
           else if (family === "greatsword") attackMove = Move.Cleave;
-          move = this.start(sim, e, attackMove, look);
+          move = this.start(sim, e, attackMove, look, weapon);
         } else if ((buttons & IntentButton.Block) !== 0) {
           move = this.start(sim, e, Move.Guard, look);
         }
@@ -431,7 +435,14 @@ export class CombatSystem implements SimSystem {
           : "torso";
         const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
         const kind = dmg.techniqueKind?.(w.technique);
-        const armourFactor = dmg.armourOf?.(t, kind) ?? 1;
+        const baseArmourFactor = dmg.armourOf?.(t, kind) ?? 1;
+        const rawPen = w.armourPenetrationPct;
+        const pen = typeof rawPen === "number" && Number.isFinite(rawPen) && rawPen > 0
+          ? Math.max(0, Math.min(1, rawPen / 100))
+          : 0;
+        const armourFactor = pen > 0
+          ? 1 - (1 - Math.max(0, Math.min(1, baseArmourFactor))) * (1 - pen)
+          : baseArmourFactor;
         const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, armourFactor, familiarity });
         if (w.family) sk?.useFamily?.(e, w.family);
         amount = blow.amount * arm;
@@ -478,7 +489,7 @@ export class CombatSystem implements SimSystem {
     }
   }
 
-  private start(sim: SimWorld, e: number, id: number, yaw: number): CombatMove | undefined {
+  private start(sim: SimWorld, e: number, id: number, yaw: number, preloadedWeapon?: Weapon | null): CombatMove | undefined {
     // Stamina gate (U2): dodges and attacks spend at move start — every
     // start funnels through here, chains and recoveries included, while
     // guards stay free. A denied start fires nothing (returns undefined).
@@ -489,7 +500,15 @@ export class CombatSystem implements SimSystem {
     // bearers only, so bot behaviour is unchanged.
     if (def && this.stamina && hasComponent(sim.ecs, Stamina, e)) {
       const costs = sim.movement.stamina;
-      const cost = def.kind === "dodge" ? costs.dodgeCost : def.kind === "attack" ? costs.attackCost : 0;
+      let cost = def.kind === "dodge" ? costs.dodgeCost : def.kind === "attack" ? costs.attackCost : 0;
+      if (def.kind === "attack" && cost > 0) {
+        const weapon = preloadedWeapon !== undefined ? preloadedWeapon : this.damage?.weaponOf?.(e);
+        const rawRed = weapon?.staminaReductionPct;
+        if (typeof rawRed === "number" && Number.isFinite(rawRed) && rawRed > 0) {
+          const reductionShare = Math.max(0, Math.min(0.5, rawRed / 100));
+          cost *= 1 - reductionShare;
+        }
+      }
       if (cost > 0 && !this.stamina.spend(sim, e, cost)) return undefined;
     }
     Action.move[e] = id;

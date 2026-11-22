@@ -4,7 +4,7 @@
  * components as a kind) or it carries a named opt-out with its reason
  * (packages/art SHADING_OPT_OUTS). A class in neither place fails the test.
  *
- * Phase 0 audit: docs/CEL-SHADING-AUDIT.md section 4.
+ * Phase 0 audit: docs/internals/CEL-SHADING-AUDIT.md section 4.
  */
 
 import {

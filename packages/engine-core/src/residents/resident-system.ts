@@ -313,8 +313,10 @@ export class ResidentSystem implements SimSystem {
       const raid = this.raidState(town, tick);
       for (const npc of town.npcs) {
         const fate = this.fateOf(npc.id);
-        const have0 = this.live.get(npc.id);
-        if (have0 && entityExists(sim.ecs, have0.eid) && C.Health.current[have0.eid]! <= 0) this.fall(sim, npc.id, have0, tick, fate);
+        // One lookup of the npc's entity per step: `fall` and `arrive` say when they removed it.
+        let live = this.live.get(npc.id);
+        let exists = live !== undefined && entityExists(sim.ecs, live.eid);
+        if (exists && C.Health.current[live!.eid]! <= 0 && this.fall(sim, npc.id, live!, tick, fate)) (live = undefined), (exists = false);
         if (fate.backAt !== null) {
           if (this.now() < fate.backAt) continue; // lies dead, or the slot stands empty
           fate.generation++; // someone new has moved in
@@ -324,11 +326,9 @@ export class ResidentSystem implements SimSystem {
         let p = this.opts.place(town, npc, t, day);
         // Raiders at the gates: anyone outdoors who is not on guard takes cover at home.
         if (raid && p.outdoors && !this.holds(npc) && npc.home) p = { anchor: npc.home, outdoors: false, activity: "hide" };
-        const have = this.live.get(npc.id);
         const before = this.lastAnchor.get(npc.id);
-        this.lastAnchor.set(npc.id, p.anchor);
-        if (have && entityExists(sim.ecs, have.eid)) this.arrive(sim, npc.id, have, tick);
-        const live = this.live.get(npc.id);
+        if (before !== p.anchor) this.lastAnchor.set(npc.id, p.anchor);
+        if (exists && this.arrive(sim, npc.id, live!, tick)) (live = undefined), (exists = false);
         if (!p.outdoors) {
           if (!live) continue;
           const door = town.positionOf(p.anchor);
@@ -344,7 +344,8 @@ export class ResidentSystem implements SimSystem {
           if (live) this.remove(sim, npc.id, live);
           continue;
         }
-        if (live && entityExists(sim.ecs, live.eid)) {
+        if (exists) {
+          live = live!;
           if (live.anchor !== p.anchor || live.leaving) {
             live.leaving = false;
             if (steer && live.agent) this.walk(sim, live, npc.id, p.anchor, pos, tick);
@@ -437,10 +438,12 @@ export class ResidentSystem implements SimSystem {
   }
 
   /** Has a walking resident got there (or given up)? Then they stand, or go indoors if that was the errand. */
-  private arrive(sim: SimWorld, npc: string, live: Live, tick: number): void {
+  /** Whether a walker got where they were going; true when they were removed (they went indoors). */
+  private arrive(sim: SimWorld, npc: string, live: Live, tick: number): boolean {
     if (!live.walkTo) {
-      if (live.leaving) this.remove(sim, npc, live);
-      return;
+      if (!live.leaving) return false;
+      this.remove(sim, npc, live);
+      return true;
     }
     if (live.giveAt > 0) {
       if (C.NavAgent.state[live.eid] === C.NavAgentState.Invalid) {
@@ -450,30 +453,36 @@ export class ResidentSystem implements SimSystem {
         C.Transform.py[live.eid] = this.opts.groundHeightAt?.(live.walkTo.x, live.walkTo.z) ?? C.Transform.py[live.eid]!;
         live.walkTo = null;
         live.giveAt = 0;
-        if (live.leaving) this.remove(sim, npc, live);
-        return;
+        if (!live.leaving) return false;
+        this.remove(sim, npc, live);
+        return true;
       }
       this.give(live, live.walkTo);
-      return;
+      return false;
     }
     const d = Math.hypot(live.walkTo.x - C.Transform.px[live.eid]!, live.walkTo.z - C.Transform.pz[live.eid]!);
-    if (d > 1.5 && tick < live.until && C.NavAgent.state[live.eid] !== C.NavAgentState.NoPath) return;
+    if (d > 1.5 && tick < live.until && C.NavAgent.state[live.eid] !== C.NavAgentState.NoPath) return false;
     live.walkTo = null;
     C.NavAgent.tx[live.eid] = NaN; // stand
     C.NavAgent.tz[live.eid] = NaN;
     C.NavAgent.seq[live.eid] = (C.NavAgent.seq[live.eid]! + 1) & 0xffff;
-    if (live.leaving) this.remove(sim, npc, live);
+    if (!live.leaving) return false;
+    this.remove(sim, npc, live);
+    return true;
   }
 
   /** A resident fell: record the death, leave the body a while, then it goes. */
-  private fall(sim: SimWorld, npc: string, live: Live, tick: number, fate: { generation: number; backAt: number | null }): void {
+  /** Whether the body was removed. */
+  private fall(sim: SimWorld, npc: string, live: Live, tick: number, fate: { generation: number; backAt: number | null }): boolean {
     if (live.fellAt === 0) {
       live.fellAt = tick;
       this.opts.detachShop?.(live.eid); // a fallen shopkeeper's shop is shut
       fate.backAt = this.now() + (this.opts.replaceMs ?? 3 * 3_600_000);
       this.opts.store?.save({ kind: "resident", key: npc, state: `dead:${fate.generation}`, at: this.now(), respawnAt: fate.backAt });
     }
-    if (tick - live.fellAt >= (this.opts.corpseSeconds ?? 10) * this.tickHz) this.remove(sim, npc, live);
+    if (tick - live.fellAt < (this.opts.corpseSeconds ?? 10) * this.tickHz) return false;
+    this.remove(sim, npc, live);
+    return true;
   }
 
   private holds(npc: ResidentNpc): boolean {

@@ -1,5 +1,5 @@
 /**
- * B7: interest bandwidth (docs/superpowers/specs/2026-10-23-interest-management-design.md).
+ * B7: interest bandwidth. Results summarised in docs/PERFORMANCE.md.
  * A gateway served through the edge channel (ChannelTransport, as with MMO_EDGE=1), 50 player
  * sessions logged in over relayed sockets and placed like the entities, 1k and 5k moving entities
  * in the "spread" (2 km square) and "towns" (70% in five 150 m towns) layouts. Per row:

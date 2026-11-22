@@ -57,6 +57,12 @@ export function ItemDetails({ item }: { item: ItemView }): React.ReactElement {
         ))}
       </div>
       <div className="mt-1 text-xs text-muted-foreground tabular-nums">{t("bag.durability", { value: item.durability })}</div>
+      {item.provenance && (
+        <div className="mt-1.5 border-t border-border/60 pt-1 text-[11px] text-amber-300/90">
+          <div>{t("bag.provenance", { town: item.provenance.townId, trait: item.provenance.traitId, vein: item.provenance.veinBatchId })}</div>
+          <div className="text-muted-foreground">{t("bag.provenanceCrafter", { crafter: item.provenance.crafterName, era: item.provenance.eraTag })}</div>
+        </div>
+      )}
     </div>
   );
 }

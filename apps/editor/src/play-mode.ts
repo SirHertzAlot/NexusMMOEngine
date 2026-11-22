@@ -7,7 +7,7 @@
  *   idle → starting → running → stopping → idle
  *                       ↘ error (failed start; server cleaned up)
  *
- * Design rules (Joey's constraints):
+ * Design rules (the owner's constraints):
  * - The controller only ever stops the server process IT started
  *   (tracked pid/handle, never a port scan / pkill).
  * - Pre-play editor state is always restored: the shell hands an opaque

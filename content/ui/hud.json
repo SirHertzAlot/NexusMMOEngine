@@ -111,6 +111,14 @@
         "y": 260
       },
       "visible": true
+    },
+    "civic-panel": {
+      "anchor": "center-left",
+      "offset": {
+        "x": 16,
+        "y": 0
+      },
+      "visible": true
     }
   }
 }

@@ -405,6 +405,20 @@ export const AuctionSettleSchema = z
   })
   .strict();
 
+export const AtomicProvenanceSchema = z
+  .object({
+    veinBatchId: z.string().min(1).max(128),
+    traitId: z.string().min(1).max(64),
+    townId: z.string().min(1).max(64),
+    crafterId: CHARACTER_ID,
+    crafterName: z.string().min(1).max(64),
+    eraTag: z.string().min(1).max(64),
+    craftedAt: UINT,
+  })
+  .strict();
+
+export type AtomicProvenance = z.infer<typeof AtomicProvenanceSchema>;
+
 export const CraftExecuteSchema = z
   .object({
     regionId: REGION_ID,
@@ -422,6 +436,7 @@ export const CraftExecuteSchema = z
             def: ITEM_DEF,
             slot: SLOT.optional(),
             count: STACK_COUNT.optional(),
+            provenance: AtomicProvenanceSchema.optional(),
           })
           .strict(),
       )
@@ -443,6 +458,7 @@ export const LootGrantSchema = z
     def: ITEM_DEF,
     slot: SLOT.optional(),
     count: STACK_COUNT.optional(),
+    provenance: AtomicProvenanceSchema.optional(),
   })
   .strict();
 

@@ -3,7 +3,7 @@
  *
  * SharedArrayBuffer is only available in cross-origin isolated pages, which
  * requires the deployment to serve COOP/COEP headers (see
- * docs/CLIENT-SAB-ASSET-PIPELINE.md). When any leg is missing the pipeline
+ * docs/internals/CLIENT-SAB-ASSET-PIPELINE.md). When any leg is missing the pipeline
  * falls back to main-thread decode of the same bytes — same geometry out,
  * just decoded on the main thread. The fallback is the correctness floor:
  * nothing in the client may require SAB to load an asset.
@@ -50,7 +50,7 @@ export function probeSabSupport(env: SabEnvironment = defaultEnv()): SabSupport 
     : !sharedArrayBuffer
       ? "SharedArrayBuffer unavailable — serve the page cross-origin isolated (COOP/COEP headers)"
       : !crossOriginIsolated
-        ? "page is not cross-origin isolated — serve COOP/COEP headers (see docs/CLIENT-SAB-ASSET-PIPELINE.md)"
+        ? "page is not cross-origin isolated — serve COOP/COEP headers (see docs/internals/CLIENT-SAB-ASSET-PIPELINE.md)"
         : "Web Workers unavailable";
   return { sharedArrayBuffer, crossOriginIsolated, worker, usable, reason };
 }

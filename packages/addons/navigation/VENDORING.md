@@ -5,8 +5,8 @@
 ("Fix crash on large-scale navmesh generation (assert triggered) (#796)",
 2026-02-27) — the exact commit evaluated in
 `~/workspace/mmo-engine/phase2/EVALUATION.md` §2. Do not move it without
-re-running the evaluation's build + bake spike and recording the reason
-in `docs/DECISIONS.md`.
+re-running the evaluation's build + bake spike and saying why in the pull
+request that moves it.
 
 **License:** zlib-style, © 2009 Mikko Mononen — verified against the
 upstream `License.txt` at the pinned commit (root of the vendored tree).

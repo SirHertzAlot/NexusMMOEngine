@@ -5,7 +5,7 @@
 //   SCENE=<settlement scene json> [MAXA=64] [PERTICK=8] [SCEN=largest,median,smallest,demolish] //     node scripts/collapse-playtest.mjs
 //
 // Needs the engine-core, scatter and addon builds (npm run build). The headless world has no terrain, so a flat slab
-// is put under every building. Results: docs/DESTRUCTION-PLAYTEST.md.
+// is put under every building.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 

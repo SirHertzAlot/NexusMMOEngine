@@ -7,7 +7,7 @@
  *
  * The same JSON can be converted to:
  * - three.quarks JSON for the web client (see vfx-convert.ts)
- * - C++ structs for the backend (see docs/VFX-CPP-MAPPING.md)
+ * - C++ structs for the backend (see docs/internals/VFX-CPP-MAPPING.md)
  *
  * This keeps VFX data portable if we ever swap the client renderer
  * or move simulation server-side.

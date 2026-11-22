@@ -63,7 +63,7 @@ export const DEFAULT_TERRAIN_MASK_SPEC: TerrainMaskSpec = {
   version: 1,
   seed: 1,
   // 16 samples per 16 m chunk: 1 m spacing, which keeps the whole-world bake
-  // inside the terrain bake's envelope (docs/TERRAIN-MASK.md has the numbers).
+  // inside the terrain bake's envelope (docs/internals/TERRAIN-MASK.md has the numbers).
   resolution: 16,
   noiseScaleMetres: 24,
   rock: { slope: { from: 28, to: 48, noiseAmplitude: 3 }, moistureDamping: 0.5 },

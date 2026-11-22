@@ -308,20 +308,20 @@ test("real repository harvest satisfies all §7 invariants, H3 ratchet, and two-
   assert.equal(bodyHp.arrayLength, 15);
   assert.equal(bodyHp.sab, true);
 
-  // Verify H3 declared systems: all 32 simulation systems declare SimSystem.access
-  for (const sysName of ["intent", "character", "integrate", "collider", "physics"]) {
+  // Verify H3 declared systems: all 33 simulation systems declare SimSystem.access
+  for (const sysName of ["intent", "character", "integrate", "collider", "physics", "civic"]) {
     const sys = first.nodes.find((n) => n.id === `system:${sysName}`);
     assert.ok(sys && sys.kind === "system", `missing system:${sysName}`);
     assert.equal(sys.declared, true, `expected system:${sysName} declared=true`);
     assert.equal(sys.role, "simulation");
   }
   const simSystems = first.nodes.filter((n): n is Extract<EcsGraph["nodes"][number], { kind: "system" }> => n.kind === "system" && n.role === "simulation");
-  assert.equal(simSystems.length, 32);
+  assert.equal(simSystems.length, 33);
   for (const sys of simSystems) {
     assert.equal(sys.declared, true, `expected simulation ${sys.id} declared=true`);
   }
-  assert.equal(first.meta.counts.declaredSystems, 32);
-  assert.equal(first.meta.counts.simulationSystems, 32);
+  assert.equal(first.meta.counts.declaredSystems, 33);
+  assert.equal(first.meta.counts.simulationSystems, 33);
 
   // Every unresolved entry must use POSIX slashes and file:line
   for (const u of first.meta.unresolved) {

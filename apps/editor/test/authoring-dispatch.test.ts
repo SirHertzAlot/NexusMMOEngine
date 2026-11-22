@@ -17,7 +17,7 @@ import {
 } from "../src/authoring/index.js";
 
 const prov: Provenance = {
-  who: { id: "joey", role: "designer" },
+  who: { id: "designer-1", role: "designer" },
   what: "Blacksmith Mara",
   when: 1_800_000_000_000,
   where: "Haven / Market Square / Blacksmith Mara",

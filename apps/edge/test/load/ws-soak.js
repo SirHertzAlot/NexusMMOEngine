@@ -1,4 +1,4 @@
-// k6 WebSocket soak against the edge (slice E6 of docs/EDGE-CORE-SPLIT.md).
+// k6 WebSocket soak against the edge (slice E6 of docs/internals/EDGE-CORE-SPLIT.md).
 //
 //   k6 run apps/edge/test/load/ws-soak.js
 //   EDGE_WS_URL=ws://host:3001 k6 run apps/edge/test/load/ws-soak.js

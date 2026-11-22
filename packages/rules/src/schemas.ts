@@ -472,7 +472,7 @@ export const LootEntrySchema = z.strictObject({
   count: z.tuple([z.number().int().min(1), z.number().int().min(1)]).default([1, 1]),
 });
 
-/** Items on the ground and in bags (docs/ALPHA-PLAN.md, decisions D2 and D3). */
+/** Items on the ground and in bags (tunables: content/rules/loot.json). */
 export const LootSchema = z.strictObject({
   /** Named loot tables: a creature's `drops.table` rolls every line of one. */
   tables: z.record(id, z.strictObject({ entries: z.array(LootEntrySchema).min(1) })).optional(),
@@ -679,7 +679,7 @@ export const CreatureBehaviorSchema = z.strictObject({
     .optional(),
 });
 
-/** One kind of creature (docs/ALPHA-PLAN.md, decision D6). */
+/** One kind of creature (docs/WILDLIFE.md). */
 export const CreatureSchema = z.strictObject({
   name: z.string().min(1),
   /** Whole-body health (D1). */

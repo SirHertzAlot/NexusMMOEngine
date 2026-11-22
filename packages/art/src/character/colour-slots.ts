@@ -3,7 +3,7 @@
  *
  * The pack's four mask textures (PolygonFantasyHero_Texture_Mask_01..04)
  * mark each region DARK on white in one colour channel. Which channel is
- * which was measured from the parts that use them (docs/CHARACTER-PLAN.md):
+ * which was measured from the parts that use them:
  * skin on heads, ears and bare limbs; hair on hair, brows and beards; the
  * armour's cloth, metal and leather on the body sets. `scar` and `bodyArt`
  * are masked but no base part uses them.
