@@ -20,9 +20,9 @@ or a draft PR saying you're on it, so work isn't doubled. Each item is
 one PR (`CLAUDE.md` has the workflow: tests, screenshots, one feature per
 PR).
 
-## At a glance (2026-11-18)
+## At a glance (2026-11-22)
 
-**311 table items built, 2 in progress, 0 planned** (plus `5` closed/parked spikes/steps: `TS5`, `TS6`, `TS7`, `TS8`, `E5b`; counted directly from the status columns below on 2026-11-18, excluding the legend). With `DB5` (`#725`), Baked Asset Store `B1`–`B4` (`#726`), and live modular collapse + universal gravity (`DE3`, `DE4c`, `DE5`, `#727`) merged alongside `PATCH01`–`PATCH05`, `CF6`, `DE1`–`DE2`, `WL2`, and `GH1`–`H4`, only `2` table items remain in progress (`DE4` Linux `valgrind:perf` gate and `CL0` Cutscene Lane `C1`–`C4`). `npm run lint` (the SAB no-console guard) passes with zero findings. The game is playable end to end (`npm start`), and the open `🚧` items and follow-ups below remain:
+**312 table items built, 2 in progress, 0 planned** (plus `5` closed/parked spikes/steps: `TS5`, `TS6`, `TS7`, `TS8`, `E5b`; counted directly from the status columns below on 2026-11-22, excluding the legend). With `DB5` (`#725`), Baked Asset Store `B1`–`B4` (`#726`), and live modular collapse + universal gravity (`DE3`, `DE4c`, `DE5`, `#727`) merged alongside `PATCH01`–`PATCH05`, `CF6`, `DE1`–`DE2`, `WL2`, `GH1`–`H4`, and the documentation rewrite (`DOC3`), only `2` table items remain in progress (`DE4` Linux `valgrind:perf` gate and `CL0` Cutscene Lane `C1`–`C4`). `npm run lint` (the SAB no-console guard) passes with zero findings. The game is playable end to end (`npm start`), and the open `🚧` items and follow-ups below remain:
 
 What is left, by area (from the tables and active engineering backlog):
 
@@ -533,7 +533,8 @@ criteria, and its decisions (D1 to D3 decided; D4 to D8 proposed defaults).
 
 ## Update log
 
-Newest first. One line per merged PR or decision.
+Newest first: add your line directly below this one, not at the end of the file.
+One line per merged PR or decision.
 - **2026-11-22**: DOC3 — documentation rewritten for engine users. 204 planning and history files removed from `docs/` (phase and benchmark reports, build plans, audits, library spikes, `docs/superpowers/`, `docs/library/`, `docs/business-analysis/`, the duplicate `docs/wiki/`, `IDEA.md`, `paperclip_snippets/`); 13 subsystem references moved to `docs/internals/`; new `CAPABILITIES.md`, `BUILDING-A-GAME.md` and `CLIENT.md`; `README.md`, `docs/README.md`, `AGENTS.md`, `MODULES.md` (absorbing the five `EA*` module docs) and `PROCEDURAL-GENERATION.md` rewritten; the docs-site index and the architecture explorer repointed; 106 broken links fixed, now 0.
 - **2026-11-22**: DOC3 follow-up — the client physics backend is documented as PhysX alone (`docs/CLIENT.md`): PhysX is the default, the choice is justified by the measured 200-rig comparison, and `rapier-world.ts` is named once as the second implementation of the same seam rather than a co-equal option. `docs/BUILDING-A-GAME.md` reworded so the cheapest-layer guidance reads as a cost ordering, not a restriction: the engine ships as source and every layer is the user's to change, with the upgrade cost of each stated instead. The "not licensed for release" bullet removed from `docs/CAPABILITIES.md` (licensing is an open decision; the docs should not state terms). The rules hooks are now described as working, with a dated note that the `server.ts` overrides wiring lands separately.
 - **2026-11-22**: DOC3 follow-up 2 — `docs/CLIENT.md` states the end state #744 lands: the client runs on PhysX, the server on native Jolt, and `rapier-world.ts` is a test-only second implementation of the physics seam that nothing a player runs touches (the pinned `physx-js-webidl` build is compiled for the web and refuses to load under Node, so three client suites exercise the seam through Rapier). A dated note marks what is still true until #744 merges. `docs/BUILDING-A-GAME.md` §3 matches the hooks shape landing in #743.
