@@ -29,12 +29,13 @@ const paramDeclSchema = z
 
 const bindingSchema = z
   .object({
-    kind: z.enum(["local", "world", "entity", "socket"]),
+    kind: z.enum(["local", "world", "entity", "socket", "spline"]),
     entityId: z.string().min(1).max(64).optional(),
     socket: z.string().min(1).max(64).optional(),
     offset: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]).optional(),
     pos: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]).optional(),
     normal: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]).optional(),
+    waypoints: z.array(vec3Schema).min(2).max(16).optional(),
   })
   .strict();
 
@@ -45,6 +46,7 @@ const FX_MODULES = [
   "TrailModule",
   "MuzzleFlashModule",
   "ShieldModule",
+  "CurveEmitterModule",
 ] as const;
 
 const moduleDefSchema = z

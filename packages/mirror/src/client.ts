@@ -67,6 +67,8 @@ import {
   type CastMessage,
   type ManaMessage,
   type SpellMessage,
+  type FxMessage,
+  isFxMessage,
   type HitMessage,
   type LifeMessage,
   type TelegraphMessage,
@@ -181,6 +183,8 @@ export interface MirrorEvents {
   onMana?(m: ManaMessage): void;
   /** A cast the player makes or receives started, completed or stopped (protocol 0x1c). */
   onSpell?(s: SpellMessage): void;
+  /** Authoritative VFX presentation event (protocol 0x28: fx-spawn, fx-update, fx-kill). */
+  onFx?(m: FxMessage): void;
   /**
    * The player crossed into another region and this client moved to its
    * server (WORLD-SERVER-SPEC §6). onWelcome fired first, with the new
@@ -424,12 +428,14 @@ export class MirrorClient {
 
   /**
    * Cast a spell (0x1c) on `target` (a character's wire id; absent:
-   * yourself). Progress arrives as onSpell, refusals as 4005 errors.
+   * yourself), optionally along a proposed spline `path` (`[x, y, z]` waypoints).
+   * Progress arrives as onSpell, refusals as 4005 errors.
    */
-  cast(spell: string, target?: string): void {
+  cast(spell: string, target?: string, path?: Array<[number, number, number]>): void {
     if (!this.socket || this.closed) return;
     const msg: CastMessage = { kind: "cast", spell };
     if (target !== undefined) msg.target = target;
+    if (path !== undefined) msg.path = path;
     this.send(this.socket, encodeEnvelope(MessageType.Magic, encodeControl(msg)));
   }
 
@@ -1018,6 +1024,11 @@ export class MirrorClient {
           this.mana = m;
           this.events.onMana?.(m);
         } else this.events.onSpell?.(m);
+        break;
+      }
+      case MessageType.Fx: {
+        const m = decodeControl<unknown>(payload);
+        if (isFxMessage(m)) this.events.onFx?.(m);
         break;
       }
       case MessageType.Treat:

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { localAssets } from "./vite-local-assets.js";
 import { gpuBenchmarks } from "./vite-gpu-benchmarks.js";
-import { animationDoc, audioEvents, combatMoves, gameFlow, materialsDoc, vfxBudgets, vfxEffects } from "./vite-game-flow.js";
+import { animationDoc, audioEvents, combatMoves, gameFlow, materialsDoc, rulesSpells, vfxBudgets, vfxDefinitions, vfxEffects } from "./vite-game-flow.js";
 import { gameStrings } from "./vite-game-strings.js";
 import { clientContent } from "./vite-content.js";
 import compression from "vite-plugin-compression";
@@ -84,6 +84,19 @@ export default defineConfig(({ mode }) => {
       animationDoc(fileURLToPath(new URL("../../content/animation/animations.json", import.meta.url))),
       materialsDoc(fileURLToPath(new URL("../../content/materials/materials.json", import.meta.url))),
       vfxBudgets(fileURLToPath(new URL("../../content/vfx/budgets.json", import.meta.url))),
+      rulesSpells(fileURLToPath(new URL("../../content/rules/spells.json", import.meta.url))),
+      vfxDefinitions([
+        fileURLToPath(new URL("../../content/vfx/charged-shot.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/force-shield.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/mend-aura.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/spline-fire.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/spline-water.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/spline-earth.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/spline-air.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/spline-lightning.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/spline-frost.json", import.meta.url)),
+        fileURLToPath(new URL("../../content/vfx/ice-ring.json", import.meta.url)),
+      ]),
       vfxEffects([
         fileURLToPath(new URL("../../content/vfx/shrine-fire.json", import.meta.url)),
         fileURLToPath(new URL("../../content/vfx/shrine-water.json", import.meta.url)),
