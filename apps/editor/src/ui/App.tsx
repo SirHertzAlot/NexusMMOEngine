@@ -968,11 +968,11 @@ function initialHashLocation(): { workspace: WorkspaceId; view: string } {
 
 // ---------------------------------------------------------------- viewport options
 
-/** The center header's viewport menu: Grid / Gizmos / Wireframe act on the active 3D viewport, Screenshot saves a PNG of it. */
+/** The center header's viewport menu: Grid / Gizmos / Axis triad / Wireframe act on the active 3D viewport, Screenshot saves a PNG of it. */
 function ViewportOptions(): React.JSX.Element {
   const vp = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
   const flags = viewportFlags.useValue();
-  const toggle = (label: string, key: "grid" | "gizmos" | "wireframe"): { label: string; checked: boolean; disabled?: string; run: () => void } => ({
+  const toggle = (label: string, key: "grid" | "gizmos" | "wireframe" | "axes"): { label: string; checked: boolean; disabled?: string; run: () => void } => ({
     label,
     checked: flags[key],
     ...(flagBlocked(key) !== null ? { disabled: flagBlocked(key) as string } : {}),
@@ -986,6 +986,7 @@ function ViewportOptions(): React.JSX.Element {
       items={[
         toggle("Grid", "grid"),
         toggle("Gizmos", "gizmos"),
+        toggle("Axis triad", "axes"),
         toggle("Wireframe", "wireframe"),
         "sep",
         { label: "Screenshot viewport", run: () => void screenshotViewport(), ...(screenshotBlocked() !== null ? { disabled: screenshotBlocked() as string } : {}) },
