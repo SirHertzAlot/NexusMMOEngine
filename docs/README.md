@@ -40,6 +40,7 @@ or planned.
 | [ROADMAP.md](ROADMAP.md) | Built, in progress, and planned, with an update log |
 | [DOCS-AUDIT.md](DOCS-AUDIT.md) | The latest documentation audit: what was checked, what was fixed, and what is still stale |
 | [DECISIONS.md](DECISIONS.md) | The locked engineering decisions |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | Every dependency and vendored library, its licence, and what shipping one obliges |
 | [CHARACTER-PLAN.md](CHARACTER-PLAN.md) | Character plan |
 | [CLIENT-FX.md](CLIENT-FX.md) | Client visual effects notes |
 | [EDGE-SPLIT-RESULTS.md](EDGE-SPLIT-RESULTS.md) | Edge/core split measurements |
