@@ -25,6 +25,7 @@ import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { StatusChange } from "./vocabulary.js";
 
 export interface StatMod {
   /** The stat this touches ("power", "armour", "speed" — the rules' names). */
@@ -64,15 +65,6 @@ export interface ActiveStatus {
   /** Ticks until it expires; Infinity for permanent. */
   expiresIn: number;
   source: number;
-}
-
-/** A buff/debuff gained or lost, for the gateway. */
-export interface StatusChange {
-  tick: number;
-  entity: number;
-  id: string;
-  state: "applied" | "removed";
-  stacks?: number;
 }
 
 interface Active {

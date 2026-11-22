@@ -13,19 +13,6 @@
  * Nothing here moves entities or touches Health — it is pure rules.
  */
 
-export type DuelEndReason = "blood" | "yield" | "timeout" | "declined" | "expired" | "cancelled";
-
-export interface DuelEvent {
-  tick: number;
-  state: "challenged" | "accepted" | "declined" | "expired" | "started" | "ended";
-  a: number;
-  b: number;
-  /** Ended: why. */
-  reason?: DuelEndReason;
-  /** Ended by blood/yield: the winner. */
-  winner?: number;
-}
-
 interface Challenge {
   a: number;
   b: number;
@@ -45,6 +32,7 @@ import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { DuelEndReason, DuelEvent } from "./vocabulary.js";
 
 export class DuelSystem implements SimSystem {
   /** Offered to the host as the `duels` port: the duel flow a player's client drives. */
