@@ -1,6 +1,6 @@
 # Viewport-Only Authoring Design
 
-Joey's direction, 2026-10-17. Companion to `MODULE-AUTHORING-AUDIT.md` (the audit this
+The owner's direction, 2026-10-17. Companion to `MODULE-AUTHORING-AUDIT.md` (the audit this
 design is grounded in — every relevance rule and verb below traces to a file path there).
 
 ## Governing principle: separation of concerns, at two levels
@@ -182,7 +182,7 @@ The authoring layer speaks **only** the 13 shared verbs (audit §4). A quest rew
 vendor sale, a loot drop, and an admin `give` are four call sites for `giveItem`, not four
 features. The "give the player something" widget is one widget reused by four workflows.
 
-This is what kills the duplication class Joey suspected: there is exactly one place that
+This is what kills the duplication class the owner suspected: there is exactly one place that
 knows how to give/take/move/count items, and every widget resolves to it.
 
 ## Build order

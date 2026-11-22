@@ -1,7 +1,7 @@
 # CGHEVEN VFX Pack — for in-game use
 
 Compiled 2026-10-22 from [cgheven.com](https://cgheven.com) free-tier downloads
-(artist: Ammar Khan). Built for use **inside Joey's own game projects**.
+(artist: Ammar Khan). Built for use **inside the owner's own game projects**.
 
 ## License — read this first
 

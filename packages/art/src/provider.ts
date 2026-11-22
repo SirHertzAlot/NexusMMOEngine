@@ -60,7 +60,7 @@ export interface AssetProvider {
    * Mesh for an entity carrying an AssetRef row (PCG scatter spawn).
    * Optional: when absent (or when it returns undefined) the caller
    * falls back to bodyMesh. The placeholder provider leaves this
-   * unimplemented — Joey's art pack implements it by mapping
+   * unimplemented — The owner's art pack implements it by mapping
    * assetHash (fnv1a32 of the manifest model id) to the loaded model,
    * with `variant` selecting the art variant.
    */

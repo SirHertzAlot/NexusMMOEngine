@@ -1,7 +1,7 @@
 # Selo Settlement Engine — Algorithm Extraction for the Living Sim
 
 **Source:** `SeloSlav/medieval-settlement-threejs` (public repo, main branch, extracted 2026-10-11)
-**License:** Custom "Selo Empire Code License" — MIT permissions on code; art, branding, and creative content carved out into LICENSE-ASSETS.md. Joey verified this reading: code techniques are usable, art is not. This document contains algorithm descriptions for clean-room reimplementation, not code copies.
+**License:** Custom "Selo Empire Code License" — MIT permissions on code; art, branding, and creative content carved out into LICENSE-ASSETS.md. The owner verified this reading: code techniques are usable, art is not. This document contains algorithm descriptions for clean-room reimplementation, not code copies.
 **Purpose:** Extract the procedural-generation algorithms needed for the living sim's environment foundation — terrain, rivers/water, and the ecological placement logic that determines which organics exist where.
 
 ---

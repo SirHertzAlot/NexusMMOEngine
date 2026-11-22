@@ -1,6 +1,6 @@
 # Persistence Layer Spec — durable shard state at the world tier
 
-Status: **adopted by Joey 2026-10-20; building on `arlo/persistence-layer`.**
+Status: **adopted by the owner 2026-10-20; building on `arlo/persistence-layer`.**
 Supersedes the storage assumptions of `docs/WORLD-SERVER-SPEC.md` §3
 ("Local SQLite: snapshots, chunk overrides" as the region's only durability).
 The world-server control plane (registry, leases, migration, presence)
@@ -131,7 +131,7 @@ inventory pattern; D2R's lock discipline):
 
 ## Single source of truth & resource-aware assignment
 
-(Amendment, Joey-directed 2026-10-20. This section refines the framing
+(Amendment, the owner-directed 2026-10-20. This section refines the framing
 of the Recovery section above for fleet mode; the mechanics it builds on
 — tiers, fencing, recall, locks — are unchanged.)
 

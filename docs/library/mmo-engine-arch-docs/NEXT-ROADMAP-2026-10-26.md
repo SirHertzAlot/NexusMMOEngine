@@ -1,12 +1,12 @@
 # Next implementation roadmap — 2026-10-26
 
-The working sequence for the two priorities Joey set (animation, IO),
+The working sequence for the two priorities the owner set (animation, IO),
 plus the one designed-and-waiting piece (logging). This is the thread
 roadmap; the repo's `docs/ROADMAP.md` remains the official status board.
 Parked items are listed at the end so they stay visible but out of the
 way. Sizes are relative (S/M/L), not calendar promises.
 
-## Step 0 — Land what's already built (needs Joey's word)
+## Step 0 — Land what's already built (needs the owner's word)
 
 - **Push `arlo/persist-ledger-perf`** (`95d2d3ff`): batched ledger
   appends + O(1) head reads; world-server suite 120/0. Local only until
@@ -54,7 +54,7 @@ The runtime half is built and merged; every step below is the supply half.
   against the gateway, delta fan-out at hundreds of connected clients
   in one region. This is the last big unknown in the speed/IO picture.
 
-## Step C — Logging phase 1 (designed, awaiting Joey's word)
+## Step C — Logging phase 1 (designed, awaiting the owner's word)
 
 SAB lockless ring + dedicated log worker + structured records from
 birth; no new dependency. This is the prerequisite store for the

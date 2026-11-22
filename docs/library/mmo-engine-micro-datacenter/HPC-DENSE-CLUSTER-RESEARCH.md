@@ -1,7 +1,7 @@
 # Dense Small-Node HPC Cluster Research
 
 **Date:** 2026-10-02  
-**Status:** research synthesis for Joey's review; component picks are proposed defaults, not locked purchases.  
+**Status:** research synthesis for the owner's review; component picks are proposed defaults, not locked purchases.  
 **Companion docs:** `EDGE-MICRO-DATACENTER-AND-SDN-PLAN.md`, `1000-USER-GOAL-AND-DEVICE-ELIMINATION.md`
 
 ## 0. Executive verdict
@@ -109,7 +109,7 @@ That gap would matter for MPI. It does not matter against a 33.3 ms game tick or
 
 ```mermaid
 flowchart TD
-    Joey["Joey / operator tools"] -->|Nebula admin mesh| HeadA["PodBrain Head A<br/>orchestrator + verifier + LLM"]
+    the owner["The owner / operator tools"] -->|Nebula admin mesh| HeadA["PodBrain Head A<br/>orchestrator + verifier + LLM"]
     HeadA -. replicated intent/state .-> HeadB["PodBrain Head B<br/>standby / voter"]
     HeadB -. third voter .-> Support["Support node<br/>metrics, artifacts, backups"]
     HeadA -->|signed assignments| AgentE["Edge node agents"]
@@ -522,7 +522,7 @@ Eliminated as fleet foundations for now:
 
 ## 14. Open questions before fleet purchases
 
-1. Does Nomad's BUSL-1.1 posture pass Joey's license review for internal use and future commercial hosting?
+1. Does Nomad's BUSL-1.1 posture pass the owner's license review for internal use and future commercial hosting?
 2. Do we start with one PodBrain head + cold standby, or pay immediately for three control voters?
 3. What is the verified current street price and stock situation for Pi 5 16GB and CM5 modules?
 4. Does a used 1L x86 sample pass PSU, fan, NVMe SMART, RAM, and AMT checks cleanly enough to trust a lot purchase?
@@ -591,7 +591,7 @@ Those gaps are purchase gates, not footnotes. P0/P1 exist to close them with our
 
 ## Appendix A — First-iteration budget under $3,000 (added 2026-10-02)
 
-Joey set the constraint: the **first iteration** should land essentially under
+The owner set the constraint: the **first iteration** should land essentially under
 $3,000 while leaving room to grow. Prices below were verified on dedicated
 in-stock US product pages on 2026-10-02. Totals exclude sales tax; several
 items included free shipping. This is a purchasing plan, not a purchase —
@@ -690,7 +690,7 @@ the week of purchase.
 
 ## Appendix B — HPC texts and the .edu source pool (added 2026-10-02)
 
-Joey supplied two HPC texts and a standing instruction to mine university
+The owner supplied two HPC texts and a standing instruction to mine university
 (.edu) HPC material. Analysis of both books plus selective .edu spot checks
 is folded in here. These are **methods texts, not hardware catalogs**: their
 durable value is how to measure and reason, not their (dated) numbers.

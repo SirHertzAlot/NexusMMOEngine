@@ -1,6 +1,6 @@
 # C++ Main Tick — Specification and Implementation Roadmap
 
-**Status:** Spec + roadmap, commissioned by Joey 2026-10-27. Implementation
+**Status:** Spec + roadmap, commissioned by the owner 2026-10-27. Implementation
 phases are gated on his word per phase. Nothing in this document is built yet
 beyond the components marked SHIPPED.
 **Scope:** Move the authoritative main tick from TypeScript (engine-core) to
@@ -182,8 +182,8 @@ production install cannot degrade quietly.
 
 Standing rules apply throughout: local branches, tests green before
 anything leaves, every performance phase ships a metrics doc + chart with
-measured numbers, methodology, and caveats (Joey's 2026-10-20 rule), and
-push/PR/merge happen only on Joey's word. Each phase lists its **gate** —
+measured numbers, methodology, and caveats (the owner's 2026-10-20 rule), and
+push/PR/merge happen only on the owner's word. Each phase lists its **gate** —
 the evidence required before the next phase starts.
 
 ### Phase 0 — Baselines and the transport guarantee (no sim changes)
@@ -201,7 +201,7 @@ the evidence required before the next phase starts.
 **Gate:** baseline numbers on file; transport guaranteed in deployment.
 *Known environment limit: the transport test suite hangs on uWS inside
 Arlo's sandbox, so Phase 0 network numbers must be produced or reproduced
-on real hardware (Joey's Windows machine) — sandbox numbers are labeled
+on real hardware (the owner's Windows machine) — sandbox numbers are labeled
 as such wherever used.*
 
 ### Phase 1 — Transpiler pilot (the 2026-10-21 candidate, finally run)
@@ -320,6 +320,6 @@ suite green.
   Substrate prerequisite met the same day (SAB arc complete on main).
 - 2026-10-25 — SAB data-plane topology prototyped (PR #430), not wired
   into production boot.
-- **2026-10-27 — Joey commissions this spec and roadmap: the main tick
+- **2026-10-27 — The owner commissions this spec and roadmap: the main tick
   moves to C++, Node becomes the networking layer on uWS. Implementation
   proceeds phase by phase on his word, gated as above.**

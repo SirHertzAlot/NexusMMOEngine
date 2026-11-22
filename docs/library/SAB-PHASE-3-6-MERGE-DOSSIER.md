@@ -163,13 +163,13 @@ mergeability display was not readable here).
 
 This work was read-only: it read the four PRs, their bodies, and the branch
 contents, and performed no merge, no approval, no comment, and no write of any
-kind. **Merging remains Joey's call, in whatever order he chooses.** Two things
+kind. **Merging remains the owner's call, in whatever order he chooses.** Two things
 could not be verified with the read access available and should be confirmed
 before any merge: the CI check runs on each PR, and the review threads.
 
 ## CORRECTION (2026-10-19, verified live via GitHub API)
 
-The dossier's central finding above was **wrong**: all five PRs are **MERGED, not closed/unmerged**. GitHub marks merged PRs as `state: closed`, and the dossier read `closed` without checking the `merged` flag. Joey (SirHertzAlot) merged each PR himself within minutes of its creation on 2026-10-14:
+The dossier's central finding above was **wrong**: all five PRs are **MERGED, not closed/unmerged**. GitHub marks merged PRs as `state: closed`, and the dossier read `closed` without checking the `merged` flag. The owner (SirHertzAlot) merged each PR himself within minutes of its creation on 2026-10-14:
 
 - #253 (Phase 2) → merged into `arlo/sab-phase1`
 - #254 (Phase 3) → merged into `arlo/sab-phase2`
@@ -183,4 +183,4 @@ No PR needs reopening — a merged PR cannot be reopened.
 
 **Path to main for phases 2–5:** two NEW PRs (the old ones can't be reused): `arlo/sab-phase2` → `main` (brings 2+3+4), then `arlo/sab-phase3` → `main` (brings 5). CI state was unreadable via the API (403 on check endpoints — an App-permission limit, not a red signal); review threads are clean (zero reviews/comments on all five). Mergeability into today's main is unconfirmed — main has drifted substantially and the branches will likely need main merged in first; GitHub computes this when the new PRs are opened.
 
-**Merging remains Joey's call. Nothing was merged, pushed, or created in this verification.**
+**Merging remains the owner's call. Nothing was merged, pushed, or created in this verification.**

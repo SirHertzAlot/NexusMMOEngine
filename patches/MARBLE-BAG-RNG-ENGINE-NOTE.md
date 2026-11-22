@@ -1,6 +1,6 @@
 # The Marble Bag (randomness with memory) → Nexus RNG toolbox note
 
-Filed 2026-11-12 (~14:14 ET) from Joey's Instagram reel (Wyatt Cheng,
+Filed 2026-11-12 (~14:14 ET) from the owner's Instagram reel (Wyatt Cheng,
 posted 2026-08-10; https://www.instagram.com/reel/Db416z0FOqi/). Content
 recovered via media-understanding. Companion to ARMOR-FORMULA-ENGINE-
 NOTE.md — same creator, same theme: math that *feels* fair.
@@ -77,6 +77,6 @@ Design rules that come with it:
 systems served, and it completes the pair with the armour formula:
 mitigation math decides how much a hit hurts; bag math decides how
 often luck visits — both tuned so the numbers feel fair instead of
-merely being fair. Next step on Joey's word: add both notes to the
+merely being fair. Next step on the owner's word: add both notes to the
 combat design doc's agenda (resolver check for armourHalf + bag spec
 for crits/loot) rather than building either standalone.

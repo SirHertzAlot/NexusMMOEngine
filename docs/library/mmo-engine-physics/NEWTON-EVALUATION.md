@@ -61,7 +61,7 @@ funded bake-time cloth/ragdoll requirement.
 
 ## The slot itself: fill it with a browser engine — Rapier vs Jolt-WASM
 
-Joey approved the client cosmetic module concept (2026-10-26). Two
+The owner approved the client cosmetic module concept (2026-10-26). Two
 candidates can actually run in the client, both permissive, both with
 author-maintained WASM bindings:
 

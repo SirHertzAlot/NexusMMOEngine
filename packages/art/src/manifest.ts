@@ -2,7 +2,7 @@
  * Asset pack manifest contract (`assets/manifest.json`).
  *
  * The manifest is the single source of truth for "which art files belong to
- * this pack and what they are for". It is data, not code: Joey authors it by
+ * this pack and what they are for". It is data, not code: The owner authors it by
  * hand (or it is produced by `scanAssetDir`), and every consumer — the
  * THREE.js provider in this package, the editor's asset inspector, future
  * build tooling — reads the same schema. Validation happens at the boundary

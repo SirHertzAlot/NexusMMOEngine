@@ -253,7 +253,7 @@ This schema stops where the substrate starts. The handoff points, in the substra
 3. **Rows are versioned and attributed.** Every row carries `schemaVersion` and `provenance`; unknown versions are rejected, never guessed (draft invariant 8, substrate §4 discipline).
 4. **The schema contains no species entries.** A test asserts the schema definition files reference no species ids — species live only in content rows.
 
-## 12. Open questions (for Joey)
+## 12. Open questions (for the owner)
 
 - Intensity curve shape: the draft asks whether piecewise anchors are overkill for v1 vs simpler linear/exponential decay. This proposal keeps the draft's anchors; the question stands.
 - Whether `tolerance` should also scale the migration *urgency* (not just the trigger point) — currently it is trigger-only.

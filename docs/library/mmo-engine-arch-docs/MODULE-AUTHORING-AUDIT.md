@@ -7,7 +7,7 @@ Covers the 17 engine modules from PR #251 (+1 sample module), answering three qu
 2. What designer-facing widget does each module contribute?
 3. When should that widget appear on viewport selection? (relevance rules)
 
-Direction (Joey's, 2026-10-17): **viewport-only workflow**. Modules have NO standalone
+Direction (the owner's, 2026-10-17): **viewport-only workflow**. Modules have NO standalone
 UI presence. Clicking a game object opens contextual widgets/modals inside the viewport —
 one per relevant module, each showing what's already applied + CRUD. Selection summons
 them; only the relevant ones appear.
@@ -56,7 +56,7 @@ collision, not a duplication — see §5, rule 12.
 
 ## 2. Duplication flags
 
-Joey's suspicion was: *"give the player an item" exists separately in quest, vendor,
+The owner's suspicion was: *"give the player an item" exists separately in quest, vendor,
 loot, trade.* **Verdict: the core verbs are clean — but the adapters around them are
 duplicated.** Every claim below has a file path (verify-before-claiming).
 
@@ -125,7 +125,7 @@ shape everywhere.
 - **Teleport.** Single: `admin/player.ts:104` (+ gateway `teleport` command at
   `net/gateway.ts:2624`). No duplication found.
 
-**Net: Joey's instinct was directionally right but the duplication is in the
+**Net: The owner's instinct was directionally right but the duplication is in the
 4-line bag adapters in `server.ts`, not in the headline verbs.** The modularization
 (PR #251) got the verb cores right; the wiring layer is where the copies live.
 

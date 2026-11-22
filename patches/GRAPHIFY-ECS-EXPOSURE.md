@@ -1,6 +1,6 @@
 # Graphify — exposing the ECS graph behind every game object
 
-Joey's ask (2026-10-27): the approved editor layout is fine, but the granularity
+The owner's ask (2026-10-27): the approved editor layout is fine, but the granularity
 must go deeper — expose the entities, components, and systems each game object
 maps to (based on its scripts/content), via a scraper ("Graphify") that serves
 that backend data concisely, drillable as deep as we want.

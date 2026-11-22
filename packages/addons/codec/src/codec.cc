@@ -243,7 +243,6 @@ Napi::Value EncodeFastDeltaFromSoA(const Napi::CallbackInfo& info) {
       const uint32_t* ptr = reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(ta.ArrayBuffer().Data()) + ta.ByteOffset());
       for (uint32_t i = 0; i < len; ++i) vSlots.insert(ptr[i]);
     } else {
-      Napi::Array arr = Napi::Array::New(env, len);
       for (uint32_t i = 0; i < len; ++i) {
         vSlots.insert(ta.Get(i).As<Napi::Number>().Uint32Value());
       }

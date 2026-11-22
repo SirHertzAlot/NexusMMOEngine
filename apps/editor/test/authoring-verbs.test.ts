@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { CANONICAL_VERBS, VerbHistory, makeVerbCall, validateVerbCall, verbByName, type Provenance } from "../src/authoring/index.js";
 
 const mara: Provenance = {
-  who: { id: "joey", role: "designer" },
+  who: { id: "designer-1", role: "designer" },
   what: "Blacksmith Mara",
   when: 1_800_000_000_000,
   where: "Haven / Market Square / Blacksmith Mara",
@@ -61,7 +61,7 @@ describe("VerbHistory", () => {
     assert.equal(history.all().length, 2);
     assert.equal(history.forObject("Haven / Market Square / Blacksmith Mara").length, 2);
     assert.equal(history.forObject("Blacksmith Mara").length, 2);
-    assert.equal(history.forActor("joey").length, 1);
+    assert.equal(history.forActor("designer-1").length, 1);
     assert.equal(history.forActor("sam").length, 1);
     assert.equal(history.forActor("nobody").length, 0);
   });

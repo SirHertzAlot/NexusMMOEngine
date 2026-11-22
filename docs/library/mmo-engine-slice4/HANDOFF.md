@@ -11,7 +11,7 @@
 
 Authoritative Node.js MMO region server (Express + WebSocket + bitECS, 30Hz fixed tick, SQLite per-region persistence) with a three.js mirror client that renders authoritative state only. C++ N-API addons for physics (Jolt), navigation (Recast/Detour), and procgen (FastNoise2). FlatBuffers gameplay data plane, JSON+Zod control plane. PCG (procedural content generation) is built in slices on top of a `.pcg.json` graph runtime (`@mmo-engine/scatter`).
 
-**Locked architecture decisions** (do not revisit without Joey):
+**Locked architecture decisions** (do not revisit without the owner):
 - Server is authoritative for all simulation; client never predicts physics.
 - three.js mirrors only — no client-side gameplay logic.
 - C++ generates and simulates; JS orchestrates.
@@ -50,18 +50,18 @@ Authoritative Node.js MMO region server (Express + WebSocket + bitECS, 30Hz fixe
 
 ## 4. Known Issues & Performance Bugs (for the incoming developer)
 
-### P0 — Terrain appears flat on Joey's Windows PC
-- **Symptom:** Screenshot from Joey's machine shows flat wireframe terrain, fps 3. Arlo's local screenshots (same seed 1234, same code) show displaced terrain.
-- **Suspects:** (a) Joey may be running the pre-v3 archive (confirm he extracted `mmo-engine-full-v3.zip`, SHA256 `6bc637ca…bc35db`); (b) real amplitude is subtle (±0.7 world units) and may read as flat at his camera angle; (c) fps 3 on a real GPU suggests a WebGL/rendering problem, not just subtle hills.
+### P0 — Terrain appears flat on the owner's Windows PC
+- **Symptom:** Screenshot from the owner's machine shows flat wireframe terrain, fps 3. Arlo's local screenshots (same seed 1234, same code) show displaced terrain.
+- **Suspects:** (a) the owner may be running the pre-v3 archive (confirm he extracted `mmo-engine-full-v3.zip`, SHA256 `6bc637ca…bc35db`); (b) real amplitude is subtle (±0.7 world units) and may read as flat at his camera angle; (c) fps 3 on a real GPU suggests a WebGL/rendering problem, not just subtle hills.
 - **Next step:** Confirm v3 on his PC. If still flat, profile the render loop; check whether `updateTerrainGeometry` is actually writing positions (add a debug log of min/max displaced Y per chunk).
 
 ### P0 — Client FPS unacceptably low (3–4)
 - Arlo measured fps 4 under headless SwiftShader (software GL — expected to be slow, not a real benchmark).
-- Joey measured fps 3 on real hardware — this is the real signal. **Profile before optimizing.** Prime suspects: per-frame allocations in the render loop, `updateTerrainGeometry` running every frame instead of on chunk-arrival, wireframe material with transparency, unbounded entity interpolation buffers.
+- The owner measured fps 3 on real hardware — this is the real signal. **Profile before optimizing.** Prime suspects: per-frame allocations in the render loop, `updateTerrainGeometry` running every frame instead of on chunk-arrival, wireframe material with transparency, unbounded entity interpolation buffers.
 - **Do not** "optimize" by degrading visual quality without profiling data.
 
 ### P1 — Terrain amplitude too subtle for the vision
-- Native Simplex output is ~1 world unit tall. Joey wants dramatic, explorable terrain.
+- Native Simplex output is ~1 world unit tall. The owner wants dramatic, explorable terrain.
 - **Fix:** increase noise gain / add octaves in the procgen heightfield sampler. One-line-ish change, but re-verify server grounding and scatter Y-placement after (both consume the same heightfield — they stay consistent automatically if they share the sampler).
 
 ### P1 — `p95 persist latency` budget test is flaky
@@ -72,23 +72,23 @@ Authoritative Node.js MMO region server (Express + WebSocket + bitECS, 30Hz fixe
 - Scatter (`@mmo-engine/scatter` cooker + native `addon-scatter`) snaps Y to the heightfield. Any amplitude change must be validated against scatter placement (there is a test: `gridSampler` snaps y; missing `heightAt` throws).
 
 ### P2 — Old Windows `mmo-engine` directory (broken backup)
-- Joey keeps `C:\Users\user\Downloads\mmo-engine` (old, broken) untouched as backup. New work goes in `C:\Users\user\Downloads\mmo-engine-full`. Do not touch the old directory.
+- The owner keeps `C:\Users\user\Downloads\mmo-engine` (old, broken) untouched as backup. New work goes in `C:\Users\user\Downloads\mmo-engine-full`. Do not touch the old directory.
 
 ---
 
 ## 5. Remaining Work to Close Slice 4
 
-1. **Resolve P0 flat-terrain on Windows** (§4). Definition of done: Joey confirms visible terrain relief in the client on his PC, with a screenshot.
+1. **Resolve P0 flat-terrain on Windows** (§4). Definition of done: The owner confirms visible terrain relief in the client on his PC, with a screenshot.
 2. **Tune terrain amplitude** (P1). Definition of done: hills/valleys unmistakable at the default camera; server grounding and scatter placement re-verified.
-3. **Profile and fix client FPS** (P0). Definition of done: sustained 60fps on Joey's hardware in the 3×3 baked world; document what the bottleneck was.
+3. **Profile and fix client FPS** (P0). Definition of done: sustained 60fps on the owner's hardware in the 3×3 baked world; document what the bottleneck was.
 4. **Stabilize the persist-latency test** (P1). Definition of done: root `npm test` green 3 consecutive runs.
-5. **Re-verify the full loop on Joey's PC:** `npm install` → `npm run bake:world` → `npm run server` → client login → move (WASD), jump (Space), confirm no gaps, correct A/D direction, terrain relief, scatter on terrain, restart server (SQLite restore, no duplicate scatter), reconnect (heights resend).
+5. **Re-verify the full loop on the owner's PC:** `npm install` → `npm run bake:world` → `npm run server` → client login → move (WASD), jump (Space), confirm no gaps, correct A/D direction, terrain relief, scatter on terrain, restart server (SQLite restore, no duplicate scatter), reconnect (heights resend).
 
 ---
 
 ## 6. Slice 5+ Roadmap: The Editable World (multi-slice arc)
 
-**The vision (Joey's):** the editor becomes a real authoring environment — visual PCG graph UI, the baker running live inside the editor, terrain sculpting and mesh editing, click-any-object component editing. The entire game world editable, with the procedural base underneath. **None of this is built yet.** Today: PCG graphs drive scatter only (terrain bypasses them via direct FastNoise2 calls); the baker is a CLI script; the editor is inspector + play-mode launcher + art browser (read-only).
+**The vision (the owner's):** the editor becomes a real authoring environment — visual PCG graph UI, the baker running live inside the editor, terrain sculpting and mesh editing, click-any-object component editing. The entire game world editable, with the procedural base underneath. **None of this is built yet.** Today: PCG graphs drive scatter only (terrain bypasses them via direct FastNoise2 calls); the baker is a CLI script; the editor is inspector + play-mode launcher + art browser (read-only).
 
 **Slice 5 — Graph-driven terrain & biomes (runtime foundation):**
 1. **Terrain nodes in the PCG graph registry** — noise, heightfield ops, biome selectors as `.pcg.json` nodes so graphs author terrain, not just scatter.
@@ -145,13 +145,13 @@ In the client: use the **Create account** tab (in-client registration, protocol 
 
 ## 8. Definition of "Slice 4 Closed"
 
-- [ ] Visible terrain relief confirmed on Joey's PC (screenshot)
-- [ ] 60fps sustained on Joey's hardware (3×3 world)
+- [ ] Visible terrain relief confirmed on the owner's PC (screenshot)
+- [ ] 60fps sustained on the owner's hardware (3×3 world)
 - [ ] Jump: Space → rise → land on terrain height, no fall-through
 - [ ] No chunk gaps; A/D direction correct; scatter sits on terrain
 - [ ] Server restart restores from SQLite without duplicating scatter; heights resend on reconnect
 - [ ] Root `npm test` green 3× consecutive
 - [ ] No version-downgrade proposals; repo stays on the modern toolchain
 
-**Do not start Slice 5 until Joey reviews and signs off on Slice 4.**
-**Slices 6–9 (editor arc) are scoped but unscheduled — Joey prioritizes them after the runtime slices land.**
+**Do not start Slice 5 until the owner reviews and signs off on Slice 4.**
+**Slices 6–9 (editor arc) are scoped but unscheduled — The owner prioritizes them after the runtime slices land.**

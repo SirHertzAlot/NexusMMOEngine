@@ -1,6 +1,6 @@
 # Encounter Director — Implementation Spec (Slice S13)
 
-**Date:** 2026-10-06 · **Status:** Draft spec (decision-free; awaiting Joey's review)
+**Date:** 2026-10-06 · **Status:** Draft spec (decision-free; awaiting the owner's review)
 **Research basis:** `DIFFICULTY-CONSTRAINTS.md` (2026-10-06) — the six hard
 implementation rules and the signal → model → actuator mapping.
 **Slice dependency:** S10 (edge bridge: gameplay events → `quest_facts` →
@@ -214,7 +214,7 @@ Mechanics:
 6. Contract test: `threatCeiling` respected — uncontracted parties never see
    above-ceiling escalation.
 
-## 12. Decisions for Joey (yours to make)
+## 12. Decisions for the owner (yours to make)
 
 - **D1 — Default arc parameters.** The phase thresholds and durations in
   §7 are starting points. Confirm, or set your own before Claude builds.
