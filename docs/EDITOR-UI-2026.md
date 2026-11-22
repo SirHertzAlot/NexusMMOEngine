@@ -289,5 +289,10 @@ the shipped thing and not an approximation:
   GIF. Each GIF frame is the real component reacting to a write to the
   real store (`setTool`, `editorSelection.select`, `playUiStore.set`),
   not a storyboard of mock states.
+- `src/ui/forge/capture-viewport.mjs` — the real `SceneView` over a tiny
+  scene: a still per gizmo (translate, rotate, scale, and none under
+  `select`) with the corner axis triad, and a GIF of the four. Needs a
+  Chromium that gives WebGL; SwiftShader is enough, and the harness asks
+  for it.
 
 Set `CHROMIUM_PATH` where Playwright's own browser download is absent.

@@ -41,6 +41,10 @@ function Preview(): React.JSX.Element {
     });
     viewRef.current = view;
     view.setDoc(DOC, "a", new Set());
+    // Frame, then close in, so the gizmo fills the shot rather than sitting
+    // at the default orbit distance.
+    view.frame();
+    for (let i = 0; i < 4; i += 1) view.zoomIn();
     (window as unknown as { __viewportDrive?: (s: { tool?: string; axes?: boolean }) => void }).__viewportDrive =
       (step) => {
         if (step.tool) {

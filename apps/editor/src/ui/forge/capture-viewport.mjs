@@ -146,7 +146,6 @@ execFileSync(
   "ffmpeg",
   [
     "-y", "-framerate", "6", "-i", resolve(frameDir, "f%04d.png"),
-    "-vf", "scale=720:-1:flags=lanczos",
     "-filter_complex", "[0:v]scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer",
     "-loop", "0", gif,
   ],
