@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Code Generator (docs/SAB-LOGGING-LAYER-SPEC.md §2.3)
+ * SAB Logging Layer — Code Generator (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.3)
  *
  * Generates:
  * 1. generated/log-api.ts (Type-safe TypeScript logging methods)

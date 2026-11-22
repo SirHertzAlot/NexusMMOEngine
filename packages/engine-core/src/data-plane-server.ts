@@ -102,7 +102,7 @@ export interface HybridDataPlaneOptions {
   dbPass?: string;
   transport?: "auto" | "uws" | "ws";
   /**
-   * SAB + capacity of the process's log ring (docs/SAB-LOGGING-LAYER-SPEC.md
+   * SAB + capacity of the process's log ring (docs/internals/SAB-LOGGING-LAYER-SPEC.md
    * Â§2.1): the sim worker emits its tick-budget overruns as records instead of
    * formatting stdio lines on the sim thread.
    */

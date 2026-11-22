@@ -1,6 +1,6 @@
 /**
  * B3 Load Test with Network-Profile Injection & Edge-Trigger Re-Fire Test
- * (docs/CPP-MAIN-TICK-SPEC.md §5 Phase 4)
+ * (docs/internals/CPP-MAIN-TICK-SPEC.md §5 Phase 4)
  *
  * Requirements:
  * - 1,000 real-client fan-out streams

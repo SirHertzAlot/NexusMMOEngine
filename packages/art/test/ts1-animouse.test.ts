@@ -47,7 +47,7 @@ describe("ts1 animouse spike", () => {
 
   it("state machine transitions without popping", () => {
     // This is a smoke test; full pop-free verification requires
-    // a rendered scene with position sampling (see docs/TS1-ANIMOUSE.md)
+    // a rendered scene with position sampling
     assert.ok(true, "transition API exists");
   });
 });

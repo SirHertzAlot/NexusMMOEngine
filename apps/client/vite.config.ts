@@ -121,7 +121,7 @@ export default defineConfig(({ mode }) => {
     // cross-origin isolated pages. These headers turn it on for `vite dev`
     // and `vite preview`. PRODUCTION MUST SERVE THE SAME HEADERS or the
     // client silently falls back to main-thread decode — see
-    // docs/CLIENT-SAB-ASSET-PIPELINE.md ("Deployment: COOP/COEP").
+    // docs/internals/CLIENT-SAB-ASSET-PIPELINE.md ("Deployment: COOP/COEP").
     server: {
       port: 5173,
       headers: {

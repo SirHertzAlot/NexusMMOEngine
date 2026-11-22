@@ -2,8 +2,6 @@
 
 Everything the engine does beyond its tick loop is a **module**: a folder `modules/<name>/` with a `module.json`. The server's systems (combat, economy, physics), the editor's panels, native C++ code, helper processes and edge services all arrive the same way. This page is the contract: the manifest, how modules are enabled and ordered, and how to write one.
 
-> **Why this page exists.** The wiki's earlier examples ordered systems `"after": ["TransformSystem"]` and returned an array from `createSystems(world)`. Neither is real: system ids are lowercase (`integrate`, `physics`, `combat`), and `createSystems(ctx)` returns an **object keyed by system name**. The wiki now points here.
-
 ## How a module is enabled
 
 - **`content/modules.json`** lists the enabled modules: `{ "modules": ["core", "physics", ...] }`. `MMO_MODULES` points the server at a different file. `core` is always on.
@@ -23,10 +21,10 @@ Unknown keys are refused. The folder name must match `name`.
 | `dependsOn` | Other modules this one needs. They must be installed **and enabled**; modules are built in dependency order. |
 | `server` | `{ entry?, systems, extensions? }`: systems for the tick (below). Without an `entry` the host process builds them (that is how `core` works). |
 | `editor` | `{ entry }`: a module the editor shell imports dynamically to add panels. |
-| `native` | `{ entry, systems }`: a compiled N-API `.node` file exporting `createSystems` ([EA10-CPP-MODULES.md](EA10-CPP-MODULES.md)). |
-| `sidecar` | A helper process run beside the server, with a readiness `health` check: a `command` string, an `exec` argv array, or a `wasm` file ([EA11-SIDECARS.md](EA11-SIDECARS.md)). |
-| `edge` | `{ regions, endpoint, capabilities }`: a service that runs on edge nodes, such as voice or matchmaking ([EA12-EDGE-MODULES.md](EA12-EDGE-MODULES.md)). |
-| `tools` | `{ entry, tools }`: host-side dev tools (a bake step, a converter) that never run on the tick ([EA13-TOOLS-AS-MODULES.md](EA13-TOOLS-AS-MODULES.md)). |
+| `native` | `{ entry, systems }`: a compiled N-API `.node` file exporting `createSystems` ([Native modules](#native-modules)). |
+| `sidecar` | A helper process run beside the server, with a readiness `health` check: a `command` string, an `exec` argv array, or a `wasm` file ([Sidecar modules](#sidecar-modules)). |
+| `edge` | `{ regions, endpoint, capabilities }`: a service that runs on edge nodes, such as voice or matchmaking ([Edge modules](#edge-modules)). |
+| `tools` | `{ entry, tools }`: host-side dev tools (a bake step, a converter) that never run on the tick ([Tools modules](#tools-modules)). |
 | `db` | `{ functions?, caches? }`: stored functions and materialized caches, as `.sql` files under `db/functions/` and `db/caches/`. |
 
 An `entry` is a relative path with no `..`. A server entry is a `.js` or `.mjs` file, an editor entry may be a `.tsx` file, and a native entry ends in `.node`.
@@ -94,6 +92,108 @@ A module may also export `dispose(ctx)`; on shutdown the server runs every modul
 
 Game rules belong in data, not in a module's code: put tunables in `content/rules/` and read them through the rules package ([ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data)).
 
+## Other kinds of module
+
+A module may contribute more than one kind at once: a manifest with both
+`server` and `editor` ships a system and the panel that tunes it.
+
+### Editor modules
+
+`editor: { entry }` points at a module the editor shell imports dynamically.
+The entry exports the panel component as a contributed panel; the panel code
+itself can stay wherever it lives. Workspaces declare no views of their own —
+every panel in the editor arrives this way, so disabling a module leaves its
+workspace showing a "no module contributes" placeholder rather than breaking
+the shell.
+
+```json
+{ "name": "vfx", "version": "0.1.0", "dependsOn": ["core"],
+  "editor": { "entry": "editor/index.tsx" } }
+```
+
+### Native modules
+
+`native: { entry, systems }` points at a compiled N-API `.node` file whose
+`createSystems(ctx)` returns systems that run on the tick exactly like
+JavaScript ones. The resolver orders a module's native systems after its
+JavaScript systems.
+
+```json
+{ "name": "physics-jolt", "version": "1.0.0",
+  "server": { "systems": [{ "name": "physics", "after": "intent" }] },
+  "native": { "entry": "./build/Release/physics.node", "systems": ["physics"] } }
+```
+
+`npm run build:native` compiles every module with a `native.entry` through
+node-gyp. A missing `.node` file disables the module with an error pointing
+at that command rather than failing obscurely.
+
+Copy `packages/addons/template` to start. The boundary rule is absolute:
+**pass bulk typed arrays once per tick, never inspect JavaScript objects
+per entity inside a loop.** Breaking it produces native code slower than the
+JavaScript it replaced. `modules/template-native` is a working minimal
+example and a toolchain smoke test.
+
+### Sidecar modules
+
+`sidecar` runs a helper process beside the server with a readiness check, for
+work that must not share the tick's process: a model server, a bake worker, a
+telemetry collector, anything in another runtime.
+
+```json
+{ "name": "sample-sidecar", "version": "0.1.0",
+  "sidecar": { "command": "node sidecar.js", "port": 49876, "health": "/health" } }
+```
+
+Exactly one of `command` (a shell string), `exec` (an argv array) or `wasm`
+(a `.wasm` path) is required, plus `port` and a `health` path. Sidecars start
+before the game server and are health-checked; an unhealthy sidecar disables
+its module. They terminate on shutdown. The point is crash isolation: a
+sidecar dying never stops the tick. `modules/sample-sidecar` is the worked
+example.
+
+### Edge modules
+
+`edge: { regions, endpoint, capabilities }` declares a service that runs on
+edge nodes rather than on the core — regional voice, an asset CDN,
+matchmaking. The edge keeps a registry, serves it at
+`GET /api/edge/modules` (filterable by region and capability), and clients
+find the nearest endpoint by latency probe.
+
+```json
+{ "name": "voice-us-east", "version": "1.0.0",
+  "edge": { "regions": ["us-east"], "endpoint": "wss://voice.example.com",
+            "capabilities": ["voice"] } }
+```
+
+Registration and discovery only. **The edge never simulates.**
+
+### Tools modules
+
+`tools: { entry, tools }` contributes host-side developer tools — a bake
+step, a converter, an importer — whose entry exports `createTools(ctx)`.
+These never run on the tick. Use this instead of adding another ad-hoc script
+to `scripts/`, so your tool is enabled, ordered and discoverable like
+everything else.
+
+### Database modules
+
+`db: { functions?, caches? }` contributes stored functions and materialized
+caches as `.sql` files under the module's `db/functions/` and `db/caches/`.
+
+- **Functions** are named, parameterized, **read-only** `SELECT` statements
+  using `:name` placeholders. They are validated at load and bound at run
+  time through a read-only query child process, so a function cannot write
+  or block the server.
+- **Caches** are snapshot tables (`_cache_<name>`) built from a query and
+  refreshed as a delete-and-reinsert inside one transaction, with freshness
+  tracked in `_cache_meta`. Use one for anything expensive that readers hit
+  often, such as a leaderboard.
+
+The editor's Database workspace lists, creates, runs and refreshes them
+(`/api/editor/database/...`).
+
+
 ## The modules that ship
 
 Generated from `modules/*/module.json`; the 34 below are what `content/modules.json` can enable.
@@ -137,6 +237,6 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 
 ## Related
 
-- [EDITOR-ARCHITECTURE.md](EDITOR-ARCHITECTURE.md) section 4: why the editor and the server share one module system.
-- [EDITOR-AUTHORING.md](EDITOR-AUTHORING.md): adding editor panels from a module.
-- `packages/modules/src/index.ts`: the manifest schema and the resolver, with every problem message.
+- [BUILDING-A-GAME.md](BUILDING-A-GAME.md) — when to reach for a module, and when data or a rules hook is enough.
+- [ARCHITECTURE.md](ARCHITECTURE.md#the-tick) — what a tick does, so you know where your system sits in it.
+- `packages/modules/src/index.ts` — the manifest schema and the resolver, with every problem message.

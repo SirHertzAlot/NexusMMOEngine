@@ -3,7 +3,7 @@
  * for the web client.
  *
  * This is a one-way converter: the agnostic format is the source of truth.
- * The C++ backend gets its own converter (see docs/VFX-CPP-MAPPING.md).
+ * The C++ backend gets its own converter (see docs/internals/VFX-CPP-MAPPING.md).
  */
 import {
   BatchedRenderer,

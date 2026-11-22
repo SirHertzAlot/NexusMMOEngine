@@ -1,4 +1,4 @@
-# Art Pipeline
+# Art pipeline
 
 How the licensed art becomes web-ready models, and the rules that keep it out
 of the repository. Read the [confidentiality rule](#the-one-hard-rule) first if

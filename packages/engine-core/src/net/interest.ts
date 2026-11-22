@@ -1,5 +1,6 @@
 /**
- * Interest management, core side (IM3 of docs/superpowers/specs/2026-10-23-interest-management-design.md).
+ * Interest management, core side. The rules and defaults are in
+ * content/rules/interest.json; docs/ARCHITECTURE.md explains the model.
  *
  * Once per tick `SectorFrame` buckets the tracker's changed eids by the sector of their Transform
  * (sector.ts, 64 m) and encodes one Delta per sector that changed: its entities' changed rows, the

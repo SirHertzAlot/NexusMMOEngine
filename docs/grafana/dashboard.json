@@ -41,7 +41,7 @@
     "network",
     "edge-core"
   ],
-  "description": "Edge/core split network health (docs/EDGE-CORE-SPLIT.md, slice E6). Alerts are documented on the panels, not provisioned: router p99 > 50 ms for 5 min; heartbeat_missed_total increasing.",
+  "description": "Edge/core split network health (docs/internals/EDGE-CORE-SPLIT.md, slice E6). Alerts are documented on the panels, not provisioned: router p99 > 50 ms for 5 min; heartbeat_missed_total increasing.",
   "refresh": "15s",
   "schemaVersion": 39,
   "version": 1,

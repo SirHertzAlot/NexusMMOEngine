@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Phase 1 tests (docs/SAB-LOGGING-LAYER-SPEC.md §4 Phase 1)
+ * SAB Logging Layer — Phase 1 tests (docs/internals/SAB-LOGGING-LAYER-SPEC.md §4 Phase 1)
  *
  * Covers: batched file sink + rotation, metrics page, worker core
  * (size/time flush boundaries), runtime level control, the real worker

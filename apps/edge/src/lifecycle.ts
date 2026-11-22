@@ -1,5 +1,5 @@
 /**
- * Degraded mode and resync (slice E4 of docs/EDGE-CORE-SPLIT.md).
+ * Degraded mode and resync (slice E4 of docs/internals/EDGE-CORE-SPLIT.md).
  *
  * While the core is down nothing changes for local routes: that is
  * degraded mode. Core-bound packets already answer `core.unavailable`

@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Entry Point (docs/SAB-LOGGING-LAYER-SPEC.md §2).
+ * SAB Logging Layer — Entry Point (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2).
  *
  * The implementation lives in the @mmo-engine/logging workspace package so
  * that every server process can host the layer (the data plane's

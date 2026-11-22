@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Log Ring Module (docs/SAB-LOGGING-LAYER-SPEC.md §2.1, §2.2)
+ * SAB Logging Layer — Log Ring Module (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.1, §2.2)
  *
  * Implements the independent lock-free shared memory logging ring over `AtomicMPSCQueue`.
  * Slot stride: 32 x u32 = 128 bytes per record.

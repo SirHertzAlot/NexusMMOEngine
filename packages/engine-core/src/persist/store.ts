@@ -84,7 +84,7 @@ export interface SnapshotStoreOptions {
   walSizeLimitBytes?: number;
   /**
    * Log-ring producer for save and checkpoint diagnostics
-   * (docs/SAB-LOGGING-LAYER-SPEC.md §2.4). Without one the store reports
+   * (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.4). Without one the store reports
    * through stdio, as before.
    */
   logProducer?: LogProducerClient;

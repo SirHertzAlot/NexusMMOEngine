@@ -116,7 +116,7 @@ async function makeStore(): Promise<{ store: WorldStore; close: () => Promise<vo
 }
 
 async function main(): Promise<void> {
-  // SAB logging layer (docs/SAB-LOGGING-LAYER-SPEC.md): the world process
+  // SAB logging layer (docs/internals/SAB-LOGGING-LAYER-SPEC.md): the world process
   // hosts its own ring + worker on the shared dictionary (0x0500-0x05FF).
   // Boot banners and fatals stay on stdio on purpose; WORLD_LOG=0 starts no
   // worker (records are then only counted as ring drops).

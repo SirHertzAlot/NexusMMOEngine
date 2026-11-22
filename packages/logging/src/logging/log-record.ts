@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Binary Record Layout (docs/SAB-LOGGING-LAYER-SPEC.md §2.2)
+ * SAB Logging Layer — Binary Record Layout (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.2)
  *
  * 128-byte fixed, language-neutral binary layout.
  * Shared verbatim between TypeScript and C++.

@@ -1,5 +1,5 @@
 /**
- * SAB Logging Layer — Phase 0 Unit Tests (docs/SAB-LOGGING-LAYER-SPEC.md §4 Phase 0)
+ * SAB Logging Layer — Phase 0 Unit Tests (docs/internals/SAB-LOGGING-LAYER-SPEC.md §4 Phase 0)
  *
  * Verifies:
  * 1. LogRingBuffer creation and header memory isolation.

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * `npm run bench:e5`: the edge/core split benchmarks (docs/EDGE-CORE-SPLIT.md
+ * `npm run bench:e5`: the edge/core split benchmarks (docs/internals/EDGE-CORE-SPLIT.md
  * slice E5), in order. Each prints a JSON summary and appends its section to
- * docs/EDGE-SPLIT-RESULTS.md. Takes about 15 minutes (B2 runs 3 × 30 s, B6
+ * docs/internals/EDGE-SPLIT-RESULTS.md. Takes about 15 minutes (B2 runs 3 × 30 s, B6
  * soaks for 10 minutes; E5_B2_SECONDS and E5_B6_SECONDS shorten them).
  *
  *   npm run bench:e5 -- B1 B4     # just those

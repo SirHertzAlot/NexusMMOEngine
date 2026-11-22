@@ -285,7 +285,7 @@ export interface GatewayOptions {
    * heap allocations.
    */
   dataPlaneQueue?: DataPlaneCommandQueue;
-  /** SAB Logging producer client (docs/SAB-LOGGING-LAYER-SPEC.md §2). */
+  /** SAB Logging producer client (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2). */
   logger?: LogProducerClient;
   /** Heartbeat ping cadence. Default 5000 ms. */
   heartbeatIntervalMs?: number;
