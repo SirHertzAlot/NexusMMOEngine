@@ -37,6 +37,7 @@ or planned.
 | Doc | What it is |
 |---|---|
 | [ALPHA-PLAN.md](ALPHA-PLAN.md) | What alpha means and its exit criteria |
+| [ENGINE-CORE-SPLIT.md](ENGINE-CORE-SPLIT.md) | Where the engine ends and our game begins, and the staged plan to split them |
 | [ROADMAP.md](ROADMAP.md) | Built, in progress, and planned, with an update log |
 | [DOCS-AUDIT.md](DOCS-AUDIT.md) | The latest documentation audit: what was checked, what was fixed, and what is still stale |
 | [DECISIONS.md](DECISIONS.md) | The locked engineering decisions |
