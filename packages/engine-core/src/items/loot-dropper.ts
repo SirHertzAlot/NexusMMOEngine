@@ -11,7 +11,7 @@ import type { CreaturesRules } from "@mmo-engine/rules";
 import * as C from "../components.js";
 import { hash } from "../procgen/ecology.js";
 import type { SimWorld } from "../world.js";
-import type { LifeEvent } from "../death.js";
+import type { LifeEvent } from "../vocabulary.js";
 import type { ItemDefs } from "./item-defs.js";
 import type { ItemService } from "./item-service.js";
 import { rollTable, type LootTables } from "./loot-tables.js";

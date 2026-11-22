@@ -25,7 +25,7 @@ import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
 import { PROP_SLOTS } from "../../src/dungeons/prop-mesh.js";
 import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
-import type { Weapon } from "../../src/combat.js";
+import type { Weapon } from "../../src/vocabulary.js";
 import { InstanceManager } from "../../src/dungeons/manager.js";
 import { MemoryInstanceResultStore, SqliteInstanceResultStore } from "../../src/dungeons/results.js";
 import { HeadlessClient } from "../net/headless-client.js";
