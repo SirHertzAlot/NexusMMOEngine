@@ -3,6 +3,7 @@
 // view ids so saved layouts keep working.
 import * as React from "react";
 import { EcsInspectorPanel } from "../../../apps/editor/src/ui/ecs-inspector.js";
+import { ForgeEntityInspector } from "../../../apps/editor/src/ui/forge-inspector.js";
 
 export const panels = [
   {
@@ -11,5 +12,14 @@ export const panels = [
     title: "Viewport",
     icon: "view_in_ar",
     render: () => <EcsInspectorPanel />,
+  },
+  {
+    // The 2026 design language on a real screen (docs/EDITOR-UI-2026.md).
+    // Same session hook as the panel above, different presentation.
+    id: "ecs-forge",
+    workspace: "scene",
+    title: "Inspector (Forge)",
+    icon: "dashboard_customize",
+    render: () => <ForgeEntityInspector />,
   },
 ];

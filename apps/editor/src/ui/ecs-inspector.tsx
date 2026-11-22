@@ -13,7 +13,7 @@
 
 import * as React from "react";
 import type { MirrorClient } from "@mmo-engine/mirror";
-import { EcsInspector, type ComponentKind } from "../inspectors/ecs.js";
+import { EcsInspector, type ComponentKind, type EntitySnapshot } from "../inspectors/ecs.js";
 import { connectMirror } from "./mirror-connect.js";
 import {
   Badge,
@@ -43,7 +43,17 @@ const DEFAULT_URL =
     ? `ws://${window.location.hostname}:7777`
     : "ws://127.0.0.1:7777";
 
-export function EcsInspectorPanel(): React.JSX.Element {
+/**
+ * Everything this panel does that is not markup: the mirror connection,
+ * the filters, the selection and the projections. Extracted so a second
+ * presentation can mount the SAME session (forge-inspector.tsx, the 2026
+ * design language) without restating any of it — behaviour cannot drift
+ * between the two because there is only one copy of it.
+ */
+export function useEcsInspectorSession(
+  fixture?: () => EntitySnapshot,
+  initialSelected?: string,
+) {
   const [url, setUrl] = React.useState(DEFAULT_URL);
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -52,14 +62,19 @@ export function EcsInspectorPanel(): React.JSX.Element {
   const [connecting, setConnecting] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [compFilter, setCompFilter] = React.useState<ComponentKind[]>([]);
-  const [selected, setSelected] = React.useState<string | null>(null);
+  const [selected, setSelected] = React.useState<string | null>(initialSelected ?? null);
   const [, setVersion] = React.useState(0);
 
+  const fixtureRef = React.useRef(fixture);
+  fixtureRef.current = fixture;
   const inspectorRef = React.useRef<EcsInspector | null>(null);
   const clientRef = React.useRef<MirrorClient | null>(null);
   clientRef.current = client;
   if (!inspectorRef.current) {
     inspectorRef.current = new EcsInspector(() => {
+      // A fixture (the preview harness and the tests) stands in for the
+      // mirror so the panel can be rendered without a running server.
+      if (fixtureRef.current) return fixtureRef.current();
       const c = clientRef.current;
       return {
         tick: c?.serverTick ?? 0,
@@ -113,13 +128,61 @@ export function EcsInspectorPanel(): React.JSX.Element {
     );
   }
 
-  const rows = client
+  // "Live" means there is something to list: a mirror connection, or a fixture.
+  const live = client !== null || fixture !== undefined;
+
+  const rows = live
     ? inspector.listEntities({
         text: search || undefined,
         components: compFilter.length ? compFilter : undefined,
       })
     : [];
   const detail = selected ? inspector.getEntity(selected) : undefined;
+
+  /** Pick a row: local selection plus the shared editor selection store. */
+  function selectEntity(row: { wireId: string; label: string }): void {
+    setSelected(row.wireId);
+    editorSelection.select({
+      source: "entity-list",
+      kind: "entity",
+      id: row.wireId,
+      label: row.label,
+      components: (inspector.getEntity(row.wireId) ?? []).map((component) => ({
+        name: component.component,
+        fields: component.fields,
+      })),
+    });
+  }
+
+  return {
+    url, setUrl,
+    username, setUsername,
+    password, setPassword,
+    client, error, connecting,
+    search, setSearch,
+    compFilter, setCompFilter, toggleComponent,
+    selected, selectEntity,
+    inspector, rows, detail, live,
+    onConnect, onDisconnect,
+  };
+}
+
+export function EcsInspectorPanel({
+  fixture,
+  initialSelected,
+}: { fixture?: () => EntitySnapshot; initialSelected?: string } = {}): React.JSX.Element {
+  const {
+    url, setUrl,
+    username, setUsername,
+    password, setPassword,
+    client, error, connecting,
+    search, setSearch,
+    compFilter, setCompFilter, toggleComponent,
+    selected, selectEntity,
+    inspector, rows,
+    detail, live,
+    onConnect, onDisconnect,
+  } = useEcsInspectorSession(fixture, initialSelected);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
@@ -138,7 +201,7 @@ export function EcsInspectorPanel(): React.JSX.Element {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {!client ? (
+          {!live ? (
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-[1fr_160px_160px_auto] gap-2">
                 <Input
@@ -191,7 +254,7 @@ export function EcsInspectorPanel(): React.JSX.Element {
             {inspector.readonlyNotice}
           </div>
 
-          {client && (
+          {live && (
             <>
               <div className="flex flex-col gap-2">
                 <Input
@@ -235,19 +298,7 @@ export function EcsInspectorPanel(): React.JSX.Element {
                 {rows.slice(0, 300).map((r) => (
                   <button
                     key={r.wireId}
-                    onClick={() => {
-                      setSelected(r.wireId);
-                      editorSelection.select({
-                        source: "entity-list",
-                        kind: "entity",
-                        id: r.wireId,
-                        label: r.label,
-                        components: (inspector.getEntity(r.wireId) ?? []).map((component) => ({
-                          name: component.component,
-                          fields: component.fields,
-                        })),
-                      });
-                    }}
+                    onClick={() => selectEntity(r)}
                     className={
                       "flex w-full items-center justify-between gap-2 border-b border-border/50 px-3 py-1.5 text-left text-xs hover:bg-accent " +
                       (selected === r.wireId ? "bg-accent" : "")

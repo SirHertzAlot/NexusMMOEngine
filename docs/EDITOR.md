@@ -99,6 +99,32 @@ event ordering, and the authoritative simulation. The server stays
 authoritative — the editor inspects mirror state and may send the same
 intents a game client sends, but it never writes ECS state directly.
 
+**Two presentations, one session.** The Scene workspace also carries
+**Inspector (Forge)**, the same entity inspector drawn in the editor's
+2026 design language: Details / Components / Systems tabs, a liveness
+read-out, one row per component with its field summary, and the
+entity's archetype. It mounts the same `useEcsInspectorSession()` hook
+as the panel above, so the two cannot show different numbers, and it is
+read-only for the same reason. Field types and the systems that read or
+write each component come from the committed ECS graph
+(`/api/editor/graph`); when that is unavailable the panel simply omits
+them.
+
+## 1b. Appearance
+
+The editor ships two themes. `m3` is the Material 3 dark scheme in
+`src/app.css` and stays the default. `forge` is the 2026 design
+language in `src/forge.css`: near-black grounds, one cyan accent, three
+semantic hues, 1px hairlines instead of tonal elevation, and labels that
+read by tracking and case rather than by size. Both are token sets on
+`[data-theme]`, so switching costs nothing at runtime.
+
+Pick one with `?theme=forge` (or `?theme=m3`) in the URL for a single
+load, or set it for good with `setTheme()` in `src/theme.ts`, which
+remembers the choice in local storage. The design note behind the forge
+theme, and the plan for the rest of the rebuild, is
+[`EDITOR-UI-2026.md`](EDITOR-UI-2026.md).
+
 ## 2. Play Mode
 
 The **Play Mode** tab drives a full local loop:
