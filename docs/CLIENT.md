@@ -43,41 +43,44 @@ this engine suits MMO pacing rather than twitch combat — see
 
 ## Cosmetic physics
 
-The client's physics is **PhysX** (`physx-js-webidl`). `createClientPhysicsWorld()`
-in `apps/client/src/physics/index.ts` gives you a world; `physx-world.ts` is
-the implementation and `physics-world.ts` is the seam it satisfies. PhysX is
-what this engine's client is built and benchmarked on, and it is what the rest
-of this page means by "the physics".
+The client has two physics backends behind one seam
+(`apps/client/src/physics/physics-world.ts`), and your game picks either:
 
-It was picked by measurement, not preference. On one 128 m heightfield with
-300 static prop boxes and 200 awake ragdoll rigs, PhysX cost 15.7 ms per tick
-against Rapier's 32.9 and JoltPhysics.js's 41.1, for about 2.0 MB gzipped
-(roadmap item *Client physics library*).
+```ts
+await createClientPhysicsWorld();          // PhysX, the default
+await createClientPhysicsWorld("rapier");  // Rapier
+```
 
-`rapier-world.ts` is a second implementation of the same seam, kept for the
-tests rather than for shipping. The `physx-js-webidl` build this repository
-pins is compiled for the web and refuses to load under Node, so three client
-suites (19 tests) exercise the seam through Rapier instead;
-`@dimforge/rapier3d-compat` is a dev dependency for that reason. Nothing a
-player runs touches it.
+Neither is a fallback for the other; they are a choice, and these are the
+numbers behind it. Measured on one 128 m heightfield with 300 static prop
+boxes and 200 awake ragdoll rigs:
 
-> **In flight, 2026-11-22.** Making that true in the code is a separate pull
-> request. Until it merges, `createClientPhysicsWorld()` still takes a
-> backend argument, `"rapier"` still selects the Rapier world at runtime, and
-> `@dimforge/rapier3d-compat` is still a runtime dependency.
+| Backend | File | ms per tick | Bundle, gzipped | Runs under Node |
+|---|---|---:|---:|---|
+| **PhysX** (`physx-js-webidl`), the default | `physx-world.ts` | 15.7 | ~2.0 MB | no |
+| Rapier (`@dimforge/rapier3d-compat`) | `rapier-world.ts` | 32.9 | ~1.6 MB | yes |
 
-Units are metres, y up. The caller passes a frame `dt` and PhysX splits
-it into `PHYSICS_SUBSTEPS` (2) collision steps, matching the server's tick.
+PhysX is the default because it is roughly twice as fast once a lot of
+ragdolls are awake. Rapier is about 0.4 MB smaller, and it is the only one of
+the two that runs outside a browser: the `physx-js-webidl` build this
+repository pins is compiled for the web and throws "not compiled for this
+environment" under Node. **So if you want physics in a test, you want
+Rapier** — that is why the three client physics suites exercise the seam
+through it. JoltPhysics.js was measured alongside them (41.1 ms, ~0.9 MB) and
+is not wired up.
+
+Units are metres, y up. The caller passes a frame `dt` and the backend
+splits it into `PHYSICS_SUBSTEPS` (2) collision steps, matching the server's tick.
 A ragdoll rig is 11 parts and 10 ball joints (`ragdoll-rig.ts`,
 `corpse-ragdolls.ts`).
 
-`npm run bench:physics -w @mmo-engine/client` re-runs the backend comparison
-(one 128 m heightfield, 300 static prop boxes, one dynamic walker, N rigs, 60 Hz,
+`npm run bench:physics -w @mmo-engine/client` re-runs that comparison (one
+128 m heightfield, 300 static prop boxes, one dynamic walker, N rigs, 60 Hz,
 two substeps, single thread; median of 3 runs of 300 ticks after 60 warm-up
-ticks). It writes `apps/client/scripts/physics-bench-results.json`. A version bump on
-any of the three can move the numbers, so re-run it rather than trusting the
-figures above. `jolt-physics` stays a dev dependency purely so the comparison
-can include the server's engine.
+ticks) and writes `apps/client/scripts/physics-bench-results.json`. A version
+bump on any of the three can move the numbers, so re-run it rather than
+trusting the table above. `jolt-physics` stays a dev dependency purely so the
+comparison can include the server's engine.
 
 The server's physics is separate and always Jolt in C++
 ([Architecture](ARCHITECTURE.md)).
