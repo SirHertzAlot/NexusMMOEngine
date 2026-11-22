@@ -219,10 +219,6 @@ Being clear about this saves more time than any feature list.
 - **Not a general 3D engine.** The client is a mirror of an authoritative
   server. If you want a single-player or peer-to-peer game, nearly all of this
   is overhead.
-- **Not licensed for release.** The repository is public and carries no
-  licence, which means all rights reserved by default. You can read it, run it
-  and learn from it; shipping a game on it is a capability being built, not a
-  permission you have.
 - **Not measured on dedicated hardware.** Every number in this repository
   came off shared machines. Trust the ratios; re-measure the absolutes.
 

@@ -43,15 +43,21 @@ this engine suits MMO pacing rather than twitch combat — see
 
 ## Cosmetic physics
 
-There is one physics seam, `apps/client/src/physics/physics-world.ts`, with
-two backends behind it:
+The client's physics is **PhysX** (`physx-js-webidl`). `createClientPhysicsWorld()`
+in `apps/client/src/physics/index.ts` gives you a world; `physx-world.ts` is
+the implementation and `physics-world.ts` is the seam it satisfies. PhysX is
+what this engine's client is built and benchmarked on, and it is what the rest
+of this page means by "the physics".
 
-| Backend | File | Status |
-|---|---|---|
-| **PhysX** (`physx-js-webidl`) | `physx-world.ts` | The default (`createClientPhysicsWorld()`) |
-| Rapier (`@dimforge/rapier3d-compat`) | `rapier-world.ts` | Kept behind the same seam; pass `"rapier"` to select it |
+It was picked by measurement, not preference. On one 128 m heightfield with
+300 static prop boxes and 200 awake ragdoll rigs, PhysX cost 15.7 ms per tick
+against Rapier's 32.9 and JoltPhysics.js's 41.1, for about 2.0 MB gzipped
+(roadmap item *Client physics library*). `rapier-world.ts` is still in the
+tree as the second implementation of that seam, still covered by tests, and
+`createClientPhysicsWorld("rapier")` still selects it — but PhysX is the
+supported path and the one to build against.
 
-Units are metres, y up. The caller passes a frame `dt` and the backend splits
+Units are metres, y up. The caller passes a frame `dt` and PhysX splits
 it into `PHYSICS_SUBSTEPS` (2) collision steps, matching the server's tick.
 A ragdoll rig is 11 parts and 10 ball joints (`ragdoll-rig.ts`,
 `corpse-ragdolls.ts`).
@@ -59,11 +65,10 @@ A ragdoll rig is 11 parts and 10 ball joints (`ragdoll-rig.ts`,
 `npm run bench:physics -w @mmo-engine/client` re-runs the backend comparison
 (one 128 m heightfield, 300 static prop boxes, one dynamic walker, N rigs, 60 Hz,
 two substeps, single thread; median of 3 runs of 300 ticks after 60 warm-up
-ticks). It writes `apps/client/scripts/physics-bench-results.json`. Run it
-yourself before choosing: the two libraries were within about 10% of each
-other at the rig counts the ragdoll budget cares about, so the answer can move
-with a version bump. `jolt-physics` stays a dev dependency purely so the
-comparison can include the server's engine.
+ticks). It writes `apps/client/scripts/physics-bench-results.json`. A version bump on
+any of the three can move the numbers, so re-run it rather than trusting the
+figures above. `jolt-physics` stays a dev dependency purely so the comparison
+can include the server's engine.
 
 The server's physics is separate and always Jolt in C++
 ([Architecture](ARCHITECTURE.md)).

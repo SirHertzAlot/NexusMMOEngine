@@ -7,13 +7,20 @@ roads are dead ends.
 One principle underlies everything below:
 
 > **Change the cheapest layer that can express what you want.** Data before
-> rules, rules before a module, a module before native code, and native code
-> before editing the engine. Every step down costs more to write, more to
-> maintain, and more when you take an upstream change.
+> rules, rules before a module, a module before native code, native code
+> before the engine itself. Each step down costs more to write, more to
+> maintain, and more every time you take an upstream change.
+
+That is a cost ordering, not a fence. The engine ships as source and all of
+it is yours: fork it, gut it, rewrite the tick loop if your game needs a
+different one. Nothing in this guide is permission you have to ask for. It
+exists to tell you what each kind of change costs, so that when you do reach
+into the engine you are spending that cost on purpose rather than by
+accident.
 
 ---
 
-## 1. Know what is yours and what is the engine's
+## 1. Know what each layer costs to change
 
 The repository is mid-way through separating a general-purpose engine from
 the game built on it. Understanding the line as it stands now will save you
@@ -21,13 +28,13 @@ from building against something that is about to move.
 
 **Today:**
 
-| Layer | Where | Yours to change? |
+| Layer | Where | What a change there costs |
 |---|---|---|
-| Engine core | `packages/engine-core` | No. Changing it means maintaining a fork. |
-| Supporting packages | `packages/*` (rules, protocol, mirror, dungeon, settlement, …) | Mostly no; you consume them. |
-| Modules | `modules/<name>/` | **Yes.** This is the code seam. |
-| Content | `content/` | **Yes.** This is the data seam, and it is the sample game's content. |
-| Client and editor | `apps/client`, `apps/editor` | Yes, as your game's front end. |
+| Engine core | `packages/engine-core` | Most. From then on you are maintaining a fork of it, and upstream changes arrive as merges you resolve. Worth it when the engine's shape is genuinely wrong for your game. |
+| Supporting packages | `packages/*` (rules, protocol, mirror, dungeon, settlement, …) | The same, one package at a time. Most games consume these as they are. |
+| Modules | `modules/<name>/` | Little. This is the code seam, built for your code to live in. |
+| Content | `content/` | Least. This is the data seam; what is there now is the sample game's content, and replacing it is expected. |
+| Client and editor | `apps/client`, `apps/editor` | Little. These are your game's front end, and you should expect to replace a lot of them. |
 
 **Where it is going:** the person steering this project has settled the
 shape — an engine core plus *official, swappable kits*, with several forkable
@@ -37,10 +44,11 @@ only configured. Package names and the manifest format for that are a
 proposal under review, not settled, so this page deliberately describes the
 seams by what they do rather than by names that will change.
 
-**What that means for you now:** put your game in `content/` and
-`modules/`, and keep a clean list of every place you had to edit something
-under `packages/`. Those edits are the ones that will need revisiting, and
-they are also the most useful bug reports this project can get.
+**What that means for you now:** put your game in `content/` and `modules/`
+where those will carry it, and keep a note of every place you went into
+`packages/` instead. Those are the edits you will revisit when the split
+lands, and they are also the most useful bug reports this project can get: a
+seam you had to reach around is a seam in the wrong place.
 
 Known places the seam still leaks, so you can plan around them:
 
@@ -104,12 +112,30 @@ const overrides: HookOverrides = {
 };
 ```
 
-> **Gap, as of this writing.** `loadGameRules(dir, overrides)` accepts these,
-> but the running server calls it without an overrides argument
-> (`packages/engine-core/src/server.ts`), and the rules reloader does the
-> same. **The hooks are therefore unreachable from a booted server today.**
-> They work in tests and in code that calls `loadGameRules` directly. If you
-> need them live, that wiring is a small, well-scoped contribution.
+Whatever you do not override keeps the engine's own formula, so a game writes
+only the decisions it actually wants to make differently.
+
+You deliver them as a file beside your rules: `content/rules/hooks.mjs`
+(or `hooks.mjs` in whatever directory `MMO_RULES` points at), default-exporting
+either the overrides object or a factory that is handed the loaded rules.
+`MMO_RULES_HOOKS=/path/to/hooks.mjs` names one somewhere else;
+`MMO_RULES_HOOKS=0` runs the engine's defaults. A hooks file naming a hook
+that does not exist stops the boot and prints the eight that do, rather than
+quietly doing nothing. Hot reload keeps your overrides, and a factory re-runs
+on each reload so it sees the rules as they are now.
+
+Hooks are not a fence around the engine — you can equally edit the formula in
+`packages/rules` itself. What hooks buy you is that your version survives an
+upgrade, because it lives beside your rules rather than inside engine source
+you would then have to merge.
+
+> **In flight, 2026-11-22.** Until now the booted server called
+> `loadGameRules` with no overrides argument, so hooks worked in tests and in
+> code calling `loadGameRules` directly but could not be reached from a
+> running server. The `hooks.mjs` wiring described above is landing in a
+> separate pull request. If your checkout predates it, check whether
+> `packages/engine-core/src/server.ts` passes overrides before you build on
+> hooks.
 
 ## 4. Then a module
 
@@ -165,7 +191,8 @@ documented and the toolchain is already in place: copy `packages/addons/template
 declare a `native` entry in your module manifest, and the server loads your
 `.node` and calls its `createSystems`.
 
-The rule that makes native addons fast here is non-negotiable:
+One thing decides whether a native addon is actually faster than the
+JavaScript it replaced:
 
 > **Never cross the N-API boundary per object.** Do not inspect individual
 > JavaScript object properties inside a simulation loop. Pass a contiguous
@@ -175,9 +202,12 @@ The rule that makes native addons fast here is non-negotiable:
 Breaking that rule produces a native addon slower than the JavaScript it
 replaced, which is the single most common way this goes wrong.
 
-A native change must pass `npm run valgrind:memcheck -- <addon>` clean, and a
-change to the tick or a hot path must run `npm run valgrind:perf` and report
-what moved.
+In this repository a native change has to pass
+`npm run valgrind:memcheck -- <addon>` clean, and a change to the tick or a
+hot path runs `npm run valgrind:perf` and reports what moved. Those gates are
+this project's own habit rather than anything the engine enforces, and they
+are worth keeping: they are how the numbers in
+[Performance and constraints](PERFORMANCE.md) stay true.
 
 ---
 
@@ -231,15 +261,17 @@ A region boundary is a consistency boundary. Scale comes from adding regions
 
 ## 9. Keep the client honest
 
-No game logic in the browser. The client predicts only the local player's
-walk and reconciles; everything else is interpolated from authoritative
-state. Cosmetic physics (corpse ragdolls, debris) is fine precisely because
-nobody else can see its result.
+The server is authoritative, which means anything the browser is allowed to
+decide is something a player can decide for themselves. So the client
+predicts only the local player's walk and reconciles it; everything else is
+interpolated from authoritative state. Cosmetic physics (corpse ragdolls,
+debris) is free of that worry precisely because nobody else sees its result.
 
-The corollary is about tooling: **developer tools belong in the editor, not
-in the player client.** Debug overlays, performance graphs and inspectors go
-in the editor's debug workspace and its play mode. See
-[The client](CLIENT.md).
+There is a tooling corollary, and this one is this repository's convention
+rather than anything the engine imposes: developer tools live in the editor,
+not in the player client. Debug overlays, performance graphs and inspectors
+go in the editor's debug workspace and its play mode, which keeps the client
+a picture of what a player actually sees. See [The client](CLIENT.md).
 
 ## 10. Own your content pipeline early
 
@@ -266,7 +298,8 @@ in the editor's debug workspace and its play mode. See
 5. Replace the systems that are still wrong with your own modules, one domain
    at a time.
 6. Only now consider native code, and only against a benchmark.
-7. Keep a list of every `packages/` edit you were forced to make.
+7. Keep a list of every `packages/` edit you made, and why the seam above
+   it could not carry the change.
 
 ## Reading list, in order
 
