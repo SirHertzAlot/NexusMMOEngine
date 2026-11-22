@@ -9,7 +9,7 @@ import { addComponent, defineQuery } from "bitecs";
 import { engineDefaults } from "@mmo-engine/rules";
 import * as C from "../../src/components.js";
 import { SimWorld } from "../../src/world.js";
-import type { LifeEvent } from "../../src/death.js";
+import type { LifeEvent } from "../../src/vocabulary.js";
 import { ItemDefs, ItemService, LootDropper, type PoolItemLike } from "../../src/items/index.js";
 
 const RULES = engineDefaults();
