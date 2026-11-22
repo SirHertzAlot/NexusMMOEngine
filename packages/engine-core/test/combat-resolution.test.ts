@@ -12,7 +12,8 @@ import { combatMove, IntentButton, Move } from "@mmo-engine/protocol";
 import { parseRules } from "@mmo-engine/rules";
 import { SimWorld } from "../src/world.js";
 import * as C from "../src/components.js";
-import { ARM_REACH, CombatSystem, DEFAULT_COMBAT_TUNING, FIGHT_DIFFICULTY, GUARD_FACTOR, type CombatSkills, type CombatTuning, type Weapon } from "../src/combat.js";
+import { ARM_REACH, CombatSystem, DEFAULT_COMBAT_TUNING, FIGHT_DIFFICULTY, GUARD_FACTOR, type CombatSkills, type CombatTuning } from "../src/combat.js";
+import type { Weapon } from "../src/vocabulary.js";
 import { IntegrateSystem, IntentSystem } from "../src/systems.js";
 import { loadGameRules } from "../src/rules/boot.js";
 

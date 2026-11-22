@@ -206,7 +206,8 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
   }
 }
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { type CombatDamage, type CombatSkills, type Weapon } from "./combat.js";
+import { type CombatDamage, type CombatSkills } from "./combat.js";
+import type { Weapon } from "./vocabulary.js";
 import { type BodySystem } from "./body.js";
 import { type MagicSystem } from "./magic.js";
 import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";

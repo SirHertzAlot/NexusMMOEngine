@@ -24,7 +24,7 @@
 import type { CredentialStore } from "../auth/credentials.js";
 import type { ScaleResolver } from "../scale.js";
 import type { CharacterStore } from "../characters/store.js";
-import type { Weapon } from "../combat.js";
+import type { Weapon } from "../vocabulary.js";
 import type { GameRules } from "../rules/boot.js";
 import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 import type { TransportKind } from "../net/transport.js";
