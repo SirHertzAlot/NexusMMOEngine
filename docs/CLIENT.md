@@ -52,10 +52,19 @@ of this page means by "the physics".
 It was picked by measurement, not preference. On one 128 m heightfield with
 300 static prop boxes and 200 awake ragdoll rigs, PhysX cost 15.7 ms per tick
 against Rapier's 32.9 and JoltPhysics.js's 41.1, for about 2.0 MB gzipped
-(roadmap item *Client physics library*). `rapier-world.ts` is still in the
-tree as the second implementation of that seam, still covered by tests, and
-`createClientPhysicsWorld("rapier")` still selects it — but PhysX is the
-supported path and the one to build against.
+(roadmap item *Client physics library*).
+
+`rapier-world.ts` is a second implementation of the same seam, kept for the
+tests rather than for shipping. The `physx-js-webidl` build this repository
+pins is compiled for the web and refuses to load under Node, so three client
+suites (19 tests) exercise the seam through Rapier instead;
+`@dimforge/rapier3d-compat` is a dev dependency for that reason. Nothing a
+player runs touches it.
+
+> **In flight, 2026-11-22.** Making that true in the code is a separate pull
+> request. Until it merges, `createClientPhysicsWorld()` still takes a
+> backend argument, `"rapier"` still selects the Rapier world at runtime, and
+> `@dimforge/rapier3d-compat` is still a runtime dependency.
 
 Units are metres, y up. The caller passes a frame `dt` and PhysX splits
 it into `PHYSICS_SUBSTEPS` (2) collision steps, matching the server's tick.
