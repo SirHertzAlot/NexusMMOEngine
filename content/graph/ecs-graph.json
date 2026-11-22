@@ -4,280 +4,280 @@
       "confidence": "inferred",
       "from": "archetype:243750018a15",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:300",
+      "source": "packages/engine-core/src/scene-spawn.ts:291",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:243750018a15",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:300",
+      "source": "packages/engine-core/src/scene-spawn.ts:291",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:243750018a15",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:300",
+      "source": "packages/engine-core/src/scene-spawn.ts:291",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:243750018a15",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:300",
+      "source": "packages/engine-core/src/scene-spawn.ts:291",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Action"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Health"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Locomotion"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:NavAgent"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Velocity"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Action"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Health"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Locomotion"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:NavAgent"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:7e2b6c6f9784",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:524",
+      "source": "packages/engine-core/src/scene-spawn.ts:515",
       "to": "component:Velocity"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Velocity"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:d1bb232423e3",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Velocity"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:501",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Breakable"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:501",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Health"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "hasComponent",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Velocity"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:AssetRef"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:501",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Breakable"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:501",
+      "source": "packages/engine-core/src/scene-spawn.ts:492",
       "to": "component:Health"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Transform"
     },
     {
       "confidence": "inferred",
       "from": "archetype:dd97eb5939ec",
       "kind": "realizes",
-      "source": "packages/engine-core/src/scene-spawn.ts:299",
+      "source": "packages/engine-core/src/scene-spawn.ts:290",
       "to": "component:Velocity"
     },
     {
@@ -4008,315 +4008,315 @@
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "component:CharacterRef"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Animation.clipId"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.seq"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.state"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "reads",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "component:FarVisible"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Animation.clipId"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Animation.layerMask"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Animation.rate"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Animation.startTick"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:AssetRef.assetHash"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:AssetRef.variant"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Locomotion.abilities"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Locomotion.breath"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Locomotion.mode"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.seq"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.speed"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.tx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.ty"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:NavAgent.tz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.buttons"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.jump"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.lookYaw"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.my"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.sx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.sy"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Transform.sz"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:creatures",
       "kind": "writes",
-      "source": "packages/engine-core/src/creatures.ts:207",
+      "source": "packages/engine-core/src/creatures.ts:220",
       "to": "field:Velocity.lz"
     },
     {
@@ -6479,252 +6479,252 @@
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.friction"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.halfX"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.halfY"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.halfZ"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.layer"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.mass"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.motionType"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.radius"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.restitution"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:BodyConfig.shapeKind"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.ax"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.ay"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.az"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "reads",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.lz"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.ax"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.ay"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.az"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.ly"
     },
     {
       "confidence": "declared",
       "from": "system:physics",
       "kind": "writes",
-      "source": "packages/engine-core/src/systems.ts:670",
+      "source": "packages/engine-core/src/systems.ts:681",
       "to": "field:Velocity.lz"
     },
     {
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "670a00a8841ad5c61210f9c713f04f89a458c917",
+    "builtFromCommit": "52e182aa3e257cd1760024bc5ec77a7801e474e4",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7636,7 +7636,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "3fc1e701a7b325aa2e215ee242f5919fc8ef506d4f213e6ee9bb75f71bdc7354",
+    "graphHash": "6585d271f98997f2d54c8d8e6c0d3da3dfd48ba71edb037830c9a269825aa060",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -7742,7 +7742,7 @@
       "packages/engine-core/src/combat.ts": "11a9622a0f01a0443f9363d6005227eb9723123c5fbdd04ec1ef275828d81c3a",
       "packages/engine-core/src/components.ts": "fa91dc4abf8867d063c16d80fd4d3a5cd902c8dc5993db6eaa7d24939b0c0cb3",
       "packages/engine-core/src/crafting/crafting-service.ts": "06d4b5abaf0e208f8a7c885224d3b2e74651b9d9f8066cde5fcf85aef2ecc7c6",
-      "packages/engine-core/src/creatures.ts": "a0b4bcd5bc1202d13889302009cbcb5d56e50a86a48dbe46e7d480cb616a957a",
+      "packages/engine-core/src/creatures.ts": "95f7bb2d7e87ab2a0e6998961760444170bf53421b7155a9d05920946d6c5060",
       "packages/engine-core/src/data-plane-server.ts": "c1d3739698e4964dd762082aee5663eccde27ef6985b5b38d8e22f8ef1f18521",
       "packages/engine-core/src/death.ts": "a5dd1a5c2ebe8c114fde2bcbc7dc84a569cd4e16a57bc64f48bd59816438f4fe",
       "packages/engine-core/src/delta-apply.ts": "3969aa091e471c3fe1afe8fb788978a37b3a4625e977e70f56d0de0ac54041c1",
@@ -7850,11 +7850,11 @@
       "packages/engine-core/src/procgen/megafauna.ts": "7df0c86ef6cde761def8e693d9927eaeb99f86a1cc2fb090d31657420b063202",
       "packages/engine-core/src/procgen/prop-shape.ts": "5e0c77127699525a6996c42a5807472caa1b8e70ecaa12402300605e2758e677",
       "packages/engine-core/src/procgen/scatter-spawn.ts": "b518b10ad420308eec95ac7cf64fc7cbffaabf65a723c124bb278b33e030b82b",
-      "packages/engine-core/src/procgen/wild-creatures.ts": "db57243655562d4c2b5817d2ff6da3755d6fa90043ee31a289e2ca279054c404",
-      "packages/engine-core/src/procgen/wildlife-creatures.ts": "f200b7269f3d7cf672053dae50c57bcd6c0d36bef4fcb18bb3daf54d3ad9ae70",
+      "packages/engine-core/src/procgen/wild-creatures.ts": "66767edfe4862384263cc8654b23a750f904542d39968743d9061ad446d2ebc7",
+      "packages/engine-core/src/procgen/wildlife-creatures.ts": "3abb4803ae7e6e6c75dc3d6f5868fad870172d3e8150012fb735b6fb6bc2dbec",
       "packages/engine-core/src/procgen/wildlife-plan.ts": "e8441b2787aa16b4f9f75b67640ea840a5f3481dbb771b2b4ef715a50c01934a",
       "packages/engine-core/src/procgen/wildlife-settlements.ts": "cc76ef3eae45ff5efefe3899585703bb4080e6af5de583b3c585ebe75933e27d",
-      "packages/engine-core/src/procgen/wildlife-table.ts": "1817dfd1214182859e8fb053770ae959f6004e853fd814da08496d119436a726",
+      "packages/engine-core/src/procgen/wildlife-table.ts": "7975d1f6d8b84d47efc9c271b99b8193065a00396bb4adce2d25af0dc640ebe7",
       "packages/engine-core/src/procgen/world-populator.ts": "b6a182ab57fdd3ed94bbf8dd14660c2580934e595922e4cc2c2cdde332b5f58c",
       "packages/engine-core/src/prop-collision.ts": "24e745bb28f8aaad5fd3a76cd63306605e8b1e285766fc7abef9bd4a7ad16b61",
       "packages/engine-core/src/quests/content.ts": "e7a3c3cf4ba06d206f3ad080957175865466c309a0558f4ad15579702f320a53",
@@ -7876,10 +7876,10 @@
       "packages/engine-core/src/sab-contention.ts": "a8ae8cebf9f1fed46bac7197e5dd2d986f6c199110e9fd9e5b041b6b074a97ec",
       "packages/engine-core/src/sab-probe-worker.ts": "9cc4eb16d205be55fa6e6f6d38603921888030607d4925d08b3e017864e2aa8a",
       "packages/engine-core/src/sab-store.ts": "4dc6d4fbf0150dac83d9acc558f589d23f36ca91f410b66344c798794b7d57d4",
-      "packages/engine-core/src/scale.ts": "599078510cd1dce2d1bdc2b4cbcca61482bdab2479b9df7d376638f8baaf3fcb",
-      "packages/engine-core/src/scene-spawn.ts": "d506bba95fadbe10e7d6beb1ab45e0f19c5f7c6259a2bd3fe157c66421eeb442",
+      "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
+      "packages/engine-core/src/scene-spawn.ts": "0c9002f0aa75dc79c28ed8a1f0e9d6b468858a4acef96e18a4bb8b335cfd41a1",
       "packages/engine-core/src/server-settings.ts": "e7693685abc136300b30d06fbfbf97e34f0ef740bf8c20d7e3188824d7f4e0d6",
-      "packages/engine-core/src/server.ts": "5efd08adf249b9421eab8e4c92ffa4f08f9ffa59c0a7ea703eedd4f589744bd8",
+      "packages/engine-core/src/server.ts": "5e14a9e017776a3a4e3159ecf67cbc7091ff4aa9de4d0a184dd14dca58af168e",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
@@ -7901,7 +7901,7 @@
       "packages/engine-core/src/streaming/chunk-streamer.ts": "7f2cc260189c6c4d917e80afb36513979e2b496f066d1cb999903e64bf796726",
       "packages/engine-core/src/strings.ts": "cdf48481b09a601a083e70b3196447efda4b92ea70e85f8202e57561978b0a6e",
       "packages/engine-core/src/system-access.ts": "1839a4535a6747aae20370b33da70b909be82a9ce96c67e69af0774d678a9010",
-      "packages/engine-core/src/systems.ts": "b5f3095de080b70863c838f41855848bd33f896c6c9b8a69a51ed1be71b82f52",
+      "packages/engine-core/src/systems.ts": "4fa51682f0fbfae5bb50629fbcef05668072b359d31532b949bc6c484de4fb31",
       "packages/engine-core/src/telegraph.ts": "736c321e49273f78347456705c07f92bf639fcd51422543176a6ac4c5ac8bb3e",
       "packages/engine-core/src/terrain-tool.ts": "78ca79d4281a2c49e79e5371257c5ffec584a105ef2f5a216a918fe180fa3594",
       "packages/engine-core/src/terrain/biome-lookup.ts": "78177f332a55c5c50444e906ed567ba9ea18d31fd95cac48bdc295c2dff38690",
@@ -8029,7 +8029,7 @@
       "kind": "archetype",
       "name": "Collider+Structure",
       "objectCount": 11,
-      "source": "packages/engine-core/src/scene-spawn.ts:300"
+      "source": "packages/engine-core/src/scene-spawn.ts:291"
     },
     {
       "components": [
@@ -8046,7 +8046,7 @@
       "kind": "archetype",
       "name": "Spawner",
       "objectCount": 1,
-      "source": "packages/engine-core/src/scene-spawn.ts:524"
+      "source": "packages/engine-core/src/scene-spawn.ts:515"
     },
     {
       "components": [
@@ -8059,7 +8059,7 @@
       "kind": "archetype",
       "name": "Chest+Door+Structure+Vendor",
       "objectCount": 170,
-      "source": "packages/engine-core/src/scene-spawn.ts:299"
+      "source": "packages/engine-core/src/scene-spawn.ts:290"
     },
     {
       "components": [
@@ -8074,7 +8074,7 @@
       "kind": "archetype",
       "name": "Breakable+Structure",
       "objectCount": 1,
-      "source": "packages/engine-core/src/scene-spawn.ts:299"
+      "source": "packages/engine-core/src/scene-spawn.ts:290"
     },
     {
       "addable": false,
@@ -12048,7 +12048,7 @@
       "name": "creatures",
       "role": "simulation",
       "simName": "creatures",
-      "source": "packages/engine-core/src/creatures.ts:205",
+      "source": "packages/engine-core/src/creatures.ts:218",
       "tickIndex": 31
     },
     {
@@ -12280,7 +12280,7 @@
       "name": "physics",
       "role": "simulation",
       "simName": "physics",
-      "source": "packages/engine-core/src/systems.ts:668",
+      "source": "packages/engine-core/src/systems.ts:679",
       "tickIndex": 24
     },
     {

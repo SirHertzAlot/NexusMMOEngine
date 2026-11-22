@@ -13,15 +13,8 @@ import { DEFAULT_SCALE, resolveScale, validateScale, type ScaleCategory, type Sc
 /** The factor for an object of `category`, optionally named `asset`. */
 export type ScaleResolver = (category: ScaleCategory, asset?: string) => number;
 
-function resolveScaleFile(): string {
-  const here = fileURLToPath(new URL(".", import.meta.url));
-  const candidate4 = resolve(here, "../../../../content/scale.json");
-  if (existsSync(candidate4)) return candidate4;
-  const candidate3 = resolve(here, "../../../content/scale.json");
-  if (existsSync(candidate3)) return candidate3;
-  return resolve(process.cwd(), "content/scale.json");
-}
-export const DEFAULT_SCALE_FILE = resolveScaleFile();
+/** The repo's content/scale.json (this file is dist/src/scale.js). */
+export const DEFAULT_SCALE_FILE = fileURLToPath(new URL("../../../../content/scale.json", import.meta.url));
 
 export const scaleResolver = (doc: ScaleDoc): ScaleResolver => (category, asset) => resolveScale(doc, category, asset);
 

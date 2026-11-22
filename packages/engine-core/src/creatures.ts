@@ -202,6 +202,19 @@ export function isAwake(activity: string, t: number | null): boolean {
   }
 }
 
+/**
+ * How far a pack scatters from the point it spawns at.
+ *
+ * `anchored` (the default) keeps a hand-placed pack at its node: a scene's
+ * camp, a dungeon room, an admin spawn. `grazing` is for ambient wildlife,
+ * which spreads a herd across its territory. `radiusM` overrides whichever
+ * radius the mode would pick.
+ */
+export interface PackSpread {
+  readonly mode: "anchored" | "grazing";
+  readonly radiusM?: number;
+}
+
 export class CreatureSystem implements SimSystem {
   readonly name = "creatures";
   readonly access: SystemAccess = {
@@ -473,27 +486,51 @@ export class CreatureSystem implements SimSystem {
 
   /**
    * Spawn one pack of `kind` around (x, z): a random size in the creature's
-   * pack range (or `size`, a biome's own), each a few metres from the
-   * centre. Returns the entity ids.
+   * pack range (or `size`, a biome's own). Returns the entity ids.
+   *
+   * `spread` says how far from (x, z) the pack may scatter, and defaults to
+   * `anchored`: a hand-placed pack stays within a few metres of the node
+   * that placed it, because whoever placed a camp meant its occupants to be
+   * at the camp. Ambient wildlife passes `grazing`, which spreads a herd
+   * across its territory and sends one or two scouts to the perimeter.
+   * `radiusM` overrides the radius either mode would pick.
    */
-  spawnPack(sim: SimWorld, kind: string, x: number, z: number, size?: readonly [number, number]): number[] {
+  spawnPack(
+    sim: SimWorld,
+    kind: string,
+    x: number,
+    z: number,
+    size?: readonly [number, number],
+    spread?: PackSpread,
+  ): number[] {
     const def = this.opts.creatures[kind];
     if (!def) throw new Error(`unknown creature "${kind}"`);
     const [min, max] = size ?? def.pack;
     const n = min + Math.floor(this.rand() * (max - min + 1));
     const out: number[] = [];
     const group = this.nextGroup++;
-    // Natural grazing spread: packs spread out organically across their grazing territory
-    // instead of bunching up in a tight 1.5-3m clump.
-    const baseRadius = n <= 1 ? 0 : Math.max(5.0, Math.min(22.0, 3.5 * Math.sqrt(n)));
+    const grazing = spread?.mode === "grazing";
+    // A grazing herd spreads organically across its territory; an anchored
+    // pack keeps the tight 1.5-3 m clump around the point that placed it.
+    const baseRadius = n <= 1
+      ? 0
+      : spread?.radiusM !== undefined
+        ? Math.max(0, spread.radiusM)
+        : grazing
+          ? Math.max(5.0, Math.min(22.0, 3.5 * Math.sqrt(n)))
+          : 0;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + (this.rand() - 0.5) * 0.8;
-      // 1 or 2 individuals in larger packs (or index 0 in packs >= 3) act as adventurous scouts
-      // venturing further out to graze along the ridge or perimeter when it feels safe.
-      const isScout = n >= 3 && (i === 0 || (n >= 6 && i === Math.floor(n / 2)));
-      const r = n === 1 ? 0 : isScout
-        ? baseRadius * (1.4 + this.rand() * 0.6)
-        : baseRadius * (0.35 + 0.65 * Math.sqrt(this.rand()));
+      // In a grazing herd 1 or 2 individuals (index 0 in packs >= 3, and the
+      // middle one from 6 up) act as scouts, venturing further out to graze
+      // along the ridge or the perimeter when it feels safe. An anchored pack
+      // has none: its members belong to the thing that placed them.
+      const isScout = grazing && n >= 3 && (i === 0 || (n >= 6 && i === Math.floor(n / 2)));
+      const r = n === 1
+        ? 0
+        : baseRadius > 0
+          ? (isScout ? baseRadius * (1.4 + this.rand() * 0.6) : baseRadius * (0.35 + 0.65 * Math.sqrt(this.rand())))
+          : 1.5 + this.rand() * 1.5;
       out.push(this.spawn(sim, kind, x + Math.cos(a) * r, z + Math.sin(a) * r, i, group, isScout));
     }
     return out;
@@ -563,7 +600,7 @@ export class CreatureSystem implements SimSystem {
     }
     // ColliderSystem skips entities with an AssetRef (scatter props), so a creature with a model would have no
     // body: it would never collide and the client would draw it as scenery. Give it the collider here.
-    if (!hasComponent(sim.ecs, C.BodyConfig, eid)) attachDefaultCollider(sim, eid);
+    if (!hasComponent(sim.ecs, C.BodyConfig, eid)) attachDefaultCollider(sim, eid, size);
     // damageX scales the blow: damage goes as mass^massPower, so mass goes as damageX^(1/massPower).
     const mass = base.mass * Math.pow(def.damageX ?? 1, 1 / (this.opts.massPower ?? 0.5));
     this.brains.set(eid, {

@@ -103,7 +103,9 @@ describe("wandering", () => {
 
   it("packs spread out organically across grazing territory and scouts venture further", () => {
     const w = setup(kind({ wanderM: 12, wanderPauseS: 2, activity: "cathemeral" }));
-    const eids = w.sys.spawnPack(w.sim, "deer", 0, 0, [6, 6]);
+    // The wide scatter is the grazing spread, which ambient wildlife asks for;
+    // a hand-placed pack stays anchored (see the next test).
+    const eids = w.sys.spawnPack(w.sim, "deer", 0, 0, [6, 6], { mode: "grazing" });
     assert.equal(eids.length, 6);
 
     // Initial spawn dispersion: members must be spread out across > 5m, not cramped in a tight 1.5-3m clump
@@ -127,5 +129,14 @@ describe("wandering", () => {
       }
     }
     assert.ok(maxGrazingDist > 14.0, `scouts/grazers venture out beyond base wander radius (max: ${maxGrazingDist.toFixed(2)} m)`);
+  });
+
+  it("a pack with no spread asked for stays anchored on its spot", () => {
+    // A camp or any hand-placed pack must stay where the scene put it: the
+    // tight clump is the default, so only wildlife scatters.
+    const w = setup(kind({ wanderM: 12, wanderPauseS: 2, activity: "cathemeral" }));
+    const eids = w.sys.spawnPack(w.sim, "deer", 0, 0, [6, 6]);
+    const max = Math.max(...eids.map((eid) => Math.hypot(C.Transform.px[eid]!, C.Transform.pz[eid]!)));
+    assert.ok(max <= 3.0, `anchored pack stays within the 3 m clump (max: ${max.toFixed(2)} m)`);
   });
 });

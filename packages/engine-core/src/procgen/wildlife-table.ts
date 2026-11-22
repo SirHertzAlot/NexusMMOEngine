@@ -24,8 +24,8 @@
  * `speciesModels`), written to a gitignored file.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { hash } from "./ecology.js";
@@ -229,15 +229,7 @@ export const WildlifeTableSchema = z.strictObject({
 export type WildlifeTable = z.infer<typeof WildlifeTableSchema>;
 export type Species = z.infer<typeof SpeciesSchema>;
 
-function resolveWildlifeTable(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const candidate5 = resolve(here, "../../../../../content/wildlife/wildlife.json");
-  if (existsSync(candidate5)) return candidate5;
-  const candidate4 = resolve(here, "../../../../content/wildlife/wildlife.json");
-  if (existsSync(candidate4)) return candidate4;
-  return resolve(process.cwd(), "content/wildlife/wildlife.json");
-}
-export const DEFAULT_WILDLIFE_TABLE = resolveWildlifeTable();
+export const DEFAULT_WILDLIFE_TABLE = fileURLToPath(new URL("../../../content/wildlife/wildlife.json", import.meta.url));
 
 const trophicOf = (s: Species): "predator" | "prey" | "other" =>
   s.trophic ?? (s.role === "apex_predator" || s.role === "mesopredator" ? "predator" : s.role === "large_herbivore" || s.role === "small_prey" ? "prey" : "other");
