@@ -324,6 +324,13 @@ export function App(): React.ReactElement {
   const [npcs, setNpcs] = useState<NpcView[]>([]);
   const [nearNpc, setNearNpc] = useState<string | null>(null);
   const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  useEffect(() => {
+    if (bagOpen || questsOpen || sheetOpen || civicOpen || Boolean(shop) || Boolean(duel) || Boolean(dialog)) {
+      if (typeof document !== "undefined" && document.pointerLockElement) {
+        document.exitPointerLock?.();
+      }
+    }
+  }, [bagOpen, questsOpen, sheetOpen, civicOpen, shop, duel, dialog]);
   const questsRef = useRef<QuestView[] | null>(null);
   // Dungeon runs (D4): where the player is with a run, the entrance they stand in,
   // and the region to come back to (its address and session token) while away.
@@ -1283,7 +1290,7 @@ function welcomeTimeoutMs(): number | undefined {
           </HudSlot>
         )}
         {sheetOpen && sheet && (
-          <HudSlot id="character-sheet" className="z-10">
+          <HudSlot id="character-sheet" className="z-10 max-h-[calc(100vh-140px)] overflow-y-auto">
             <React.Suspense fallback={<div className="flex items-center justify-center p-4 text-muted-foreground">{t("loading.characterSheet")}</div>}>
               <CharacterSheet name={characterName} attributes={sheet.attributes} stats={sheet.stats} skills={sheet.skills} skillMax={sheet.skillMax} body={body} onTreat={onTreatPart} mastery={mastery} />
             </React.Suspense>
