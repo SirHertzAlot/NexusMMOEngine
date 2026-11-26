@@ -377,6 +377,14 @@ modules that name the disabled one, but not the ones that name those —
 produces a set `resolveModuleSet` refuses, which is what used to happen
 with `economy → items → civic`.
 
+**New module** (EB8) writes the four things that have to agree: the
+manifest, a server entry whose keys match the system names it declares, an
+optional editor entry, and the name you then enable. `module-scaffold.ts`
+holds the generator and its refusals and is browser-safe, so the form and
+`POST /api/editor/modules/scaffold` apply one set of rules; the route
+writes all of the files or none of them, and never over a folder that is
+already there.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):

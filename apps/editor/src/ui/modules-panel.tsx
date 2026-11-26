@@ -24,10 +24,12 @@ import {
   saveEnabled,
   type ModuleInfo,
   type ModuleProblem,
+  scaffoldNewModule,
 } from "../modules-client.js";
 import { Button, MIcon, SectionTitle, Switch, notify } from "./components.js";
 import { blastRadius, blastSummary, enabledAfterDisabling, needsConfirming, type BlastRadius } from "../module-blast.js";
 import { BlastDialog } from "./blast-dialog.js";
+import { NewModuleDialog } from "./new-module-dialog.js";
 
 /** Editor entries are imported on demand, one per enabled module (Vite resolves the glob). */
 export const moduleRegistry = new ModuleRegistry(
@@ -197,6 +199,9 @@ export function ModulesPanel(): React.JSX.Element {
   const [issues, setIssues] = React.useState<ModuleProblem[]>([]);
   // EB9: what the switch is about to take with it, while it waits for a yes.
   const [confirm, setConfirm] = React.useState<BlastRadius | null>(null);
+  // EB8: the "New module" form, and whatever the host said if it refused.
+  const [creating, setCreating] = React.useState(false);
+  const [createIssues, setCreateIssues] = React.useState<ModuleProblem[]>([]);
   const state = reg.state;
 
   async function toggle(name: string, on: boolean): Promise<void> {
@@ -232,6 +237,22 @@ export function ModulesPanel(): React.JSX.Element {
     else void toggle(name, false);
   }
 
+  /** Write a new module's files, then show it in the list (EB8). */
+  async function createModule(req: Parameters<typeof scaffoldNewModule>[0]): Promise<void> {
+    setBusy(true);
+    try {
+      const made = await scaffoldNewModule(req);
+      setCreating(false);
+      setCreateIssues([]);
+      notify(`Created ${made.files.length} file${made.files.length === 1 ? "" : "s"} for ${made.name}. ${made.next[0]}`);
+    } catch (e) {
+      setCreateIssues(e instanceof ModulesError ? e.issues : [{ module: req.name, path: "", message: e instanceof Error ? e.message : String(e) }]);
+    } finally {
+      await reg.refresh();
+      setBusy(false);
+    }
+  }
+
   async function apply(): Promise<void> {
     setBusy(true);
     try {
@@ -265,6 +286,17 @@ export function ModulesPanel(): React.JSX.Element {
           if (name) void toggle(name, false);
         }}
       />
+      <NewModuleDialog
+        open={creating}
+        existing={state.modules.map((m) => m.name)}
+        busy={busy}
+        issues={createIssues}
+        onCancel={() => {
+          setCreating(false);
+          setCreateIssues([]);
+        }}
+        onCreate={(req) => void createModule(req)}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <SectionTitle>Modules</SectionTitle>
         <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -272,6 +304,9 @@ export function ModulesPanel(): React.JSX.Element {
         </span>
         <div className="ml-auto flex items-center gap-2">
           {stale && <Tag>Play server needs a restart</Tag>}
+          <Button variant="outline" disabled={busy} onClick={() => setCreating(true)} data-testid="new-module">
+            <MIcon name="add" size={16} /> New module
+          </Button>
           <Button disabled={busy} onClick={() => void apply()}>
             <MIcon name="restart_alt" size={16} /> Apply modules
           </Button>

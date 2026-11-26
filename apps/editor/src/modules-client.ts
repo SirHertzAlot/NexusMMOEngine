@@ -132,6 +132,13 @@ export const saveEnabled = (enabled: string[], base = ""): Promise<void> => call
 /** Restart the owned play server with the saved set (no-op when none is running). */
 export const applyModules = (base = ""): Promise<{ restarted: boolean }> => call(`${base}/api/editor/modules/apply`, "apply failed", "POST");
 
+/** EB8: write a new module's files; throws ModulesError with every refusal. */
+export const scaffoldNewModule = (
+  req: { name: string; description: string; dependsOn?: string[]; systems?: string[]; editor?: boolean; after?: string },
+  base = "",
+): Promise<{ name: string; files: string[]; next: string[] }> =>
+  call(`${base}/api/editor/modules/scaffold`, "module scaffold failed", "POST", req);
+
 /** EA10: build a module's native addon via node-gyp. */
 export const buildNative = (name: string, base = ""): Promise<{ ok: boolean; built: boolean; path: string | null; stdout: string; stderr: string }> =>
   call(`${base}/api/editor/modules/${encodeURIComponent(name)}/build`, "native build failed", "POST");

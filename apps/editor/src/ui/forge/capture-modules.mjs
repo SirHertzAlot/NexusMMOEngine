@@ -149,6 +149,19 @@ await tab.waitForTimeout(250);
 await tab.screenshot({ path: resolve(outDir, "eb9-blast-dialog.png") });
 console.log(`wrote ${resolve(outDir, "eb9-blast-dialog.png")}`);
 
+// EB8: the New module form, filled in but not submitted — the capture host
+// refuses writes, and a picture must not add a module to the repository.
+await tab.getByRole("button", { name: "Cancel" }).click();
+await tab.getByTestId("new-module").click();
+await tab.waitForSelector('[data-testid="new-module-dialog"]');
+await tab.getByTestId("new-module-name").fill("weather");
+await tab.getByTestId("new-module-description").fill("Storms, seasons and the sky the client draws them in.");
+await tab.getByTestId("new-module-systems").fill("storms, seasons");
+await tab.getByTestId("new-module-editor").check();
+await tab.waitForTimeout(250);
+await tab.screenshot({ path: resolve(outDir, "eb8-new-module.png") });
+console.log(`wrote ${resolve(outDir, "eb8-new-module.png")}`);
+
 await browser.close();
 server.close();
 rmSync(resolve(repoRoot, "tmp_forge_eb9_preview"), { recursive: true, force: true });

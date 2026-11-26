@@ -18,11 +18,12 @@
  */
 
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { discoverModules, readEnabledSet, resolveModuleSet, type Problem } from "@mmo-engine/modules";
 import { invalidMessage } from "./api.js";
+import { refuseScaffold, scaffoldModule, type ScaffoldRequest } from "./module-scaffold.js";
 
 export interface ModulesHooks {
   /** The running owned server's tick order, null when none is running or it has not reported one. */
@@ -131,6 +132,51 @@ async function handleNativeRoute(
   }
 }
 
+/**
+ * Write a new module (EB8). Refused as a whole or not at all: the request is
+ * checked against the modules that exist, the directory must not already be
+ * there, and nothing is written until every path has been decided. The name
+ * is matched against the module-name rule before any path is built from it,
+ * so the only place a file can land is `modules/<name>/`.
+ */
+function scaffoldRoute(repoRoot: string, method: string, body: string | undefined): ModulesRouteResult {
+  if (method !== "POST") return { status: 405, body: { ok: false, error: "use POST" } };
+  let req: ScaffoldRequest;
+  try {
+    req = JSON.parse(body ?? "") as ScaffoldRequest;
+  } catch {
+    return { status: 400, body: { ok: false, error: "body must be JSON" } };
+  }
+  const modulesDir = join(repoRoot, "modules");
+  const existing = discoverModules(modulesDir).valid.map((m) => m.manifest.name);
+  const refusals = refuseScaffold(req, existing);
+  if (refusals.length > 0) {
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        error: invalidMessage("module", refusals.length),
+        issues: refusals.map((r) => ({ module: String(req.name ?? ""), path: r.path, message: r.message })),
+      },
+    };
+  }
+  const plan = scaffoldModule(req);
+  const dir = join(modulesDir, plan.name);
+  if (existsSync(dir)) {
+    return { status: 409, body: { ok: false, error: `modules/${plan.name} already exists` } };
+  }
+  try {
+    for (const file of plan.files) {
+      const target = join(repoRoot, file.path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, file.contents, { encoding: "utf8", flag: "wx" });
+    }
+  } catch (e) {
+    return { status: 500, body: { ok: false, error: e instanceof Error ? e.message : String(e) } };
+  }
+  return { status: 200, body: { ok: true, name: plan.name, files: plan.files.map((f) => f.path), next: plan.next } };
+}
+
 export async function handleModulesRoute(
   repoRoot: string,
   method: string,
@@ -144,6 +190,8 @@ export async function handleModulesRoute(
     const [, name, action] = nativeMatch;
     return handleNativeRoute(repoRoot, name, action, method);
   }
+  // EB8: POST /api/editor/modules/scaffold → write a new module's files.
+  if (pathname === `${BASE}/scaffold`) return scaffoldRoute(repoRoot, method, body);
   if (pathname !== BASE && pathname !== `${BASE}/apply`) return null;
   const modulesDir = join(repoRoot, "modules");
   const issues = (problems: Problem[]): ModulesRouteResult => ({
