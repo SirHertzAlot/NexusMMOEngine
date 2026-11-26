@@ -326,6 +326,32 @@ the reading and serves `GET /api/editor/scene/visuals`; `ui/scene-view.ts`
 draws it. A checkout without `assets/` loses only the models: every size
 above still comes out right.
 
+## 2f. The Scenes workspace layout (ROADMAP EB4, EB4b)
+
+The canvas is the workspace, not a figure inside a form:
+
+- The viewport's tools float on the canvas in a translucent bar, and its
+  notes — "No terrain (grid only)", "Stand-in sizes (no art pack)" — sit in
+  a status strip at its foot. Nothing above or below pushes the canvas down
+  the page.
+- What you can drop into the scene is a column of its own beside the
+  Outliner (`ui/scene-palette.tsx`): searchable, grouped (Creatures, Props,
+  PICG) and scrolling. Drag an item onto the ground, or click it to place it
+  at the point the camera is looking at. `placeables-filter.ts` holds the
+  search so the ordering and the "no match" case are testable on their own.
+- The palette and the viewport read one hook for the list
+  (`ui/placeables-store.ts`), which is the rule in
+  [How the editor is layered](#how-the-editor-is-layered): one hook per data
+  source, mounted by every presentation of it.
+
+The forge theme reaches these controls through variables, not components.
+Every primitive in `ui/components.tsx` reads the legacy shadcn aliases
+(`--primary`, `--background`, `--input` and the rest), so `forge.css`
+redefines all of them alongside the `--m3-*` roles; until it did, every
+Button, Input and Select in the editor stayed Material 3 purple under the
+theme. `test/forge-aliases.test.ts` fails if a variable one theme declares
+is missing from the other.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):

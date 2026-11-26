@@ -41,6 +41,7 @@ import { readClipboard, writeClipboard } from "./clipboard.js";
 import { subscribeOpenAsset } from "./open-asset.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
+import { ScenePalette } from "./scene-palette.js";
 
 /** Scene names become file names: lowercase letters, digits and dashes, starting with a letter or digit. */
 export const SCENE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -407,7 +408,11 @@ export function ScenesPanel(): React.JSX.Element {
           {issues.map((i, k) => <li key={k}><code>{i.path || "(scene)"}</code>: {i.message}</li>)}
         </ul>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(150px,1fr)_minmax(320px,3fr)_minmax(220px,1.3fr)] gap-3">
+      {/* EB4: the viewport is the workspace, so it takes the room and the
+          rest is a rail either side of it — the tree and what you can drop
+          on the left, the selection on the right. */}
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(190px,1fr)_minmax(420px,4fr)_minmax(240px,1.4fr)] gap-3">
+        <div className="grid min-h-0 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-2">
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Outliner">
           <SectionTitle>Outliner</SectionTitle>
           <div className="mb-2 flex flex-wrap gap-1">
@@ -467,8 +472,10 @@ export function ScenesPanel(): React.JSX.Element {
               ) : (
                 <>
                   <span className="flex items-baseline gap-1.5">
-                    <span className="min-w-0 truncate">{n.name || n.id}</span>
-                    <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
+                    {/* The name takes the free space first: before EB4 the
+                        chips pushed it down to "Aren…" on every row. */}
+                    <span className="min-w-0 flex-1 truncate">{n.name || n.id}</span>
+                    <span className="shrink-0 text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
                     {/* EU4: the component chips both mockups put on every
                         outliner row. Same data the ECS entity list has always
                         badged; this tree simply never drew it. */}
@@ -509,6 +516,15 @@ export function ScenesPanel(): React.JSX.Element {
           )}
           {open && doc.nodes.length === 0 && <p className="text-xs opacity-70">Empty scene. Add a node.</p>}
         </section>
+        <ScenePalette
+          enabled={Boolean(open)}
+          onPlace={(prefab, position) => {
+            const placed = placePrefab(hist.doc, prefab, position);
+            run(`place ${prefab}`, () => placed.doc);
+            select(placed.id, "viewport");
+          }}
+        />
+        </div>
         <section className="min-h-0" aria-label="Viewport">
           <SceneViewport
             doc={doc}
