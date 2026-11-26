@@ -330,13 +330,13 @@ function CombatHudImpl(props: CombatHudProps): React.ReactElement {
         </div>
       )}
 
-      {/* Persistent Compact Combat Stance & Aim Bar (bottom-right above controls) */}
+      {/* Persistent Compact Combat Stance & Aim Bar (bottom-right left of HUD buttons) */}
       <div
         data-testid="combat-stance-bar"
         style={{
           position: "absolute",
-          right: 18,
-          bottom: 76,
+          right: 128,
+          bottom: 16,
           background: "rgba(15, 23, 42, 0.82)",
           border: "1px solid rgba(148, 163, 184, 0.28)",
           borderRadius: 8,
