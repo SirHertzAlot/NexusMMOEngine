@@ -23,6 +23,7 @@ import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { AbilityEvent, AbilityState, TriggerResult } from "./vocabulary.js";
 
 export interface AbilityDef {
   id: string;
@@ -32,18 +33,6 @@ export interface AbilityDef {
   cooldownMs: number;
   /** Cast time, ms; 0 means instant. */
   castMs: number;
-}
-
-export type TriggerResult = "fired" | "queued" | "rejected";
-export type AbilityState = "casting" | "queued" | "fired" | "interrupted" | "rejected";
-
-export interface AbilityEvent {
-  tick: number;
-  entity: number;
-  id: string;
-  state: AbilityState;
-  /** Why a trigger was rejected ("cooldown", "unknown"). */
-  reason?: string;
 }
 
 interface EntityState {
