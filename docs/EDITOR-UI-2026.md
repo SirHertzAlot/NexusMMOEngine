@@ -271,6 +271,11 @@ list, not a blocker.
   open, and they touch `authoring-view.tsx`, whose line numbers the
   committed ECS graph pins, so that half regenerates the artifact.
 - **EU5** — dock regrouped to four tabs; Source Control moves in.
+  **Integrations** is built (`ui/forge-integrations.tsx`) — the runtime
+  node, the worktree, the soft locks and the ECS graph's freshness, with
+  VS Code and Blender listed as not set up. The regrouping waits on
+  `EU8` and `EU9`: two of the four tabs have nothing behind them, and
+  this shell does not draw empty tabs.
 - **EU6** — viewport gizmos, axis widget, mode segment.
 - **EU7** — profiler panel; per-system tick cost. It does NOT need a
   server feed: `TickTimings` in engine-core has recorded both since the

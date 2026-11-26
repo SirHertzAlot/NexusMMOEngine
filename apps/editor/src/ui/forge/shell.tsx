@@ -18,6 +18,7 @@ import { ForgeContextBar } from "../forge-chrome.js";
 import { ForgeEntityInspector } from "../forge-inspector.js";
 import { ForgeProfilerView, type Timings } from "../forge-profiler.js";
 import { ForgeSystemsView, systemSignatures } from "../forge-systems.js";
+import { ForgeIntegrationsView, integrationRows } from "../forge-integrations.js";
 import { indexEcsGraph, type EcsGraphPayload } from "../../ecs-graph-model.js";
 import { editorSelection } from "../editor-selection.js";
 import { setTool } from "../tool-store.js";
@@ -163,7 +164,17 @@ function ProfilerShot(): React.JSX.Element {
     <div
       data-shot="profiler"
       data-theme="forge"
-      style={{ width: 560, height: 460, background: "var(--fg-canvas)", padding: 8 }}
+      style={{
+        width: 560,
+        height: 460,
+        background: "var(--fg-canvas)",
+        padding: 8,
+        // The panels inside scroll, so the shot must bound them;
+        // without this they grow and overlap the next section.
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
     >
       <ForgeProfilerView state={{ kind: "timings", timings: TIMINGS }} />
     </div>
@@ -184,9 +195,62 @@ function SystemsShot(): React.JSX.Element {
     <div
       data-shot="systems"
       data-theme="forge"
-      style={{ width: 560, height: 560, background: "var(--fg-canvas)", padding: 8 }}
+      style={{
+        width: 560,
+        height: 560,
+        background: "var(--fg-canvas)",
+        padding: 8,
+        // The panels inside scroll, so the shot must bound them;
+        // without this they grow and overlap the next section.
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
     >
       <ForgeSystemsView signatures={signatures} costs={costs} />
+    </div>
+  );
+}
+
+/**
+ * The integrations shot. Inputs are a plausible working state fed
+ * through the panel's real `integrationRows`, which decides every tone
+ * and word on screen — including the two we have not built, which the
+ * list always carries.
+ */
+function IntegrationsShot(): React.JSX.Element {
+  const rows = integrationRows({
+    play: "running",
+    vcs: {
+      branch: "claude/editor-ui-2026",
+      files: [file("content/scenes/arena.json"), file("content/rules/combat.json")],
+    },
+    locks: { "content/scenes/arena.json": { owner: "sam", since: "2026-11-26T10:00:00Z" } },
+    graph: {
+      state: "stale",
+      graphCommit: "207c31b",
+      compareCommit: "a3b7d7b",
+      compareLabel: "repo HEAD",
+      reason: "stale · graph 207c31b != repo HEAD a3b7d7b",
+    },
+  });
+  return (
+    <div
+      data-shot="integrations"
+      data-theme="forge"
+      style={{
+        width: 560,
+        height: 360,
+        background: "var(--fg-canvas)",
+        padding: 8,
+        // The panels inside scroll, so the shot must bound them;
+        // without this they grow and overlap the next section.
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <ForgeIntegrationsView rows={rows} />
     </div>
   );
 }
@@ -194,9 +258,10 @@ function SystemsShot(): React.JSX.Element {
 const root = document.getElementById("root");
 if (!root) throw new Error("forge shell preview: #root missing");
 createRoot(root).render(
-  <>
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 16 }}>
     <Shell />
     <ProfilerShot />
     <SystemsShot />
-  </>,
+    <IntegrationsShot />
+  </div>,
 );

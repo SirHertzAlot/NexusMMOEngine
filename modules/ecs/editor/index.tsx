@@ -5,6 +5,7 @@ import * as React from "react";
 import { EcsInspectorPanel } from "../../../apps/editor/src/ui/ecs-inspector.js";
 import { ForgeEntityInspector } from "../../../apps/editor/src/ui/forge-inspector.js";
 import { ForgeSystemsPanel } from "../../../apps/editor/src/ui/forge-systems.js";
+import { ForgeIntegrationsPanel } from "../../../apps/editor/src/ui/forge-integrations.js";
 
 export const panels = [
   {
@@ -31,5 +32,14 @@ export const panels = [
     title: "Systems",
     icon: "schema",
     render: () => <ForgeSystemsPanel />,
+  },
+  {
+    // One status list for what the editor is wired to, and what it is not
+    // (docs/EDITOR-UI-2026.md §2.6). The styling mockup's Integrations tab.
+    id: "ecs-integrations",
+    workspace: "debug",
+    title: "Integrations",
+    icon: "hub",
+    render: () => <ForgeIntegrationsPanel />,
   },
 ];
