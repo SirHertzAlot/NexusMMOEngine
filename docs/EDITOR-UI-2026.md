@@ -328,7 +328,19 @@ list, not a blocker.
   `vcs-host.ts`'s, restated here because this is the second tool that
   could cross that line. Still open: the Code tab itself, which needs
   the four-tab regrouping, and a file tree is not what it should hold.
-- **EU10** — Blender live-link, if still wanted.
+- **EU10** — Blender live-link. Built, and the direction is decided by
+  where the work happens: Blender pushes, the editor receives.
+  `scripts/blender/mmo_live_link.py` is the add-on to copy (Blender's
+  own Python and the standard library, nothing to `pip install`); it
+  exports the selection to glTF and POSTs it to
+  `/api/editor/blender/push`, which streams it into `assets/live/` —
+  gitignored in full, served on loopback, refused by `vcs-host.ts` —
+  so a work in progress cannot be committed by accident. The panel is
+  the receiving end (`ui/blender-panel.tsx`), with the editor's own
+  `ModelPreview` on the newest model. HTTP rather than a websocket: a
+  socket would only buy editor-to-Blender commands and would need a
+  modal timer in Blender's main thread to pump. Guide:
+  [BLENDER-LINK.md](BLENDER-LINK.md).
 
 EU1–EU5 are presentation over data we already hold. EU6 onward is new
 capability and each needs its own PR with captures.
@@ -363,6 +375,12 @@ running shell:
 - `src/ui/forge/capture-shell.mjs` also shoots the systems list over the
   committed `content/graph/ecs-graph.json` itself, the integrations list,
   the outliner badges and the console.
+- `src/ui/forge/capture-blender.mjs` — the live link with a model that
+  actually arrived: there is no Blender in CI, so the harness pushes a
+  committed test fixture through the real `/api/editor/blender/push`
+  exactly as the add-on would, and everything after that — the host's
+  checks, the write, the index, the panel's poll, the preview — is the
+  shipped path.
 - `src/ui/forge/capture-dock.mjs` — the **running** editor
   (`npm run dev --workspace apps/editor` first), one still per dock tab
   under the forge theme. It exits non-zero on a page error, because a

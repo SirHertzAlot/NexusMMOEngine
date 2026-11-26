@@ -17,12 +17,12 @@
  *   - the committed ECS graph and whether it still matches the commit
  *     it was built from (`checkGraphStaleness`, ecs-graph-model.ts).
  *
- * Since `EU8` and `EU9` the console and the VS Code handoff exist, so
- * the VS Code row reports what the host found on this machine's PATH.
- * The one that still does not exist — the Blender live-link (`EU10`) —
- * is listed as **not set up**, with the reason, rather than as a
- * failure or as a blank space. A status list that hides what is missing
- * is not a status list.
+ * Since `EU8`–`EU10` every row reports something real: the VS Code row
+ * reports what the host found on this machine's PATH, and the Blender
+ * row what the live link has received. A row with nothing behind it
+ * still says **not set up**, with the reason, rather than reading as a
+ * failure or as a blank space — a status list that hides what is
+ * missing is not a status list.
  */
 
 import * as React from "react";
@@ -30,6 +30,8 @@ import { checkGraphStaleness, fetchEcsGraph, type GraphStaleness } from "../ecs-
 import { vcsLocks, vcsStatus, type VcsFile } from "../vcs-client.js";
 import { playUiStore } from "./play-ui-store.js";
 import { codeStatus, type CodeStatus } from "../code-client.js";
+import { blenderLink, type BlenderLink } from "../blender-client.js";
+import { sinceLabel } from "../blender-link.js";
 import { serverChip } from "./forge-chrome.js";
 import type { PlayModeState } from "../play-mode.js";
 
@@ -51,6 +53,10 @@ export interface IntegrationInputs {
   graph: GraphStaleness | null;
   /** What the host found when it looked for `code` on PATH (EU9). */
   code: CodeStatus | null;
+  /** What Blender has pushed through the live link (EU10). */
+  blender: BlenderLink | null;
+  /** For the age on the Blender row; injectable so a test is not a clock. */
+  now?: number;
 }
 
 /** Plural that reads: "1 file", "3 files". */
@@ -156,14 +162,32 @@ export function integrationRows(input: IntegrationInputs): IntegrationRow[] {
           },
   );
 
-  // The one the mockups show that we have not built. Named, with the
-  // slice that would build it, so the list is honest about its holes.
-  rows.push({
-    id: "blender",
-    label: "Blender live-link",
-    state: "absent",
-    detail: "not set up — bridge add-on and glTF import (roadmap EU10)",
-  });
+  // The live link (EU10). The add-on pushes; the editor receives. No
+  // model yet is "not set up", not a failure: nothing is wrong, nobody
+  // has sent anything.
+  const now = input.now ?? Date.now();
+  rows.push(
+    input.blender === null
+      ? {
+          id: "blender",
+          label: "Blender live-link",
+          state: "absent",
+          detail: "the dev host is not serving /api/editor/blender",
+        }
+      : input.blender.models.length === 0
+        ? {
+            id: "blender",
+            label: "Blender live-link",
+            state: "absent",
+            detail: `no model received yet — install ${input.blender.addon} in Blender`,
+          }
+        : {
+            id: "blender",
+            label: "Blender live-link",
+            state: "ok",
+            detail: `${count(input.blender.models.length, "model")} in ${input.blender.dir} · newest ${sinceLabel(input.blender.models[0].at, now)}`,
+          },
+  );
 
   return rows;
 }
@@ -225,6 +249,7 @@ export function useIntegrations(periodMs = POLL_MS): IntegrationInputs {
   // The editor handoff is a property of the machine, not of this session:
   // probed once rather than every poll.
   const [code, setCode] = React.useState<CodeStatus | null>(null);
+  const [blender, setBlender] = React.useState<BlenderLink | null>(null);
 
   React.useEffect(() => {
     let live = true;
@@ -238,6 +263,10 @@ export function useIntegrations(periodMs = POLL_MS): IntegrationInputs {
       vcsLocks().then(
         (l) => live && setLocks(l.locks),
         () => live && setLocks(null),
+      );
+      blenderLink().then(
+        (b) => live && setBlender(b),
+        () => live && setBlender(null),
       );
       fetchEcsGraph().then(
         (p) => live && setGraph(checkGraphStaleness(p.meta.builtFromCommit, null, p.currentHead)),
@@ -256,7 +285,7 @@ export function useIntegrations(periodMs = POLL_MS): IntegrationInputs {
     };
   }, [periodMs]);
 
-  return { play: pmState, vcs, locks, graph, code };
+  return { play: pmState, vcs, locks, graph, code, blender };
 }
 
 export function ForgeIntegrationsPanel(): React.JSX.Element {

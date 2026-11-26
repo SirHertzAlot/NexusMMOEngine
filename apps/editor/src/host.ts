@@ -48,6 +48,8 @@
  *                                    400 with per-path issues when invalid
  *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
  *   GET/PUT /api/editor/scale      → the global scale document content/scale.json (scale-host.ts)
+ *   GET  /api/editor/blender       → the live link: where models land, the add-on, what has arrived
+ *   POST /api/editor/blender/push?name=… → a .glb from the Blender add-on, streamed into assets/live
  *   GET  /api/editor/code          → whether `code` is on PATH, and the repo root (code-host.ts)
  *   POST /api/editor/code/open     → {source} | {path, line?}: open that source location in VS Code;
  *                                    repository-relative only, never under assets/
@@ -134,6 +136,7 @@ import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
 import { handleScaleRoute } from "./scale-host.js";
 import { handleCodeRoute } from "./code-host.js";
+import { handleBlenderRoute } from "./blender-host.js";
 import { handleContentDocsRoute } from "./content-docs-host.js";
 import { handleSettlementRoute } from "./settlement-host.js";
 import { SettlementBake } from "./settlement-bake.js";
@@ -1557,6 +1560,19 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (stringsReply) {
             sendJson(res, stringsReply.status, stringsReply.body);
+            return;
+          }
+          // The Blender live link: the add-on pushes a .glb, streamed
+          // straight to assets/live rather than buffered (blender-host.ts, EU10).
+          const blenderReply = await handleBlenderRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            scenesUrl.searchParams,
+            req.method === "POST" ? req : undefined,
+          );
+          if (blenderReply) {
+            sendJson(res, blenderReply.status, blenderReply.body);
             return;
           }
           // The VS Code handoff: is `code` on PATH, and open a file at a line (code-host.ts, EU9).

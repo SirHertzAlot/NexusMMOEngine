@@ -7,6 +7,7 @@ import { ForgeEntityInspector } from "../../../apps/editor/src/ui/forge-inspecto
 import { ForgeSystemsPanel } from "../../../apps/editor/src/ui/forge-systems.js";
 import { ForgeIntegrationsPanel } from "../../../apps/editor/src/ui/forge-integrations.js";
 import { ForgeConsolePanel } from "../../../apps/editor/src/ui/forge-console.js";
+import { BlenderLinkPanel } from "../../../apps/editor/src/ui/blender-panel.js";
 
 export const panels = [
   {
@@ -42,6 +43,14 @@ export const panels = [
     title: "Integrations",
     icon: "hub",
     render: () => <ForgeIntegrationsPanel />,
+  },
+  {
+    // What Blender has pushed through the live link (docs/BLENDER-LINK.md).
+    id: "ecs-blender",
+    workspace: "artaudio",
+    title: "Blender link",
+    icon: "deployed_code",
+    render: () => <BlenderLinkPanel />,
   },
   {
     // One console over every stream the editor already produced

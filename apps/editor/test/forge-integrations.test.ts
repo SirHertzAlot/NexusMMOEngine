@@ -25,7 +25,9 @@ function file(path: string, over: Partial<VcsFile> = {}): VcsFile {
 }
 
 /** Everything unreachable: the state the panel is in before its first read. */
-const COLD: IntegrationInputs = { play: "idle", vcs: null, locks: null, graph: null, code: null };
+const NOW = Date.UTC(2026, 10, 26, 12, 0, 0);
+
+const COLD: IntegrationInputs = { play: "idle", vcs: null, locks: null, graph: null, code: null, blender: null, now: NOW };
 
 const WARM: IntegrationInputs = {
   play: "running",
@@ -33,6 +35,12 @@ const WARM: IntegrationInputs = {
   locks: {},
   graph: { state: "synced", graphCommit: "abc1234", compareCommit: "abc1234", compareLabel: "repo HEAD", reason: "synced · abc1234" },
   code: { repoRoot: "/home/sam/engine", editor: { command: "code", found: true, version: "1.96.2" } },
+  blender: {
+    dir: "assets/live",
+    addon: "scripts/blender/mmo_live_link.py",
+    models: [{ name: "hero", bytes: 2_200_000, at: NOW - 120_000, pushes: 2, from: "hero.blend" }],
+  },
+  now: NOW,
 };
 
 const row = (input: IntegrationInputs, id: string) => {
@@ -100,13 +108,22 @@ describe("the runtime row", () => {
   });
 });
 
-describe("what we have not built", () => {
-  it("lists Blender always, as not set up, naming the slice that would build it", () => {
-    for (const input of [COLD, WARM]) {
-      const blender = row(input, "blender");
-      assert.equal(blender.state, "absent");
-      assert.match(blender.detail, /EU10/);
-    }
+describe("the rows for what the mockups show and we had not built", () => {
+  it("reports the Blender live link from what it has actually received", () => {
+    // Route unreachable: absent, and it says which route.
+    assert.equal(row(COLD, "blender").state, "absent");
+    assert.match(row(COLD, "blender").detail, /not serving/);
+    // Reachable but empty: still "not set up", because nothing is wrong —
+    // nobody has sent a model yet — and it says how to start.
+    const empty: IntegrationInputs = {
+      ...WARM,
+      blender: { dir: "assets/live", addon: "scripts/blender/mmo_live_link.py", models: [] },
+    };
+    assert.equal(row(empty, "blender").state, "absent");
+    assert.match(row(empty, "blender").detail, /mmo_live_link\.py/);
+    // A model received: connected, with how many and how long ago.
+    assert.equal(row(WARM, "blender").state, "ok");
+    assert.match(row(WARM, "blender").detail, /1 model in assets\/live · newest 2 min ago/);
   });
 
   it("reports the VS Code handoff from the probe, never from hope", () => {
@@ -143,7 +160,7 @@ describe("the panel", () => {
     const warm = renderToStaticMarkup(
       React.createElement(ForgeIntegrationsView, { rows: integrationRows(WARM) }),
     );
-    assert.match(warm, /5 of 6 connected/);
+    assert.match(warm, /6 of 6 connected/);
   });
 
   it("acts on nothing: it is a read-out", () => {

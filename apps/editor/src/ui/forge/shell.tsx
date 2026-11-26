@@ -238,6 +238,11 @@ function IntegrationsShot(): React.JSX.Element {
     },
     locks: { "content/scenes/arena.json": { owner: "sam", since: "2026-11-26T10:00:00Z" } },
     code: CODE,
+    blender: {
+      dir: "assets/live",
+      addon: "scripts/blender/mmo_live_link.py",
+      models: [{ name: "hero", bytes: 2_200_000, at: Date.now() - 120_000, pushes: 2, from: "hero.blend" }],
+    },
     graph: {
       state: "stale",
       graphCommit: "207c31b",

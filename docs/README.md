@@ -59,6 +59,7 @@ a worked example; they are not a specification you must keep.
 | [CLI.md](CLI.md) | Every command, plus admin console commands, chat commands and keys |
 | [WORLD-SERVER.md](WORLD-SERVER.md) | The world server: registry, leases, hand-offs, the durable record |
 | [ADMIN-COOKBOOK.md](ADMIN-COOKBOOK.md) | Placing and managing authorable things in-game as an admin |
+| [BLENDER-LINK.md](BLENDER-LINK.md) | Sending a model from Blender to the running editor: the add-on, where models land, what the host refuses |
 
 ## Project
 
