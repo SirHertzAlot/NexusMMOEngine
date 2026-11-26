@@ -25,6 +25,7 @@ import type { SystemAccess } from "../system-access.js";
 import * as C from "../components.js";
 import type { WalletSystem } from "./wallet.js";
 import type { ChestView } from "@mmo-engine/protocol";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** How the vendor moves item instances (wired to the ItemService). */
 export interface VendorItems {
@@ -72,6 +73,8 @@ export interface VendorView {
 export const VENDOR_REACH = 4;
 
 export class VendorSystem implements SimSystem {
+  /** Offered to the host as the `vendors` port: its vendors and their stock. */
+  readonly [PORTS] = ["vendors"];
   readonly name = "vendor";
   readonly access: SystemAccess = {
     system: "vendor",

@@ -12,13 +12,21 @@
  * this — and each row carries the methods the gateway calls, so a system
  * that offers a port it cannot answer ends the boot rather than the tick.
  *
- * The event payloads are still declared beside the systems that raise them
+ * Most event payloads are still declared beside the systems that raise them
  * and imported here as types only, so nothing in this file reaches a system
- * at runtime. Moving those payloads into the shared vocabulary is the step
- * that lets the systems themselves move out (`ES5b`).
+ * at runtime. `LifeEvent` already moved to `vocabulary.ts` (`ES5a`); the
+ * rest follow it, which is the step that lets the systems themselves move
+ * out.
  */
 
 import type { PortDecl } from "@mmo-engine/sdk";
+import type { AuctionSystem } from "../economy/auction.js";
+import type { TradeSystem } from "../economy/trade.js";
+import type { VendorSystem } from "../economy/vendor.js";
+import type { WalletSystem } from "../economy/wallet.js";
+import type { GatheringSystem } from "../gathering/index.js";
+import type { BreakSystem, ChestSystem } from "../interact/index.js";
+import type { ResidentSystem } from "../residents/index.js";
 import type { AbilityEvent, TriggerResult } from "../abilities.js";
 import type { HitEvent } from "../combat.js";
 import type { DuelEvent } from "../duel.js";
@@ -72,6 +80,56 @@ export interface DuelPort {
   forget(entity: number, tick: number): void;
 }
 
+
+/**
+ * The economy and world ports (`ES4d`).
+ *
+ * These eight are declared as `Pick<>` of the system that answers them
+ * today, rather than retyped by hand: the gateway calls 70-odd methods
+ * across them, and a hand-written signature that quietly widens one of
+ * those is a bug the compiler would then stop finding. The member list is
+ * still the point — it is the gateway's whole demand on each system, in one
+ * place, and the `import type` carries no code. Writing them out as plain
+ * interfaces is part of the same step that moves the event payloads
+ * (`ES5b`), once the systems themselves have somewhere to go.
+ */
+
+/** Player-to-player trade (catalog 0x21). */
+export type TradePort = Pick<
+  TradeSystem,
+  "drainEvents" | "open" | "offerGold" | "offerItem" | "removeItem" | "accept" | "cancel" | "pending" | "settleFromWorld" | "failSettlement"
+>;
+
+/** A character's gold (catalog 0x21). */
+export type WalletPort = Pick<WalletSystem, "drainChanges" | "balanceOf" | "grant" | "spend">;
+
+/** The auction house (catalog 0x21). */
+export type AuctionPort = Pick<
+  AuctionSystem,
+  "drainEvents" | "list" | "browse" | "bid" | "buyout" | "buyoutTerms" | "cancel" | "releaseEscrow" | "settleFromWorld"
+>;
+
+/** Vendors: their stock, and what a player buys and sells (catalog 0x26). */
+export type VendorPort = Pick<
+  VendorSystem,
+  "views" | "vendorOf" | "list" | "buy" | "buyTerms" | "commitBuyStock" | "sell" | "sellTerms" | "create" | "remove" | "attach" | "attachedTo" | "detach" | "setEnabled" | "setStock" | "templateIds"
+>;
+
+/** Resource nodes and the pouch they fill (catalog 0x27). */
+export type GatheringPort = Pick<
+  GatheringSystem,
+  "views" | "drainChanges" | "has" | "size" | "gather" | "castSeconds" | "pouchMessage"
+>;
+
+/** World chests and the doors that open with them (catalog 0x27). */
+export type ChestPort = Pick<ChestSystem, "views" | "drainChanges" | "has" | "open" | "check">;
+
+/** Breakable props, and mending them (catalog 0x27). */
+export type BreakPort = Pick<BreakSystem, "views" | "drainChanges" | "hasRuin" | "repair" | "checkRepair">;
+
+/** Settlement residents a player talks to (catalog 0x27). */
+export type ResidentPort = Pick<ResidentSystem, "isResident" | "entityOf" | "describe" | "summary" | "talk">;
+
 /** Every port the gateway reads, by the name a system offers it under. */
 export interface GatewayPorts {
   combat: CombatPort;
@@ -80,6 +138,14 @@ export interface GatewayPorts {
   telegraphs: TelegraphPort;
   statuses: StatusPort;
   duels: DuelPort;
+  trade: TradePort;
+  wallet: WalletPort;
+  auction: AuctionPort;
+  vendors: VendorPort;
+  gathering: GatheringPort;
+  chests: ChestPort;
+  breaks: BreakPort;
+  residents: ResidentPort;
 }
 
 /**
@@ -100,4 +166,29 @@ export const GATEWAY_PORTS: readonly PortDecl[] = [
     methods: ["drainEvents", "challenge", "accept", "decline", "yield", "forget"],
     what: "the duel flow",
   },
+  {
+    key: "trade",
+    methods: ["drainEvents", "open", "offerGold", "offerItem", "removeItem", "accept", "cancel", "pending", "settleFromWorld", "failSettlement"],
+    what: "player-to-player trade",
+  },
+  { key: "wallet", methods: ["drainChanges", "balanceOf", "grant", "spend"], what: "a character's gold" },
+  {
+    key: "auction",
+    methods: ["drainEvents", "list", "browse", "bid", "buyout", "buyoutTerms", "cancel", "releaseEscrow", "settleFromWorld"],
+    what: "the auction house",
+  },
+  {
+    key: "vendors",
+    methods: ["views", "vendorOf", "list", "buy", "buyTerms", "commitBuyStock", "sell", "sellTerms", "create", "remove", "attach", "attachedTo", "detach", "setEnabled", "setStock", "templateIds"],
+    what: "vendors and their stock",
+  },
+  {
+    key: "gathering",
+    methods: ["views", "drainChanges", "has", "gather", "pouchMessage"],
+    fields: ["size", "castSeconds"],
+    what: "resource nodes and the pouch",
+  },
+  { key: "chests", methods: ["views", "drainChanges", "has", "open", "check"], what: "world chests and doors" },
+  { key: "breaks", methods: ["views", "drainChanges", "hasRuin", "repair", "checkRepair"], what: "breakable props" },
+  { key: "residents", methods: ["isResident", "entityOf", "describe", "summary", "talk"], what: "settlement residents" },
 ];

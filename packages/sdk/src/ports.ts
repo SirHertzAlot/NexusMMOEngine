@@ -41,6 +41,12 @@ export interface PortDecl {
   readonly key: string;
   /** Methods the host calls on it. A provider missing one fails the boot. */
   readonly methods: readonly string[];
+  /**
+   * Data members the host reads rather than calls — a count, a tunable.
+   * Checked for presence only, since a getter cannot be read at boot
+   * without running it, and a field holding `0` is still a field.
+   */
+  readonly fields?: readonly string[];
   /** What the host uses it for, for the error message. */
   readonly what: string;
 }
@@ -51,9 +57,9 @@ export interface BadPort {
   readonly key: string;
   /** The system's constructor name, or `anonymous`. */
   readonly system: string;
-  /** Why it does not answer: an unknown key, or the methods it lacks. */
-  readonly problem: "unknown port" | "missing methods";
-  /** The methods it lacks, for `missing methods`. */
+  /** Why it does not answer: an unknown key, or the members it lacks. */
+  readonly problem: "unknown port" | "missing members";
+  /** The methods and fields it lacks, for `missing members`. */
   readonly missing: readonly string[];
 }
 
@@ -154,11 +160,13 @@ export function openPorts<P extends object>(
         bad.push({ key, system: systemName(system), problem: "unknown port", missing: [] });
         continue;
       }
-      const missing = decl.methods.filter(
-        (method) => typeof (system as unknown as Record<string, unknown>)[method] !== "function",
-      );
+      const members = system as unknown as Record<string, unknown>;
+      const missing = [
+        ...decl.methods.filter((method) => typeof members[method] !== "function"),
+        ...(decl.fields ?? []).filter((field) => !(field in members)),
+      ];
       if (missing.length > 0) {
-        bad.push({ key, system: systemName(system), problem: "missing methods", missing });
+        bad.push({ key, system: systemName(system), problem: "missing members", missing });
         continue;
       }
       const list = found.get(key);

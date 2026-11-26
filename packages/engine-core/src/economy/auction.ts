@@ -27,6 +27,7 @@
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { WalletSystem } from "./wallet.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** How the auction moves bag items (wired to the ItemStore in server.ts). */
 export interface AuctionItems {
@@ -87,6 +88,8 @@ export const AUCTION_FEE = 0.05;
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
 export class AuctionSystem implements SimSystem {
+  /** Offered to the host as the `auction` port: the auction house. */
+  readonly [PORTS] = ["auction"];
   readonly name = "auction";
   private readonly listings = new Map<number, Listing>();
   /** Item instance -> listing id (one listing per item). */

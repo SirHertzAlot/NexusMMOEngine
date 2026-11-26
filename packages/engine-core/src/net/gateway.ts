@@ -55,7 +55,15 @@ import * as crypto from "node:crypto";
 import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
 import { openPorts, type PortSet } from "@mmo-engine/sdk";
-import { GATEWAY_PORTS, type GatewayPorts } from "./ports.js";
+import {
+  GATEWAY_PORTS,
+  type BreakPort,
+  type ChestPort,
+  type GatewayPorts,
+  type GatheringPort,
+  type ResidentPort,
+  type VendorPort,
+} from "./ports.js";
 import { TickTimings } from "../tick-timings.js";
 import { addComponent, defineQuery, hasComponent } from "bitecs";
 import {
@@ -130,9 +138,7 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
-import { GatheringSystem } from "../gathering/index.js";
-import { BreakSystem, ChestSystem, InteractActionSchema } from "../interact/index.js";
-import { ResidentSystem } from "../residents/index.js";
+import { InteractActionSchema } from "../interact/index.js";
 import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
 import { RemoveComponentArgsSchema, applyRemoveComponent } from "../admin/remove-component.js";
@@ -186,12 +192,8 @@ import * as builtInChat from "../chat.js";
 import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from "../systems.js";
 import { clearOfStatics } from "../prop-collision.js";
 import type { ScaleResolver } from "../scale.js";
-import { WalletSystem } from "../economy/wallet.js";
 import { runCivicAdminCommand, type CivicService } from "../civic/index.js";
 import { lessonCost, lessonPoints, type Lessons } from "../residents/lessons.js";
-import { TradeSystem } from "../economy/trade.js";
-import { VendorSystem } from "../economy/vendor.js";
-import { AuctionSystem } from "../economy/auction.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -1593,8 +1595,7 @@ export class Gateway {
    */
   private sendTrades(_sim: SimWorld, tick: number): TradeMessage[] {
     const all: TradeMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof TradeSystem)) continue;
+    for (const s of this.ports.all("trade")) {
       const events = s.drainEvents();
       if (events.length === 0) continue;
       for (const e of events) {
@@ -1625,8 +1626,7 @@ export class Gateway {
   /** Tell a character their gold balance changed (catalog 0x21, EC1). */
   private sendWallets(_sim: SimWorld, tick: number): WalletMessage[] {
     const all: WalletMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof WalletSystem)) continue;
+    for (const s of this.ports.all("wallet")) {
       const changes = s.drainChanges();
       if (changes.length === 0) continue;
       for (const c of changes) {
@@ -1646,8 +1646,7 @@ export class Gateway {
    */
   private sendAuctions(_sim: SimWorld, tick: number): AuctionMessage[] {
     const all: AuctionMessage[] = [];
-    for (const s of this.systems) {
-      if (!(s instanceof AuctionSystem)) continue;
+    for (const s of this.ports.all("auction")) {
       const events = s.drainEvents();
       if (events.length === 0) continue;
       for (const e of events) {
@@ -3869,7 +3868,7 @@ export class Gateway {
       }
     } else if (cmd.command === "civic") {
       const civicExt = this.extensions.get("civic") as CivicService | undefined;
-      const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+      const wallet = this.ports.first("wallet");
       const r = runCivicAdminCommand(
         civicExt,
         cmd.args,
@@ -4523,7 +4522,7 @@ export class Gateway {
     const points = lessonPoints(l, level, max, info.grandMaster === true);
     if (points <= 0) return this.sendSystem(s, `You have nothing left to learn about ${skill} from them.`);
     const cost = lessonCost(l, level, max);
-    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    const wallet = this.ports.first("wallet");
     if (cost > 0 && (!wallet || !wallet.spend(this.holderOf(s), cost, this.tick))) return this.sendSystem(s, `A lesson in ${skill} costs ${cost} gold.`);
     sheet.grant(i, points, Date.now());
     this.lessonDay.set(key, day);
@@ -5388,7 +5387,7 @@ export class Gateway {
     if (gathering && gathering.size > 0) this.sendEnvelope(s, MessageType.Gather, encodeControl({ kind: "resources", nodes: gathering.views(this.world) } satisfies ResourcesMessage));
     if (gathering && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Gather, encodeControl(gathering.pouchMessage(this.holderOf(s))));
     // The player's gold (catalog 0x21): on join too, not only when it changes.
-    const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+    const wallet = this.ports.first("wallet");
     if (wallet && s.playerEntity !== null) this.sendEnvelope(s, MessageType.Trade, encodeControl({ kind: "wallet", tick: this.tick, balance: wallet.balanceOf(this.holderOf(s)) } satisfies WalletMessage));
     if (this.interest) {
       // Interest management: the next tick sends a full replace of what this session sees.
@@ -5558,7 +5557,7 @@ export class Gateway {
    * comes back as `trade` events, gold as `wallet`.
    */
   private onTrade(s: ClientSession, payload: Uint8Array): void {
-    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    const trade = this.ports.first("trade");
     if (!trade || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "trade outside the world");
       return;
@@ -5682,7 +5681,7 @@ export class Gateway {
    * and nothing has moved anywhere.
    */
   private async onTradeFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
-    const trade = this.systems.find((x): x is TradeSystem => x instanceof TradeSystem);
+    const trade = this.ports.first("trade");
     if (!trade || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "trade outside the world");
       return;
@@ -5756,7 +5755,7 @@ export class Gateway {
    * the pre-allocated purchase item is destroyed, never bagged.
    */
   private async onVendorFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
-    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    const vendor = this.ports.first("vendors");
     if (!vendor || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "vendor outside the world");
       return;
@@ -5799,7 +5798,7 @@ export class Gateway {
       return;
     }
     const wire = parsed.data.vendor;
-    const wallet = this.systems.find((x): x is WalletSystem => x instanceof WalletSystem);
+    const wallet = this.ports.first("wallet");
     if (parsed.data.action === "buy") {
       if (parsed.data.def === undefined) {
         this.sendError(s, 4003, "buy needs a def");
@@ -5913,7 +5912,7 @@ export class Gateway {
    * stays live and no value has moved.
    */
   private async onAuctionFleet(s: ClientSession, payload: Uint8Array): Promise<void> {
-    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    const auction = this.ports.first("auction");
     if (!auction || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "auction outside the world");
       return;
@@ -5985,7 +5984,7 @@ export class Gateway {
    * results come back as `vendor` events, gold as `wallet`.
    */
   private onVendor(s: ClientSession, payload: Uint8Array): void {
-    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    const vendor = this.ports.first("vendors");
     if (!vendor || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "vendor outside the world");
       return;
@@ -6104,7 +6103,7 @@ export class Gateway {
    * parties involved.
    */
   private onAuction(s: ClientSession, payload: Uint8Array): void {
-    const auction = this.systems.find((x): x is AuctionSystem => x instanceof AuctionSystem);
+    const auction = this.ports.first("auction");
     if (!auction || !s.welcomed || s.playerEntity === null) {
       this.sendError(s, 4003, "auction outside the world");
       return;
@@ -6471,28 +6470,28 @@ export class Gateway {
   }
 
   /** The server's gathering system (resource nodes and pouches), if it runs one. */
-  private get gathering(): GatheringSystem | undefined {
-    return this.systems.find((g): g is GatheringSystem => g instanceof GatheringSystem);
+  private get gathering(): GatheringPort | undefined {
+    return this.ports.first("gathering");
   }
 
   /** The server's world chests, if it runs any. */
-  private get chests(): ChestSystem | undefined {
-    return this.systems.find((g): g is ChestSystem => g instanceof ChestSystem);
+  private get chests(): ChestPort | undefined {
+    return this.ports.first("chests");
   }
 
   /** The server's settlement residents (E talks to one), if it runs any. */
-  private get residents(): ResidentSystem | undefined {
-    return this.systems.find((g): g is ResidentSystem => g instanceof ResidentSystem);
+  private get residents(): ResidentPort | undefined {
+    return this.ports.first("residents");
   }
 
   /** The server's vendors (E opens a shop), if it runs any. */
-  private get vendors(): VendorSystem | undefined {
-    return this.systems.find((g): g is VendorSystem => g instanceof VendorSystem);
+  private get vendors(): VendorPort | undefined {
+    return this.ports.first("vendors");
   }
 
   /** The server's breakable props (ruins can be mended), if it runs any. */
-  private get breaks(): BreakSystem | undefined {
-    return this.systems.find((g): g is BreakSystem => g instanceof BreakSystem);
+  private get breaks(): BreakPort | undefined {
+    return this.ports.first("breaks");
   }
 
   /** Tell every player in the world about the chests, doors and ruins that changed this tick (catalog 0x27). */
@@ -6614,7 +6613,7 @@ export class Gateway {
    * stock and pouch when the bar fills. A gather answers with the whole
    * pouch (catalog 0x24), naming what was added.
    */
-  private startGather(s: ClientSession, gathering: GatheringSystem, holder: number, avatar: number, node: number): void {
+  private startGather(s: ClientSession, gathering: GatheringPort, holder: number, avatar: number, node: number): void {
     if (this.casts.has(s)) return; // already casting one
     const check = gathering.gather(this.world, holder, avatar, node, true);
     if (!check.ok) {
@@ -6755,7 +6754,7 @@ export class Gateway {
     const z = C.Transform.pz[avatar];
     const seed = (this.tick * 2654435761 + items.store.size * 40503) >>> 0;
     if (command === "gold") {
-      const wallet = this.systems.find((w): w is WalletSystem => w instanceof WalletSystem);
+      const wallet = this.ports.first("wallet");
       if (!wallet) return fail("no economy on this server");
       const a = GoldArgsSchema.safeParse(args ?? {});
       if (!a.success) return fail("usage: gold {amount}");
@@ -6851,7 +6850,7 @@ export class Gateway {
    */
   private runVendorCommand(s: ClientSession, args: unknown): AdminResult {
     const fail = (message: string): AdminResult => ({ kind: "admin", command: "vendor", ok: false, message });
-    const vendor = this.systems.find((x): x is VendorSystem => x instanceof VendorSystem);
+    const vendor = this.ports.first("vendors");
     if (!vendor) return fail("no vendors on this server");
     const a = VendorArgsSchema.safeParse(args ?? {});
     if (!a.success) return fail('usage: vendor {sub: "define"|"stock"|"attach"|"detach"|"spawn"|"disable"|"enable"|"remove"|"list", ...}');

@@ -88,13 +88,46 @@ test("a system offering a port it cannot answer ends the boot, with every proble
   assert.deepEqual(err.bad[0], {
     key: "combat",
     system: "Half",
-    problem: "missing methods",
+    problem: "missing members",
     missing: ["setStance"],
   });
   assert.equal(err.bad[1]?.problem, "unknown port");
   assert.match(err.message, /2 systems offer a port they cannot answer/);
   assert.match(err.message, /Half offers "combat" without setStance/);
   assert.match(err.message, /Typo offers "combt", which this host does not read/);
+});
+
+test("a field the host reads is checked for presence, not for being callable", () => {
+  const table: readonly PortDecl[] = [
+    { key: "telegraphs", methods: ["drainEvents"], fields: ["size", "castSeconds"], what: "with data members" },
+  ];
+  class WithData {
+    readonly [PORTS] = ["telegraphs"];
+    castSeconds = 0;
+    get size(): number {
+      return 3;
+    }
+    drainEvents(): string[] {
+      return [];
+    }
+  }
+  assert.equal(openPorts<TestPorts>(table, [new WithData()]).has("telegraphs"), true);
+
+  class NoData {
+    readonly [PORTS] = ["telegraphs"];
+    drainEvents(): string[] {
+      return [];
+    }
+  }
+  let err: BadPortError | undefined;
+  try {
+    openPorts<TestPorts>(table, [new NoData()]);
+  } catch (caught) {
+    err = caught as BadPortError;
+  }
+  assert.ok(err instanceof BadPortError);
+  assert.deepEqual(err.bad[0]?.missing, ["size", "castSeconds"]);
+  assert.match(err.message, /NoData offers "telegraphs" without size, castSeconds/);
 });
 
 test("a port declared twice is a mistake in the table itself", () => {

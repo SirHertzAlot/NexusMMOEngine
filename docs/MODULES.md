@@ -155,8 +155,10 @@ and reach again when a key press arrives. It asks for those by **port**, not
 by class.
 
 A port is a name plus the methods behind it. `packages/engine-core/src/net/ports.ts`
-declares the ones our gateway reads — `combat`, `life`, `abilities`,
-`telegraphs`, `statuses`, `duels` — and a system offers one by naming it:
+declares the fourteen our gateway reads — `combat`, `life`, `abilities`,
+`telegraphs`, `statuses`, `duels`, `trade`, `wallet`, `auction`, `vendors`,
+`gathering`, `chests`, `breaks`, `residents` — and a system offers one by
+naming it:
 
 ```ts
 import { PORTS } from "@mmo-engine/sdk";

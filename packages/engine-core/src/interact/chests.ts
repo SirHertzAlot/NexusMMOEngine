@@ -24,6 +24,7 @@ import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { ChestView } from "@mmo-engine/protocol";
 import type { PlacesStore } from "./places-store.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** An interact request (catalog 0x27): an entity's wire id, or a quest giver's or dungeon entrance's content id. */
 const contentId = z.string().min(1).max(64);
@@ -80,6 +81,8 @@ export type ChestResult = { ok: true; items: number } | { ok: false; error: stri
 export type ChestCheck = { ok: true; castSeconds: number; spell: string } | { ok: false; error: string };
 
 export class ChestSystem implements SimSystem {
+  /** Offered to the host as the `chests` port: its chests and the doors they open. */
+  readonly [PORTS] = ["chests"];
   readonly name = "chests";
   readonly access: SystemAccess = {
     system: "chests",

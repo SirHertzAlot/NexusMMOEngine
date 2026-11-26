@@ -28,6 +28,7 @@ import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { PlacesStore } from "./places-store.js";
 import type { ChestView } from "@mmo-engine/protocol";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** What a break tells the host: where, what it was, what it breaks into, and who dealt the last blow. */
 export interface BreakEvent {
@@ -106,6 +107,8 @@ interface Pending {
 }
 
 export class BreakSystem implements SimSystem {
+  /** Offered to the host as the `breaks` port: its breakable props, and mending them. */
+  readonly [PORTS] = ["breaks"];
   readonly name = "breaks";
   readonly access: SystemAccess = {
     system: "breaks",
