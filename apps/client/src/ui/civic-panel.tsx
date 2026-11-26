@@ -207,7 +207,7 @@ export function CivicPanel({
       : reforgeItemId;
 
   return (
-    <div className="pointer-events-auto max-h-[82vh] w-[420px] overflow-y-auto rounded-lg border bg-card/95 p-3 text-card-foreground shadow-md">
+    <div className="pointer-events-auto max-h-[calc(100vh-190px)] w-[420px] overflow-y-auto rounded-lg border bg-card/95 p-3 text-card-foreground shadow-md">
       <div className="mb-2 flex items-center justify-between border-b pb-1.5">
         <div className="text-sm font-semibold">{t("civic.title")}</div>
         <div className="flex items-center gap-1.5">
