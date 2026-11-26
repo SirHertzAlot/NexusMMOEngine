@@ -159,20 +159,9 @@ function layoutOf(rules: BodyRules): Layout {
   };
 }
 
-/**
- * Make a body whole: every part healthy at full health, no wounds, full
- * blood (the admin `heal`). Health is the caller's to fill.
- */
-export function restoreBody(sim: SimWorld, e: number): void {
-  if (!hasComponent(sim.ecs, Body, e)) return;
-  Body.hp[e].fill(1);
-  Body.wound[e].fill(Wound.None);
-  Body.blood[e] = Body.bloodMax[e];
-  Injury.bits[e] = 0;
-  Injury.move[e] = 1;
-  Injury.stamina[e] = 1;
-  Injury.flags[e] = 0;
-}
+
+/** Deterministic 0..1 stream for one blow (mulberry32 over tick and the two entities). */
+export { restoreBody } from "./components.js";
 
 /** Deterministic 0..1 stream for one blow (mulberry32 over tick and the two entities). */
 export function blowRng(tick: number, a: number, b: number): () => number {

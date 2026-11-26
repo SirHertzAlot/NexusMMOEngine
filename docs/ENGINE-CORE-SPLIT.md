@@ -363,6 +363,33 @@ Four changes make that possible:
    eight economy and world systems the gateway still scans for are
    `ES4d`, the same change over a second set.
 
+5. **Nothing the gateway asks for names a system.**
+   *Done (ES4d, ES5a, ES5b, ES5c, ES5d, 2026-11-22 to 2026-11-26.)* A port
+   that still had to *name* the shape it returns was a port that still
+   imported the system the shape lived in. So the shared nouns (`Weapon`,
+   `LifeEvent`), what a combat system announces (hits, abilities,
+   telegraphs, statuses, duels) and what the economy and world systems
+   announce and hand out (trades, balances, listings, vendor stock, gathers,
+   chests, ruins, residents) all moved to `vocabulary.ts`, which depends on
+   the rules package and nothing of the engine's — 29 types. The components
+   those systems write (`Body`, `Injury`, `Mana`, and `Wound`,
+   `BLEEDING_BIT`, `NO_JUMP`, `PART_STATES` with them) moved to
+   `components.ts`, because the engine's own tick reads them to decide
+   whether a bad leg slows you down. `net/ports.ts` now imports four
+   things: the vocabulary, the engine's `SimWorld`, the protocol's wire
+   views and the sdk.
+
+6. **A dungeon run takes its fighting from its game.**
+   *Done (ES5e, 2026-11-26.)* The last hold. `dungeons/instance.ts` is a
+   host in its own right and it *constructed* `CombatSystem`,
+   `DeathSystem` and `StaminaSystem`, which no port can fix: asking for a
+   system by port and deciding how it is built are different things. It
+   declares a slot now (`dungeons/combat-slot.ts`) — the run states what it
+   can tell a game about itself and what it needs back — and
+   `dungeons/default-combat.ts` holds the engine's own wiring of it,
+   passed in by `modules/dungeons/server.js`. That file is what moves into
+   `@mmo-engine/kit-combat`; the dungeon code stays where it is.
+
 ### 3.4 Hooks, reachable
 
 `game.json`'s `hooks` entry is loaded at boot and passed to
@@ -483,6 +510,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 4 | **Service registry** ✅ | Typed resolve replacing the 18 `assembled.byName[...]` and 4 `extensions[...]` reads, plus `game.json`'s `modules` block. Delivered as a typed view over the same two bags, which is why nothing had to live side by side | **Medium**, as judged. What it actually caught: `navigation` was cast to a non-null type at `server.ts:1687` although its consumer takes `NavigationSystem \| null`, and three refs were carrying hand-written structural types because a cast stood in the way of the real ones | Engine-core's 1,991 tests green; booted three ways (defaults, a manifest setting a module's value, a required module disabled); no workload imports `server.ts`, `modules.ts` or `services.ts`, so the tick cannot move |
 | 4b | **The engine without a game** ✅ | Shrink the registry's required list: everything a game may want none of becomes optional, and the wiring that assumed it treats it as absent | **Low**, and it is the cheap half of what stages 5–8 were for: no code moves, so the risk is a path that assumed a system and now meets `null` | `core` alone reports 3 missing instead of 11; `core`, `physics`, `character` reaches `listening`, ticks 70 s and saves clean; a test pins the required list to those three |
 | 4c | **Ports, not classes** ✅ | The gateway names the systems it reaches instead of finding them by class, so a kit can own them | **Low**: a lookup change, no behaviour and no moved code | No `instanceof` of a system class left in `net/gateway.ts`; 271 net tests unchanged; a system offering a port it cannot answer ends the boot |
+| 4d | **Nothing names a system** ✅ | The vocabulary (29 types) and the components a kit's systems write move to where neither owns the other, so every port is written in shared terms; then the dungeon run stops constructing combat at all and takes it from its game | **Low**: type moves and one construction seam, no runtime change | `net/ports.ts` imports four neutral specifiers; `instance.ts` and `manager.ts` build none of the three; a live run ticks the systems its game returned |
 | 5 | **Kits** | `@mmo-engine/kit-combat`, `-progress`, `-economy`, `-quests`, `-dungeons`, `-social`. Code moves out of `engine-core/src` into kit packages; modules import the kit, not `dist/`. Each kit is written to be **forked and edited**, not just configured: small files, no cross-kit imports, and a `README` that says which hook or system to change for the common edits | **High.** ~13,000 LOC moving. Mitigated: one kit per PR, pure file moves with import rewrites and **no behaviour change in the same commit**; the roadmap row records the before/after test counts | Per kit: that kit's tests plus the full root suite; a measured duel and a measured loot roll identical before and after. Plus: the kit still builds with one system deleted, proving a game can drop part of it |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |

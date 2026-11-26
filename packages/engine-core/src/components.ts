@@ -25,9 +25,10 @@
  * not on the wire yet.
  */
 
-import { defineComponent, Types } from "bitecs";
+import { defineComponent, hasComponent, Types } from "bitecs";
 import { MAX_BODY_PARTS, type PartState } from "@mmo-engine/rules";
 import { defineSABComponent } from "./sab-store.js";
+import type { SimWorld } from "./world.js";
 
 export const Transform = defineSABComponent({
   px: Types.f32,
@@ -496,3 +497,25 @@ export const Mana = defineSABComponent({
   current: Types.f32,
   max: Types.f32,
 });
+
+/**
+ * Make a body whole: every part healthy at full health, no wounds, full
+ * blood (the admin `heal`). Health is the caller's to fill.
+ *
+ * It lived in `body.ts`, beside the system that wounds a body, so the admin
+ * console imported a kit's module to heal someone (roadmap ES5e). It writes
+ * nothing but `Body` and `Injury`, which `ES5c` made engine data, so it
+ * belongs with them: a game that replaces the body system entirely still
+ * has an admin `heal` that works, because this resets the layout, not the
+ * rules. `body.ts` re-exports it, so its own importers are unaffected.
+ */
+export function restoreBody(sim: SimWorld, e: number): void {
+  if (!hasComponent(sim.ecs, Body, e)) return;
+  Body.hp[e].fill(1);
+  Body.wound[e].fill(Wound.None);
+  Body.blood[e] = Body.bloodMax[e];
+  Injury.bits[e] = 0;
+  Injury.move[e] = 1;
+  Injury.stamina[e] = 1;
+  Injury.flags[e] = 0;
+}

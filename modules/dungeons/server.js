@@ -17,6 +17,11 @@ import { loadDungeonContent } from "../../packages/engine-core/dist/src/dungeons
 import { DungeonPool } from "../../packages/engine-core/dist/src/dungeons/pool.js";
 import { InstanceManager } from "../../packages/engine-core/dist/src/dungeons/manager.js";
 import { SqliteInstanceResultStore } from "../../packages/engine-core/dist/src/dungeons/results.js";
+// The fighting a run gets. `dungeons/instance.ts` knows only the slot
+// (dungeons/combat-slot.js); this is the engine's own wiring of it, and the
+// only thing a game replaces to fight differently underground. It moves
+// into @mmo-engine/kit-combat with the systems it builds.
+import { defaultDungeonCombat } from "../../packages/engine-core/dist/src/dungeons/default-combat.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.dungeons ?? {};
@@ -42,6 +47,7 @@ export function createSystems(ctx) {
     partyOf: (name) => config.getGateway().partyOf(name),
     weaponOf: (character) => config.getWeaponOf(character),
     armourOf: (character, kind) => config.getArmourOf(character, kind),
+    combat: config.combat ?? defaultDungeonCombat,
     lootPool: () => config.getLootPool(),
     chestPool: () => config.getChestPool(),
     grant: (character, def) => config.grantItem(character, def),

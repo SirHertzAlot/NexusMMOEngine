@@ -1,9 +1,10 @@
 /**
  * A dungeon instance (roadmap D4): a small sandbox engine started from a
  * prebaked layout, apart from the open world. It is its own SimWorld and
- * Gateway on its own port, running the same engine-core systems (stats,
- * creatures, intents, combat, death, stamina, integration) with the
- * layout's walls as its collider. In-process for now; a child process
+ * Gateway on its own port, running the engine's own systems (stats,
+ * creatures, intents, integration) plus whatever fighting its game supplies
+ * through the slot in `./combat-slot.ts`, with the layout's walls as its
+ * collider. In-process for now; a child process
  * later (the world-server spec's deployment path).
  *
  * Players come in with a token the region asked this gateway to `admit`
@@ -24,13 +25,11 @@ import { addComponent, entityExists, hasComponent } from "bitecs";
 import * as C from "../components.js";
 import type { CredentialStore } from "../auth/credentials.js";
 import type { CharacterStore } from "../characters/store.js";
-import { CombatSystem } from "../combat.js";
 import type { Weapon } from "../vocabulary.js";
 import { CreatureSystem } from "../creatures.js";
-import { DeathSystem } from "../death.js";
 import type { LifeEvent } from "../vocabulary.js";
 import type { GameRules } from "../rules/boot.js";
-import { StaminaSystem } from "../stats/stamina-system.js";
+import { NO_DUNGEON_COMBAT, type ArmourKind, type DungeonCombatFactory } from "./combat-slot.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { IntegrateSystem, IntentSystem, type SimSystem } from "../systems.js";
 import { SimWorld } from "../world.js";
@@ -121,7 +120,15 @@ export interface DungeonInstanceOptions {
   /** What a character swings (the region's items); none: fists. */
   weaponOf?: (characterId: number) => Weapon | null;
   /** The share of a blow a character's worn armour lets through; absent: 1. */
-  armourOf?: (characterId: number, kind?: "cut" | "blunt" | "thrust") => number;
+  armourOf?: (characterId: number, kind?: ArmourKind) => number;
+  /**
+   * The game's fighting for this run (`./combat-slot.ts`).
+   *
+   * Absent: the run has no fighting at all — nothing strikes, nothing dies,
+   * and it ends on its timer. `defaultDungeonCombat` in `./default-combat.ts`
+   * is the engine's own, which `modules/dungeons/server.js` passes in.
+   */
+  combat?: DungeonCombatFactory;
   /** Item definitions a kill may roll (the mob pool); empty: no loot. */
   lootPool?: readonly number[];
   /** Item definitions an opened chest may roll (the chest pool); empty: no loot. */
@@ -185,31 +192,29 @@ export class DungeonInstance {
     const rules = opts.game.rules;
     this.world.movement = rules.movement;
     this.creatures = new CreatureSystem({ creatures: rules.creatures.creatures, bases: rules.items.bases, groundHeightAt: () => 0, ai: rules.creatures.ai });
-    const stamina = new StaminaSystem();
     const weaponOf = (e: number): Weapon | null =>
       hasComponent(this.world.ecs, C.CharacterRef, e)
         ? (opts.weaponOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e]) ?? null)
         : this.creatures.weaponOf(e);
-    const armourOf = (e: number, kind?: "cut" | "blunt" | "thrust"): number =>
+    const armourOf = (e: number, kind?: ArmourKind): number =>
       hasComponent(this.world.ecs, C.CharacterRef, e)
         ? (opts.armourOf?.(C.CharacterRef.idHi[e] * 4294967296 + C.CharacterRef.idLo[e], kind) ?? 1)
         : 1;
-    const tuning = { resolution: rules.combat.resolution, unarmed: rules.items.unarmed };
-    const combat = new CombatSystem(30, stamina, {
-      hooks: opts.game.hooks,
-      weaponOf,
-      armourOf,
-      techniqueKind: (t) => rules.combat.techniques[t]?.damageKind,
-      tuning: () => tuning,
-    });
-    const death: DeathSystem = new DeathSystem(
-      opts.game.hooks,
-      30,
-      (e) => combat.lastAttacker(e),
-      (s, e) => this.creatures.isCreature(e) || this.gateway.respawnPlayer(s, e),
-      (e) => (this.creatures.isCreature(e) ? NEVER : undefined),
-      (s, ev) => this.onDeath(s, ev),
-    );
+    // The run's whole demand on a game's fighting, in one place. `place` and
+    // `respawnSeconds` are the dungeon's two rules about dying: a player goes
+    // back to the entrance, and a dead creature stays dead.
+    const fighting =
+      opts.combat?.({
+        tickHz: 30,
+        rules,
+        hooks: opts.game.hooks,
+        weaponOf,
+        armourOf,
+        isCreature: (e) => this.creatures.isCreature(e),
+        place: (s, e) => this.creatures.isCreature(e) || this.gateway.respawnPlayer(s, e),
+        respawnSeconds: (e) => (this.creatures.isCreature(e) ? NEVER : undefined),
+        onDeath: (s, ev) => this.onDeath(s, ev),
+      }) ?? NO_DUNGEON_COMBAT;
     const director: SimSystem = { name: "dungeon-director", step: () => this.direct() };
     // Chests are entities opened with E (interact, 0x27): the opener's rolls from the chest pool join the run's loot.
     this.gathering = opts.rules.veinNodes
@@ -227,7 +232,7 @@ export class DungeonInstance {
     });
     // Props that break (IX4): barrels, crates, urns. The run's blows hurt them like anything with Health; a break rolls loot for the last attacker.
     const breaks = new BreakSystem(breakDefsOf(opts.props), {
-      killerOf: (e) => combat.lastAttacker(e),
+      killerOf: (e) => fighting.lastAttacker(e),
       onBreak: (_s, ev) => this.onPropBroken(ev.killer, ev.loot !== undefined),
       spawnDebris: (s, debris, x, y, z, yaw) => this.spawnDebris(s, debris, x, y, z, yaw),
     });
@@ -254,7 +259,7 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), combat, death, stamina, new IntegrateSystem(), breaks, this.chestSystem, ...(this.gathering ? [this.gathering] : []), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), ...fighting.systems, new IntegrateSystem(), breaks, this.chestSystem, ...(this.gathering ? [this.gathering] : []), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
