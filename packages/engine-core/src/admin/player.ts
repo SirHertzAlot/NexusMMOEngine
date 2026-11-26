@@ -13,8 +13,9 @@
 import { addComponent, hasComponent, removeComponent } from "bitecs";
 import { z } from "zod";
 import { Ability } from "@mmo-engine/protocol";
-import { restoreBody } from "../body.js";
+
 import * as C from "../components.js";
+import { restoreBody } from "../components.js";
 import { clearOfStatics } from "../prop-collision.js";
 import { CHARACTER_CAPSULE } from "../systems.js";
 import type { SimWorld } from "../world.js";

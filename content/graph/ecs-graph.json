@@ -2447,196 +2447,196 @@
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "component:God"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.blood"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.bloodMax"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.clot"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.hp"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.lost"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.seen"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.wound"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Injury.bits"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.blood"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.bloodMax"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.clot"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.hp"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.lost"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.seen"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Body.wound"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Injury.bits"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Injury.flags"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Injury.move"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/engine-core/src/body.ts:190",
+      "source": "packages/engine-core/src/body.ts:179",
       "to": "field:Injury.stamina"
     },
     {
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "a58a7d344f7ae28c4a6c97c3f26d40d7c5f024df",
+    "builtFromCommit": "610988e5b6961983d960f22e290a7dd6740d9a14",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7636,7 +7636,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "15e8bfb9911820477127609e6d94ef9f1f5603eee77ce4222fe18b017852d44e",
+    "graphHash": "97a612de0bba53efa986ea12de512eab70398f0f0f63ed74299a71922693ece9",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -7670,7 +7670,7 @@
       "modules/database/module.json": "8e42b9b27f3fda10cd25f27464200d533a57c66a3afdf878385fdbbbe0bf4ba2",
       "modules/debug/module.json": "9b08a4c265ffdae0d26f858d1082df1cf54757d940dcefcfeed6870be8f8a919",
       "modules/dungeons/module.json": "275fc8c42758e2062978d1145a804dc99da4bd7890f7bf64d5e64f8d2564fd08",
-      "modules/dungeons/server.js": "d8a3a005e35b68ab584c0978fc4895902d7e510e1a189a7cf53885ee48aa2083",
+      "modules/dungeons/server.js": "b60bbaf5e7ced30e6d8b3d5d878b2f51749d4792c0e1018332085221ece76c5a",
       "modules/economy/module.json": "11f94ae013aa613bc7268318f4c6c0cf88ecdbf27345e6a98ede2d455f3c4d04",
       "modules/economy/server.js": "91f5adee90e9f79e8c5f24146d4cba0aee3419563032b1ceb6e61d4714750871",
       "modules/ecs/module.json": "727e0ee9b9658d07a12d24a801c076b50c816a56fa54896c9b004cbaa3aa17f0",
@@ -7705,7 +7705,7 @@
       "packages/engine-core/src/admin/inspect.ts": "0ccb59d66c475325f8948742445d26da0a9ad4760f70bd342c2d0aa7aba623e9",
       "packages/engine-core/src/admin/items.ts": "51f14ca60c5e01648dafb630b1b9f892d81a260c2c02cdb0bd15ea576ebe027a",
       "packages/engine-core/src/admin/live-overlay.ts": "a0a131e62a42828a6fb7acc9ba521402debb1839a4d186e0957625c6ddf81a37",
-      "packages/engine-core/src/admin/player.ts": "dcbf5b13fc9d929138b56b0cefd491f6a3f0dd6bdfc853a2f295d88b461562f7",
+      "packages/engine-core/src/admin/player.ts": "cd7b2031e73a06fba66987a1208d46c364176cea1c1c714b17871baf5149f6dd",
       "packages/engine-core/src/admin/remove-component.ts": "dea9fe97b78e73d516f89ed3c2928c0d055e8f835c0a4b5e55208ea533e652a3",
       "packages/engine-core/src/admin/set.ts": "2e5dd442d5ffd04fdb3a2bd63ec755345d99ce189e5c5d4ffbe0f54031e44723",
       "packages/engine-core/src/admin/spawn.ts": "6826af4e10f34c82b400d9005b09d3ef3c6f5872570c7da82fbd63d3885d24eb",
@@ -7722,7 +7722,7 @@
       "packages/engine-core/src/auth/sqlite-session-store.ts": "b684c4ffa83ac3071005c71d9b188f31bce6a1e7a76176f8c8c2beed0e9df100",
       "packages/engine-core/src/auth/world-credentials.ts": "75aed8d078a5a8aa28ebccceb5cad55fca1f970e969d394a68e28e90ae33f54a",
       "packages/engine-core/src/bake-world.ts": "b0e0b760809f9712996cb7eea28ea4212e835119df6c1b0f3dc9e5af8139ebb8",
-      "packages/engine-core/src/body.ts": "6c267c96ea2484210279c4717ffea62940f702cc119fac52111dcc3b1cb47c46",
+      "packages/engine-core/src/body.ts": "9bc9d890c5adc54ea985e55e578f67cb10e229a872cb8aae640a044ce5126238",
       "packages/engine-core/src/bots.ts": "5ac455102ab97b45b9feaa9735dd8975c1aefc5571d2eb9836e701058764f3b7",
       "packages/engine-core/src/channel-server.ts": "57b4f138e45be40d4d5b754e56a4395b0c88745afaadf68956418bffa8ebf809",
       "packages/engine-core/src/character-bridge.ts": "daec7e70dfd232cdfb3cf6f8d28eae4a344d6011613c80506e93a74dbbd51aea",
@@ -7740,17 +7740,19 @@
       "packages/engine-core/src/civic/index.ts": "0fe309dca3325f06947ffdb83a2be07b716b54f1ecacb45a9de19d3a617a6e27",
       "packages/engine-core/src/combat-content.ts": "9565958f3a28834cb01124fa134818b418184f8a055a507b16deb0bd025f6ae0",
       "packages/engine-core/src/combat.ts": "e17e939e2aa4f8142dd14109d081575ba32ae625f93fbfa83ecf0f248f059885",
-      "packages/engine-core/src/components.ts": "c35600d617fbc5a6fb659129d968e0bb2d140f0a2a9dd4bafad3e0fa14caf2ea",
+      "packages/engine-core/src/components.ts": "92515e1ce29b4d992c7dec7d44cc4498fdb9ba48f1ab7578ce1a348163865e53",
       "packages/engine-core/src/crafting/crafting-service.ts": "06d4b5abaf0e208f8a7c885224d3b2e74651b9d9f8066cde5fcf85aef2ecc7c6",
       "packages/engine-core/src/creatures.ts": "4142bd62c51ad68deb15c2d516d7baff7bfd27d626991142fc58614691ec17c7",
       "packages/engine-core/src/data-plane-server.ts": "c1d3739698e4964dd762082aee5663eccde27ef6985b5b38d8e22f8ef1f18521",
       "packages/engine-core/src/death.ts": "248f8f2f4f697a46bcaeac61ffcc8935f616b16ffb66053832fad1d7a8ba4f9e",
       "packages/engine-core/src/delta-apply.ts": "3969aa091e471c3fe1afe8fb788978a37b3a4625e977e70f56d0de0ac54041c1",
       "packages/engine-core/src/duel.ts": "454bc914b479c7e43a555fd8ca0cb9a802065ec9b9195b579fcd492232f42593",
+      "packages/engine-core/src/dungeons/combat-slot.ts": "beefd106879c91ab6c2e06e4873f0fd411e7ad2ad934dd052c90340f0e29b9c9",
       "packages/engine-core/src/dungeons/content.ts": "de4bdbb90e358d8c64c5f77c0a99385694d91f254456230e4b28a9ad0e87be57",
-      "packages/engine-core/src/dungeons/instance.ts": "99e298367300550490920cb3b9ed2f640b096f1d6a7718a9d1973da59f48e707",
+      "packages/engine-core/src/dungeons/default-combat.ts": "50360eaf6a3addef5f817a29f10946e8272f92e5cc70783e68ef7c898ba1c5ee",
+      "packages/engine-core/src/dungeons/instance.ts": "1cbeb75cfd652ef1dc427e18e16bc4963d1655ed4d8d13919fe1c77e492d34f2",
       "packages/engine-core/src/dungeons/interiors.ts": "ecae2fa0935019c1a7dabb3b1f0299dd30ddafc3470331f223ab0f7ac7288185",
-      "packages/engine-core/src/dungeons/manager.ts": "2f1b30b8995cf3c96d13af92a04159764b371ae0bdc9ff6638d81daf97d1ca29",
+      "packages/engine-core/src/dungeons/manager.ts": "852031185d309cfa963485c3d8947a692b1dc0d2a3da708e343e5f7c4ab664d1",
       "packages/engine-core/src/dungeons/placement.ts": "932b79d2e9c81b7f7114adb6aa04583664a8e7012c0a38bbadf8f2683cddcf00",
       "packages/engine-core/src/dungeons/pool.ts": "e8e8be70b584cd216d107a760f4c85074ab38720fe7c11d0e83f902402190980",
       "packages/engine-core/src/dungeons/prop-mesh.ts": "7d5f4e8bc3a70b2f83b85f8d73b42d0b45178024524dc21abe701b75e89da278",
@@ -7771,7 +7773,7 @@
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "d15361beeaf1a548364eb23ca507347a29f2bc4006c5ba7988406a6e905e8814",
+      "packages/engine-core/src/index.ts": "84c6413e6b5377e89a110653f360070d967a7755fbddf8a300b45e01740c28b6",
       "packages/engine-core/src/interact/breaks.ts": "efc944442b87f34faa633a1a1aafab418168c737788d25d50e670cb0900c15fe",
       "packages/engine-core/src/interact/chests.ts": "809486b1bf65d758a5e42a7fc3827852a7836a19d73b460c8cb5e5f6a95ba908",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
@@ -11921,7 +11923,7 @@
       "name": "body",
       "role": "simulation",
       "simName": "body",
-      "source": "packages/engine-core/src/body.ts:188",
+      "source": "packages/engine-core/src/body.ts:177",
       "tickIndex": 16
     },
     {

@@ -142,6 +142,48 @@ describe("dungeon content and pool", () => {
 });
 
 describe("dungeon instance", () => {
+  it("runs the fighting its game supplied, and ticks without any (ES5e)", async () => {
+    // The run builds none of the combat systems now: it hands a game what it
+    // knows about itself and splices in whatever comes back. Both halves
+    // matter — that what a game returns really runs, and that a run given
+    // nothing still boots and ticks rather than failing.
+    SimWorld.resetEntityCursorForTesting();
+    const characters = new MemoryCharacterStore();
+    let steps = 0;
+    let seen: { tickHz: number; techniques: number; creatureAnswered: boolean } | null = null;
+    const inst = new DungeonInstance({
+      id: "run-slot", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
+      lootPool: [], onEnd: () => {}, now: () => 3_000_000, clock: () => Date.now(), transport: "ws",
+      combat: (ctx) => {
+        // Everything the run promises the slot, answered at build time.
+        seen = {
+          tickHz: ctx.tickHz,
+          techniques: Object.keys(ctx.rules.combat.techniques).length,
+          creatureAnswered: typeof ctx.isCreature(1) === "boolean",
+        };
+        return { systems: [{ name: "marker", step: () => { steps++; } }], lastAttacker: () => 77 };
+      },
+    });
+    await inst.start();
+    closers.push(() => inst.close());
+    assert.deepEqual(seen, { tickHz: 30, techniques: Object.keys(game.rules.combat.techniques).length, creatureAnswered: true });
+    await until(() => steps > 0);
+    assert.ok(steps > 0, "the run never ticked the system its game returned");
+
+    // And a run whose game supplies no fighting: it starts and ticks all the
+    // same, which is the rule the ports follow — a feature this run lacks.
+    SimWorld.resetEntityCursorForTesting();
+    const bare = new DungeonInstance({
+      id: "run-bare", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+      lootPool: [], onEnd: () => {}, now: () => 3_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    await bare.start();
+    closers.push(() => bare.close());
+    assert.equal(bare.remaining().creatures, 3, "its creatures still stand, they simply cannot be fought");
+  });
+
   it("admits a member by token at the entrance, ends cleared with the boss room, and reports once", async () => {
     SimWorld.resetEntityCursorForTesting();
     const characters = new MemoryCharacterStore();
