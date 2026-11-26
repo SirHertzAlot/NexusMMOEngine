@@ -8,6 +8,7 @@
 
 import * as React from "react";
 import type { LiveTransform, SceneDoc, Vec3 } from "@mmo-engine/scene";
+import type { SceneSelection } from "../scene-selection.js";
 import { usePlaceables } from "./placeables-store.js";
 import { fetchSceneVisuals } from "../scene-visuals-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
@@ -21,8 +22,9 @@ import { gizmoModeFor, toolForGizmoMode } from "./viewport-tools.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
-  selected: string | null;
-  onSelect(id: string | null): void;
+  /** Every selected node; the gizmo rides its primary (EB2). */
+  selection: SceneSelection;
+  onSelect(id: string | null, mods: { additive: boolean; range: boolean }): void;
   onTransform(id: string, t: LiveTransform): void;
   onPlace(prefab: string, position: Vec3): void;
   onDelete(id: string): void;
@@ -68,7 +70,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     let view: SceneView;
     try {
       view = new SceneView(canvas, {
-        onSelect: (id) => latest.current.onSelect(id),
+        onSelect: (id, mods) => latest.current.onSelect(id, mods),
         onTransform: (id, t) => latest.current.onTransform(id, t),
         onPlace: (prefab, position) => latest.current.onPlace(prefab, position),
         // Play menu "Start from camera position" reads this store.
@@ -126,8 +128,8 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
 
   const species = React.useMemo(() => new Set(content?.species.map((s) => s.id) ?? []), [content]);
   React.useEffect(() => {
-    viewRef.current?.setDoc(props.doc, props.selected, species);
-  }, [props.doc, props.selected, species, content]);
+    viewRef.current?.setDoc(props.doc, props.selection, species);
+  }, [props.doc, props.selection, species, content]);
   React.useEffect(() => viewRef.current?.setMode(mode), [mode]);
   // With select, the gizmo goes away entirely: left-drag orbits, a click
   // picks. That is what `select` already means in every other viewport.
@@ -146,7 +148,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     if (hit) setMode(hit[0]);
     else if (e.key.toLowerCase() === SELECT_KEY) setTool("select");
     else if (e.key === "Delete" || e.key === "Backspace") {
-      if (props.selected) props.onDelete(props.selected);
+      if (props.selection.primary) props.onDelete(props.selection.primary);
     } else if (e.key.toLowerCase() === "f") viewRef.current?.frame();
   };
   const toggleFly = (): void => {
@@ -226,7 +228,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
           <Button size="sm" variant={flying ? "default" : "outline"} aria-pressed={flying} title="Free camera: W/S forward and back, A/D left and right, Q/E down and up, Shift faster, Esc to stop" onClick={toggleFly}>
             Fly
           </Button>
-          <Button size="sm" variant="outline" disabled={!props.selected} title="Delete (Del)" onClick={() => props.selected && props.onDelete(props.selected)}>Delete</Button>
+          <Button size="sm" variant="outline" disabled={props.selection.ids.length === 0} title="Delete (Del)" onClick={() => props.selection.primary && props.onDelete(props.selection.primary)}>Delete</Button>
         </div>
       </div>
       {statusLine.length > 0 && (

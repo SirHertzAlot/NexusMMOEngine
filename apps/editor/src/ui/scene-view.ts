@@ -21,14 +21,19 @@ import { ViewHelper } from "three/examples/jsm/helpers/ViewHelper.js";
 import { worldNodes, type LiveTransform, type SceneDoc, type Vec3 } from "@mmo-engine/scene";
 import { buildChunkGeometry, writeChunkGeometry } from "../terrain/terrain-view.js";
 import { visualFor, type NodeVisual } from "../scene-visuals.js";
+import { NO_SELECTION, selectedSet, type SceneSelection } from "../scene-selection.js";
 import { makeHeightSampler, markerFor, type HeightTile } from "../viewport-model.js";
 import { FLY_BOOST, FLY_KEYS, FLY_SPEED, flyAxes } from "./scene-camera.js";
 
 export type GizmoMode = "translate" | "rotate" | "scale";
 
 export interface SceneViewHandlers {
-  /** A click picked a node (or empty space: null). */
-  onSelect(id: string | null): void;
+  /**
+   * A click picked a node (or empty space: null). `mods` carries the keys
+   * held down, so the panel can decide what the click means (EB2): ctrl or
+   * cmd adds to the selection, shift extends it.
+   */
+  onSelect(id: string | null, mods: { additive: boolean; range: boolean }): void;
   /** A gizmo drag finished: the node's new scene-space transform. */
   onTransform(id: string, t: LiveTransform): void;
   /** A content-browser item was dropped on the ground at `position`. */
@@ -110,8 +115,8 @@ export class SceneView {
   private alive = true;
   private heightAt: (x: number, z: number) => number | null = () => null;
   private snapTerrain = true;
-  private selected: string | null = null;
-  private last: [SceneDoc, string | null, ReadonlySet<string>] | null = null;
+  private selection: SceneSelection = NO_SELECTION;
+  private last: [SceneDoc, SceneSelection, ReadonlySet<string>] | null = null;
   private mode: GizmoMode = "translate";
   /** Ground height under the dragged object at the last change (to keep its offset). */
   private lastGround = 0;
@@ -161,13 +166,14 @@ export class SceneView {
     this.gizmo.addEventListener("dragging-changed", (e) => {
       const dragging = (e as unknown as { value: boolean }).value;
       this.orbit.enabled = !dragging;
-      const id = this.selected;
+      const id = this.selection.primary;
       const obj = id ? this.objects.get(id) : undefined;
       if (dragging && obj) this.lastGround = this.heightAt(obj.position.x, obj.position.z) ?? 0;
       if (!dragging && id && obj) this.commit(id, obj);
     });
     this.gizmo.addEventListener("objectChange", () => {
-      const obj = this.selected ? this.objects.get(this.selected) : undefined;
+      const primary = this.selection.primary;
+      const obj = primary ? this.objects.get(primary) : undefined;
       if (obj) this.followGround(obj);
     });
 
@@ -181,7 +187,7 @@ export class SceneView {
       if (e.button !== 0 || down.onGizmo || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       // A click on the corner triad is a camera snap, not a pick.
       if (this.handleAxesClick(e)) return;
-      this.handlers.onSelect(this.pick(e));
+      this.handlers.onSelect(this.pick(e), { additive: e.ctrlKey || e.metaKey, range: e.shiftKey });
     };
     const onDragOver = (e: DragEvent): void => e.preventDefault();
     const onDrop = (e: DragEvent): void => {
@@ -420,9 +426,13 @@ export class SceneView {
     return null;
   }
 
-  /** Redraw the nodes for `doc` and attach the gizmo to `selected`. */
-  setDoc(doc: SceneDoc, selected: string | null, species: ReadonlySet<string>): void {
-    this.last = [doc, selected, species];
+  /**
+   * Redraw the nodes for `doc`, highlight everything in `selection` and
+   * attach the gizmo to its primary (EB2: the whole set lights up, the
+   * gizmo rides the one node, and the panel moves the rest by the delta).
+   */
+  setDoc(doc: SceneDoc, selection: SceneSelection, species: ReadonlySet<string>): void {
+    this.last = [doc, selection, species];
     this.gizmo.detach();
     for (const o of this.objects.values()) {
       this.nodes.remove(o);
@@ -461,21 +471,32 @@ export class SceneView {
       this.nodes.add(group);
       this.objects.set(w.node.id, group);
     }
-    this.selected = selected && this.objects.has(selected) ? selected : null;
+    const live = selection.ids.filter((id) => this.objects.has(id));
+    this.selection = {
+      ids: live,
+      primary: selection.primary && this.objects.has(selection.primary) ? selection.primary : (live[live.length - 1] ?? null),
+    };
+    const lit = selectedSet(this.selection);
     for (const [id, o] of this.objects) {
       const mesh = o.children[0] as THREE.Mesh;
-      (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(id === this.selected ? 0x666666 : 0x000000);
+      // The primary is brighter than the rest of the set, so "which one is
+      // the gizmo on" is answered by looking rather than by dragging.
+      const glow = id === this.selection.primary ? 0x666666 : lit.has(id) ? 0x33373f : 0x000000;
+      (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(glow);
     }
-    if (this.selected) this.gizmo.attach(this.objects.get(this.selected)!);
+    if (this.selection.primary) this.gizmo.attach(this.objects.get(this.selection.primary)!);
     this.gizmo.getHelper().visible = this.gizmosOn;
   }
 
   /** Move the camera to look at the selection (or the scene's centre). */
   frame(): void {
     const target = new THREE.Vector3();
-    const sel = this.selected ? this.objects.get(this.selected) : undefined;
-    if (sel) target.copy(sel.position);
-    else if (this.objects.size > 0) {
+    // Framing a set frames all of it, not just the node the gizmo is on.
+    const picked = this.selection.ids.map((id) => this.objects.get(id)).filter((o): o is THREE.Object3D => o !== undefined);
+    if (picked.length > 0) {
+      for (const o of picked) target.add(o.position);
+      target.divideScalar(picked.length);
+    } else if (this.objects.size > 0) {
       for (const o of this.objects.values()) target.add(o.position);
       target.divideScalar(this.objects.size);
     }

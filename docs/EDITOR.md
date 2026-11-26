@@ -344,6 +344,15 @@ The canvas is the workspace, not a figure inside a form:
   [How the editor is layered](#how-the-editor-is-layered): one hook per data
   source, mounted by every presentation of it.
 
+Selecting more than one node (`scene-selection.ts`) works the way every
+editor's does: a plain click replaces the set, ctrl or cmd toggles one node
+in or out, shift ranges over the rows the outliner draws. The *primary* —
+the last node added — is what the gizmo rides and what Details shows; the
+rest of the set lights up more faintly, follows a gizmo drag by the same
+delta, and goes with Delete, each in one undo step. Align and distribute
+(`scene-align.ts`, controls in `ui/align-bar.tsx`) act on each node's own
+transform position, so what they do can be read off the inspector.
+
 The forge theme reaches these controls through variables, not components.
 Every primitive in `ui/components.tsx` reads the legacy shadcn aliases
 (`--primary`, `--background`, `--input` and the rest), so `forge.css`

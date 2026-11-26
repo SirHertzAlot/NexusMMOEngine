@@ -136,6 +136,16 @@ await tab.waitForTimeout(250);
 await shot.screenshot({ path: resolve(outDir, "eb4-palette-search.png") });
 console.log(`wrote ${resolve(outDir, "eb4-palette-search.png")}`);
 
+// EB2: a set, picked the way a person picks one — a click, then
+// ctrl-clicks — with the align controls that appear once there is a set.
+await tab.getByTestId("palette-search").fill("");
+const rows = tab.getByRole("treeitem");
+await rows.nth(1).click();
+for (const i of [2, 3, 4]) await rows.nth(i).click({ modifiers: ["Control"] });
+await tab.waitForTimeout(400);
+await shot.screenshot({ path: resolve(outDir, "eb2-multi-select.png") });
+console.log(`wrote ${resolve(outDir, "eb2-multi-select.png")}`);
+
 await browser.close();
 server.close();
 rmSync(resolve(repoRoot, "tmp_forge_eb4_preview"), { recursive: true, force: true });

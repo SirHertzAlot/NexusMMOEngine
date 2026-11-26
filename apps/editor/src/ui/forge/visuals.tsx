@@ -15,6 +15,7 @@ import { createRoot } from "react-dom/client";
 import type { SceneDoc } from "@mmo-engine/scene";
 import type { NodeVisual } from "../../scene-visuals.js";
 import { SceneView } from "../scene-view.js";
+import { NO_SELECTION } from "../../scene-selection.js";
 
 /** Scene-space rows: creatures at the front, trees behind them. */
 const ROW: Array<[string, number, number]> = [
@@ -54,7 +55,7 @@ function Preview(): React.JSX.Element {
       onTransform: () => undefined,
       onPlace: () => undefined,
     });
-    view.setDoc(DOC, null, SPECIES);
+    view.setDoc(DOC, NO_SELECTION, SPECIES);
     view.setGizmos(false);
     view.lookAt(0, -1);
     for (let i = 0; i < 5; i += 1) view.zoomIn();
