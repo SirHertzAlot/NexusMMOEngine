@@ -15,6 +15,8 @@ import { Button, CheckField } from "./components.js";
 import { clearViewportActions, registerViewportActions, viewportFlags } from "./viewport-actions.js";
 import { setSceneCameraPos } from "./camera-position.js";
 import { parseGoTo } from "./scene-camera.js";
+import { setTool, useTool } from "./tool-store.js";
+import { gizmoModeFor, toolForGizmoMode } from "./viewport-tools.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
@@ -31,12 +33,21 @@ const MODES: Array<[GizmoMode, string, string]> = [
   ["scale", "Scale", "r"],
 ];
 
+/** Select is a tool too: it is how you put the gizmo away and just look. */
+const SELECT_KEY = "v";
+
 export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const viewRef = React.useRef<SceneView | null>(null);
   const latest = React.useRef(props);
   latest.current = props;
-  const [mode, setMode] = React.useState<GizmoMode>("translate");
+  // The gizmo follows the SHARED tool (tool-store.ts) — the same store the
+  // toolbar, the shell's context bar and every other viewport read, so the
+  // mode on screen and the tool the rest of the editor reports are one thing.
+  const tool = useTool();
+  const gizmo = gizmoModeFor(tool);
+  const mode: GizmoMode = gizmo ?? "translate";
+  const setMode = (next: GizmoMode): void => setTool(toolForGizmoMode(next));
   const [snapTerrain, setSnapTerrain] = React.useState(true);
   const [snapGrid, setSnapGrid] = React.useState(false);
   const [content, setContent] = React.useState<Placeables | null>(null);
@@ -75,7 +86,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
       zoomIn: () => view.zoomIn(),
       zoomOut: () => view.zoomOut(),
       reset: () => view.frame(),
-      supports: { grid: true, gizmos: true, wireframe: true },
+      supports: { grid: true, gizmos: true, wireframe: true, axes: true },
       screenshot: () => view.screenshot(),
     };
     registerViewportActions(viewport);
@@ -99,7 +110,6 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   // Grid / gizmos / wireframe follow the toolbar's viewport options.
   const flags = viewportFlags.useValue();
   React.useEffect(() => viewRef.current?.setGrid(flags.grid), [flags.grid, webgl]);
-  React.useEffect(() => viewRef.current?.setGizmos(flags.gizmos), [flags.gizmos, webgl]);
   React.useEffect(() => viewRef.current?.setWireframe(flags.wireframe), [flags.wireframe, webgl, content]);
 
   const species = React.useMemo(() => new Set(content?.species.map((s) => s.id) ?? []), [content]);
@@ -107,6 +117,13 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     viewRef.current?.setDoc(props.doc, props.selected, species);
   }, [props.doc, props.selected, species, content]);
   React.useEffect(() => viewRef.current?.setMode(mode), [mode]);
+  // With select, the gizmo goes away entirely: left-drag orbits, a click
+  // picks. That is what `select` already means in every other viewport.
+  React.useEffect(
+    () => viewRef.current?.setGizmos(flags.gizmos && gizmo !== null),
+    [flags.gizmos, gizmo, webgl],
+  );
+  React.useEffect(() => viewRef.current?.setAxes(flags.axes), [flags.axes, webgl]);
   React.useEffect(() => viewRef.current?.setSnap({ terrain: snapTerrain, grid: snapGrid }), [snapTerrain, snapGrid]);
 
   const onKey = (e: React.KeyboardEvent): void => {
@@ -115,6 +132,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     if (flying) return;
     const hit = MODES.find(([, , key]) => key === e.key.toLowerCase());
     if (hit) setMode(hit[0]);
+    else if (e.key.toLowerCase() === SELECT_KEY) setTool("select");
     else if (e.key === "Delete" || e.key === "Backspace") {
       if (props.selected) props.onDelete(props.selected);
     } else if (e.key.toLowerCase() === "f") viewRef.current?.frame();
@@ -163,8 +181,17 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="scene-viewport" tabIndex={0} onKeyDown={onKey}>
       <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          size="sm"
+          variant={gizmo === null ? "default" : "outline"}
+          aria-pressed={gizmo === null}
+          title="Select (V) — camera and pick, no gizmo"
+          onClick={() => setTool("select")}
+        >
+          Select
+        </Button>
         {MODES.map(([m, label, key]) => (
-          <Button key={m} size="sm" variant={mode === m ? "default" : "outline"} aria-pressed={mode === m} title={`${label} (${key.toUpperCase()})`} onClick={() => setMode(m)}>
+          <Button key={m} size="sm" variant={gizmo === m ? "default" : "outline"} aria-pressed={gizmo === m} title={`${label} (${key.toUpperCase()})`} onClick={() => setMode(m)}>
             {label}
           </Button>
         ))}

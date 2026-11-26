@@ -11,6 +11,8 @@ export interface ViewportFlags {
   grid: boolean;
   gizmos: boolean;
   wireframe: boolean;
+  /** The corner axis triad (both 2026 mockups show one). */
+  axes: boolean;
 }
 
 export interface ViewportActions {
@@ -30,7 +32,7 @@ export interface ViewportActions {
 const slot = createSlot<ViewportActions>();
 
 /** The toggles, shared so the toolbar menu and any panel's own button stay in step. */
-export const viewportFlags = createStore<ViewportFlags>({ grid: true, gizmos: true, wireframe: false });
+export const viewportFlags = createStore<ViewportFlags>({ grid: true, gizmos: true, wireframe: false, axes: true });
 
 export const toggleViewportFlag = (key: keyof ViewportFlags): void => viewportFlags.set((f) => ({ ...f, [key]: !f[key] }));
 

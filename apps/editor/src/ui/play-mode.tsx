@@ -20,7 +20,11 @@ import { PlayModeController, type PlayModeState } from "../play-mode.js";
 import { createHostServerControl } from "../server-control.js";
 import { playableScene } from "../open-scene.js";
 import { connectMirror } from "./mirror-connect.js";
-import { createStore } from "../store.js";
+import {
+  playUiStore,
+  setPlayAutoRefresh,
+  setPlayEntityId,
+} from "./play-ui-store.js";
 import { botsCount, clientCount, loadLastSetup, shouldConnectPlayer, simulateLabel, useEdge } from "./play-setup.js";
 import { clientWindows, worldNodeOf } from "./play-launch.js";
 import { getFlow } from "../flow-client.js";
@@ -57,45 +61,36 @@ interface OverlaySnapshot {
   tiles: DebugResponse | null;
 }
 
-/** Shared play-mode UI state: the debug dock drives the same entity-id
- *  and auto-refresh the overlays query, and mirrors the lifecycle state. */
-export interface PlayUiState {
-  entityId: string;
-  autoRefresh: boolean;
-  pmState: PlayModeState;
-  paused: boolean;
-}
-
-export const playUiStore = createStore<PlayUiState>({ entityId: "", autoRefresh: true, pmState: "idle", paused: false });
-
-export function setPlayEntityId(entityId: string): void {
-  playUiStore.set((p) => ({ ...p, entityId }));
-}
-
-export function setPlayAutoRefresh(autoRefresh: boolean): void {
-  playUiStore.set((p) => ({ ...p, autoRefresh }));
-}
+// The store moved to play-ui-store.ts so that reading the play state does
+// not pull the 3D client in with it; it is re-exported here so every
+// existing importer keeps working.
+export {
+  playUiStore,
+  setPlayAutoRefresh,
+  setPlayEntityId,
+  type PlayUiState,
+} from "./play-ui-store.js";
 
 /**
  * The live controller, shared with the toolbar: its Pause/Step/Stop
  * buttons act on this instead of just navigating to the panel. Set by
  * the PlayModePanel while mounted; null when the panel is unmounted.
  */
-let sharedController: PlayModeController | null = null;
-
-export function getPlayController(): PlayModeController | null {
-  return sharedController;
-}
+// The slot moved to play-controller-slot.ts so that querying the running
+// server does not pull the 3D client in with it; re-exported here so every
+// existing importer keeps working.
+export { getPlayController } from "./play-controller-slot.js";
+import { getPlayController as sharedControllerOf, setPlayController } from "./play-controller-slot.js";
 
 /** Toolbar Pause/Resume and Step: an admin command to the owned server; Pause toggles. */
 export async function requestPlayTick(command: "pause" | "resume" | "step"): Promise<void> {
-  const r = await sharedController?.admin(command);
+  const r = await sharedControllerOf()?.admin(command);
   if (r?.ok && command !== "step") playUiStore.set((p) => ({ ...p, paused: command === "pause" }));
 }
 
 /** Toolbar / shortcut stop: real controller.stop(), valid while running or starting. */
 export async function requestPlayStop(): Promise<void> {
-  const c = sharedController;
+  const c = sharedControllerOf();
   if (!c) return;
   const s = c.getState();
   if (s === "idle" || s === "stopping") return;
@@ -197,12 +192,7 @@ export function PlayModePanel(): React.JSX.Element {
     );
   }
   const controller = controllerRef.current;
-  React.useEffect(() => {
-    sharedController = controller;
-    return () => {
-      if (sharedController === controller) sharedController = null;
-    };
-  }, [controller]);
+  React.useEffect(() => setPlayController(controller), [controller]);
 
   async function onStart(): Promise<void> {
     let shells: Array<Window | null> = [];

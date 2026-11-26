@@ -9,6 +9,8 @@
  */
 
 import * as React from "react";
+import { lineTone } from "../dock-feed.js";
+import { pushConsole } from "./console-log.js";
 import { flattenVisible, type ScopeNode } from "./scope-tree.js";
 
 function cn(...parts: Array<string | false | null | undefined>): string {
@@ -548,6 +550,9 @@ const snackStore = createUiStore<{ msg: string; key: number } | null>(null);
 /** Stage a not-yet-implemented command: acknowledge the click honestly. */
 export function notify(msg: string): void {
   snackStore.set({ msg, key: Date.now() + Math.random() });
+  // A snackbar is gone in 3.6 s and cannot be scrolled back to, so every
+  // notification is also recorded in the console (ui/console-log.ts).
+  pushConsole("editor", msg, lineTone(msg));
 }
 
 /** Bottom-center transient feedback (M3 snackbar). Mount once at the root. */

@@ -9,6 +9,36 @@
  */
 
 import type { EditorTool } from "./tool-store.js";
+import type { GizmoMode } from "./scene-view.js";
+
+/**
+ * Which transform gizmo the scene viewport shows for a tool, or null for
+ * camera/pick with no gizmo at all.
+ *
+ * The scene viewport used to keep this in its own `useState` with its own
+ * W/E/R keys, so the toolbar's tool and the gizmo on screen could say two
+ * different things at once — and the shell's context bar, which reports
+ * the shared tool, would then be reporting the wrong one. One store now
+ * drives both.
+ */
+export function gizmoModeFor(tool: EditorTool): GizmoMode | null {
+  switch (tool) {
+    case "move":
+      return "translate";
+    case "rotate":
+      return "rotate";
+    case "scale":
+      return "scale";
+    // select, snap, and anything a module adds: camera and pick only.
+    default:
+      return null;
+  }
+}
+
+/** The tool that shows `mode` — the inverse of `gizmoModeFor`. */
+export function toolForGizmoMode(mode: GizmoMode): EditorTool {
+  return mode === "translate" ? "move" : mode;
+}
 
 /** Left-drag sculpts terrain only with the move tool. */
 export function canSculptTerrain(tool: EditorTool): boolean {

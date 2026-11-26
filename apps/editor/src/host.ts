@@ -48,6 +48,9 @@
  *                                    400 with per-path issues when invalid
  *   GET/POST/PUT /api/editor/gameplay[/check|/:table] → the Gameplay data grids (EA15, gameplay-host.ts)
  *   GET/PUT /api/editor/scale      → the global scale document content/scale.json (scale-host.ts)
+ *   GET  /api/editor/code          → whether `code` is on PATH, and the repo root (code-host.ts)
+ *   POST /api/editor/code/open     → {source} | {path, line?}: open that source location in VS Code;
+ *                                    repository-relative only, never under assets/
  *   GET/PUT /api/editor/docs/<n>   → designer settings documents under content/ (content-docs-host.ts)
  *   GET/PUT /api/editor/settlements/rules, POST /settlements/preview → the town generator's
  *                                    rules content/settlements/rules.json and a town built from them (settlement-host.ts)
@@ -130,6 +133,7 @@ import { handleFilesRoute } from "./files-host.js";
 import { validateHudLayout } from "./ui/hud-editor-logic.js";
 import { handleStringsRoute } from "./strings-host.js";
 import { handleScaleRoute } from "./scale-host.js";
+import { handleCodeRoute } from "./code-host.js";
 import { handleContentDocsRoute } from "./content-docs-host.js";
 import { handleSettlementRoute } from "./settlement-host.js";
 import { SettlementBake } from "./settlement-bake.js";
@@ -1553,6 +1557,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (stringsReply) {
             sendJson(res, stringsReply.status, stringsReply.body);
+            return;
+          }
+          // The VS Code handoff: is `code` on PATH, and open a file at a line (code-host.ts, EU9).
+          const codeReply = await handleCodeRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "POST" ? await readBody(req) : undefined,
+          );
+          if (codeReply) {
+            sendJson(res, codeReply.status, codeReply.body);
             return;
           }
           // The global scale document (content/scale.json, scale-host.ts).

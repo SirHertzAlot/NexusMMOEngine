@@ -7,6 +7,7 @@
  */
 
 import * as React from "react";
+import { pushServerLines } from "./console-log.js";
 import {
   appendLines,
   fetchRuns,
@@ -46,7 +47,13 @@ export function useServerOutput(everyMs = 2000): ServerOutput {
         if (!live) return;
         next.current = page.next;
         setRunning(page.running);
-        if (page.lines.length > 0) setLines((l) => appendLines(l, page.lines));
+        if (page.lines.length > 0) {
+          setLines((l) => appendLines(l, page.lines));
+          // The console merges every stream (ui/console-log.ts). This poll is
+          // the only one reading the server log, so it feeds the console too
+          // rather than the console polling the same route a second time.
+          pushServerLines(page.lines);
+        }
       } catch {
         if (live) setRunning(false);
       }

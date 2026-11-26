@@ -107,5 +107,7 @@ export function useEditorSelection(): EditorSelection | null {
   return React.useSyncExternalStore(
     (listener) => editorSelection.subscribe(listener),
     () => editorSelection.get(),
+    // Same value server-side: the model is module state, not request state.
+    () => editorSelection.get(),
   );
 }

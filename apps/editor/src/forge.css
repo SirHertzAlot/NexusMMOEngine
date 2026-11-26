@@ -1,0 +1,421 @@
+/*
+ * Forge — the editor's 2026 design language (docs/EDITOR-UI-2026.md §4).
+ *
+ * Measured from the styling reference the owner sent, then written as
+ * tokens of our own. It is a THEME, not a component library: it defines
+ * the `--fg-*` tokens and then remaps the existing `--m3-*` roles onto
+ * them, so every panel in the editor and in every module's editor entry restyles
+ * without being touched. Panels that still hardcode a hex value (21
+ * files, mostly chart and 3D colours) are the known cleanup list.
+ *
+ * Opt in with `document.documentElement.dataset.theme = "forge"`. The
+ * selectors are attribute selectors rather than `:root`-only, so a
+ * subtree can carry the theme too — that is how the before/after preview
+ * shows both languages in one document.
+ * Leave it off and the Material 3 scheme in app.css is unchanged, so the
+ * two can be compared side by side.
+ *
+ * Type: the reference uses Rajdhani / Inter / JetBrains Mono. We ship
+ * Roboto Flex and Roboto Mono already (OFL, vendored in src/fonts), and
+ * Roboto Flex is variable, so the display face is approximated with its
+ * width and weight axes rather than vendoring two more families. If the
+ * owner wants the exact faces, both are OFL and can be added later; only
+ * the two --fg-font-* values below change.
+ */
+
+[data-theme="forge"] {
+  /* -------------------------------------------------- grounds */
+  --fg-canvas: #05080e;
+  --fg-panel: #050a12;
+  --fg-bar: #080d15;
+  --fg-toolbar: #0a111b;
+  --fg-dock: #070c13;
+  --fg-sunken: rgba(0, 0, 0, 0.3);
+  --fg-raised: rgba(255, 255, 255, 0.025);
+  --fg-hover: rgba(255, 255, 255, 0.05);
+
+  /* -------------------------------------------------- lines */
+  --fg-line: #263646;
+  --fg-line-soft: rgba(255, 255, 255, 0.08);
+  --fg-line-accent: rgba(125, 211, 252, 0.18);
+
+  /* -------------------------------------------------- accent + semantics */
+  --fg-accent: #22d3ee;
+  --fg-accent-text: #53eafd;
+  --fg-accent-wash: rgba(0, 210, 239, 0.1);
+  --fg-ok: #34d399;
+  --fg-warn: #ffd236;
+  --fg-bad: #fb7185;
+  --fg-note: #ec6cff;
+  --fg-axis-x: #fb7185;
+  --fg-axis-y: #a3e635;
+  --fg-axis-z: #60a5fa;
+
+  /* -------------------------------------------------- text */
+  --fg-text: #d7e3f0;
+  --fg-text-dim: #8fa3b8;
+  --fg-text-faint: #5a6b7d;
+
+  /* -------------------------------------------------- type */
+  --fg-font-display: "Roboto Flex", "Rajdhani", ui-sans-serif, system-ui, sans-serif;
+  --fg-font-ui: "Roboto Flex", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --fg-font-mono: "Roboto Mono", "JetBrains Mono", ui-monospace, monospace;
+  --fg-label-size: 10px;
+  --fg-label-tracking: 0.12em;
+  --fg-body-size: 11px;
+  --fg-data-size: 10px;
+
+  /* -------------------------------------------------- geometry */
+  --fg-radius-chip: 2px;
+  --fg-radius: 4px;
+  --fg-bar-h: 56px;
+  --fg-toolbar-h: 36px;
+  --fg-status-h: 28px;
+  --fg-dock-h: 214px;
+  --fg-left-w: 240px;
+  --fg-right-w: 340px;
+  --fg-gap: 4px;
+  --fg-pad: 12px;
+
+  /* ==================================================================
+   * Remap: the existing Material 3 roles onto the grounds above.
+   * This is what restyles the editor wholesale. Role meanings are kept
+   * (primary stays the interactive accent, tertiary stays play state),
+   * so no panel changes behaviour or legibility ordering.
+   * ================================================================== */
+  --m3-primary: var(--fg-accent);
+  --m3-on-primary: #04222a;
+  --m3-primary-container: #0d3b48;
+  --m3-on-primary-container: #bff5ff;
+
+  --m3-secondary: #9fb4c8;
+  --m3-secondary-container: #16202c;
+  --m3-on-secondary-container: #d7e3f0;
+
+  /* tertiary stays reserved for play state — amber reads as "running" here */
+  --m3-tertiary: var(--fg-warn);
+  --m3-tertiary-container: #3a2d06;
+  --m3-on-tertiary-container: #ffeab0;
+
+  --m3-error: var(--fg-bad);
+  --m3-error-container: #4a1420;
+  --m3-on-error-container: #ffd9de;
+
+  --m3-success: var(--fg-ok);
+  --m3-success-container: #0b3a2c;
+
+  --m3-surface: var(--fg-panel);
+  --m3-surface-0: var(--fg-canvas);
+  --m3-surface-1: #080e17;
+  --m3-surface-2: #0a111b;
+  --m3-surface-3: #0e1724;
+  --m3-surface-4: #16202c;
+  --m3-on-surface: var(--fg-text);
+  --m3-on-surface-variant: var(--fg-text-dim);
+  --m3-outline: #3c5064;
+  --m3-outline-variant: var(--fg-line);
+
+  --m3-font-ui: var(--fg-font-ui);
+  --m3-font-mono: var(--fg-font-mono);
+
+  /* Legacy rgb/hsl aliases the older panels still read. */
+  --background: 5 10 18;
+  --foreground: 215 227 240;
+  --card: 8 14 23;
+  --card-foreground: 215 227 240;
+  --primary: 34 211 238;
+  --primary-foreground: 4 34 42;
+  --secondary: 22 32 44;
+  --secondary-foreground: 215 227 240;
+  --muted-foreground: 143 163 184;
+  --accent: 22 32 44;
+  --accent-foreground: 215 227 240;
+  --border: 38 54 70;
+  --input: 60 80 100;
+  --ring: 34 211 238;
+}
+
+/* --------------------------------------------------------------- chrome
+ * Geometry and type the token remap cannot carry: sharper corners, 1px
+ * hairlines instead of tonal steps, and labels that read by tracking and
+ * case rather than by size.
+ */
+
+:root[data-theme="forge"] body {
+  background: var(--fg-canvas);
+  font-size: var(--fg-body-size);
+  font-variation-settings: "wdth" 100;
+}
+
+/* No elevation ladder: panels are separated by a line, never a shadow. */
+[data-theme="forge"] .fg-panel {
+  background: var(--fg-panel);
+  border: 1px solid var(--fg-line-soft);
+  border-radius: var(--fg-radius);
+}
+
+/* Section and tab labels: condensed, tracked out, upper case. */
+[data-theme="forge"] .fg-label {
+  font-family: var(--fg-font-display);
+  font-size: var(--fg-label-size);
+  font-weight: 600;
+  font-variation-settings: "wdth" 85;
+  letter-spacing: var(--fg-label-tracking);
+  text-transform: uppercase;
+  color: var(--fg-text-faint);
+  line-height: 1.2;
+}
+
+/* Values, ids, counts, log lines, types. */
+[data-theme="forge"] .fg-data {
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-data-size);
+  color: var(--fg-text-dim);
+  letter-spacing: 0;
+}
+
+[data-theme="forge"] .fg-dim {
+  color: var(--fg-text-faint);
+}
+
+/* Chrome bars sit flush: square corners, one hairline. */
+[data-theme="forge"] .fg-bar {
+  background: var(--fg-bar);
+  border-bottom: 1px solid var(--fg-line);
+  border-radius: 0;
+  height: var(--fg-bar-h);
+}
+
+[data-theme="forge"] .fg-statusbar {
+  background: var(--fg-dock);
+  border-top: 1px solid var(--fg-line);
+  height: var(--fg-status-h);
+}
+
+/* Rows: hover lifts the ground, selection is a hairline plus a wash. */
+[data-theme="forge"] .fg-row {
+  border: 1px solid transparent;
+  border-radius: var(--fg-radius);
+  background: transparent;
+  transition: background-color 110ms ease, border-color 110ms ease;
+}
+[data-theme="forge"] .fg-row:hover {
+  background: var(--fg-hover);
+}
+[data-theme="forge"] .fg-row[aria-selected="true"],
+[data-theme="forge"] .fg-row.is-selected {
+  background: var(--fg-accent-wash);
+  border-color: var(--fg-line-accent);
+}
+
+/* Segmented control (ACTIVE / SLEEPING / DISABLED, SCENE / GAME / PREFAB). */
+[data-theme="forge"] .fg-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--fg-sunken);
+  border: 1px solid var(--fg-line-soft);
+  border-radius: var(--fg-radius);
+}
+[data-theme="forge"] .fg-seg > button {
+  border-radius: var(--fg-radius-chip);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-text-faint);
+  padding: 4px 10px;
+}
+[data-theme="forge"] .fg-seg > button[aria-pressed="true"] {
+  background: var(--fg-raised);
+  border-color: var(--fg-line-soft);
+  color: var(--fg-text);
+}
+
+/* Underlined tab row (Details / Components / Modules). */
+[data-theme="forge"] .fg-tab {
+  border-bottom: 2px solid transparent;
+  color: var(--fg-text-faint);
+  background: transparent;
+  padding: 7px 10px;
+}
+[data-theme="forge"] .fg-tab[aria-selected="true"] {
+  border-bottom-color: var(--fg-accent);
+  color: var(--fg-accent-text);
+  background: var(--fg-accent-wash);
+}
+
+/* Dashed affordance for "add" actions. */
+[data-theme="forge"] .fg-add {
+  border: 1px dashed var(--fg-line-accent);
+  border-radius: var(--fg-radius);
+  color: var(--fg-text-dim);
+  background: transparent;
+}
+[data-theme="forge"] .fg-add:hover {
+  border-color: var(--fg-accent);
+  color: var(--fg-accent-text);
+  background: var(--fg-accent-wash);
+}
+
+/* Component letter badge: a tinted square, hue per component family. */
+[data-theme="forge"] .fg-badge {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--fg-radius);
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-family: var(--fg-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* State dot used by the segment, the status bar and the integration chips. */
+[data-theme="forge"] .fg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+/* Scrollbars follow the grounds rather than the tonal ladder. */
+[data-theme="forge"] .m3-scroll::-webkit-scrollbar-thumb {
+  background: #27384a;
+  border-radius: 2px;
+  border: 2px solid var(--fg-panel);
+}
+[data-theme="forge"] .m3-scroll {
+  scrollbar-color: #27384a var(--fg-panel);
+}
+
+[data-theme="forge"] .m3-focus:focus-visible {
+  outline: 1px solid var(--fg-accent);
+  outline-offset: 1px;
+}
+
+/* --------------------------------------------------------- context bar
+ * The strip under the toolbar that says where you are and what the
+ * project is doing (ui/forge-chrome.tsx). Forge-only: there is no
+ * Material 3 counterpart, so the shell does not mount it under m3.
+ */
+[data-theme="forge"] .fg-contextbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: var(--fg-toolbar-h);
+  padding: 0 var(--fg-pad);
+  background: var(--fg-toolbar);
+  border-bottom: 1px solid var(--fg-line);
+  overflow: hidden;
+}
+
+/* A chip is a read-out: an icon in its tone, a mono value, a dim detail. */
+[data-theme="forge"] .fg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid var(--fg-line-soft);
+  border-radius: var(--fg-radius-chip);
+  background: var(--fg-sunken);
+  white-space: nowrap;
+}
+
+[data-theme="forge"] button.fg-chip:hover {
+  border-color: var(--fg-line);
+  background: var(--fg-hover);
+}
+
+/* A crumb that navigates: underline on hover, never a button face. */
+[data-theme="forge"] .fg-crumb {
+  color: var(--fg-text-dim);
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+}
+[data-theme="forge"] .fg-crumb:hover {
+  color: var(--fg-accent-text);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------- bar chart
+ * Share-of-budget bars in the profiler (ui/forge-profiler.tsx): a sunken
+ * track with one fill, tinted by what the share costs you.
+ */
+[data-theme="forge"] .fg-bar-track {
+  display: block;
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--fg-sunken);
+  border: 1px solid var(--fg-line-soft);
+  overflow: hidden;
+}
+
+[data-theme="forge"] .fg-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0;
+  transition: width 180ms ease;
+}
+
+/* ------------------------------------------------------- signature chip
+ * One component in a system's signature (ui/forge-systems.tsx): an
+ * access mark then the component name, tinted by the access.
+ */
+[data-theme="forge"] .fg-sig {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: var(--fg-radius-chip);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-data-size);
+  white-space: nowrap;
+}
+
+[data-theme="forge"] .fg-sig > b {
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+/* ----------------------------------------------------------- console
+ * One log line (ui/forge-console.tsx): stamp, source, text, on a grid so
+ * the three columns line up down the whole scrollback.
+ */
+[data-theme="forge"] .fg-logline {
+  display: grid;
+  grid-template-columns: 56px 54px 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: var(--fg-radius-chip);
+}
+
+[data-theme="forge"] .fg-logline:hover {
+  background: var(--fg-hover);
+}
+
+[data-theme="forge"] .fg-logline > span:last-child {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* The find box: a hairline field, not a Material text field. */
+[data-theme="forge"] .fg-find {
+  width: 130px;
+  padding: 3px 7px;
+  background: var(--fg-sunken);
+  border: 1px solid var(--fg-line-soft);
+  border-radius: var(--fg-radius-chip);
+  color: var(--fg-text);
+}
+
+[data-theme="forge"] .fg-find::placeholder {
+  color: var(--fg-text-faint);
+}

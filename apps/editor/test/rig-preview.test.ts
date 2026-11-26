@@ -44,7 +44,9 @@ describe("WL2 editor RigSummaryPanel", () => {
     assert.ok(html.includes("1.25"), "shows normalised height");
     assert.ok(html.includes("0.58"), "shows leg length");
     assert.ok(html.includes("0.24"), "shows knee height");
-    assert.ok(html.includes("chest"), "lists chest bone");
+    // #729 renamed quadruped bone 0 from "body" to "chest" (BONE_NAMES in
+    // packages/animal-rig/src/segment.ts); the panel lists whatever that table says.
+    assert.ok(html.includes("chest"), "lists the body bone under its anatomical name");
     assert.ok(html.includes("head"), "lists head bone");
     assert.ok(html.includes("Unweighted"), "shows unweighted label");
     assert.ok(html.includes(">1<") || html.includes(">1 "), "displays unweighted count");

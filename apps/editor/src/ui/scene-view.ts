@@ -16,6 +16,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+import { ViewHelper } from "three/examples/jsm/helpers/ViewHelper.js";
 import { worldNodes, type LiveTransform, type SceneDoc, type Vec3 } from "@mmo-engine/scene";
 import { buildChunkGeometry, writeChunkGeometry } from "../terrain/terrain-view.js";
 import { makeHeightSampler, markerFor, type HeightTile } from "../viewport-model.js";
@@ -51,9 +52,13 @@ export class SceneView {
   private readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 5000);
   private readonly orbit: OrbitControls;
   private readonly gizmo: TransformControls;
+  /** Corner axis triad (both 2026 mockups show one): says which way is up
+   *  and which way is north, and clicking an axis snaps the camera to it. */
+  private readonly axes: ViewHelper;
   private readonly raycaster = new THREE.Raycaster();
   private readonly grid = new THREE.GridHelper(200, 100, 0x445066, 0x2a3040);
   private gizmosOn = true;
+  private axesOn = true;
   private wireframe = false;
   private readonly nodes = new THREE.Group();
   private readonly terrain = new THREE.Group();
@@ -104,6 +109,11 @@ export class SceneView {
       this.handlers.onCameraGround?.({ x: this.orbit.target.x, z: this.orbit.target.z });
     });
 
+    this.axes = new ViewHelper(this.camera, canvas);
+    // It draws itself over the scene in its own pass; it is never part of
+    // the scene graph, so nothing picks it and nothing shadows it.
+    this.axes.setLabels("X", "Y", "Z");
+
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.setSize(0.8);
     this.scene.add(this.gizmo.getHelper());
@@ -128,6 +138,8 @@ export class SceneView {
     };
     const onUp = (e: PointerEvent): void => {
       if (e.button !== 0 || down.onGizmo || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      // A click on the corner triad is a camera snap, not a pick.
+      if (this.handleAxesClick(e)) return;
       this.handlers.onSelect(this.pick(e));
     };
     const onDragOver = (e: DragEvent): void => e.preventDefault();
@@ -191,6 +203,14 @@ export class SceneView {
       if (this.flying) this.fly(dt);
       this.renderer.render(this.scene, this.camera);
       this.drawCalls = this.renderer.info.render.calls;
+      // The triad renders last, into the bottom-right corner, with the
+      // depth buffer cleared so it is never hidden by the scene.
+      if (this.axesOn) {
+        if (this.axes.animating) this.axes.update(dt);
+        this.renderer.autoClear = false;
+        this.axes.render(this.renderer);
+        this.renderer.autoClear = true;
+      }
     };
     loop();
   }
@@ -253,6 +273,21 @@ export class SceneView {
   /** View toggles (the toolbar's viewport options). */
   setGrid(on: boolean): void {
     this.grid.visible = on;
+  }
+
+  /** Show or hide the corner axis triad. */
+  setAxes(on: boolean): void {
+    this.axesOn = on;
+  }
+
+  /**
+   * A click in the viewport's bottom-right corner may be the triad asking
+   * for a camera snap. Returns true when the triad took the click, so the
+   * caller does not also treat it as a pick.
+   */
+  handleAxesClick(e: PointerEvent): boolean {
+    if (!this.axesOn) return false;
+    return this.axes.handleClick(e);
   }
 
   setGizmos(on: boolean): void {
@@ -435,6 +470,7 @@ export class SceneView {
     this.cleanup.forEach((f) => f());
     this.observer.disconnect();
     this.gizmo.dispose();
+    this.axes.dispose();
     this.orbit.dispose();
     this.renderer.dispose();
   }

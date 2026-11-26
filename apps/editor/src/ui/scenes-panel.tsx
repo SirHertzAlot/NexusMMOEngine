@@ -35,6 +35,7 @@ import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene
 import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
 import { Button, Input, Label, NumberInput, SectionTitle, Select } from "./components.js";
+import { OutlinerBadges } from "./outliner-badges-view.js";
 import { useDocActions } from "./doc-actions.js";
 import { readClipboard, writeClipboard } from "./clipboard.js";
 import { subscribeOpenAsset } from "./open-asset.js";
@@ -464,7 +465,16 @@ export function ScenesPanel(): React.JSX.Element {
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
-                <>{n.name || n.id} <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span></>
+                <>
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="min-w-0 truncate">{n.name || n.id}</span>
+                    <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
+                    {/* EU4: the component chips both mockups put on every
+                        outliner row. Same data the ECS entity list has always
+                        badged; this tree simply never drew it. */}
+                    <OutlinerBadges node={n} />
+                  </span>
+                </>
               )}
             </div>
           ))}

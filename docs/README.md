@@ -25,6 +25,7 @@ tells you how to use it well.
 | [CLIENT.md](CLIENT.md) | The mirror client: prediction, cosmetic physics, rendering layers |
 | [MESSAGE-CATALOG.md](MESSAGE-CATALOG.md) | The client/server wire protocol, message by message |
 | [EDITOR.md](EDITOR.md) | The editor: inspectors, play mode, debugger, terrain, art pipeline |
+| [EDITOR-UI-2026.md](EDITOR-UI-2026.md) | The editor's 2026 design language, and the screen-by-screen plan for rebuilding its UI |
 
 ## Content and worlds
 

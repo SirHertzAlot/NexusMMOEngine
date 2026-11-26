@@ -14,7 +14,7 @@
  */
 
 import * as React from "react";
-import { getPlayController, playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
+import { playUiStore, requestPlayStart, requestPlayStop, requestPlayTick, setPlayAutoRefresh, setPlayEntityId } from "./play-mode.js";
 import { moduleRegistry, useModuleRegistry } from "./modules-panel.js";
 import { DockPanel, EmptyState, IconButton, MIcon, OverflowMenu, SnackbarHost, StatusChip, TreeItem, notify, useLocalStorage } from "./components.js";
 import { clipboardVersion, subscribeClipboard } from "./clipboard.js";
@@ -33,6 +33,13 @@ import { StoryTree } from "./story-tree.js";
 import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.js";
 import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPanel, revertActive, screenshotViewport } from "./shell-actions.js";
 import { SHELL } from "./shell-composition.js";
+import { useTheme } from "../theme.js";
+import { dockTabs, resolveTab } from "./dock-tabs.js";
+import { ForgeConsolePanel } from "./forge-console.js";
+import { ForgeIntegrationsPanel } from "./forge-integrations.js";
+import { ChangesPanel } from "./vcs-panel.js";
+import { ForgeContextBar } from "./forge-chrome.js";
+import { ForgeProfilerPanel, useTickTimings } from "./forge-profiler.js";
 import { useShellComposition } from "./use-shell.js";
 import { browserStorage, currentProfile, loadPrefs, recallView, rememberView, signOut } from "./editor-prefs.js";
 import { requestNewScene } from "../open-scene.js";
@@ -256,6 +263,14 @@ export function App(): React.JSX.Element {
   const problems = useDocProblems();
   const diskProblems = useDiskProblems();
   const problemTotal = problemCount(diskProblems, problems);
+  // Which design language the shell is drawn in (docs/EDITOR-UI-2026.md).
+  const theme = useTheme();
+  // The bottom dock's tabs are the one place the two languages group the
+  // same capability differently (EU5): three tabs in Material 3, the
+  // styling reference's four under forge. A saved layout naming the other
+  // theme's tab opens its counterpart rather than nothing.
+  const bottomTabs = React.useMemo(() => dockTabs({ theme, problems: problemTotal }), [theme, problemTotal]);
+  const activeBottomTab = resolveTab(bottomTabs, bottomTab);
   const [dialog, setDialog] = React.useState<"prefs" | "profile" | null>(null);
   const playing = pmState === "running" || pmState === "starting";
 
@@ -661,6 +676,19 @@ export function App(): React.JSX.Element {
         currentSnapshot={snapshot()}
         />
       )}
+      {/* EU2: the forge context bar. Forge-only — see ui/forge-chrome.tsx. */}
+      {theme === "forge" && shell.has(SHELL.toolBar) && (
+        <ForgeContextBar
+          workspaceLabel={ws.label}
+          viewLabel={ws.views.find((v) => v.id === view)?.label}
+          problems={problemTotal}
+          onGoWorkspace={() => pickWorkspace(workspace)}
+          onOpenProblems={() => {
+            setBottomTab("problems");
+            setDocks((d) => ({ ...d, bottom: true }));
+          }}
+        />
+      )}
       {palette && (
         <CommandPalette
           onClose={() => setPalette(false)}
@@ -791,12 +819,8 @@ export function App(): React.JSX.Element {
         {shell.hasDock("bottom") && (
         <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
             <DockPanel
-              tabs={[
-                { id: "output", label: "Output", icon: "terminal" },
-                { id: "problems", label: problemTotal > 0 ? `Problems · ${problemTotal}` : "Problems", icon: "error" },
-                { id: "bakes", label: "Bakes", icon: "history" },
-              ]}
-              active={bottomTab}
+              tabs={bottomTabs}
+              active={activeBottomTab}
               onTab={setBottomTab}
               actions={
                 <OverflowMenu
@@ -811,7 +835,7 @@ export function App(): React.JSX.Element {
                 />
               }
             >
-              <BottomPane tab={bottomTab} output={output} problems={problems} disk={diskProblems} />
+              <BottomPane tab={activeBottomTab} output={output} problems={problems} disk={diskProblems} />
             </DockPanel>
           </div>
         )}
@@ -951,11 +975,11 @@ function initialHashLocation(): { workspace: WorkspaceId; view: string } {
 
 // ---------------------------------------------------------------- viewport options
 
-/** The center header's viewport menu: Grid / Gizmos / Wireframe act on the active 3D viewport, Screenshot saves a PNG of it. */
+/** The center header's viewport menu: Grid / Gizmos / Axis triad / Wireframe act on the active 3D viewport, Screenshot saves a PNG of it. */
 function ViewportOptions(): React.JSX.Element {
   const vp = React.useSyncExternalStore(subscribeViewportActions, getViewportActions);
   const flags = viewportFlags.useValue();
-  const toggle = (label: string, key: "grid" | "gizmos" | "wireframe"): { label: string; checked: boolean; disabled?: string; run: () => void } => ({
+  const toggle = (label: string, key: "grid" | "gizmos" | "wireframe" | "axes"): { label: string; checked: boolean; disabled?: string; run: () => void } => ({
     label,
     checked: flags[key],
     ...(flagBlocked(key) !== null ? { disabled: flagBlocked(key) as string } : {}),
@@ -969,6 +993,7 @@ function ViewportOptions(): React.JSX.Element {
       items={[
         toggle("Grid", "grid"),
         toggle("Gizmos", "gizmos"),
+        toggle("Axis triad", "axes"),
         toggle("Wireframe", "wireframe"),
         "sep",
         { label: "Screenshot viewport", run: () => void screenshotViewport(), ...(screenshotBlocked() !== null ? { disabled: screenshotBlocked() as string } : {}) },
@@ -1965,7 +1990,8 @@ function DebugTree(): React.JSX.Element {
         Auto-refresh overlays
         <span className="ml-auto font-mono text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>2 s</span>
       </button>
-      <TickTimingsPanel />
+      {/* EU7: under forge, the budget view replaces the top-five list. */}
+      {useTheme() === "forge" ? <ForgeProfilerPanel /> : <TickTimingsPanel />}
       <p className="mt-2 px-3 text-xs leading-relaxed" style={{ color: "var(--m3-on-surface-variant)" }}>
         Timings come from the running play server via the debug API.
       </p>
@@ -1973,60 +1999,26 @@ function DebugTree(): React.JSX.Element {
   );
 }
 
-/** Live tick timings from the play server (debug API). */
+/** Live tick timings from the play server (debug API).
+ *
+ *  The poll lives in ui/forge-profiler.tsx (`useTickTimings`), which the
+ *  forge profiler mounts too, so the two presentations cannot drift on
+ *  what they are showing or how often they ask for it. */
 function TickTimingsPanel(): React.JSX.Element {
-  const [timings, setTimings] = React.useState<{ ticks: number; p50: number; p99: number; systems: Array<{ name: string; avg: number; max: number }> } | null>(null);
-  const [error, setError] = React.useState("");
-  React.useEffect(() => {
-    let live = true;
-    // One query at a time: a slow server must not pile up a request every 2 s.
-    let inFlight = false;
-    const load = async (): Promise<void> => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        const c = getPlayController();
-        if (!c || c.getState() !== "running") {
-          if (live) {
-            setTimings(null);
-            setError("");
-          }
-          return;
-        }
-        const res = await c.debugTimings();
-        if (!live) return;
-        if (res.query === "timings") {
-          setTimings({ ticks: res.ticks, p50: res.p50, p99: res.p99, systems: res.systems });
-          setError("");
-        }
-      } catch {
-        // Running but unanswered: the query rides the player's client, which Simulate doesn't connect.
-        if (live) {
-          setTimings(null);
-          setError("Tick timings come through the player's client; Simulate runs without one.");
-        }
-      } finally {
-        inFlight = false;
-      }
-    };
-    void load();
-    const t = setInterval(() => void load(), 2000);
-    return () => {
-      live = false;
-      clearInterval(t);
-    };
-  }, []);
-  if (error) return <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{error}</p>;
-  if (!timings) {
+  const state = useTickTimings();
+  if (state.kind === "unavailable") {
+    return <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>{state.reason}</p>;
+  }
+  if (state.kind === "idle") {
     return (
       <p className="px-3 text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
         Start play mode to see live tick timings.
       </p>
     );
   }
+  const timings = state.timings;
   return (
-    
-        <div className="px-3">
+    <div className="px-3">
       <p className="text-xs font-medium">Tick timings ({timings.ticks} ticks)</p>
       <p className="font-mono text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
         p50 {timings.p50.toFixed(1)}ms · p99 {timings.p99.toFixed(1)}ms
@@ -2044,6 +2036,7 @@ function TickTimingsPanel(): React.JSX.Element {
     </div>
   );
 }
+
 /** Content browser: real content paths, explorable.
  *  Clicking a document navigates to the workspace that owns it today. */
 function ContentTree({ onGo }: { onGo: (ws: WorkspaceId, view?: string) => void }): React.JSX.Element {
@@ -2249,16 +2242,23 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
 function BottomPane({ tab, output, problems, disk }: { tab: string; output: ServerOutput; problems: ReturnType<typeof useDocProblems>; disk: DiskProblems }): React.JSX.Element {
   if (tab === "problems") return <ProblemsPane doc={problems} disk={disk} />;
   if (tab === "bakes") return <BakesPane visible={tab === "bakes"} />;
+  // The forge dock's four (EU5): Output and Bakes folded into the console,
+  // Source Control moved in from its workspace, Integrations beside them.
+  if (tab === "console") return <ForgeConsolePanel />;
+  if (tab === "changes") return <ChangesPanel />;
+  if (tab === "integrations") return <ForgeIntegrationsPanel />;
   return <OutputPane output={output} />;
 }
 
 // ---------------------------------------------------------------- status bar
 
 function StatusBar({ problems, onOpenProblems }: { problems: number; onOpenProblems: () => void }): React.JSX.Element {
+  // fg-statusbar is a no-op outside [data-theme="forge"]: under forge it swaps
+  // the tonal step for the dock ground and a 1px hairline.
   return (
     <footer
-      className="flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
-      style={{ background: "var(--m3-surface-0)", color: "var(--m3-on-surface-variant)" }}
+      className="fg-statusbar flex h-7 flex-none items-center gap-3 px-3 text-[11px]"
+      style={{ color: "var(--m3-on-surface-variant)", background: "var(--m3-surface-0)" }}
     >
       <span className="hidden sm:inline">Server stays authoritative — the editor inspects live state, never a running simulation.</span>
       <span className="sm:hidden">Authoritative server · read-only inspect</span>
