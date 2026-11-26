@@ -10,8 +10,7 @@ import { hasComponent } from "bitecs";
 import { z } from "zod";
 import * as C from "../components.js";
 import { joinU64 } from "../components.js";
-import { Body, Injury } from "../body.js";
-import { Mana } from "../magic.js";
+import { Body, Injury, Mana } from "../components.js";
 import type { SimWorld } from "../world.js";
 
 const r2 = (v: number): number => Math.round(v * 100) / 100;

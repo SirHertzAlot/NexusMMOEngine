@@ -124,6 +124,7 @@ import {
 } from "@mmo-engine/protocol";
 import type { SocialRules } from "@mmo-engine/rules";
 import * as C from "../components.js";
+import { Mana } from "../components.js";
 import { parseWireEntityId } from "../entity-id.js";
 import type { DebugSource } from "./debug-source.js";
 import { inspectEntity, InspectArgsSchema } from "../admin/inspect.js";
@@ -219,7 +220,7 @@ import type { WorldCharacterSync } from "../world/character-sync.js";
 import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
 import type { AtomicOpResult, MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
-import { Mana, type MagicSystem } from "../magic.js";
+import type { MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
 import { parseLook, withHeld, withLost, type ModularCatalog } from "@mmo-engine/art/character";

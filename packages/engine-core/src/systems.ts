@@ -43,8 +43,10 @@ import {
   BodyConfig,
   God,
   Health,
+  Injury,
   Locomotion,
   MotionType,
+  NO_JUMP,
   Noclip,
   PlayerIntent,
   ShapeKind,
@@ -54,7 +56,6 @@ import {
 import type { SimWorld } from "./world.js";
 import type { SystemAccess } from "./system-access.js";
 import { DEFAULT_MOVEMENT, type MovementRules } from "./movement.js";
-import { Injury, NO_JUMP } from "./body.js";
 import type { ChunkDataSource } from "./procgen/chunk-source.js";
 
 export interface SimSystem {
