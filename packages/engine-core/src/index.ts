@@ -596,3 +596,25 @@ export {
 
 export * from "./civic/index.js";
 export * from "./pools/index.js";
+
+// What a kit needs of the engine beyond the components and the world
+// (roadmap ES5g). The movement rules a combat system reads, the respawn
+// pool a death system binds to, and the dungeon slot a combat kit fills:
+// internal paths until now, because only engine-core's own files reached
+// them. A kit is a package, so it reaches them through the index like any
+// other consumer.
+export { DEFAULT_MOVEMENT, type MovementRules } from "./movement.js";
+export {
+  INVALID_POOL_HANDLE,
+  RespawnKind,
+  SlotState,
+  SpawnPoolSoA,
+  type SpawnPoolOptions,
+} from "./pools/spawn-pool-soa.js";
+export {
+  NO_DUNGEON_COMBAT,
+  type ArmourKind,
+  type DungeonCombat,
+  type DungeonCombatContext,
+  type DungeonCombatFactory,
+} from "./dungeons/combat-slot.js";

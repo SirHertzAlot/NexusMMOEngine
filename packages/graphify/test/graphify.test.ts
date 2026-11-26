@@ -6,20 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  EcsGraphSchema,
-  FILE_LINE_RE,
-  archetypeId,
-  assertDeterministicBytes,
-  canonicalJson,
-  explainWhy,
-  harvest,
-  loadGraph,
-  runCli,
-  validateGraph,
-  whatDiffers,
-  type EcsGraph,
-} from "../src/index.js";
+import { EcsGraphSchema, FILE_LINE_RE, archetypeId, assertDeterministicBytes, canonicalJson, explainWhy, harvest, kitSrcDirs, loadGraph, runCli, type EcsGraph, validateGraph, whatDiffers } from "../src/index.js";
 
 const THIS_DIR = dirname(fileURLToPath(import.meta.url));
 // Works from both src/test (if ever run via loader) and dist/test
@@ -516,4 +503,31 @@ test("CLI --why answers component, field, system, and scene object queries", () 
   assert.match(objText, /simulation systems touching components/);
 
   assert.throws(() => explainWhy(graph, "component:NonExistentWidget"), /No node matches/);
+});
+
+test("the scan follows a kit's src, and a repo with no kits is unchanged (ES5g)", () => {
+  // A kit owns systems the engine used to hold, declared the same way. The
+  // graph has to find them wherever they live, or the editor's view of the
+  // tick silently loses a third of it the day `kit-combat` lands.
+  const root = mkdtempSync(join(tmpdir(), "graphify-kits-"));
+  try {
+    mkdirSync(join(root, "packages", "engine-core", "src"), { recursive: true });
+    assert.deepEqual(kitSrcDirs(root), [], "no kit packages, nothing extra to scan");
+
+    // Two kits, created out of order, plus one without a src and one that is
+    // not a kit at all: the result is the two, sorted.
+    mkdirSync(join(root, "packages", "kit-economy", "src"), { recursive: true });
+    mkdirSync(join(root, "packages", "kit-combat", "src"), { recursive: true });
+    mkdirSync(join(root, "packages", "kit-empty"), { recursive: true });
+    mkdirSync(join(root, "packages", "settlement", "src"), { recursive: true });
+    assert.deepEqual(kitSrcDirs(root), [
+      join(root, "packages", "kit-combat", "src"),
+      join(root, "packages", "kit-economy", "src"),
+    ]);
+
+    // A repo with no packages directory at all does not throw.
+    assert.deepEqual(kitSrcDirs(mkdtempSync(join(tmpdir(), "graphify-bare-"))), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
