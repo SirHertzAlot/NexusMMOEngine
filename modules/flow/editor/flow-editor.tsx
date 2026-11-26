@@ -23,7 +23,9 @@ import {
   type FlowDoc,
   type SceneIssue,
 } from "@mmo-engine/scene";
-import { getFlow, playFromUrl, saveFlow } from "../../../apps/editor/src/flow-client.js";
+import { getFlow, saveFlow } from "../../../apps/editor/src/flow-client.js";
+import { emptyPreviewNote, previewTarget, type PreviewTarget } from "../../../apps/editor/src/flow-preview.js";
+import { FlowPreviewPane } from "../../../apps/editor/src/ui/flow-preview-pane.js";
 import { leftRightRoute } from "../../../apps/editor/src/graph-view.js";
 import { issueCount } from "../../../apps/editor/src/save-outcome.js";
 import { useSaveTask } from "../../../apps/editor/src/ui/use-save-task.js";
@@ -83,6 +85,10 @@ export function FlowEditor(): React.JSX.Element {
   const [newId, setNewId] = React.useState("");
   const [newScene, setNewScene] = React.useState("login");
   const [client, setClient] = React.useState("http://localhost:5173");
+  // EB6: the screen a node leads to, shown beside the graph rather than in
+  // another tab. Null until a node is played.
+  const [preview, setPreview] = React.useState<PreviewTarget | null>(null);
+  const [previewSizeId, setPreviewSizeId] = React.useState("fit");
   const [server, setServer] = React.useState({ url: "", user: "", pass: "" });
 
   const load = React.useCallback((): void => {
@@ -153,13 +159,17 @@ export function FlowEditor(): React.JSX.Element {
   const save = async (): Promise<void> => {
     if (await task.run(() => saveFlow(doc), { ok: "saved to content/flow/game.flow.json", refused: (i) => `refused: ${issueCount(i.length)}` })) flow.markSaved(doc);
   };
+  /** Show the node's screen in the preview pane (EB6). */
   const play = (id: string): void => {
-    const r = playFromUrl(doc, id, { client, server: server.url && server.user ? server : undefined });
-    if ("error" in r) setStatus(r.error);
-    else {
-      setStatus(`opened ${r.url.replace(/pass=[^&]*/, "pass=…")}`);
-      window.open(r.url, "_blank", "noopener");
+    const r = previewTarget(doc, id, { client, server: server.url && server.user ? server : undefined });
+    if ("error" in r) {
+      setPreview(null);
+      setStatus(r.error);
+      return;
     }
+    setPreview(r);
+    // The URL carries the dev account, so only the masked one is ever shown.
+    setStatus(`showing ${r.shown}`);
   };
   const sel = selected && doc.nodes[selected] ? selected : null;
 
@@ -384,6 +394,13 @@ export function FlowEditor(): React.JSX.Element {
           <p className="text-[11px]" style={{ color: "var(--m3-on-surface-variant)" }}>
             Login needs nothing. Character creation previews without a server. Character select and world log in with the server and account above, then jump to the node.
           </p>
+          <FlowPreviewPane
+            target={preview}
+            note={emptyPreviewNote(client, sel)}
+            sizeId={previewSizeId}
+            onSize={setPreviewSizeId}
+            onOpenTab={() => preview && window.open(preview.url, "_blank", "noopener")}
+          />
         </section>
       </div>
     </div>

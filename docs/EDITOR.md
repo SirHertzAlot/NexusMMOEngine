@@ -385,6 +385,31 @@ holds the generator and its refusals and is browser-safe, so the form and
 writes all of the files or none of them, and never over a folder that is
 already there.
 
+## 2h. Previewing a flow's screens (ROADMAP EB6)
+
+The Flow panel edits the path a player takes — login, character creation,
+character select, the world — and **Play from** has always been able to
+open any node, because the client takes `?start=<node>` and the dev
+account rides in the query string beside it. What it did was open a tab,
+which put the graph and the screen it describes on two different windows.
+
+The preview pane under **Play from** frames that same URL in an iframe, at
+Fit or one of three fixed sizes (1280 × 720, 1024 × 640, 390 × 844), so a
+screen can be judged at the size it will be played at without leaving the
+graph. It needs the client's own dev server running (`npm run dev
+--workspace=@mmo-engine/client`); the URL field above the buttons is where
+that address comes from, and the pane says so when it is empty. **Open in
+a tab** stays, because devtools, a second window and pointer lock still
+want a window of their own.
+
+One detail is not cosmetic. The play URL carries the dev account's name
+and password as query parameters, which is tolerable while the URL only
+goes to `window.open` and is not tolerable on a line of text in the
+editor, so the line under the toolbar is `maskUrl`'s version: every
+`user=`, `pass=`, `password=` and `token=` value is replaced with `…`.
+Anything that prints a play URL — a log line, a status message — should
+print that form, not the real one.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
