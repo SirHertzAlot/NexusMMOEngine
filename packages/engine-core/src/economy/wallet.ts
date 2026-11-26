@@ -14,18 +14,13 @@
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { WalletChange } from "../vocabulary.js";
 
 export interface WalletStore {
   /** Gold for `charId`; 0 when never seen. */
   load(charId: number): number;
   /** Persist `charId`'s balance (write-through). */
   save(charId: number, gold: number): void;
-}
-
-export interface WalletChange {
-  tick: number;
-  charId: number;
-  balance: number;
 }
 
 export class WalletSystem implements SimSystem {

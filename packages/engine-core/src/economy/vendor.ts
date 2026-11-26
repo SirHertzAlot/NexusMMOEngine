@@ -26,6 +26,7 @@ import * as C from "../components.js";
 import type { WalletSystem } from "./wallet.js";
 import type { ChestView } from "@mmo-engine/protocol";
 import { PORTS } from "@mmo-engine/sdk";
+import type { VendorDef, VendorStock, VendorView } from "../vocabulary.js";
 
 /** How the vendor moves item instances (wired to the ItemService). */
 export interface VendorItems {
@@ -39,34 +40,6 @@ export interface VendorItems {
   nameOf(def: number): string;
   /** Units in the stack of `itemId` (absent: 1). */
   countOf?(itemId: number): number;
-}
-
-export interface VendorStock {
-  /** Item def id. */
-  def: number;
-  /** Human-readable name; resolved at list time, absent on stored lines. */
-  name?: string;
-  /** Gold the vendor charges. */
-  price: number;
-  /** Units for sale; -1 means infinite. */
-  quantity: number;
-}
-
-export interface VendorDef {
-  id: string;
-  name: string;
-  stock: VendorStock[];
-  /** Fraction of the listed price paid on buyback (0–1). */
-  buybackRate: number;
-  /** Closed vendors refuse list/buy/sell until re-enabled. */
-  enabled: boolean;
-}
-
-export interface VendorView {
-  id: string;
-  name: string;
-  stock: VendorStock[];
-  buybackRate: number;
 }
 
 /** How close a buyer must stand to the vendor (meters). */

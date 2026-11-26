@@ -28,6 +28,7 @@ import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { WalletSystem } from "./wallet.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { AuctionEvent, AuctionEventState, Listing, ListingView } from "../vocabulary.js";
 
 /** How the auction moves bag items (wired to the ItemStore in server.ts). */
 export interface AuctionItems {
@@ -41,41 +42,6 @@ export interface AuctionItems {
   move(itemId: number, from: number, to: number): boolean;
   /** Human-readable name for a def, for the order book. */
   nameOf(def: number): string;
-}
-
-export interface Listing {
-  id: number;
-  seller: number;
-  item: number;
-  def: number;
-  startBid: number;
-  buyout: number;
-  topBid: number;
-  topBidder: number;
-  expiresAt: number;
-}
-
-export interface ListingView {
-  id: number;
-  def: number;
-  /** Human-readable name, resolved at browse time. */
-  name: string;
-  startBid: number;
-  buyout: number;
-  topBid: number;
-  topBidder: number;
-  expiresAt: number;
-}
-
-export type AuctionEventState = "listed" | "bid" | "sold" | "expired" | "cancelled";
-
-export interface AuctionEvent {
-  tick: number;
-  id: number;
-  state: AuctionEventState;
-  view: ListingView | null;
-  /** Character ids to notify (seller, winner, outbid bidder). */
-  parties: number[];
 }
 
 /** Longest a listing may run, ms. */

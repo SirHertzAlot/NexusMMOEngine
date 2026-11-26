@@ -23,6 +23,7 @@ import type { SimSystem } from "../systems.js";
 import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { GatherResult } from "../vocabulary.js";
 
 export interface GatheringStore {
   /** A node's saved stock and regrow time (unix ms; null: none due), or undefined when never saved. */
@@ -67,10 +68,6 @@ export interface GatheringOptions {
   /** Optional SAB SpawnPoolSoA mirroring resource node stock and regrowth timers. */
   pool?: SpawnPoolSoA;
 }
-
-export type GatherResult =
-  | { ok: true; material: string; name: string; count: number }
-  | { ok: false; error: string };
 
 interface Node extends ResourceNodeSpec {
   key: string;

@@ -130,3 +130,160 @@ export interface DuelEvent {
   /** Ended by blood/yield: the winner. */
   winner?: number;
 }
+
+/**
+ * What the economy and world systems announce and hand out (`ES5d`).
+ *
+ * The eight economy and world ports were the last in `net/ports.ts` to name
+ * a system: each was a `Pick<>` of the class that answers it, because the
+ * shapes it returns — a trade's state, an order book row, a vendor's stock,
+ * what a gather yielded — were declared beside that class. A `Pick<>` costs
+ * no code, but it is still the engine saying "whatever `TradeSystem`
+ * happens to be", which is precisely what a kit has to be free to replace.
+ *
+ * So the shapes come here, beside the combat events, on the same terms: a
+ * record of what happened or a read-only view of what is, with no behaviour
+ * and no system behind it. Nothing below mentions an entity's storage or
+ * SimWorld; a game that writes its own trading still announces a settled
+ * trade this way, and the gateway that puts it on the wire never learns
+ * whose code raised it.
+ */
+
+/** Where a trade stands when it stops moving. */
+export type TradeState = "open" | "settled" | "cancelled" | "expired";
+
+/** A trade's progress, for both parties (catalog 0x21). */
+export interface TradeEvent {
+  tick: number;
+  id: number;
+  state: TradeState | "offer" | "accepted";
+  a: number;
+  b: number;
+  aGold: number;
+  bGold: number;
+  aItems: number[];
+  bItems: number[];
+  aAccepted: boolean;
+  bAccepted: boolean;
+}
+
+/** An open trade: what each side has put up, and when it lapses. */
+export interface Trade {
+  a: number;
+  b: number;
+  aGold: number;
+  bGold: number;
+  aItems: number[];
+  bItems: number[];
+  aAccepted: boolean;
+  bAccepted: boolean;
+  expiresAt: number;
+}
+
+/** A character's gold after it moved, for the gateway (catalog 0x21). */
+export interface WalletChange {
+  tick: number;
+  charId: number;
+  balance: number;
+}
+
+/** A live auction listing, as the house keeps it. */
+export interface Listing {
+  id: number;
+  seller: number;
+  item: number;
+  def: number;
+  startBid: number;
+  buyout: number;
+  topBid: number;
+  topBidder: number;
+  expiresAt: number;
+}
+
+/** A listing as the order book shows it: no item instance, a resolved name. */
+export interface ListingView {
+  id: number;
+  def: number;
+  /** Human-readable name, resolved at browse time. */
+  name: string;
+  startBid: number;
+  buyout: number;
+  topBid: number;
+  topBidder: number;
+  expiresAt: number;
+}
+
+/** What became of a listing. */
+export type AuctionEventState = "listed" | "bid" | "sold" | "expired" | "cancelled";
+
+/** A listing's progress, for the parties to it (catalog 0x21). */
+export interface AuctionEvent {
+  tick: number;
+  id: number;
+  state: AuctionEventState;
+  view: ListingView | null;
+  /** Character ids to notify (seller, winner, outbid bidder). */
+  parties: number[];
+}
+
+/** One line of a vendor's stock. */
+export interface VendorStock {
+  /** Item def id. */
+  def: number;
+  /** Human-readable name; resolved at list time, absent on stored lines. */
+  name?: string;
+  /** Gold the vendor charges. */
+  price: number;
+  /** Units for sale; -1 means infinite. */
+  quantity: number;
+}
+
+/** A vendor template: what it sells, and on what terms. */
+export interface VendorDef {
+  id: string;
+  name: string;
+  stock: VendorStock[];
+  /** Fraction of the listed price paid on buyback (0–1). */
+  buybackRate: number;
+  /** Closed vendors refuse list/buy/sell until re-enabled. */
+  enabled: boolean;
+}
+
+/** A vendor's price list as a shopper sees it: no `enabled` to read. */
+export interface VendorView {
+  id: string;
+  name: string;
+  stock: VendorStock[];
+  buybackRate: number;
+}
+
+/** What one gather yielded, or why it yielded nothing (catalog 0x27). */
+export type GatherResult =
+  | { ok: true; material: string; name: string; count: number }
+  | { ok: false; error: string };
+
+/** What opening a chest or door gave, or why it gave nothing (catalog 0x27). */
+export type ChestResult = { ok: true; items: number } | { ok: false; error: string };
+
+/** Whether a chest or door may be used now, and how long it takes. */
+export type ChestCheck = { ok: true; castSeconds: number; spell: string } | { ok: false; error: string };
+
+/** Whether a mend succeeded (catalog 0x27). */
+export type RepairResult = { ok: true } | { ok: false; error: string };
+
+/** Whether a ruin may be mended now, and how long it takes. */
+export type RepairCheck = { ok: true; castSeconds: number; spell: string } | { ok: false; error: string };
+
+/** How closely a town's residents are simulated. */
+export type ResidentTier = "full" | "coarse" | "none";
+
+/** What a resident is, for the interaction system (R5). */
+export interface ResidentInfo {
+  npc: string;
+  town: string;
+  role: string;
+  class: string;
+  cohort: string;
+  mastery?: string;
+  grandMaster?: boolean;
+}

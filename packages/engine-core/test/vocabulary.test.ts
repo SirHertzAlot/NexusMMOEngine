@@ -34,7 +34,11 @@ const tsFiles = (dir: string, out: string[] = []): string[] => {
 
 const ALL = tsFiles(SRC).map((p) => ({ rel: p.slice(SRC.length), text: readFileSync(p, "utf8") }));
 
-/** Everything the vocabulary owns: the shared nouns, then what a system announces. */
+/**
+ * Everything the vocabulary owns: the shared nouns, what a combat system
+ * announces (`ES5b`), and what the economy and world systems announce and
+ * hand out (`ES5d`).
+ */
 const VOCABULARY = [
   "Weapon",
   "LifeEvent",
@@ -47,6 +51,24 @@ const VOCABULARY = [
   "StatusChange",
   "DuelEvent",
   "DuelEndReason",
+  "TradeState",
+  "TradeEvent",
+  "Trade",
+  "WalletChange",
+  "Listing",
+  "ListingView",
+  "AuctionEventState",
+  "AuctionEvent",
+  "VendorStock",
+  "VendorDef",
+  "VendorView",
+  "GatherResult",
+  "ChestResult",
+  "ChestCheck",
+  "RepairResult",
+  "RepairCheck",
+  "ResidentTier",
+  "ResidentInfo",
 ] as const;
 
 const DECLARES = (name: string): RegExp => new RegExp(`export (interface|type) ${name}\\b`);
@@ -100,6 +122,13 @@ describe("ES5: the shared vocabulary", () => {
       "../telegraph.js",
       "../status.js",
       "../duel.js",
+      "../economy/trade.js",
+      "../economy/wallet.js",
+      "../economy/auction.js",
+      "../economy/vendor.js",
+      "../gathering/index.js",
+      "../interact/index.js",
+      "../residents/index.js",
     ]) {
       assert.ok(!specs.includes(system), `net/ports.ts still imports ${system}`);
     }

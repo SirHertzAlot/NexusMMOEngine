@@ -31,15 +31,26 @@ import { loadGameRules } from "../../src/rules/boot.js";
 import {
   GATEWAY_PORTS,
   type AbilityPort,
+  type AuctionPort,
+  type BreakPort,
+  type ChestPort,
   type CombatPort,
   type DuelPort,
   type GatewayPorts,
+  type GatheringPort,
   type LifePort,
+  type ResidentPort,
   type StatusPort,
   type TelegraphPort,
+  type TradePort,
+  type VendorPort,
+  type WalletPort,
 } from "../../src/net/ports.js";
 
-const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "src", "net", "gateway.ts");
+const srcPath = (...parts: string[]): string =>
+  resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "src", ...parts);
+const SRC = srcPath("net", "gateway.ts");
+const PORTS_SRC = srcPath("net", "ports.ts");
 
 /** Compile-time: each system still answers the port the gateway asks it for. */
 type Conforms<T extends P, P> = true;
@@ -49,7 +60,21 @@ const _abilities: Conforms<AbilitySystem, AbilityPort> = true;
 const _telegraphs: Conforms<TelegraphSystem, TelegraphPort> = true;
 const _statuses: Conforms<StatusSystem, StatusPort> = true;
 const _duels: Conforms<DuelSystem, DuelPort> = true;
+// These eight were `Pick<>` of their system until `ES5d`, so conformance was
+// true by construction and needed no line here. Now they are written out, and
+// these lines are what makes a hand-written signature a claim the compiler
+// checks: drop a method, rename a parameter's type, demand something the
+// system does not have, and the build fails on the port, not on a tick.
+const _trade: Conforms<TradeSystem, TradePort> = true;
+const _wallet: Conforms<WalletSystem, WalletPort> = true;
+const _auction: Conforms<AuctionSystem, AuctionPort> = true;
+const _vendors: Conforms<VendorSystem, VendorPort> = true;
+const _gathering: Conforms<GatheringSystem, GatheringPort> = true;
+const _chests: Conforms<ChestSystem, ChestPort> = true;
+const _breaks: Conforms<BreakSystem, BreakPort> = true;
+const _residents: Conforms<ResidentSystem, ResidentPort> = true;
 void [_combat, _life, _abilities, _telegraphs, _statuses, _duels];
+void [_trade, _wallet, _auction, _vendors, _gathering, _chests, _breaks, _residents];
 
 /** Compile-time: the table's keys are exactly the typed map's keys. */
 const _keys: readonly (keyof GatewayPorts)[] = [
@@ -236,4 +261,75 @@ test("gateway.ts finds no system by class", () => {
       `gateway.ts reads no "${key}" port`,
     );
   }
+});
+
+/** The interface that types each port, by the key a system offers it under. */
+const PORT_INTERFACE: Readonly<Record<keyof GatewayPorts, string>> = {
+  combat: "CombatPort",
+  life: "LifePort",
+  abilities: "AbilityPort",
+  telegraphs: "TelegraphPort",
+  statuses: "StatusPort",
+  duels: "DuelPort",
+  trade: "TradePort",
+  wallet: "WalletPort",
+  auction: "AuctionPort",
+  vendors: "VendorPort",
+  gathering: "GatheringPort",
+  chests: "ChestPort",
+  breaks: "BreakPort",
+  residents: "ResidentPort",
+};
+
+/**
+ * The members an interface declares, read from the source.
+ *
+ * A member sits at one indent: `name(...)`, `name(` opening a signature that
+ * runs over several lines, or `readonly name: T`. Continuation lines and the
+ * closing brace of a nested object type are deeper or start with punctuation,
+ * so neither is mistaken for one.
+ */
+function declaredMembers(text: string, name: string): string[] {
+  const open = text.indexOf(`export interface ${name} {`);
+  assert.notEqual(open, -1, `net/ports.ts should declare ${name}`);
+  const body = text.slice(text.indexOf("\n", open) + 1);
+  const end = body.indexOf("\n}\n");
+  assert.notEqual(end, -1, `${name} should be closed`);
+  const members: string[] = [];
+  for (const line of body.slice(0, end).split("\n")) {
+    const m = /^ {2}(?:readonly )?([A-Za-z_$][\w$]*)\s*[(:]/.exec(line);
+    if (m) members.push(m[1] as string);
+  }
+  return members;
+}
+
+test("each port's interface and its table row name the same members", () => {
+  // The interface is what the gateway's call sites are typed against; the
+  // table is what the boot checks a provider against. They are written by
+  // hand in one file and nothing but this makes them say the same thing, so
+  // a method added to one and not the other would be either a call no
+  // provider has to answer or a demand the boot never enforces.
+  const text = readFileSync(PORTS_SRC, "utf8");
+  for (const decl of GATEWAY_PORTS) {
+    const name = PORT_INTERFACE[decl.key as keyof GatewayPorts];
+    const declared = declaredMembers(text, name).sort();
+    const tabled = [...decl.methods, ...(decl.fields ?? [])].sort();
+    assert.deepEqual(declared, tabled, `${name} and the "${decl.key}" row disagree`);
+  }
+  assert.deepEqual(Object.keys(PORT_INTERFACE).sort(), GATEWAY_PORTS.map((d) => d.key).sort());
+});
+
+test("net/ports.ts names no system, of the engine's or a kit's", () => {
+  // The point of the whole change (`ES4c`, `ES4d`, `ES5b`, `ES5d`): the
+  // gateway's demands are written in shared vocabulary, the protocol's wire
+  // views and the engine's own world. A system module creeping back into
+  // this import list would tie the gateway to a class again, which is what
+  // keeps the combat and economy systems from leaving for a kit.
+  const specs = [...readFileSync(PORTS_SRC, "utf8").matchAll(/from "([^"]+)"/g)].map((m) => m[1] as string);
+  assert.deepEqual([...specs].sort(), [
+    "../vocabulary.js",
+    "../world.js",
+    "@mmo-engine/protocol",
+    "@mmo-engine/sdk",
+  ]);
 });
