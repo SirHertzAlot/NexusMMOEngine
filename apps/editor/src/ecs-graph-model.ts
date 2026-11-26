@@ -21,6 +21,8 @@ export interface EcsGraphNode {
   fields?: Array<{ name: string; type: string; arrayLength?: number }>;
   tag?: boolean;
   modules?: string[];
+  /** `relative/path.ts:line` where the node was found, when known (EU9 opens it). */
+  source?: string;
 }
 
 export interface EcsGraphEdge {
@@ -104,6 +106,8 @@ export interface SystemAccessBadge {
   confidence: EdgeConfidence;
   tickIndex?: number;
   fields: string[];
+  /** The system's own `file:line`, for the editor handoff. */
+  source?: string;
 }
 
 export interface FootprintFieldRow {
@@ -353,6 +357,7 @@ export function indexEcsGraph(payload: EcsGraphPayload): EcsGraphIndex {
         confidence: info.confidence,
         tickIndex: info.sysNode?.tickIndex,
         fields: [...info.fields].sort(),
+        ...(info.sysNode?.source === undefined ? {} : { source: info.sysNode.source }),
       });
     }
     return list.sort((a, b) => (a.tickIndex ?? 999) - (b.tickIndex ?? 999) || a.system.localeCompare(b.system));

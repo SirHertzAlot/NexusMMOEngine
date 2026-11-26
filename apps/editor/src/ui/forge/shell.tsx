@@ -29,6 +29,7 @@ import { setTool } from "../tool-store.js";
 import { playUiStore } from "../play-ui-store.js";
 import type { PlayModeState } from "../../play-mode.js";
 import type { VcsFile } from "../../vcs-client.js";
+import type { CodeStatus } from "../../code-client.js";
 
 const SNAPSHOT: EntitySnapshot = {
   tick: 184_210,
@@ -211,10 +212,16 @@ function SystemsShot(): React.JSX.Element {
         overflow: "hidden",
       }}
     >
-      <ForgeSystemsView signatures={signatures} costs={costs} />
+      <ForgeSystemsView signatures={signatures} costs={costs} codeStatus={CODE} />
     </div>
   );
 }
+
+/** The handoff's state in the shots: VS Code found, as on a dev machine. */
+const CODE: CodeStatus = {
+  repoRoot: "/home/sam/engine",
+  editor: { command: "code", found: true, version: "1.96.2" },
+};
 
 /**
  * The integrations shot. Inputs are a plausible working state fed
@@ -230,6 +237,7 @@ function IntegrationsShot(): React.JSX.Element {
       files: [file("content/scenes/arena.json"), file("content/rules/combat.json")],
     },
     locks: { "content/scenes/arena.json": { owner: "sam", since: "2026-11-26T10:00:00Z" } },
+    code: CODE,
     graph: {
       state: "stale",
       graphCommit: "207c31b",

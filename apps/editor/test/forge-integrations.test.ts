@@ -25,13 +25,14 @@ function file(path: string, over: Partial<VcsFile> = {}): VcsFile {
 }
 
 /** Everything unreachable: the state the panel is in before its first read. */
-const COLD: IntegrationInputs = { play: "idle", vcs: null, locks: null, graph: null };
+const COLD: IntegrationInputs = { play: "idle", vcs: null, locks: null, graph: null, code: null };
 
 const WARM: IntegrationInputs = {
   play: "running",
   vcs: { branch: "main", files: [] },
   locks: {},
   graph: { state: "synced", graphCommit: "abc1234", compareCommit: "abc1234", compareLabel: "repo HEAD", reason: "synced · abc1234" },
+  code: { repoRoot: "/home/sam/engine", editor: { command: "code", found: true, version: "1.96.2" } },
 };
 
 const row = (input: IntegrationInputs, id: string) => {
@@ -100,15 +101,29 @@ describe("the runtime row", () => {
 });
 
 describe("what we have not built", () => {
-  it("lists VS Code and Blender always, as not set up, naming the slice", () => {
+  it("lists Blender always, as not set up, naming the slice that would build it", () => {
     for (const input of [COLD, WARM]) {
-      const vscode = row(input, "vscode");
       const blender = row(input, "blender");
-      assert.equal(vscode.state, "absent");
       assert.equal(blender.state, "absent");
-      assert.match(vscode.detail, /EU9/);
       assert.match(blender.detail, /EU10/);
     }
+  });
+
+  it("reports the VS Code handoff from the probe, never from hope", () => {
+    // Not probed: absent, and it says why rather than claiming a failure.
+    assert.equal(row(COLD, "vscode").state, "absent");
+    assert.match(row(COLD, "vscode").detail, /not probed/);
+    // `code` found: connected, with the version the host read.
+    assert.equal(row(WARM, "vscode").state, "ok");
+    assert.match(row(WARM, "vscode").detail, /1\.96\.2/);
+    // `code` missing is "not set up", not "blocked": the URI and the
+    // copyable command still work without it.
+    const without: IntegrationInputs = {
+      ...WARM,
+      code: { repoRoot: "/home/sam/engine", editor: { command: "code", found: false, version: null } },
+    };
+    assert.equal(row(without, "vscode").state, "absent");
+    assert.match(row(without, "vscode").detail, /not on PATH/);
   });
 
   it("keeps a fixed order, so the list does not reshuffle as states change", () => {
@@ -128,7 +143,7 @@ describe("the panel", () => {
     const warm = renderToStaticMarkup(
       React.createElement(ForgeIntegrationsView, { rows: integrationRows(WARM) }),
     );
-    assert.match(warm, /4 of 6 connected/);
+    assert.match(warm, /5 of 6 connected/);
   });
 
   it("acts on nothing: it is a read-out", () => {

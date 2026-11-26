@@ -31,6 +31,8 @@ import {
   type EdgeConfidence,
 } from "../ecs-graph-model.js";
 import { TICK_BUDGET_MS, budgetTone, useTickTimings } from "./forge-profiler.js";
+import { OpenInCode, useCodeStatus } from "./open-in-code.js";
+import type { CodeStatus } from "../code-client.js";
 
 export type AccessKind = "writes" | "reads" | "excludes";
 
@@ -41,6 +43,8 @@ export interface SystemSignature {
   excludes: string[];
   /** The weakest confidence among this system's edges: what the row can be trusted to. */
   confidence: EdgeConfidence;
+  /** `file:line` of the system's declaration, when the graph recorded one (EU9). */
+  source?: string;
 }
 
 const CONFIDENCE_RANK: Readonly<Record<EdgeConfidence, number>> = {
@@ -57,7 +61,7 @@ const CONFIDENCE_RANK: Readonly<Record<EdgeConfidence, number>> = {
  * is what decides ordering and conflicts.
  */
 export function systemSignatures(index: EcsGraphIndex): SystemSignature[] {
-  const rows = new Map<string, { writes: Set<string>; reads: Set<string>; excludes: Set<string>; confidence: EdgeConfidence }>();
+  const rows = new Map<string, { writes: Set<string>; reads: Set<string>; excludes: Set<string>; confidence: EdgeConfidence; source?: string }>();
   const row = (system: string) => {
     let r = rows.get(system);
     if (!r) {
@@ -72,6 +76,9 @@ export function systemSignatures(index: EcsGraphIndex): SystemSignature[] {
       for (const badge of access[kind]) {
         const r = row(badge.system);
         r[kind].add(component);
+        // Every badge for a system carries the same declaration site; the
+        // first one that knows it wins, and a badge without one changes nothing.
+        if (r.source === undefined && badge.source !== undefined) r.source = badge.source;
         if (CONFIDENCE_RANK[badge.confidence] < CONFIDENCE_RANK[r.confidence]) {
           r.confidence = badge.confidence;
         }
@@ -87,6 +94,7 @@ export function systemSignatures(index: EcsGraphIndex): SystemSignature[] {
       reads: [...r.reads].filter((c) => !r.writes.has(c)).sort(),
       excludes: [...r.excludes].sort(),
       confidence: r.confidence,
+      ...(r.source === undefined ? {} : { source: r.source }),
     }))
     .sort((a, b) => a.system.localeCompare(b.system));
 }
@@ -169,11 +177,14 @@ export function ForgeSystemsView({
   signatures,
   costs,
   budgetMs = TICK_BUDGET_MS,
+  codeStatus,
 }: {
   signatures: readonly SystemSignature[] | null;
   /** System name -> mean ms per tick, or null when no server is running. */
   costs: ReadonlyMap<string, number> | null;
   budgetMs?: number;
+  /** The editor handoff's status, shared by every row (EU9). */
+  codeStatus?: CodeStatus | null;
 }): React.JSX.Element {
   if (signatures === null) {
     return (
@@ -217,6 +228,9 @@ export function ForgeSystemsView({
                   {r.confidence}
                 </span>
               )}
+              {r.source !== undefined && (
+                <OpenInCode source={r.source} status={codeStatus ?? null} />
+              )}
               {r.costMs !== null && (
                 <span
                   className="fg-data"
@@ -251,6 +265,7 @@ function CHIP_TONE_FOR_COST(ms: number, budgetMs: number): string {
 export function ForgeSystemsPanel(): React.JSX.Element {
   const index = useGraphIndex();
   const timings = useTickTimings();
+  const code = useCodeStatus();
   const signatures = React.useMemo(() => (index ? systemSignatures(index) : null), [index]);
   const costs = React.useMemo(
     () =>
@@ -259,5 +274,5 @@ export function ForgeSystemsPanel(): React.JSX.Element {
         : null,
     [timings],
   );
-  return <ForgeSystemsView signatures={signatures} costs={costs} />;
+  return <ForgeSystemsView signatures={signatures} costs={costs} codeStatus={code} />;
 }

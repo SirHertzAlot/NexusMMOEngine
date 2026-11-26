@@ -105,6 +105,21 @@ Control, Integrations — where **Integrations** is a status list (Blender
 bridge, VS Code, UI layout, git worktree, runtime node). That grouping
 is better than eight tabs and is what the rebuild should use.
 
+Two of those four are built now. **Console** is `EU8`: the streams all
+existed and the place to read them back did not. **Code** is `EU9`, and
+not as the reference draws it — see the ruling in §5. What an embedded
+editor would have given us that is worth having is that *the editor
+knows where things are*: every system node in the committed ECS graph
+carries `file:line`, so a click opens that line in the editor the person
+already has. `code-handoff.ts` holds the path arithmetic and the
+refusals (repository-relative only, never under `assets/`), applied
+both in the button and on the host route; `code-host.ts` reports whether
+`code` is on PATH and spawns it with an argv array, never a shell
+string. Three routes to the same place, tried in order: the host spawn,
+the `vscode://` URI, and the command on the clipboard — the last of
+which is the only one left when the person's editor is not VS Code at
+all.
+
 ### 2.7 UI SDK / UI Kit tab
 
 Both references carry one, and it is **not an editor surface**: it is a
@@ -299,7 +314,14 @@ list, not a blocker.
   same `lineTone` the Server tab colours by, so the two cannot disagree.
   Runtime discovery (probe local ports, list, attach) is still open; the
   attach half exists in `server-gate.ts` and `mirror-connect.ts`.
-- **EU9** — VS Code handoff (not an embedded IDE).
+- **EU9** — VS Code handoff (not an embedded IDE). Built:
+  `code-handoff.ts` (pure: parse `file:line`, the refusals, the URI and
+  the copyable command), `code-host.ts` (`GET /api/editor/code`,
+  `POST /api/editor/code/open`), `ui/open-in-code.tsx` (the chip), and
+  every row of the systems list carries one. The `assets/` refusal is
+  `vcs-host.ts`'s, restated here because this is the second tool that
+  could cross that line. Still open: the Code tab itself, which needs
+  the four-tab regrouping, and a file tree is not what it should hold.
 - **EU10** — Blender live-link, if still wanted.
 
 EU1–EU5 are presentation over data we already hold. EU6 onward is new

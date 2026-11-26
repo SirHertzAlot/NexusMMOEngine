@@ -17,16 +17,19 @@
  *   - the committed ECS graph and whether it still matches the commit
  *     it was built from (`checkGraphStaleness`, ecs-graph-model.ts).
  *
- * The two that do not exist — the Blender live-link (`EU10`) and the
- * VS Code handoff (`EU9`) — are listed as **not set up**, with the
- * reason, rather than as failures or as a blank space. A status list
- * that hides what is missing is not a status list.
+ * Since `EU8` and `EU9` the console and the VS Code handoff exist, so
+ * the VS Code row reports what the host found on this machine's PATH.
+ * The one that still does not exist — the Blender live-link (`EU10`) —
+ * is listed as **not set up**, with the reason, rather than as a
+ * failure or as a blank space. A status list that hides what is missing
+ * is not a status list.
  */
 
 import * as React from "react";
 import { checkGraphStaleness, fetchEcsGraph, type GraphStaleness } from "../ecs-graph-model.js";
 import { vcsLocks, vcsStatus, type VcsFile } from "../vcs-client.js";
 import { playUiStore } from "./play-ui-store.js";
+import { codeStatus, type CodeStatus } from "../code-client.js";
 import { serverChip } from "./forge-chrome.js";
 import type { PlayModeState } from "../play-mode.js";
 
@@ -46,6 +49,8 @@ export interface IntegrationInputs {
   vcs: { branch: string; files: ReadonlyArray<VcsFile> } | null;
   locks: Readonly<Record<string, { owner: string; since: string }>> | null;
   graph: GraphStaleness | null;
+  /** What the host found when it looked for `code` on PATH (EU9). */
+  code: CodeStatus | null;
 }
 
 /** Plural that reads: "1 file", "3 files". */
@@ -126,14 +131,33 @@ export function integrationRows(input: IntegrationInputs): IntegrationRow[] {
         },
   );
 
-  // The two the mockups show that we have not built. Named, with the
-  // slice that would build each, so the list is honest about its holes.
-  rows.push({
-    id: "vscode",
-    label: "VS Code",
-    state: "absent",
-    detail: "not set up — handoff rather than an embedded editor (roadmap EU9)",
-  });
+  // The handoff (EU9). `code` missing is "not set up", not a failure:
+  // the `vscode://` URI and the copyable command still work without it.
+  rows.push(
+    input.code === null
+      ? {
+          id: "vscode",
+          label: "VS Code",
+          state: "absent",
+          detail: "handoff not probed — the dev host is not serving /api/editor/code",
+        }
+      : input.code.editor.found
+        ? {
+            id: "vscode",
+            label: "VS Code",
+            state: "ok",
+            detail: `${input.code.editor.version ?? input.code.editor.command} — a source location opens at its line`,
+          }
+        : {
+            id: "vscode",
+            label: "VS Code",
+            state: "absent",
+            detail: "`code` is not on PATH; the vscode:// link and the copyable command still work",
+          },
+  );
+
+  // The one the mockups show that we have not built. Named, with the
+  // slice that would build it, so the list is honest about its holes.
   rows.push({
     id: "blender",
     label: "Blender live-link",
@@ -198,6 +222,9 @@ export function useIntegrations(periodMs = POLL_MS): IntegrationInputs {
   const [vcs, setVcs] = React.useState<IntegrationInputs["vcs"]>(null);
   const [locks, setLocks] = React.useState<IntegrationInputs["locks"]>(null);
   const [graph, setGraph] = React.useState<GraphStaleness | null>(null);
+  // The editor handoff is a property of the machine, not of this session:
+  // probed once rather than every poll.
+  const [code, setCode] = React.useState<CodeStatus | null>(null);
 
   React.useEffect(() => {
     let live = true;
@@ -218,6 +245,10 @@ export function useIntegrations(periodMs = POLL_MS): IntegrationInputs {
       );
     };
     tick();
+    codeStatus().then(
+      (c) => live && setCode(c),
+      () => live && setCode(null),
+    );
     const t = setInterval(tick, periodMs);
     return () => {
       live = false;
@@ -225,7 +256,7 @@ export function useIntegrations(periodMs = POLL_MS): IntegrationInputs {
     };
   }, [periodMs]);
 
-  return { play: pmState, vcs, locks, graph };
+  return { play: pmState, vcs, locks, graph, code };
 }
 
 export function ForgeIntegrationsPanel(): React.JSX.Element {
