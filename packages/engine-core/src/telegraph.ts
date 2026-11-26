@@ -22,18 +22,7 @@ import type { SimWorld } from "./world.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import { PORTS } from "@mmo-engine/sdk";
-import type { TelegraphEvent, TelegraphShape } from "./vocabulary.js";
-
-export interface TelegraphSpec {
-  source: number;
-  shape: TelegraphShape;
-  /** ms of warning before it lands. */
-  warnMs: number;
-  /** Fixed damage; when `damageOf` is set it wins. */
-  amount: number;
-  /** Per-target damage (the rules' computeDamage, usually). */
-  damageOf?: (target: number) => number;
-}
+import type { TelegraphEvent, TelegraphShape, TelegraphSpec } from "./vocabulary.js";
 
 interface Live {
   spec: TelegraphSpec;

@@ -206,10 +206,8 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
   }
 }
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import { type CombatDamage, type CombatSkills } from "./combat.js";
-import type { Weapon } from "./vocabulary.js";
-import { type BodySystem } from "./body.js";
-import { type MagicSystem } from "./magic.js";
+import type { Weapon, CombatSkills } from "./vocabulary.js";
+import type { BodyPort, MagicPort } from "./net/ports.js";
 import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
 import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
@@ -242,8 +240,6 @@ import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
 import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
-import type { TelegraphSystem } from "./telegraph.js";
-import type { CombatSystem } from "./combat.js";
 import { openEngineServices, type EngineServiceRegistry } from "./services.js";
 
 /**
@@ -800,8 +796,8 @@ async function main(): Promise<void> {
    * a request, which is why they can read it.
    */
   let services!: EngineServiceRegistry;
-  let bodyRef: BodySystem | null = null;
-  let magicRef: import("./magic.js").MagicSystem | null = null;
+  let bodyRef: BodyPort | null = null;
+  let magicRef: MagicPort | null = null;
   // Slice 6: creatures domain comes from the creatures module.
   let creaturesRef: {
     creatures: import("./creatures.js").CreatureSystem;

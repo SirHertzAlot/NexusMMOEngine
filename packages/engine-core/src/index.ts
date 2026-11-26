@@ -414,8 +414,11 @@ export type {
   AbilityState,
   AuctionEvent,
   AuctionEventState,
+  BlowResult,
+  BodyView,
   ChestCheck,
   ChestResult,
+  CombatSkills,
   DuelEndReason,
   DuelEvent,
   GatherResult,
@@ -423,16 +426,22 @@ export type {
   LifeEvent,
   Listing,
   ListingView,
+  MagicCreatureInfo,
+  MagicSystemHooks,
+  PartView,
   RepairCheck,
   RepairResult,
   ResidentInfo,
   ResidentTier,
+  SpellEvent,
   StatusChange,
   TelegraphEvent,
   TelegraphShape,
+  TelegraphSpec,
   Trade,
   TradeEvent,
   TradeState,
+  TreatmentEvent,
   TriggerResult,
   VendorDef,
   VendorStock,
@@ -440,16 +449,10 @@ export type {
   WalletChange,
   Weapon,
 } from "./vocabulary.js";
-export {
-  MagicSystem,
-  type SpellEvent,
-  type ActiveIceRing,
-  type MagicCreatureInfo,
-  type MagicSystemHooks,
-} from "./magic.js";
-export { blowRng, BodySystem, type BlowResult, type BodyView, type PartView } from "./body.js";
+export { MagicSystem, type ActiveIceRing } from "./magic.js";
+export { blowRng, BodySystem } from "./body.js";
 export { restoreBody } from "./components.js";
-export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY } from "./combat.js";
+export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, FIGHT_DIFFICULTY } from "./combat.js";
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
 export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";

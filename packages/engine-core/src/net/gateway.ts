@@ -56,6 +56,8 @@ import { z } from "zod";
 import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
 import { openPorts, type PortSet } from "@mmo-engine/sdk";
 import {
+  type BodyPort,
+  type MagicPort,
   GATEWAY_PORTS,
   type BreakPort,
   type ChestPort,
@@ -220,8 +222,6 @@ import type { WorldCharacterSync } from "../world/character-sync.js";
 import { itemInstanceId, type WorldAtomicOps } from "../world/atomic-ops.js";
 import type { AtomicOpResult, MigrationRecord } from "@mmo-engine/world-server";
 import type { MasterySystem } from "../stats/mastery-system.js";
-import type { MagicSystem } from "../magic.js";
-import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
 import { parseLook, withHeld, withLost, type ModularCatalog } from "@mmo-engine/art/character";
 import {
@@ -457,12 +457,12 @@ export interface GatewayOptions {
    * The body system in the tick list (M2): each player is sent their own
    * body (0x18) as it changes. Default: no body messages.
    */
-  body?: BodySystem;
+  body?: BodyPort;
   /**
    * The magic system in the tick list (mana): each player is sent their
    * mana (0x1c) as it changes, and casts spells through it. Default: none.
    */
-  magic?: MagicSystem;
+  magic?: MagicPort;
   /**
    * Admin `spawn <creature>`: the creature ids this world knows and a pack
    * spawner (AI1). Default none: only scatter assets spawn.
@@ -649,7 +649,7 @@ const VendorArgsSchema = z
   })
   .strict();
 
-/** 0x1a treat (M4): the part is checked against the rules by BodySystem. */
+/** 0x1a treat (M4): the part is checked against the rules by the body port. */
 const TreatSchema = z
   .object({
     kind: z.literal("treat"),
@@ -659,7 +659,7 @@ const TreatSchema = z
   })
   .strict();
 
-/** 0x1c cast: the spell is checked against the rules by MagicSystem. */
+/** 0x1c cast: the spell is checked against the rules by the magic port. */
 const CastSchema = z
   .object({
     kind: z.literal("cast"),
@@ -959,8 +959,8 @@ export class Gateway {
   private readonly worldSeed: bigint | null;
   private readonly groundHeightAt: ((x: number, z: number) => number) | null;
   private readonly mastery: MasterySystem | null;
-  private readonly body: BodySystem | null;
-  private readonly magic: MagicSystem | null;
+  private readonly body: BodyPort | null;
+  private readonly magic: MagicPort | null;
   /** The body message last sent to each session, as its JSON (see sendBody). */
   private readonly bodySent = new WeakMap<ClientSession, string>();
   private readonly skillsSent = new WeakMap<ClientSession, string>();

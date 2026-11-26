@@ -21,6 +21,7 @@
  */
 
 import type { PortDecl } from "@mmo-engine/sdk";
+import type { AppearanceRules, BodyRules, DamageKind, Spell, SpellsRules } from "@mmo-engine/rules";
 import type { ChestView, PouchMessage, ResourceNodeView } from "@mmo-engine/protocol";
 import type { SimWorld } from "../world.js";
 // Every payload below is shared vocabulary, not a system's own: a port names
@@ -28,6 +29,8 @@ import type { SimWorld } from "../world.js";
 import type {
   AbilityEvent,
   AuctionEvent,
+  BlowResult,
+  BodyView,
   ChestCheck,
   ChestResult,
   DuelEvent,
@@ -43,6 +46,9 @@ import type {
   StatusChange,
   TelegraphEvent,
   Trade,
+  MagicSystemHooks,
+  SpellEvent,
+  TreatmentEvent,
   TradeEvent,
   TriggerResult,
   VendorDef,
@@ -95,6 +101,75 @@ export interface DuelPort {
   forget(entity: number, tick: number): void;
 }
 
+
+/**
+ * Body parts, wounds and treatment (`ES5f`).
+ *
+ * The one port the gateway is *handed* rather than finds: `body` arrives as
+ * an option, because `server.ts` resolves it from the service registry and
+ * passes it down, and the dungeon runs without one. It is written out here
+ * with the rest all the same, so that naming it is not naming `BodySystem` —
+ * which was the last system class the gateway's own file mentioned.
+ *
+ * Making it a fifteenth table port, offered through `PORTS` like the others,
+ * is a change to how the boot wires it rather than to what it is, and it can
+ * follow on its own.
+ */
+export interface BodyPort {
+  /** Whether `e` has a body at all (many entities do not). */
+  has(sim: SimWorld, e: number): boolean;
+  /** The owner's view of its body (the 0x1b `body` message). */
+  view(e: number): BodyView;
+  /** The body part ids, in rules order. */
+  readonly parts: readonly string[];
+  /** A blow of `amount` health points of `kind` lands on `part`. */
+  applyBlow(sim: SimWorld, e: number, part: string, kind: DamageKind, amount: number): BlowResult;
+  /**
+   * How well `e`'s arm works, 0..1: a maimed arm hits softer, a lost one
+   * not at all. The gateway asks before it lets a hand hold anything.
+   */
+  armFactor(sim: SimWorld, e: number, hand?: "main" | "off"): number;
+  /** The hands that became useless (maimed, gone) since the last call. */
+  drainDropped(): { e: number; hand: "main" | "off" }[];
+  /** Entities whose lost parts changed since the last call, so their look is redrawn. */
+  drainLooks(): number[];
+  /** The appearance slots `e` no longer draws: those of its lost parts. */
+  lostSlots(e: number): string[];
+  /** Treatments started, finished and stopped since the last call (0x1a). */
+  drainTreatments(): TreatmentEvent[];
+  /** `healer` starts treating `patient` (its own part, or the most urgent). */
+  treat(sim: SimWorld, healer: number, patient: number, part?: string): string | null;
+  /** Stop `healer`'s treatment, if any. */
+  stop(healer: number): void;
+  /** New body rules (hot reload): every body starts over, whole. */
+  setRules(sim: SimWorld, rules: BodyRules, appearance?: AppearanceRules): void;
+}
+
+/** Spells: casting, the mana pool, and what a cast announces (`ES5f`). */
+export interface MagicPort {
+  /** Give `e` a full pool now (otherwise it gets one on the next step). */
+  ensure(sim: SimWorld, e: number): void;
+  /** Casts started, completed and stopped since the last call (catalog 0x1c). */
+  drainEvents(): SpellEvent[];
+  /** Look up a spell definition by id. */
+  spellOf(id: string): Spell | undefined;
+  /** Fill `e`'s pool (the admin heal). */
+  refill(sim: SimWorld, e: number): void;
+  /** Stop `caster`'s cast, if any; nothing is spent. */
+  stop(caster: number): void;
+  /** `caster` starts casting on `target`; returns the refusal, or `null`. */
+  cast(
+    sim: SimWorld,
+    caster: number,
+    spellId: string,
+    target?: number,
+    path?: ReadonlyArray<readonly [number, number, number]>,
+  ): string | null;
+  /** New spells (rules hot reload); casts under way stop. */
+  setRules(rules: SpellsRules): void;
+  /** Attach or update the host's answers: status, alliances, creature info. */
+  setHooks(hooks: MagicSystemHooks): void;
+}
 
 /**
  * The economy and world ports (`ES4d`, written out by `ES5d`).

@@ -48,6 +48,7 @@
 
 import { addComponent, defineQuery, hasComponent, Types } from "bitecs";
 import { defineSABComponent } from "./sab-store.js";
+import type { BlowResult, BodyView, PartView, TreatmentEvent } from "./vocabulary.js";
 import { MAX_BODY_PARTS, type AppearanceRules, type BodyRules, type DamageKind, type DeathInput, type PartState, type RespawnOutcome, type RuleHooks, type TreatmentKind } from "@mmo-engine/rules";
 import {
   Action,
@@ -71,30 +72,6 @@ const HARMED = 1;
 const MAIMED = 2;
 const DISMEMBERED = 3;
 
-/** One part, for the owner's `body` message. */
-export interface PartView {
-  id: string;
-  name: string;
-  /** Share of the part's health left, 0..1. */
-  hp: number;
-  state: PartState;
-  bleeding: boolean;
-}
-
-export interface BodyView {
-  parts: PartView[];
-  blood: number;
-  bloodMax: number;
-}
-
-/** What a blow did to the part it landed on. */
-export interface BlowResult {
-  part: string;
-  state: PartState;
-  /** Parts lost to this blow (the part and everything below it), when it dismembered. */
-  lost: string[];
-}
-
 /** The skills a healer treats with (Medicine), and its training. */
 export interface BodySkills {
   get(e: number, id: string): number;
@@ -104,17 +81,6 @@ export interface BodySkills {
 /** How hard a treatment is taken to be for training, above its own difficulty (a failure adds FAILED_TEACHES): the engine defaults (body.json `treatment.trainsAbove`, `failedTeaches`). */
 export const TREAT_TRAINS_ABOVE = 0.3;
 export const FAILED_TEACHES = 0.1;
-
-/** A treatment's progress, for the healer and the patient. */
-export interface TreatmentEvent {
-  healer: number;
-  patient: number;
-  part: string;
-  treatment: TreatmentKind;
-  state: "started" | "done" | "failed" | "stopped";
-  /** Seconds it takes (started). */
-  seconds?: number;
-}
 
 interface Treating {
   patient: number;
@@ -162,6 +128,9 @@ function layoutOf(rules: BodyRules): Layout {
 
 /** Deterministic 0..1 stream for one blow (mulberry32 over tick and the two entities). */
 export { restoreBody } from "./components.js";
+// The views and events a body hands out are shared vocabulary (ES5f);
+// re-exported so this module's own importers are unaffected.
+export type { BlowResult, BodyView, PartView, TreatmentEvent } from "./vocabulary.js";
 
 /** Deterministic 0..1 stream for one blow (mulberry32 over tick and the two entities). */
 export function blowRng(tick: number, a: number, b: number): () => number {
