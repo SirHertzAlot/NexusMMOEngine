@@ -19,6 +19,8 @@ import { ForgeEntityInspector } from "../forge-inspector.js";
 import { ForgeProfilerView, type Timings } from "../forge-profiler.js";
 import { ForgeSystemsView, systemSignatures } from "../forge-systems.js";
 import { ForgeIntegrationsView, integrationRows } from "../forge-integrations.js";
+import { OutlinerBadges } from "../outliner-badges-view.js";
+import type { SceneNode } from "@mmo-engine/scene";
 import { indexEcsGraph, type EcsGraphPayload } from "../../ecs-graph-model.js";
 import { editorSelection } from "../editor-selection.js";
 import { setTool } from "../tool-store.js";
@@ -255,6 +257,74 @@ function IntegrationsShot(): React.JSX.Element {
   );
 }
 
+/**
+ * The outliner shot: the REAL row badges over real `SceneNode` shapes,
+ * laid out the way the Scenes panel's Outliner lays its rows out. The
+ * chips, the overflow count and the `nC` badge are all decided by the
+ * shipped `nodeBadges` / `chipLabel`.
+ */
+const OUTLINER: Array<{ node: SceneNode; depth: number }> = [
+  { node: { id: "world_root", name: "World root", kind: "group" }, depth: 0 },
+  {
+    node: {
+      id: "guard_a", name: "Guard A", kind: "actor",
+      components: { Health: {}, Transform: {}, NavAgent: {} },
+    },
+    depth: 1,
+  },
+  {
+    node: {
+      id: "guard_b", name: "Guard B", prefab: "camps/goblin",
+      components: { Health: {}, Transform: {}, NavAgent: {}, Loot: {}, Breakable: {} },
+    },
+    depth: 1,
+  },
+  { node: { id: "props", name: "Props", kind: "group" }, depth: 1 },
+  {
+    node: { id: "crate_01", name: "Crate 01", kind: "prop", components: { Transform: {}, Breakable: {} } },
+    depth: 2,
+  },
+];
+
+function OutlinerShot(): React.JSX.Element {
+  return (
+    <div
+      data-shot="outliner"
+      data-theme="forge"
+      style={{
+        width: 420,
+        background: "var(--fg-canvas)",
+        padding: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      <span className="fg-label" style={{ paddingBottom: 6 }}>
+        Outliner
+      </span>
+      {OUTLINER.map(({ node, depth }, i) => (
+        <div
+          key={node.id}
+          className="cursor-pointer rounded px-2 py-1"
+          style={{
+            paddingLeft: 8 + depth * 14,
+            fontSize: 12,
+            color: "var(--m3-on-surface)",
+            background: i === 2 ? "var(--m3-secondary-container)" : undefined,
+          }}
+        >
+          <span className="flex items-baseline gap-1.5">
+            <span className="min-w-0 truncate">{node.name || node.id}</span>
+            <span className="text-xs opacity-60">{node.prefab ?? node.kind ?? "group"}</span>
+            <OutlinerBadges node={node} />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("forge shell preview: #root missing");
 createRoot(root).render(
@@ -263,5 +333,6 @@ createRoot(root).render(
     <ProfilerShot />
     <SystemsShot />
     <IntegrationsShot />
+    <OutlinerShot />
   </div>,
 );
