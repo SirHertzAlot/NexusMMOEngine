@@ -61,24 +61,9 @@ import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
-import type { Weapon } from "./vocabulary.js";
+import type { HitEvent, Weapon } from "./vocabulary.js";
 
 // Weapon is shared vocabulary, not this system's own: see vocabulary.ts.
-
-/** A blow's outcome, for the gateway to tell clients. */
-export interface HitEvent {
-  tick: number;
-  source: number;
-  target: number;
-  outcome: "hit" | "blocked" | "dodged";
-  amount: number;
-  /** With bodies: the part the blow landed on, its state after it, and the parts it cut off. */
-  part?: string;
-  state?: PartState;
-  lost?: string[];
-  /** A parry took the attacker's weapon (M4): what it holds in its main hand falls. */
-  disarmed?: boolean;
-}
 
 /**
  * What resolving a blow takes from the rules (EG5/EG6): combat.json's

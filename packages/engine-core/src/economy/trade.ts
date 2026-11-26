@@ -21,6 +21,7 @@
 import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { WalletSystem } from "./wallet.js";
+import { PORTS } from "@mmo-engine/sdk";
 
 /** How the trade moves bag items (wired to the ItemStore in server.ts). */
 export interface TradeItems {
@@ -63,6 +64,8 @@ interface Trade {
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
 
 export class TradeSystem implements SimSystem {
+  /** Offered to the host as the `trade` port: the trades it is running. */
+  readonly [PORTS] = ["trade"];
   readonly name = "trade";
   private readonly trades = new Map<number, Trade>();
   /** Character -> trade id (one trade at a time). */

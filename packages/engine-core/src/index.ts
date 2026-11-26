@@ -39,6 +39,13 @@ export {
   Appearance,
   Action,
   WorldItem,
+  BLEEDING_BIT,
+  Body,
+  Injury,
+  Mana,
+  NO_JUMP,
+  PART_STATES,
+  Wound,
 } from "./components.js";
 export * from "./items/index.js";
 
@@ -402,17 +409,28 @@ export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social
 export { SqliteFriendStore } from "./friend-store.js";
 
 export { DeathSystem, type DeathBody } from "./death.js";
-export type { LifeEvent, Weapon } from "./vocabulary.js";
+export type {
+  AbilityEvent,
+  AbilityState,
+  DuelEndReason,
+  DuelEvent,
+  HitEvent,
+  LifeEvent,
+  StatusChange,
+  TelegraphEvent,
+  TelegraphShape,
+  TriggerResult,
+  Weapon,
+} from "./vocabulary.js";
 export {
-  Mana,
   MagicSystem,
   type SpellEvent,
   type ActiveIceRing,
   type MagicCreatureInfo,
   type MagicSystemHooks,
 } from "./magic.js";
-export { BLEEDING_BIT, blowRng, Body, BodySystem, Injury, NO_JUMP, PART_STATES, restoreBody, Wound, type BlowResult, type BodyView, type PartView } from "./body.js";
-export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY, type HitEvent } from "./combat.js";
+export { blowRng, BodySystem, restoreBody, type BlowResult, type BodyView, type PartView } from "./body.js";
+export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, type CombatSkills, FIGHT_DIFFICULTY } from "./combat.js";
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
 export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";
