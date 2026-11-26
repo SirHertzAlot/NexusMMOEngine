@@ -1,0 +1,513 @@
+/**
+ * CombatSystem — server-authoritative combat moves (protocol combat.ts):
+ * attacks and their combos, the guard, the dodge roll.
+ *
+ * It reads each character's PlayerIntent buttons — Attack and Dodge act
+ * on the press, Block while held — runs the move the character is in (the
+ * Action component), and moves it: during a move the walk is scaled down
+ * (the move's moveScale) and the move's own advance (a lunge, the roll)
+ * carries the character along the move's facing. Clients only play the
+ * clip of the move they are told about, from its start tick.
+ *
+ * Combos: an attack pressed in a hit's chain window is queued; when the
+ * hit lands (branchAt) the queued hit starts — facing wherever the player
+ * now looks — or, with nothing queued, the hit's recovery plays. New
+ * moves start only on the ground.
+ *
+ * Runs after IntentSystem (which sets the walking velocity) and before
+ * IntegrateSystem (which moves by it).
+ *
+ * Stances (M3): `setStance` picks the technique a character's blows use
+ * (any item can cut, thrust or bludgeon, at its own fit for it) and the
+ * part they aim at; precision decides whether they land there.
+ *
+ * Defence (M3): with skills, a facing guard is a contest (the rules'
+ * resolveDefence): the defender's Blocking or Parrying, whichever is
+ * better, against the attacker's technique. A win stops the blow
+ * ("blocked", nothing lands); a loss lets part of it through as a hit.
+ * Without skills a guard always takes GUARD_FACTOR of the blow. A parry
+ * that wins can disarm (M4): the defender knows the `disarm` technique (a
+ * discipline unlocks it) and is the much better fighter; the hit says
+ * `disarmed` and the gateway drops what the attacker held.
+ *
+ * Familiarity (M4): each blow with an item builds familiarity with its
+ * family, which the rules' computeDamage turns into a little extra fit.
+ *
+ * Damage (M2a): an attack move strikes once, on the tick its hitAt falls
+ * (relative to Action.started). Every living target with a Health inside
+ * the weapon's reach and the 120-degree cone ahead of the attacker's facing
+ * takes the rules' computeDamage for the held weapon (a fist when empty
+ * handed), against the torso: health is whole-body for now (decision D1).
+ * A guard facing the blow takes GUARD_FACTOR of it; a roll inside its
+ * i-frames takes none. Health stops at 0 (DeathSystem takes it from there,
+ * M2b); the dead neither fight nor are struck. Each blow leaves
+ * a HitEvent for the gateway to send (`drainHits`).
+ *
+ * Body parts (M2): with a BodySystem, a blow aimed at the body's root
+ * (the torso) lands where the rules' resolveLanding puts it (precision from
+ * the attacker's skill, lowered by a weakened sword arm; a deterministic
+ * stream per tick and pair), takes that part's hit multiplier, and hurts
+ * that part (BodySystem.applyBlow: harm, maim, dismember). A weakened arm
+ * also hits softer, and a useless one cannot attack.
+ */
+
+import { defineQuery, hasComponent } from "bitecs";
+import { combatMove, IntentButton, LocomotionMode, Move, moveTravel, type CombatMove } from "@mmo-engine/protocol";
+import { PORTS } from "@mmo-engine/sdk";
+import { engineDefaults, type CombatRules, type DamageInput, type DamageKind, type ItemBaseRules, type PartState, type RuleHooks } from "@mmo-engine/rules";
+import { Action, type BlowResult, type CombatSkills, God, Health, type HitEvent, Locomotion, PlayerIntent, type SimSystem, type SimWorld, Stamina, type SystemAccess, Transform, Velocity, type Weapon } from "@mmo-engine/engine-core";
+import { blowRng } from "./blow-rng.js";
+
+// Weapon and CombatSkills are shared vocabulary, not this system's own: see vocabulary.ts.
+export type { CombatSkills } from "@mmo-engine/engine-core";
+
+/**
+ * What resolving a blow takes from the rules (EG5/EG6): combat.json's
+ * `resolution` and items.json's `unarmed` (the fist). The engine defaults
+ * until a CombatDamage names the game's.
+ */
+/**
+ * What a swing asks of a body, written out rather than `Pick<BodySystem>`.
+ *
+ * A fight needs to know where a blow lands and what it does there; it does not
+ * need the system that answers. Naming the class made `combat.ts` unbuildable
+ * without `body.ts` beside it, which is the coupling a kit is meant not to
+ * have — a game can hand combat its own body model, or none, and lose only
+ * limbs rather than fighting.
+ */
+export interface CombatBody {
+  /** Every part a blow can be aimed at. */
+  readonly parts: readonly string[];
+  /** The part a blow with no aim goes to. */
+  readonly root: string;
+  /** The share of a swing this entity's arms can still deliver (1: whole, 0: none). */
+  armFactor(sim: SimWorld, e: number, hand?: "main" | "off"): number;
+  /** The parts this entity has lost. */
+  dismembered(e: number): Set<string>;
+  /** Land `amount` of `kind` on `part`, and say what it did. */
+  applyBlow(sim: SimWorld, e: number, part: string, kind: DamageKind, amount: number): BlowResult;
+}
+
+/** What a swing asks of stamina: whether this entity can pay for it. */
+export interface CombatStamina {
+  /** Take `cost` if there is that much left; false leaves the swing unmade. */
+  spend(sim: SimWorld, eid: number, cost: number): boolean;
+}
+
+export interface CombatTuning {
+  resolution: CombatRules["resolution"];
+  unarmed: ItemBaseRules;
+}
+const DEFAULTS = engineDefaults();
+export const DEFAULT_COMBAT_TUNING: Readonly<CombatTuning> = Object.freeze({ resolution: DEFAULTS.combat.resolution, unarmed: DEFAULTS.items.unarmed });
+
+/** Fraction of a blow a facing guard lets through (no combat skills), by default. */
+export const GUARD_FACTOR = DEFAULT_COMBAT_TUNING.resolution.guardLetsThrough;
+/** The attacking arm's own length added to the weapon's, by default. */
+export const ARM_REACH = DEFAULT_COMBAT_TUNING.resolution.armReachM;
+
+/** The weapon a bare hand is (items.json `unarmed`; reach is its length). */
+function fistOf(u: ItemBaseRules): Weapon {
+  return { technique: u.technique, item: { mass: u.mass, edge: u.edge, point: u.point, hardness: u.hardness }, reach: u.length, family: "fist" };
+}
+
+/** How hard a fight is taken to be for training, by default (combat.json `resolution.fightDifficulty`). */
+export const FIGHT_DIFFICULTY = DEFAULT_COMBAT_TUNING.resolution.fightDifficulty;
+
+/** A target's body for hitting: its middle, and how far its box reaches from it. */
+export interface HitBody {
+  x: number;
+  y: number;
+  z: number;
+  /** Half its width/depth, metres: the reach is measured to its edge, not its middle. */
+  rx: number;
+  /** Half its height, metres. */
+  ry: number;
+}
+
+export interface CombatDamage {
+  hooks: RuleHooks;
+  /** The weapon an entity holds; null or absent means fists. */
+  weaponOf?: (e: number) => Weapon | null;
+  /** The share of a blow the target's worn armour lets through (0..1); absent means 1. */
+  armourOf?: (target: number, kind?: "cut" | "blunt" | "thrust") => number;
+  /** Damage kind (`cut`, `blunt`, `thrust`) for a technique id so per-kind armour mitigation applies. */
+  techniqueKind?: (technique: string) => "cut" | "blunt" | "thrust" | undefined;
+  /** Skills behind power and defence; absent means skill 0 and no training. */
+  skills?: CombatSkills;
+  /** Body parts (M2): blows land on parts; absent means whole-body Health. */
+  body?: CombatBody;
+  /** The rules' technique ids (a stance may name only these); absent: no stances. */
+  techniques?: () => readonly string[];
+  /**
+   * PvP gate (duel.ts): whether `source` may hurt `target`. Absent means
+   * everyone may hit everyone (the historical behaviour).
+   */
+  canHit?: (source: number, target: number) => boolean;
+  /**
+   * Damage scaler (status.ts): multiplies the final amount, e.g. from
+   * buffs/debuffs. Absent means 1.
+   */
+  damageScale?: (source: number, target: number) => number;
+  /** What the kind of a blow does to its target (a breakable prop weak or proof against it). Absent means 1. */
+  kindScale?: (target: number, kind: string) => number;
+  /**
+   * Where a target really is, when its `Transform` is not it (DE4c): a modular building part is placed at its model's
+   * pivot (the top of a wall, 2.5 m up), so reach, cone and height are measured to its middle, and a long wall is
+   * reached anywhere along it (`rx`: its horizontal half-size; `ry`: its vertical half-size). Absent or undefined for
+   * a target: its Transform, as a point.
+   */
+  hitBody?: (target: number) => HitBody | undefined;
+  /** The rules a blow is resolved by, read each strike (a reload applies at once); absent: the engine defaults. */
+  tuning?: () => CombatTuning;
+}
+
+/** How an entity strikes (M3, catalog 0x19): its own technique and aim, or the defaults. */
+export interface Stance {
+  technique?: string;
+  aim?: string;
+}
+
+/** Pitch threshold (radians) above which looking up aims at the head (~10.3°). */
+export const PITCH_AIM_HIGH = 0.18;
+/** Pitch threshold (radians) below which looking down aims at the legs (~18.3°). */
+export const PITCH_AIM_LOW = 0.32;
+/** Pitch threshold (radians) for mid-low shoulder/arm aim when angled (~10.3°..18.3°). */
+export const PITCH_AIM_DEADZONE = 0.18;
+
+/**
+ * Pure DoD helper: derive the aimed body part from `PlayerIntent.lookPitch`
+ * (and optional lateral offset relative to the target) when no explicit
+ * `stance.aim` override is locked.
+ *
+ * Convention: `lookPitch < 0` looks UP; `lookPitch > 0` looks DOWN;
+ * `Math.abs(lookPitch) < PITCH_AIM_DEADZONE` aims at `root` ("torso").
+ */
+export function aimFromLookPitch(
+  lookPitch: number,
+  parts: readonly string[],
+  root: string,
+  lateralOffset = 0,
+): string {
+  if (!Number.isFinite(lookPitch) || Math.abs(lookPitch) < PITCH_AIM_DEADZONE) {
+    return root;
+  }
+  if (lookPitch <= -PITCH_AIM_HIGH) {
+    return parts.includes("head") ? "head" : root;
+  }
+  if (lookPitch >= PITCH_AIM_LOW) {
+    const preferred = lateralOffset > 0.05 ? "legRight" : "legLeft";
+    const fallback = preferred === "legLeft" ? "legRight" : "legLeft";
+    if (parts.includes(preferred)) return preferred;
+    if (parts.includes(fallback)) return fallback;
+    return root;
+  }
+  const preferredArm = lateralOffset > 0 ? "armUpperRight" : "armUpperLeft";
+  const fallbackArm = preferredArm === "armUpperLeft" ? "armUpperRight" : "armUpperLeft";
+  if (parts.includes(preferredArm)) return preferredArm;
+  if (parts.includes(fallbackArm)) return fallbackArm;
+  return root;
+}
+
+export class CombatSystem implements SimSystem {
+  /** Offered to the host as the `combat` port: the blows it struck this tick, and a player's stance. */
+  readonly [PORTS] = ["combat"];
+  readonly name = "combat";
+  readonly access: SystemAccess = {
+    system: "combat",
+    reads: [
+      "God",
+      "Stamina",
+      { component: "Action", fields: ["move", "seq", "started", "yaw"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Locomotion", fields: ["mode"] },
+      { component: "PlayerIntent", fields: ["buttons", "lookPitch", "lookYaw", "mx", "mz"] },
+      { component: "Transform", fields: ["px", "py", "pz"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+    writes: [
+      { component: "Action", fields: ["move", "seq", "started", "yaw"] },
+      { component: "Health", fields: ["current"] },
+      { component: "Velocity", fields: ["lx", "lz"] },
+    ],
+  };
+  private readonly query = defineQuery([PlayerIntent, Velocity, Action]);
+  /** Buttons held last tick, per entity (presses are the new bits). */
+  private readonly held = new Map<number, number>();
+  /** Entities with a follow-up attack queued. */
+  private readonly queued = new Set<number>();
+  private readonly targets = defineQuery([Transform, Health]);
+  private hits: HitEvent[] = [];
+  /** The last entity to damage each target. */
+  private readonly attackers = new Map<number, number>();
+  /** Chosen techniques and aims (absent: the weapon's technique, the body's root). */
+  private readonly stances = new Map<number, Stance>();
+  /** The fist, rebuilt when the rules' `unarmed` changes. */
+  private fist: { from: ItemBaseRules; weapon: Weapon } | null = null;
+
+  constructor(
+    private readonly tickHz = 30,
+    /** Stamina gate (absent in unit tests: every move fires). */
+    private readonly stamina?: CombatStamina,
+    /** Damage rules (absent in some unit tests: blows land nothing). */
+    private readonly damage?: CombatDamage,
+  ) {}
+
+  /** Who last hurt `e` (for death credit), if anyone. */
+  lastAttacker(e: number): number | undefined {
+    return this.attackers.get(e);
+  }
+
+  /**
+   * Choose how `e` strikes (M3): a field left undefined is unchanged, null
+   * resets it. Returns an error for an unknown technique or body part.
+   */
+  setStance(e: number, technique: string | null | undefined, aim: string | null | undefined): string | null {
+    const known = this.damage?.techniques?.() ?? [];
+    if (typeof technique === "string" && !known.includes(technique)) return `no technique "${technique}" (${known.join(", ")})`;
+    const parts = this.damage?.body?.parts ?? [];
+    if (typeof aim === "string" && !parts.includes(aim)) return `no body part "${aim}"`;
+    const st = { ...this.stances.get(e) };
+    if (technique !== undefined) st.technique = technique ?? undefined;
+    if (aim !== undefined) st.aim = aim ?? undefined;
+    if (st.technique === undefined && st.aim === undefined) this.stances.delete(e);
+    else this.stances.set(e, st);
+    return null;
+  }
+
+  /** How `e` strikes now. */
+  stanceOf(e: number): Stance {
+    return this.stances.get(e) ?? {};
+  }
+
+  /** The blows struck since the last call. */
+  drainHits(): HitEvent[] {
+    const out = this.hits;
+    if (out.length > 0) this.hits = [];
+    return out;
+  }
+
+  step(sim: SimWorld, dt: number): void {
+    const eids = this.query(sim.ecs);
+    if (this.held.size > eids.length) {
+      const live = new Set<number>(eids as unknown as number[]);
+      for (const e of this.held.keys()) if (!live.has(e)) this.held.delete(e);
+      for (const e of this.queued) if (!live.has(e)) this.queued.delete(e);
+      for (const e of this.stances.keys()) if (!live.has(e)) this.stances.delete(e);
+    }
+    const tick = sim.currentTick;
+    for (let i = 0; i < eids.length; i++) {
+      const e = eids[i] as number;
+      if (hasComponent(sim.ecs, Health, e) && Health.current[e] <= 0) continue; // the dead do not fight
+      const buttons = PlayerIntent.buttons[e];
+      const pressed = buttons & ~(this.held.get(e) ?? 0);
+      this.held.set(e, buttons);
+      const look = PlayerIntent.lookYaw[e];
+
+      let move = combatMove(Action.move[e]);
+      let t = move ? (tick - Action.started[e]) / this.tickHz : 0;
+      if (move) {
+        if ((pressed & IntentButton.Attack) !== 0 && move.chain && t >= move.chain.from && t <= move.chain.to) {
+          this.queued.add(e);
+        }
+        if (move.held) {
+          if ((buttons & IntentButton.Block) === 0) move = this.end(e);
+          else if ((pressed & IntentButton.Attack) !== 0) move = this.start(sim, e, Move.ShieldBash, look);
+          else Action.yaw[e] = look; // a guard faces where you look
+        } else if (move.branchAt !== undefined && t >= move.branchAt && (this.queued.has(e) || move.recovery !== undefined)) {
+          move = this.queued.has(e) && move.chain
+            ? this.start(sim, e, move.chain.next, look)
+            : move.recovery !== undefined
+              ? this.start(sim, e, move.recovery, Action.yaw[e])
+              : move;
+        } else if (t >= move.duration) {
+          move = this.end(e);
+        }
+        if (move && Action.started[e] === tick) t = 0;
+      }
+
+      const grounded = !hasComponent(sim.ecs, Locomotion, e) || Locomotion.mode[e] === LocomotionMode.Ground;
+      if (!move && grounded) {
+        const mx = PlayerIntent.mx[e];
+        const mz = PlayerIntent.mz[e];
+        if ((pressed & IntentButton.Dodge) !== 0) {
+          move = this.start(sim, e, Move.Roll, mx !== 0 || mz !== 0 ? Math.atan2(mx, mz) : look);
+        } else if ((pressed & IntentButton.Attack) !== 0) {
+          const weapon = this.damage?.weaponOf?.(e);
+          const family = weapon?.family?.toLowerCase();
+          let attackMove: number = Move.SwordA;
+          if (family === "bite") attackMove = Move.Bite;
+          else if (family === "claw") attackMove = Move.Claw;
+          else if (family === "tusk" || family === "horn") attackMove = Move.Pounce;
+          else if (family === "crush") attackMove = Move.Stomp;
+          else if (family === "tailslam") attackMove = Move.TailWhip;
+          else if (family === "greatsword") attackMove = Move.Cleave;
+          move = this.start(sim, e, attackMove, look, weapon);
+        } else if ((buttons & IntentButton.Block) !== 0) {
+          move = this.start(sim, e, Move.Guard, look);
+        }
+        t = 0;
+      }
+
+      if (move && this.damage && move.hitAt !== undefined && tick === Action.started[e] + Math.round(move.hitAt * this.tickHz)) {
+        this.strike(sim, e, tick);
+      }
+
+      if (move) {
+        // Walking slowed to the move's allowance, plus the move's own advance
+        // over this tick, along its facing.
+        Velocity.lx[e] *= move.moveScale;
+        Velocity.lz[e] *= move.moveScale;
+        const d = moveTravel(move, t + dt) - moveTravel(move, t);
+        if (d !== 0) {
+          const yaw = Action.yaw[e];
+          Velocity.lx[e] += (Math.sin(yaw) * d) / dt;
+          Velocity.lz[e] += (Math.cos(yaw) * d) / dt;
+        }
+      }
+    }
+  }
+
+  private strike(sim: SimWorld, e: number, tick: number): void {
+    const dmg = this.damage!;
+    const tuning = dmg.tuning?.() ?? DEFAULT_COMBAT_TUNING;
+    const res = tuning.resolution;
+    const fightDifficulty = res.fightDifficulty;
+    const holding = dmg.weaponOf?.(e) ?? null;
+    if (this.fist?.from !== tuning.unarmed) this.fist = { from: tuning.unarmed, weapon: fistOf(tuning.unarmed) };
+    const held = holding ?? this.fist.weapon;
+    // A chosen technique (M3): any item can be swung any way; its fit for it is the item's.
+    const stance = this.stances.get(e);
+    const w = stance?.technique ? { ...held, technique: stance.technique } : held;
+    const reach = w.reach + res.armReachM;
+    const coneCos = Math.cos((res.coneDegrees * Math.PI) / 180);
+    const yaw = Action.yaw[e];
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const ids = this.targets(sim.ecs);
+    for (let i = 0; i < ids.length; i++) {
+      const t = ids[i] as number;
+      if (t === e || Health.current[t] <= 0) continue;
+      if (dmg.canHit && !dmg.canHit(e, t)) continue; // PvP gate: duels and hostile pairs only
+      const hb = dmg.hitBody?.(t);
+      const dx = (hb ? hb.x : Transform.px[t]) - Transform.px[e];
+      const dz = (hb ? hb.z : Transform.pz[t]) - Transform.pz[e];
+      const d = Math.hypot(dx, dz);
+      if (d - (hb?.rx ?? 0) > reach || Math.abs((hb ? hb.y : Transform.py[t]) - Transform.py[e]) - (hb?.ry ?? 0) > res.maxHeightDifferenceM) continue;
+      if (d > 1e-4 && (dx * fx + dz * fz) / d < coneCos) continue;
+      let outcome: HitEvent["outcome"] = "hit";
+      let amount = 0;
+      let part: string | undefined;
+      let state: PartState | undefined;
+      let lost: string[] | undefined;
+      let disarmed = false;
+      const tm = hasComponent(sim.ecs, Action, t) ? combatMove(Action.move[t]) : undefined;
+      const tt = tm ? (tick - Action.started[t]) / this.tickHz : 0;
+      if (tm?.iframes && tt >= tm.iframes.from && tt <= tm.iframes.to) {
+        outcome = "dodged";
+        dmg.skills?.train(t, "evading", fightDifficulty, e);
+      } else {
+        const sk = dmg.skills;
+        const weaponSkill = sk?.techniqueSkill(w.technique);
+        const skill = weaponSkill ? sk!.get(e, weaponSkill) : 0;
+        const body = dmg.body;
+        const arm = body ? body.armFactor(sim, e) : 1;
+        // aim resolution
+        const lateral = d > 1e-4 ? (dx * fz - dz * fx) / d : 0;
+        const aimedPart = body ? (stance?.aim ?? aimFromLookPitch(PlayerIntent.lookPitch[e], body.parts, body.root, lateral)) : "torso";
+        part = body
+        // aim resolution
+          ? dmg.hooks.resolveLanding({ aim: aimedPart, skill, rng: blowRng(tick, e, t), dismembered: body.dismembered(t), precisionFactor: arm })
+          : "torso";
+        const familiarity = w.family && sk?.familiarity ? sk.familiarity(e, w.family) : 0;
+        const kind = dmg.techniqueKind?.(w.technique);
+        const baseArmourFactor = dmg.armourOf?.(t, kind) ?? 1;
+        const rawPen = w.armourPenetrationPct;
+        const pen = typeof rawPen === "number" && Number.isFinite(rawPen) && rawPen > 0
+          ? Math.max(0, Math.min(1, rawPen / 100))
+          : 0;
+        const armourFactor = pen > 0
+          ? 1 - (1 - Math.max(0, Math.min(1, baseArmourFactor))) * (1 - pen)
+          : baseArmourFactor;
+        const blow = dmg.hooks.computeDamage({ technique: w.technique, skill, item: w.item, part, armourFactor, familiarity });
+        if (w.family) sk?.useFamily?.(e, w.family);
+        amount = blow.amount * arm;
+        // The guard holds only against what it faces; a landed block trains Blocking.
+        if (tm?.kind === "guard" && -(dx * Math.sin(Action.yaw[t]) + dz * Math.cos(Action.yaw[t])) >= 0) {
+          if (sk) {
+            // A contest (M3): the defender's better of Blocking and Parrying
+            // against the attacker's technique; a win stops the blow, a loss
+            // softens it. Either way the defence is used for real and trains.
+            const guard = sk.get(t, "parrying") > sk.get(t, "blocking") ? "parrying" : "blocking";
+            const canDisarm = guard === "parrying" && holding !== null && (sk.knows?.(t, "disarm") ?? false);
+            const d = dmg.hooks.resolveDefence({ attackSkill: skill, defenceSkill: sk.get(t, guard), rng: blowRng(tick, t, e), canDisarm });
+            if (d.stopped) outcome = "blocked";
+            if (d.disarms && canDisarm) disarmed = true;
+            amount *= d.letsThrough;
+            sk.train(t, guard, fightDifficulty, e);
+          } else {
+            outcome = "blocked";
+            amount *= res.guardLetsThrough;
+          }
+        }
+        if (weaponSkill) sk!.train(e, weaponSkill, fightDifficulty, t);
+        // Status effects (status.ts): buffs/debuffs scale the landed blow.
+        amount *= dmg.damageScale?.(e, t) ?? 1;
+        amount *= dmg.kindScale?.(t, blow.kind) ?? 1;
+        if (body && amount > 0) {
+          const r = body.applyBlow(sim, t, part, blow.kind, amount);
+          part = r.part;
+          state = r.state;
+          if (r.lost.length > 0) lost = r.lost;
+        } else if (!body) {
+          if (!hasComponent(sim.ecs, God, t)) Health.current[t] = Math.max(0, Health.current[t] - amount);
+        }
+        this.attackers.set(t, e);
+      }
+      const hit: HitEvent = { tick, source: e, target: t, outcome, amount };
+      if (this.damage?.body && part !== undefined && state !== undefined) {
+        hit.part = part;
+        hit.state = state;
+        if (lost) hit.lost = lost;
+      }
+      if (disarmed) hit.disarmed = true;
+      this.hits.push(hit);
+    }
+  }
+
+  private start(sim: SimWorld, e: number, id: number, yaw: number, preloadedWeapon?: Weapon | null): CombatMove | undefined {
+    // Stamina gate (U2): dodges and attacks spend at move start — every
+    // start funnels through here, chains and recoveries included, while
+    // guards stay free. A denied start fires nothing (returns undefined).
+    const def = combatMove(id);
+    // A useless sword arm (maimed, gone) cannot attack.
+    if (def?.kind === "attack" && this.damage?.body && this.damage.body.armFactor(sim, e) === 0) return undefined;
+    // Entities without a pool (bots) fence nothing: gating is for stamina
+    // bearers only, so bot behaviour is unchanged.
+    if (def && this.stamina && hasComponent(sim.ecs, Stamina, e)) {
+      const costs = sim.movement.stamina;
+      let cost = def.kind === "dodge" ? costs.dodgeCost : def.kind === "attack" ? costs.attackCost : 0;
+      if (def.kind === "attack" && cost > 0) {
+        const weapon = preloadedWeapon !== undefined ? preloadedWeapon : this.damage?.weaponOf?.(e);
+        const rawRed = weapon?.staminaReductionPct;
+        if (typeof rawRed === "number" && Number.isFinite(rawRed) && rawRed > 0) {
+          const reductionShare = Math.max(0, Math.min(0.5, rawRed / 100));
+          cost *= 1 - reductionShare;
+        }
+      }
+      if (cost > 0 && !this.stamina.spend(sim, e, cost)) return undefined;
+    }
+    Action.move[e] = id;
+    Action.started[e] = sim.currentTick;
+    Action.seq[e] = (Action.seq[e] + 1) & 0xff;
+    Action.yaw[e] = yaw;
+    this.queued.delete(e);
+    return combatMove(id);
+  }
+
+  private end(e: number): undefined {
+    Action.move[e] = Move.None;
+    this.queued.delete(e);
+    return undefined;
+  }
+}

@@ -83,6 +83,7 @@
     "packages/scene",
     "packages/modules",
     "packages/engine-core",
+    "packages/kit-combat",
     "packages/bench",
     "packages/addons/template",
     "packages/addons/integrate",

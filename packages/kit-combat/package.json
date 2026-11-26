@@ -1,0 +1,26 @@
+{
+  "description": "The fighting this engine ships: combat, abilities, telegraphs, status, duels, bodies, magic, stamina and death. Swap it or fork it.",
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/kit-combat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/engine-core && tsc -p tsconfig.json",
+    "test": "npm run build && node --expose-gc --test --test-force-exit \"dist/test/**/*.test.js\""
+  },
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0",
+  "dependencies": {
+    "@mmo-engine/engine-core": "0.1.0",
+    "@mmo-engine/protocol": "^0.1.0",
+    "@mmo-engine/rules": "0.1.0",
+    "@mmo-engine/sdk": "0.1.0",
+    "bitecs": "0.3.40"
+  },
+  "devDependencies": {
+    "@mmo-engine/scatter": "0.1.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "better-sqlite3": "^13.0.3"
+  },
+  "sideEffects": false
+}

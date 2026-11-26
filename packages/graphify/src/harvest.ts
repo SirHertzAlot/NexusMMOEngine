@@ -5,7 +5,7 @@ import { join, relative, resolve } from "node:path";
 import { extractAllFromAst } from "./ast-extract.js";
 import {
   DEFAULT_ADD_COMPONENT_PATH,
-  DEFAULT_INTROSPECT_MODULES,
+  defaultIntrospectModules,
   introspectComponents,
   type IntrospectModuleSpec,
 } from "./introspect.js";
@@ -100,7 +100,7 @@ export function harvest(options: HarvestOptions = {}): EcsGraph {
   const edges: GraphEdge[] = [];
   const trackedSourceFiles = new Set<string>();
 
-  for (const modSpec of options.introspectModules ?? DEFAULT_INTROSPECT_MODULES) {
+  for (const modSpec of options.introspectModules ?? defaultIntrospectModules(repoRoot)) {
     if (existsSync(resolve(repoRoot, modSpec.relSource))) {
       trackedSourceFiles.add(toPosixPath(modSpec.relSource));
     }

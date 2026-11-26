@@ -295,7 +295,7 @@ export interface GatewayOptions {
   disconnectGraceMs?: number;
   /** Full snapshot broadcast cadence, in ticks. Default 300. */
   snapshotEveryTicks?: number;
-  /** Sim systems; default [StatsSystem, IntentSystem, CombatSystem, IntegrateSystem]. */
+  /** Sim systems; default [StatsSystem, IntentSystem, IntegrateSystem]. A game's fighting arrives here, from its kit. */
   systems?: SimSystem[];
   /** Clock for heartbeat/grace math; default Date.now. Inject in tests. */
   clock?: () => number;
@@ -562,7 +562,7 @@ export interface GatewayOptions {
 
 const avatarQuery = defineQuery([C.PlayerIntent]);
 
-/** 0x19 stance (M3): ids are checked against the rules by CombatSystem. */
+/** 0x19 stance (M3): ids are checked against the rules by the combat port. */
 const StanceSchema = z
   .object({
     kind: z.literal("stance"),
