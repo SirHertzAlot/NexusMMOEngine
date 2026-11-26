@@ -34,6 +34,10 @@ import { PreferencesDialog, ProfileDialog, ShellDialog } from "./shell-dialogs.j
 import { anyUnsaved, canExport, canImport, exportActive, importActive, popOutPanel, revertActive, screenshotViewport } from "./shell-actions.js";
 import { SHELL } from "./shell-composition.js";
 import { useTheme } from "../theme.js";
+import { dockTabs, resolveTab } from "./dock-tabs.js";
+import { ForgeConsolePanel } from "./forge-console.js";
+import { ForgeIntegrationsPanel } from "./forge-integrations.js";
+import { ChangesPanel } from "./vcs-panel.js";
 import { ForgeContextBar } from "./forge-chrome.js";
 import { ForgeProfilerPanel, useTickTimings } from "./forge-profiler.js";
 import { useShellComposition } from "./use-shell.js";
@@ -261,6 +265,12 @@ export function App(): React.JSX.Element {
   const problemTotal = problemCount(diskProblems, problems);
   // Which design language the shell is drawn in (docs/EDITOR-UI-2026.md).
   const theme = useTheme();
+  // The bottom dock's tabs are the one place the two languages group the
+  // same capability differently (EU5): three tabs in Material 3, the
+  // styling reference's four under forge. A saved layout naming the other
+  // theme's tab opens its counterpart rather than nothing.
+  const bottomTabs = React.useMemo(() => dockTabs({ theme, problems: problemTotal }), [theme, problemTotal]);
+  const activeBottomTab = resolveTab(bottomTabs, bottomTab);
   const [dialog, setDialog] = React.useState<"prefs" | "profile" | null>(null);
   const playing = pmState === "running" || pmState === "starting";
 
@@ -809,12 +819,8 @@ export function App(): React.JSX.Element {
         {shell.hasDock("bottom") && (
         <div ref={bottomRef} className={docks.bottom ? "flex-none" : "hidden"} style={{ height: bottomH }}>
             <DockPanel
-              tabs={[
-                { id: "output", label: "Output", icon: "terminal" },
-                { id: "problems", label: problemTotal > 0 ? `Problems · ${problemTotal}` : "Problems", icon: "error" },
-                { id: "bakes", label: "Bakes", icon: "history" },
-              ]}
-              active={bottomTab}
+              tabs={bottomTabs}
+              active={activeBottomTab}
               onTab={setBottomTab}
               actions={
                 <OverflowMenu
@@ -829,7 +835,7 @@ export function App(): React.JSX.Element {
                 />
               }
             >
-              <BottomPane tab={bottomTab} output={output} problems={problems} disk={diskProblems} />
+              <BottomPane tab={activeBottomTab} output={output} problems={problems} disk={diskProblems} />
             </DockPanel>
           </div>
         )}
@@ -2236,6 +2242,11 @@ function DetailsPane({ workspace, view }: { workspace: WorkspaceId; view: string
 function BottomPane({ tab, output, problems, disk }: { tab: string; output: ServerOutput; problems: ReturnType<typeof useDocProblems>; disk: DiskProblems }): React.JSX.Element {
   if (tab === "problems") return <ProblemsPane doc={problems} disk={disk} />;
   if (tab === "bakes") return <BakesPane visible={tab === "bakes"} />;
+  // The forge dock's four (EU5): Output and Bakes folded into the console,
+  // Source Control moved in from its workspace, Integrations beside them.
+  if (tab === "console") return <ForgeConsolePanel />;
+  if (tab === "changes") return <ChangesPanel />;
+  if (tab === "integrations") return <ForgeIntegrationsPanel />;
   return <OutputPane output={output} />;
 }
 

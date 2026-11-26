@@ -287,11 +287,17 @@ list, not a blocker.
   by name. Neither side invents the other — no server means no cost
   column, not zeros.
 - **EU5** — dock regrouped to four tabs; Source Control moves in.
-  **Integrations** is built (`ui/forge-integrations.tsx`) — the runtime
-  node, the worktree, the soft locks and the ECS graph's freshness, with
-  VS Code and Blender listed as not set up. The regrouping waits on
-  `EU8` and `EU9`: two of the four tabs have nothing behind them, and
-  this shell does not draw empty tabs.
+  Built, once `EU8` and `EU9` gave two of the four tabs something to
+  hold. Under forge the bottom dock is **Console · Problems · Source
+  Control · Integrations** (`ui/dock-tabs.ts`); Material 3 keeps its
+  Output / Problems / Bakes. Output and Bakes fold into the console,
+  which already carries both streams, so the fold loses nothing. Two
+  departures from the reference, both deliberate: Problems stays,
+  because the reference has no validator over the content on disk and
+  ours finds real breakage; and Code does not become a tab, because
+  `EU9`'s answer is a handoff and the handoff belongs where the
+  locations are. A layout saved under one theme opens the other's
+  counterpart rather than an empty pane.
 - **EU6** — viewport gizmos, axis widget, mode segment.
 - **EU7** — profiler panel; per-system tick cost. It does NOT need a
   server feed: `TickTimings` in engine-core has recorded both since the
@@ -332,9 +338,12 @@ capability and each needs its own PR with captures.
 See the PR this note lands in: EU1, EU2 and EU3 built on real screens,
 importing the existing panels and stores so behaviour cannot drift.
 
-Two harnesses photograph them, both running the editor's own Tailwind
-over the editor's own `app.css` so the Material 3 side of a comparison is
-the shipped thing and not an approximation:
+Four harnesses photograph them. The first three render components over
+fixtures, running the editor's own Tailwind over the editor's own
+`app.css` so the Material 3 side of a comparison is the shipped thing
+and not an approximation; the fourth drives the real dev server,
+because what the dock's regrouping claims can only be shown by the
+running shell:
 
 - `src/ui/forge/capture.mjs` — the inspector, before and after, over one
   fixture snapshot fed through the shipped `EcsInspector` view-model.
@@ -350,5 +359,13 @@ the shipped thing and not an approximation:
   `select`) with the corner axis triad, and a GIF of the four. Needs a
   Chromium that gives WebGL; SwiftShader is enough, and the harness asks
   for it.
+
+- `src/ui/forge/capture-shell.mjs` also shoots the systems list over the
+  committed `content/graph/ecs-graph.json` itself, the integrations list,
+  the outliner badges and the console.
+- `src/ui/forge/capture-dock.mjs` — the **running** editor
+  (`npm run dev --workspace apps/editor` first), one still per dock tab
+  under the forge theme. It exits non-zero on a page error, because a
+  screenshot of a shell that threw looks like proof and is not.
 
 Set `CHROMIUM_PATH` where Playwright's own browser download is absent.
