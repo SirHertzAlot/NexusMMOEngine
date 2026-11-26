@@ -25,6 +25,7 @@
  */
 
 import { addComponent, defineQuery, hasComponent, Types } from "bitecs";
+import type { MagicCreatureInfo, MagicSystemHooks, SpellEvent } from "./vocabulary.js";
 import { defineSABComponent } from "./sab-store.js";
 import type { Spell, SpellsRules } from "@mmo-engine/rules";
 import {
@@ -42,53 +43,6 @@ import {
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
-
-/** A cast's progress, for the caster and the target. */
-export interface SpellEvent {
-  caster: number;
-  target: number;
-  spell: string;
-  state:
-    | "started"
-    | "done"
-    | "stopped"
-    | "shield-hit"
-    | "shield-expired"
-    | "ice-ring-spawn"
-    | "ice-ring-break";
-  /** Seconds it takes (started). */
-  seconds?: number;
-  /** Health restored (done, heal), damage dealt (done, damage), ward capacity, or trap radius. */
-  amount?: number;
-  /** Remaining ward fraction [0..1] on shield-hit. */
-  hp01?: number;
-  /** Object-space hit offset [x, y, z] on shield-hit. */
-  hitPos?: [number, number, number];
-  /** Authoritative clamped spline waypoints for spline-drawn spells. */
-  path?: Array<[number, number, number]>;
-  /** World-space detonation / terminus point [x, y, z] for spline spells. */
-  detonateAt?: [number, number, number];
-  /** Effective AoE / pillar radius for VFX scaling (e.g. 2x target radius). */
-  radiusM?: number;
-}
-
-export interface MagicCreatureInfo {
-  kind?: string;
-  biome?: string;
-  coldImmune?: boolean;
-  iceVulnerable?: boolean;
-}
-
-export interface MagicSystemHooks {
-  /** Apply a timed debuff (`ignite`, `frostbite`, etc.) via StatusSystem. */
-  applyStatus?: (target: number, statusId: string, source: number, tick: number) => void;
-  /** Return whether `e` is a player character (default: `hasComponent(ecs, CharacterRef, e)`). */
-  isPlayer?: (e: number) => boolean;
-  /** Return true if `a` and `b` are friendly / party / guild mates. */
-  areAllies?: (a: number, b: number) => boolean;
-  /** Creature species & current biome info for elemental immunity/vulnerability. */
-  creatureInfo?: (e: number) => MagicCreatureInfo | undefined;
-}
 
 const COLD_BIOMES = new Set(["mountains", "tundra", "snow", "alpine", "glacier", "arctic"]);
 const COLD_KINDS = /(mountain|alpine|frost|ice|snow|yeti|glacier|blizzard)/i;
@@ -911,3 +865,6 @@ export class MagicSystem implements SimSystem {
     }
   }
 }
+
+// Shared vocabulary, not this system's own (ES5f); re-exported for its importers.
+export type { MagicCreatureInfo, MagicSystemHooks, SpellEvent } from "./vocabulary.js";

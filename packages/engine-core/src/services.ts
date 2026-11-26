@@ -32,11 +32,10 @@
  */
 
 import { openServiceRegistry, type ServiceDecl, type ServiceRegistry } from "@mmo-engine/sdk";
+import type { BodyPort, MagicPort } from "./net/ports.js";
+import type { SimWorld } from "./world.js";
+import type { TelegraphSpec } from "./vocabulary.js";
 import type { PhysicsSystem } from "./systems.js";
-import type { TelegraphSystem } from "./telegraph.js";
-import type { CombatSystem } from "./combat.js";
-import type { BodySystem } from "./body.js";
-import type { MagicSystem } from "./magic.js";
 import type { CreatureSystem } from "./creatures.js";
 import type { BotSystem } from "./bots.js";
 import type { CrowdSystem } from "./navigation/crowd-system.js";
@@ -52,15 +51,38 @@ import type { QuestService } from "./quests/quest-service.js";
 import type { CivicService } from "./civic/index.js";
 import type { ResidentSystem } from "./residents/index.js";
 
+/**
+ * What the host itself calls on a game's combat and telegraphs (`ES5f`).
+ *
+ * These are not the gateway's ports. The gateway drains hits and events;
+ * `server.ts` asks who struck last — for a fall's credit, for a broken
+ * prop's loot — and asks for a warning cone to be cast or cancelled. Two
+ * readers, two demands, both written out rather than naming `CombatSystem`
+ * and `TelegraphSystem`: the registry was the last place in the engine's own
+ * wiring that did. `body` is the gateway's `BodyPort`, because the host
+ * resolves it here and passes that same object down.
+ */
+export interface CombatService {
+  /** The last entity to damage `e`, if known. */
+  lastAttacker(e: number): number | undefined;
+}
+
+export interface TelegraphService {
+  /** Warn of an attack that lands later; returns its id. */
+  cast(sim: SimWorld, spec: TelegraphSpec, tick: number): number;
+  /** Drop every telegraph `source` raised; returns how many. */
+  cancelFrom(source: number, tick: number): number;
+}
+
 /** Every service the server reads, and what it is. */
 export interface EngineServices {
   items: ItemService;
   wallet: WalletSystem;
   vendor: VendorSystem;
-  body: BodySystem;
-  magic: MagicSystem;
-  telegraphs: TelegraphSystem;
-  combat: CombatSystem;
+  body: BodyPort;
+  magic: MagicPort;
+  telegraphs: TelegraphService;
+  combat: CombatService;
   creatures: CreatureSystem;
   bots: BotSystem;
   crowd: CrowdSystem;

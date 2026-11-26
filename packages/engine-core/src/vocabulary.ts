@@ -25,7 +25,7 @@
  * raise them import them like everyone else.
  */
 
-import type { DamageInput, DeathInput, DeathOutcome, PartState } from "@mmo-engine/rules";
+import type { DamageInput, DeathInput, DeathOutcome, PartState, TreatmentKind } from "@mmo-engine/rules";
 
 /** What a striker swings: the rules technique, the item's physics and its reach (m). */
 export interface Weapon {
@@ -286,4 +286,136 @@ export interface ResidentInfo {
   cohort: string;
   mastery?: string;
   grandMaster?: boolean;
+}
+
+/**
+ * What the host asks of a game's fighting, and what it hears back (`ES5f`).
+ *
+ * The engine's own wiring held the last five of these. `server.ts` built a
+ * `CombatSkills` to hand a game's combat the skills behind a blow;
+ * `services.ts` and the region gateway named `BodySystem` to reach the body
+ * it was given; a warning cone the host asks for is a `TelegraphSpec`. All
+ * five are things the engine and a game's systems must agree on with no
+ * system behind them, so they belong here with the rest.
+ */
+
+/** The skills behind a blow (M3c): what a character knows, and using it trains it. */
+export interface CombatSkills {
+  /** The entity's skill `id`, 0..skills.max. */
+  get(e: number, id: string): number;
+  /** One use of skill `id` at `difficulty` (0..1) against target `key`. */
+  train(e: number, id: string, difficulty: number, key: number): void;
+  /** The skill a technique runs on ("cut" -> "cutting"), if any. */
+  techniqueSkill(technique: string): string | undefined;
+  /** Familiarity with an item family, 0..1 (M4); absent: 0. */
+  familiarity?(e: number, family: string): number;
+  /** One blow with an item of `family` (M4). */
+  useFamily?(e: number, family: string): void;
+  /** Whether `e` can use a special technique now ("disarm"), from its disciplines (M4). */
+  knows?(e: number, technique: string): boolean;
+}
+
+/** One part, for the owner's `body` message. */
+export interface PartView {
+  id: string;
+  name: string;
+  /** Share of the part's health left, 0..1. */
+  hp: number;
+  state: PartState;
+  bleeding: boolean;
+}
+
+/** A body as its owner sees it (the 0x1b `body` message). */
+export interface BodyView {
+  parts: PartView[];
+  blood: number;
+  bloodMax: number;
+}
+
+/** What a blow did to the part it landed on. */
+export interface BlowResult {
+  part: string;
+  state: PartState;
+  /** Parts lost to this blow (the part and everything below it), when it dismembered. */
+  lost: string[];
+}
+
+/** A treatment's progress, for the healer and the patient (0x1a). */
+export interface TreatmentEvent {
+  healer: number;
+  patient: number;
+  part: string;
+  treatment: TreatmentKind;
+  state: "started" | "done" | "failed" | "stopped";
+  /** Seconds it takes (started). */
+  seconds?: number;
+}
+
+/** A telegraphed attack the host asks for: where it lands, when, and for how much. */
+export interface TelegraphSpec {
+  source: number;
+  shape: TelegraphShape;
+  /** ms of warning before it lands. */
+  warnMs: number;
+  /** Fixed damage; when `damageOf` is set it wins. */
+  amount: number;
+  /** Per-target damage (the rules' computeDamage, usually). */
+  damageOf?: (target: number) => number;
+}
+
+/**
+ * What a game's magic announces, and what the host tells it (`ES5f`).
+ *
+ * The same story as the body: `services.ts`, `server.ts` and the gateway all
+ * named `MagicSystem` to reach the magic they were handed. A cast's progress
+ * reaches the client, and the hooks are the host's own answers — whether two
+ * entities are allies, what species something is — so neither belongs to the
+ * system that reads them.
+ */
+
+/** A cast's progress, for the caster and the target. */
+export interface SpellEvent {
+  caster: number;
+  target: number;
+  spell: string;
+  state:
+    | "started"
+    | "done"
+    | "stopped"
+    | "shield-hit"
+    | "shield-expired"
+    | "ice-ring-spawn"
+    | "ice-ring-break";
+  /** Seconds it takes (started). */
+  seconds?: number;
+  /** Health restored (done, heal), damage dealt (done, damage), ward capacity, or trap radius. */
+  amount?: number;
+  /** Remaining ward fraction [0..1] on shield-hit. */
+  hp01?: number;
+  /** Object-space hit offset [x, y, z] on shield-hit. */
+  hitPos?: [number, number, number];
+  /** Authoritative clamped spline waypoints for spline-drawn spells. */
+  path?: Array<[number, number, number]>;
+  /** World-space detonation / terminus point [x, y, z] for spline spells. */
+  detonateAt?: [number, number, number];
+  /** Effective AoE / pillar radius for VFX scaling (e.g. 2x target radius). */
+  radiusM?: number;
+}
+
+export interface MagicCreatureInfo {
+  kind?: string;
+  biome?: string;
+  coldImmune?: boolean;
+  iceVulnerable?: boolean;
+}
+
+export interface MagicSystemHooks {
+  /** Apply a timed debuff (`ignite`, `frostbite`, etc.) via StatusSystem. */
+  applyStatus?: (target: number, statusId: string, source: number, tick: number) => void;
+  /** Return whether `e` is a player character (default: `hasComponent(ecs, CharacterRef, e)`). */
+  isPlayer?: (e: number) => boolean;
+  /** Return true if `a` and `b` are friendly / party / guild mates. */
+  areAllies?: (a: number, b: number) => boolean;
+  /** Creature species & current biome info for elemental immunity/vulnerability. */
+  creatureInfo?: (e: number) => MagicCreatureInfo | undefined;
 }

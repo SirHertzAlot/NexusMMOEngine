@@ -36,8 +36,8 @@ const ALL = tsFiles(SRC).map((p) => ({ rel: p.slice(SRC.length), text: readFileS
 
 /**
  * Everything the vocabulary owns: the shared nouns, what a combat system
- * announces (`ES5b`), and what the economy and world systems announce and
- * hand out (`ES5d`).
+ * announces (`ES5b`), what the economy and world systems announce and hand
+ * out (`ES5d`), and what the host itself asks of a game's fighting (`ES5f`).
  */
 const VOCABULARY = [
   "Weapon",
@@ -69,6 +69,15 @@ const VOCABULARY = [
   "RepairCheck",
   "ResidentTier",
   "ResidentInfo",
+  "CombatSkills",
+  "PartView",
+  "BodyView",
+  "BlowResult",
+  "TreatmentEvent",
+  "TelegraphSpec",
+  "SpellEvent",
+  "MagicCreatureInfo",
+  "MagicSystemHooks",
 ] as const;
 
 const DECLARES = (name: string): RegExp => new RegExp(`export (interface|type) ${name}\\b`);

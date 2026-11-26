@@ -15,9 +15,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PORTS, openPorts } from "@mmo-engine/sdk";
 import { AbilitySystem } from "../../src/abilities.js";
+import { BodySystem } from "../../src/body.js";
 import { CombatSystem } from "../../src/combat.js";
 import { DeathSystem } from "../../src/death.js";
 import { DuelSystem } from "../../src/duel.js";
+import { MagicSystem } from "../../src/magic.js";
 import { StatusSystem } from "../../src/status.js";
 import { TelegraphSystem } from "../../src/telegraph.js";
 import { AuctionSystem } from "../../src/economy/auction.js";
@@ -27,10 +29,12 @@ import { WalletSystem } from "../../src/economy/wallet.js";
 import { GatheringSystem } from "../../src/gathering/index.js";
 import { BreakSystem, ChestSystem } from "../../src/interact/index.js";
 import { ResidentSystem } from "../../src/residents/index.js";
+import type { CombatService, TelegraphService } from "../../src/services.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import {
   GATEWAY_PORTS,
   type AbilityPort,
+  type BodyPort,
   type AuctionPort,
   type BreakPort,
   type ChestPort,
@@ -39,6 +43,7 @@ import {
   type GatewayPorts,
   type GatheringPort,
   type LifePort,
+  type MagicPort,
   type ResidentPort,
   type StatusPort,
   type TelegraphPort,
@@ -75,6 +80,15 @@ const _breaks: Conforms<BreakSystem, BreakPort> = true;
 const _residents: Conforms<ResidentSystem, ResidentPort> = true;
 void [_combat, _life, _abilities, _telegraphs, _statuses, _duels];
 void [_trade, _wallet, _auction, _vendors, _gathering, _chests, _breaks, _residents];
+// `ES5f`: the three the engine's own wiring still named. `body` is handed to
+// the gateway as an option rather than resolved from the systems list, and
+// the host's two demands are narrower than the gateway's, so each is written
+// out separately — and each is a claim about the real class.
+const _body: Conforms<BodySystem, BodyPort> = true;
+const _combatService: Conforms<CombatSystem, CombatService> = true;
+const _telegraphService: Conforms<TelegraphSystem, TelegraphService> = true;
+const _magic: Conforms<MagicSystem, MagicPort> = true;
+void [_body, _combatService, _telegraphService, _magic];
 
 /** Compile-time: the table's keys are exactly the typed map's keys. */
 const _keys: readonly (keyof GatewayPorts)[] = [
@@ -330,6 +344,39 @@ test("net/ports.ts names no system, of the engine's or a kit's", () => {
     "../vocabulary.js",
     "../world.js",
     "@mmo-engine/protocol",
+    "@mmo-engine/rules",
     "@mmo-engine/sdk",
   ]);
+});
+
+test("the engine's own wiring names no system class (ES5f)", () => {
+  // `server.ts`, `services.ts` and `net/gateway.ts` are the engine's wiring:
+  // the three files a kit has to be able to leave behind entirely. They each
+  // named a class — `BodySystem`, `MagicSystem`, `CombatSystem`,
+  // `TelegraphSystem` — to type what they were handed, and a type import is
+  // still a module a kit's package would have to provide. They ask by port
+  // now, so what stands here is that they cannot go back.
+  const KITS = [
+    "body.js",
+    "magic.js",
+    "combat.js",
+    "death.js",
+    "abilities.js",
+    "telegraph.js",
+    "status.js",
+    "duel.js",
+    "stats/stamina-system.js",
+  ];
+  for (const file of ["server.ts", "services.ts", "net/gateway.ts"]) {
+    const text = readFileSync(srcPath(...file.split("/")), "utf8");
+    for (const m of text.matchAll(/from "([^"]+)"/g)) {
+      const spec = (m[1] as string).replace(/^\.{1,2}\//, "");
+      assert.ok(
+        !KITS.includes(spec),
+        `${file} imports ${m[1] as string}; the engine's wiring asks by port, so a kit can own that module`,
+      );
+    }
+    // `import("./magic.js").MagicSystem` is an import too, and it was there.
+    assert.doesNotMatch(text, /import\("\.{1,2}\/(?:body|magic|combat|death|abilities|telegraph|status|duel)\.js"\)/);
+  }
 });

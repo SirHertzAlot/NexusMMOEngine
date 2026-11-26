@@ -61,9 +61,10 @@ import type { StaminaSystem } from "./stats/stamina-system.js";
 import type { SimSystem } from "./systems.js";
 import type { SystemAccess } from "./system-access.js";
 import type { SimWorld } from "./world.js";
-import type { HitEvent, Weapon } from "./vocabulary.js";
+import type { CombatSkills, HitEvent, Weapon } from "./vocabulary.js";
 
-// Weapon is shared vocabulary, not this system's own: see vocabulary.ts.
+// Weapon and CombatSkills are shared vocabulary, not this system's own: see vocabulary.ts.
+export type { CombatSkills } from "./vocabulary.js";
 
 /**
  * What resolving a blow takes from the rules (EG5/EG6): combat.json's
@@ -85,22 +86,6 @@ export const ARM_REACH = DEFAULT_COMBAT_TUNING.resolution.armReachM;
 /** The weapon a bare hand is (items.json `unarmed`; reach is its length). */
 function fistOf(u: ItemBaseRules): Weapon {
   return { technique: u.technique, item: { mass: u.mass, edge: u.edge, point: u.point, hardness: u.hardness }, reach: u.length, family: "fist" };
-}
-
-/** Combat skills (M3c): what a character knows feeds its blows, and using it trains it. */
-export interface CombatSkills {
-  /** The entity's skill `id`, 0..skills.max. */
-  get(e: number, id: string): number;
-  /** One use of skill `id` at `difficulty` (0..1) against target `key`. */
-  train(e: number, id: string, difficulty: number, key: number): void;
-  /** The skill a technique runs on ("cut" -> "cutting"), if any. */
-  techniqueSkill(technique: string): string | undefined;
-  /** Familiarity with an item family, 0..1 (M4); absent: 0. */
-  familiarity?(e: number, family: string): number;
-  /** One blow with an item of `family` (M4). */
-  useFamily?(e: number, family: string): void;
-  /** Whether `e` can use a special technique now ("disarm"), from its disciplines (M4). */
-  knows?(e: number, technique: string): boolean;
 }
 
 /** How hard a fight is taken to be for training, by default (combat.json `resolution.fightDifficulty`). */
