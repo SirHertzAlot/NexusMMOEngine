@@ -145,6 +145,7 @@ import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
+import { handleSceneVisualsRoute } from "./scene-visuals-host.js";
 import { handleGraphRoute } from "./graph-host.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -1506,6 +1507,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
           const contentReply = handleContentRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);
           if (contentReply) {
             sendJson(res, contentReply.status, contentReply.body);
+            return;
+          }
+          const visualsReply = handleSceneVisualsRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);
+          if (visualsReply) {
+            sendJson(res, visualsReply.status, visualsReply.body);
             return;
           }
           const modulesUrl = new URL(req.url ?? "/", "http://localhost");

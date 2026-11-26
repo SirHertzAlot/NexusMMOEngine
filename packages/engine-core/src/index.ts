@@ -230,7 +230,10 @@ export type {
 
 export { NavigationSystem, WaypointStore } from "./navigation/system.js";
 export { CrowdSystem } from "./navigation/crowd-system.js";
-export { CreatureSystem, type CreatureOptions } from "./creatures.js";
+// SPECIES_NATURAL_SCALE is the engine's own answer to "how big is a wolf",
+// so the editor's viewport draws from it rather than keeping a second copy
+// (apps/editor/src/scene-visuals-host.ts).
+export { CreatureSystem, SPECIES_NATURAL_SCALE, type CreatureOptions } from "./creatures.js";
 export {
   calculateWorldCycle,
   DEFAULT_SEASON_CLOCK,

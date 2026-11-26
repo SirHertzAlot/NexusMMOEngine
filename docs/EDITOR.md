@@ -296,6 +296,36 @@ outer edge pinned to the unloaded neighbours). For a baked world
 The map and follow logic are `src/inspectors/world-map.ts` (pure TS,
 tested); the tool side is `packages/engine-core/src/terrain/region-regen.ts`.
 
+## 2e. What the scene viewport draws (ROADMAP EB1)
+
+The viewport used to draw one 1 m cube per node, which made a wolf, a pine
+and a longhouse the same object on screen. It now draws each node at the
+size the engine would actually spawn it at, and the editor does not decide
+what that size is:
+
+- **A creature** is its physics capsule: `CHARACTER_CAPSULE` from the engine,
+  times the body scale `CreatureService.spawnOne` resolves — the creature's
+  own `behavior.size` when it sets one that is not 1, else the species'
+  `SPECIES_NATURAL_SCALE`, else 1. An unlisted humanoid therefore stands
+  1.80 m, like a player.
+- **A prop, tree, rock, plant or building** is a stand-in box for its
+  category, multiplied by `content/scale.json` through the same
+  `resolveScale` the server applies where baked objects spawn. The stand-in
+  size is the editor's (art is what measures an object, and there may be
+  none), so it is labelled as one: `basis: "stand-in"`, and the toolbar says
+  "Stand-in sizes (no art pack)" when the pack resolved no model at all.
+- **A model**, where `assets/manifest.json` names one for the id, is loaded
+  once per URL, cloned per node and drawn at the server's scale factor. It is
+  never stretched to fit the stand-in, because the point is to see what the
+  server will spawn.
+- **Spawn points and groups** keep their marker shapes. They are not things
+  in the world, so they have no size to be accurate about.
+
+`scene-visuals.ts` holds the rules and is pure; `scene-visuals-host.ts` does
+the reading and serves `GET /api/editor/scene/visuals`; `ui/scene-view.ts`
+draws it. A checkout without `assets/` loses only the models: every size
+above still comes out right.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
@@ -407,6 +437,7 @@ this prevents.
 ```text
 apps/editor/
   src/host.ts                 dev-only server/assets control API (vite plugin)
+  src/scene-visuals.ts        the size the engine spawns each placeable at (EB1)
   src/play-mode.ts            PlayModeController (idle→starting→running→stopping→idle→error)
   src/inspectors/ecs.ts       read-only ECS view-model (no React, unit-tested)
   src/ui/App.tsx              tab shell — one tab per inspector

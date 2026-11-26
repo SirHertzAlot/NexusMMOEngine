@@ -9,6 +9,7 @@
 import * as React from "react";
 import type { LiveTransform, SceneDoc, Vec3 } from "@mmo-engine/scene";
 import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
+import { fetchSceneVisuals } from "../scene-visuals-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
 import { Button, CheckField } from "./components.js";
@@ -56,6 +57,8 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   const [flying, setFlying] = React.useState(false);
   const [goTo, setGoTo] = React.useState("");
   const [goToError, setGoToError] = React.useState<string | null>(null);
+  /** False once the host says the art pack resolved no model at all. */
+  const [art, setArt] = React.useState(true);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -98,6 +101,17 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     fetchPlaceables().then(
       (p) => alive && setContent(p),
       (e: Error) => alive && setNote(e.message),
+    );
+    // The sizes and models the engine gives each placeable (EB1). Without
+    // the table every node is a marker, which is what the viewport drew
+    // before, so a failure here costs nothing but accuracy.
+    fetchSceneVisuals().then(
+      (t) => {
+        if (!alive) return;
+        view.setVisuals(t.visuals);
+        if (!t.art) setArt(false);
+      },
+      () => undefined,
     );
     return () => {
       alive = false;
@@ -220,6 +234,11 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
         {goToError && <span className="text-xs text-red-400">{goToError}</span>}
         <Button size="sm" variant="outline" disabled={!props.selected} title="Delete (Del)" onClick={() => props.selected && props.onDelete(props.selected)}>Delete</Button>
         {note && <span className="text-xs opacity-70">{note}</span>}
+        {!art && (
+          <span className="text-xs opacity-70" title="assets/manifest.json resolved no model, so nodes are drawn at the size the engine spawns them: creatures as their capsule, props as a stand-in at the scale document's factor.">
+            Stand-in sizes (no art pack)
+          </span>
+        )}
       </div>
       <div className="relative min-h-[260px] flex-1 overflow-hidden rounded-md border border-border bg-black">
         {webgl ? <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" /> : <p className="p-3 text-xs">WebGL is not available here.</p>}

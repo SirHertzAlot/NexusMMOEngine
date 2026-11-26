@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "fecd0bca897de98571b692fb496af648162417b9",
+    "builtFromCommit": "bdd7b139e8bbc490c5a6bdf4c2d9be3424044cde",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7771,7 +7771,7 @@
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "b032522b41d33ae0ab50f39ca617797a22224a07a1234637baee8f98caffeaff",
+      "packages/engine-core/src/index.ts": "050a61c7b3d07a9b104a5931dd6ff97e91a7bf80e1c24cc183dd7e936a05a019",
       "packages/engine-core/src/interact/breaks.ts": "418588a51a2475af449f8d98f36fa1e18598e69c225c21de70a355b9a975305f",
       "packages/engine-core/src/interact/chests.ts": "d976f2a4ecc882b984275da8a4113a0bddb1a3e0c13c2ba8faf79ea73c30a23a",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",

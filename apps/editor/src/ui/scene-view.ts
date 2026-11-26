@@ -14,11 +14,13 @@
  */
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { ViewHelper } from "three/examples/jsm/helpers/ViewHelper.js";
 import { worldNodes, type LiveTransform, type SceneDoc, type Vec3 } from "@mmo-engine/scene";
 import { buildChunkGeometry, writeChunkGeometry } from "../terrain/terrain-view.js";
+import { visualFor, type NodeVisual } from "../scene-visuals.js";
 import { makeHeightSampler, markerFor, type HeightTile } from "../viewport-model.js";
 import { FLY_BOOST, FLY_KEYS, FLY_SPEED, flyAxes } from "./scene-camera.js";
 
@@ -46,6 +48,38 @@ function markerGeometry(shape: "box" | "cone" | "octahedron"): THREE.BufferGeome
   return new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
 }
 
+/**
+ * The stand-in body for a node of known size (EB1): a capsule at the
+ * engine's own body size for a creature, a box at the scale document's size
+ * for a prop. Both stand on y = 0, like the markers, so the node's own
+ * transform still reads as its position.
+ */
+function visualGeometry(visual: NodeVisual): THREE.BufferGeometry {
+  const [x, y, z] = visual.size;
+  if (visual.shape === "capsule") {
+    const radius = Math.max(x / 2, 0.01);
+    // THREE's capsule length is the cylinder between the two caps.
+    const cylinder = Math.max(y - radius * 2, 0.01);
+    return new THREE.CapsuleGeometry(radius, cylinder, 8, 12).translate(0, y / 2, 0);
+  }
+  return new THREE.BoxGeometry(Math.max(x, 0.01), Math.max(y, 0.01), Math.max(z, 0.01)).translate(0, y / 2, 0);
+}
+
+/**
+ * Free what a node group owns. A loaded model's clone shares its geometry
+ * and material with the template in the view's cache (userData.shared), so
+ * a redraw must leave those alone or the next node draws nothing.
+ */
+function disposeOwned(o: THREE.Object3D): void {
+  if (o.userData.shared === true) return;
+  const m = o as THREE.Mesh;
+  m.geometry?.dispose();
+  const material = m.material as THREE.Material | THREE.Material[] | undefined;
+  if (Array.isArray(material)) for (const one of material) one.dispose();
+  else material?.dispose();
+  for (const child of o.children) disposeOwned(child);
+}
+
 export class SceneView {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -67,6 +101,13 @@ export class SceneView {
     new THREE.MeshBasicMaterial({ visible: false }),
   );
   private readonly objects = new Map<string, THREE.Object3D>();
+  /** The visual table (EB1): placeable id → the size and model the engine gives it. */
+  private visuals: Readonly<Record<string, NodeVisual>> = {};
+  /** Loaded model templates by URL; null once a URL has answered with nothing. */
+  private readonly modelTemplates = new Map<string, THREE.Object3D | null>();
+  private readonly modelLoads = new Set<string>();
+  private loader: GLTFLoader | null = null;
+  private alive = true;
   private heightAt: (x: number, z: number) => number | null = () => null;
   private snapTerrain = true;
   private selected: string | null = null;
@@ -345,26 +386,75 @@ export class SceneView {
     if (this.last) this.setDoc(...this.last);
   }
 
+  /**
+   * Hand the view the visual table (scene-visuals-host.ts). Nodes redraw at
+   * the engine's own sizes, and any model the art pack names starts loading.
+   */
+  setVisuals(visuals: Readonly<Record<string, NodeVisual>>): void {
+    this.visuals = visuals;
+    if (this.last) this.setDoc(...this.last);
+  }
+
+  /**
+   * The loaded template for `url`, or null while it loads (or if it never
+   * arrives — a checkout without the art pack answers 404 for every model,
+   * and the stand-in body is then what the node keeps).
+   */
+  private requestModel(url: string): THREE.Object3D | null {
+    const cached = this.modelTemplates.get(url);
+    if (cached !== undefined) return cached;
+    if (!this.modelLoads.has(url)) {
+      this.modelLoads.add(url);
+      this.loader ??= new GLTFLoader();
+      this.loader.load(
+        url,
+        (gltf) => {
+          if (!this.alive) return;
+          this.modelTemplates.set(url, gltf.scene);
+          if (this.last) this.setDoc(...this.last);
+        },
+        undefined,
+        () => void this.modelTemplates.set(url, null),
+      );
+    }
+    return null;
+  }
+
   /** Redraw the nodes for `doc` and attach the gizmo to `selected`. */
   setDoc(doc: SceneDoc, selected: string | null, species: ReadonlySet<string>): void {
     this.last = [doc, selected, species];
     this.gizmo.detach();
     for (const o of this.objects.values()) {
       this.nodes.remove(o);
-      o.traverse((c) => {
-        const m = c as THREE.Mesh;
-        m.geometry?.dispose();
-        (m.material as THREE.Material | undefined)?.dispose();
-      });
+      disposeOwned(o);
     }
     this.objects.clear();
     for (const w of worldNodes(doc)) {
       const marker = markerFor(w.node, species);
+      // Spawn points and groups keep their marker shapes: they are not
+      // things in the world, so they have no size to be accurate about.
+      const visual = marker.shape === "box" ? visualFor(w.node, this.visuals) : null;
       const group = new THREE.Group();
       group.userData.nodeId = w.node.id;
-      const mesh = new THREE.Mesh(markerGeometry(marker.shape), new THREE.MeshStandardMaterial({ color: marker.color, roughness: 0.6, wireframe: this.wireframe }));
+      const mesh = new THREE.Mesh(
+        visual ? visualGeometry(visual) : markerGeometry(marker.shape),
+        new THREE.MeshStandardMaterial({ color: marker.color, roughness: 0.6, wireframe: this.wireframe }),
+      );
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x000000 })));
       group.add(mesh);
+      // The pack's model, at the scale the server spawns it with — never
+      // stretched to fit the stand-in. Wireframe keeps the stand-in on
+      // screen instead, so the toggle always shows something.
+      const model = visual?.model && !this.wireframe ? this.requestModel(visual.model) : null;
+      if (model && visual) {
+        const drawn = model.clone(true);
+        // Its geometry and material belong to the template in the cache, so
+        // a redraw must not dispose them with the node.
+        drawn.traverse((c) => void (c.userData.shared = true));
+        drawn.scale.setScalar(visual.factor);
+        group.add(drawn);
+        mesh.visible = false;
+      }
       group.position.set(w.position[0], (this.heightAt(w.position[0], w.position[2]) ?? 0) + w.position[1], w.position[2]);
       group.rotation.y = (w.yawDeg / DEG);
       group.scale.set(...w.scale);
@@ -466,6 +556,7 @@ export class SceneView {
   }
 
   dispose(): void {
+    this.alive = false;
     cancelAnimationFrame(this.frameId);
     this.cleanup.forEach((f) => f());
     this.observer.disconnect();
