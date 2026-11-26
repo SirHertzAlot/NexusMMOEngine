@@ -26,6 +26,8 @@ import {
   type ModuleProblem,
 } from "../modules-client.js";
 import { Button, MIcon, SectionTitle, Switch, notify } from "./components.js";
+import { blastRadius, blastSummary, enabledAfterDisabling, needsConfirming, type BlastRadius } from "../module-blast.js";
+import { BlastDialog } from "./blast-dialog.js";
 
 /** Editor entries are imported on demand, one per enabled module (Vite resolves the glob). */
 export const moduleRegistry = new ModuleRegistry(
@@ -193,13 +195,18 @@ export function ModulesPanel(): React.JSX.Element {
   const reg = useModuleRegistry();
   const [busy, setBusy] = React.useState(false);
   const [issues, setIssues] = React.useState<ModuleProblem[]>([]);
+  // EB9: what the switch is about to take with it, while it waits for a yes.
+  const [confirm, setConfirm] = React.useState<BlastRadius | null>(null);
   const state = reg.state;
 
   async function toggle(name: string, on: boolean): Promise<void> {
     if (!state) return;
-    const next = on ? [...state.enabled, name] : state.enabled.filter((n) => n !== name);
-    // Turning a module off also turns off what depends on it.
-    const closed = on ? next : next.filter((n) => !state.modules.find((m) => m.name === n)?.dependsOn.some((d) => !next.includes(d)));
+    // EB9: turning a module off takes everything that depends on it, however
+    // far down the chain. Closing only one level deep left the set the host
+    // refuses ("requires X, which is not enabled") and the switch sprang back.
+    const closed = on
+      ? [...state.enabled, name]
+      : enabledAfterDisabling(state.modules, state.enabled, name);
     setBusy(true);
     try {
       await saveEnabled(closed);
@@ -211,6 +218,18 @@ export function ModulesPanel(): React.JSX.Element {
       await reg.refresh();
       setBusy(false);
     }
+  }
+
+  /** Flip the switch, or ask first when other modules go with it (EB9). */
+  function requestToggle(name: string, on: boolean): void {
+    if (!state) return;
+    if (on) {
+      void toggle(name, true);
+      return;
+    }
+    const radius = blastRadius(state.modules, name);
+    if (needsConfirming(radius)) setConfirm(radius);
+    else void toggle(name, false);
   }
 
   async function apply(): Promise<void> {
@@ -236,6 +255,16 @@ export function ModulesPanel(): React.JSX.Element {
   const stale = state.running !== null && !sameOrder(state.running.systems, state.tickOrder);
   return (
     <div className="flex h-full flex-col gap-3 overflow-auto p-4">
+      <BlastDialog
+        radius={confirm}
+        busy={busy}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          const name = confirm?.module;
+          setConfirm(null);
+          if (name) void toggle(name, false);
+        }}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <SectionTitle>Modules</SectionTitle>
         <span className="text-xs" style={{ color: "var(--m3-on-surface-variant)" }}>
@@ -270,7 +299,7 @@ export function ModulesPanel(): React.JSX.Element {
                 v{m.version}
               </span>
               <span className="ml-auto">
-                {m.locked ? <Tag>always on</Tag> : <Switch checked={m.enabled} label={`${m.enabled ? "Disable" : "Enable"} ${m.name}`} onChange={(on) => void toggle(m.name, on)} />}
+                {m.locked ? <Tag>always on</Tag> : <Switch checked={m.enabled} label={`${m.enabled ? "Disable" : "Enable"} ${m.name}`} onChange={(on) => requestToggle(m.name, on)} />}
               </span>
             </div>
             {m.description && (
@@ -286,6 +315,15 @@ export function ModulesPanel(): React.JSX.Element {
               ))}
               {m.editor && reg.errors[m.name] && <Tag>{`editor entry failed: ${reg.errors[m.name]}`}</Tag>}
             </div>
+            {m.enabled && !m.locked && state && (() => {
+              // What this module is carrying, before anyone flips anything.
+              const line = blastSummary(blastRadius(state.modules, m.name));
+              return line ? (
+                <p className="text-xs" data-testid={`blast-${m.name}`} style={{ color: "var(--m3-on-surface-variant)" }}>
+                  {line}
+                </p>
+              ) : null;
+            })()}
             {m.native && <NativeButtons module={m} />}
             {m.sidecar && m.enabled && <SidecarControls module={m} />}
           </div>

@@ -361,6 +361,22 @@ Button, Input and Select in the editor stayed Material 3 purple under the
 theme. `test/forge-aliases.test.ts` fails if a variable one theme declares
 is missing from the other.
 
+## 2g. Turning a module off (ROADMAP EB9)
+
+`dependsOn` makes the module set a graph, and the server fails the boot
+closed, so a switch flipped in the editor used to be answered at the next
+restart. The panel now says it first: `module-blast.ts` walks the graph
+transitively from the module being turned off and reports the enabled
+modules that go with it, the systems leaving the tick order, the editor
+panels that disappear and the sidecars that stop. Every enabled card
+carries the one-line cost, and a switch that takes other modules with it
+asks before acting.
+
+The same closure is what gets saved. Closing the set one level deep — the
+modules that name the disabled one, but not the ones that name those —
+produces a set `resolveModuleSet` refuses, which is what used to happen
+with `economy → items → civic`.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
