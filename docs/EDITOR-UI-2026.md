@@ -264,6 +264,12 @@ list, not a blocker.
   the data `vcs-host.ts` already returns.
 - **EU3** — inspector rebuild over the existing view-model.
 - **EU4** — outliner badges; systems list with counts and signatures.
+  The systems half is `ui/forge-systems.tsx`: the graph is keyed by
+  component, so the panel inverts it into one row per system and joins
+  the profiler's tick costs by name. Neither side invents the other —
+  no server means no cost column, not zeros. Outliner badges are still
+  open, and they touch `authoring-view.tsx`, whose line numbers the
+  committed ECS graph pins, so that half regenerates the artifact.
 - **EU5** — dock regrouped to four tabs; Source Control moves in.
 - **EU6** — viewport gizmos, axis widget, mode segment.
 - **EU7** — profiler panel; per-system tick cost. It does NOT need a

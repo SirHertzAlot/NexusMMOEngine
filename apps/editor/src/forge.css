@@ -361,3 +361,25 @@
   border-radius: 0;
   transition: width 180ms ease;
 }
+
+/* ------------------------------------------------------- signature chip
+ * One component in a system's signature (ui/forge-systems.tsx): an
+ * access mark then the component name, tinted by the access.
+ */
+[data-theme="forge"] .fg-sig {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: var(--fg-radius-chip);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-family: var(--fg-font-mono);
+  font-size: var(--fg-data-size);
+  white-space: nowrap;
+}
+
+[data-theme="forge"] .fg-sig > b {
+  font-weight: 700;
+  opacity: 0.75;
+}

@@ -56,11 +56,15 @@ const css = execFileSync(
   { cwd: editorRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
 );
 const forgeCss = readFileSync(resolve(editorRoot, "src/forge.css"), "utf8");
+// The real committed graph, so the systems shot is of our actual systems.
+const graph = readFileSync(resolve(repoRoot, "content/graph/ecs-graph.json"), "utf8");
 
 const page = `<!doctype html><html><head><meta charset="utf-8">
 <style>${css}</style><style>${forgeCss}</style>
 <style>html,body{margin:0;background:#05080e;overflow:hidden}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
+</head><body><div id="root"></div>
+<script>window.__ECS_GRAPH = ${graph};</script>
+<script>${js}</script></body></html>`;
 
 // ------------------------------------------------------------------- serve
 
@@ -89,7 +93,7 @@ const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
 });
 const tab = await browser.newPage({
-  viewport: { width: 1180, height: 1060 },
+  viewport: { width: 1180, height: 1700 },
   // 2 for the still a person looks at; the GIF frames are shot at 1 so the
   // file stays small enough to post.
   deviceScaleFactor: 2,
@@ -117,6 +121,11 @@ await tab.locator('[data-shot="profiler"]').screenshot({
   path: resolve(outDir, "eu7-profiler.png"),
 });
 console.log(`wrote ${resolve(outDir, "eu7-profiler.png")}`);
+
+await tab.locator('[data-shot="systems"]').screenshot({
+  path: resolve(outDir, "eu4-systems.png"),
+});
+console.log(`wrote ${resolve(outDir, "eu4-systems.png")}`);
 
 // ------------------------------------------------------------------- film
 

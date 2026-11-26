@@ -17,6 +17,8 @@ import type { EntitySnapshot } from "../../inspectors/ecs.js";
 import { ForgeContextBar } from "../forge-chrome.js";
 import { ForgeEntityInspector } from "../forge-inspector.js";
 import { ForgeProfilerView, type Timings } from "../forge-profiler.js";
+import { ForgeSystemsView, systemSignatures } from "../forge-systems.js";
+import { indexEcsGraph, type EcsGraphPayload } from "../../ecs-graph-model.js";
 import { editorSelection } from "../editor-selection.js";
 import { setTool } from "../tool-store.js";
 import { playUiStore } from "../play-ui-store.js";
@@ -168,11 +170,33 @@ function ProfilerShot(): React.JSX.Element {
   );
 }
 
+/**
+ * The systems shot runs over the REAL committed ECS graph, which
+ * capture-shell.mjs reads off disk and hands to the page, indexed by the
+ * shipped `indexEcsGraph`. The costs are the fixture tick above, so the
+ * join the panel exists for is the thing in the picture.
+ */
+function SystemsShot(): React.JSX.Element {
+  const graph = (window as unknown as { __ECS_GRAPH?: EcsGraphPayload }).__ECS_GRAPH;
+  const signatures = graph ? systemSignatures(indexEcsGraph(graph)) : null;
+  const costs = new Map(TIMINGS.systems.map((s) => [s.name, s.avg]));
+  return (
+    <div
+      data-shot="systems"
+      data-theme="forge"
+      style={{ width: 560, height: 560, background: "var(--fg-canvas)", padding: 8 }}
+    >
+      <ForgeSystemsView signatures={signatures} costs={costs} />
+    </div>
+  );
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("forge shell preview: #root missing");
 createRoot(root).render(
   <>
     <Shell />
     <ProfilerShot />
+    <SystemsShot />
   </>,
 );
