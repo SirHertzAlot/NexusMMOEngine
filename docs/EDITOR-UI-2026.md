@@ -286,7 +286,19 @@ list, not a blocker.
   1,000-tick ring while each system's mean and peak are running totals
   since the server started. The panel says so; windowing them is a tick
   change and goes in its own PR (`PERF-TT1` on the roadmap).
-- **EU8** — console; runtime discovery.
+- **EU8** — console; runtime discovery. The console half is built
+  (`ui/console-log.ts` holds it, `ui/forge-console.tsx` draws it). We had
+  the streams and no console: the play server's log was polled into the
+  Server tab, bakes went to the Bakes tab, and the editor's own
+  notifications flashed in a snackbar for 3.6 s and were gone — the worst
+  of the three, because a line you cannot scroll back to may as well not
+  have been shown. One bounded ring (1,000 entries) takes all three,
+  filtered by source, level and text, and it polls nothing: whoever
+  already polls the server log pushes into it, and the bakes store is
+  mirrored by one subscription. Server lines take their level from the
+  same `lineTone` the Server tab colours by, so the two cannot disagree.
+  Runtime discovery (probe local ports, list, attach) is still open; the
+  attach half exists in `server-gate.ts` and `mirror-connect.ts`.
 - **EU9** — VS Code handoff (not an embedded IDE).
 - **EU10** — Blender live-link, if still wanted.
 

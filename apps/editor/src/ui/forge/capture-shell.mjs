@@ -93,7 +93,7 @@ const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
 });
 const tab = await browser.newPage({
-  viewport: { width: 1180, height: 2500 },
+  viewport: { width: 1180, height: 2900 },
   // 2 for the still a person looks at; the GIF frames are shot at 1 so the
   // file stays small enough to post.
   deviceScaleFactor: 2,
@@ -136,6 +136,11 @@ await tab.locator('[data-shot="outliner"]').screenshot({
   path: resolve(outDir, "eu4-outliner-badges.png"),
 });
 console.log(`wrote ${resolve(outDir, "eu4-outliner-badges.png")}`);
+
+await tab.locator('[data-shot="console"]').screenshot({
+  path: resolve(outDir, "eu8-console.png"),
+});
+console.log(`wrote ${resolve(outDir, "eu8-console.png")}`);
 
 // ------------------------------------------------------------------- film
 

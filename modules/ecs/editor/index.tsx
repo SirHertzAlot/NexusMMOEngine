@@ -6,6 +6,7 @@ import { EcsInspectorPanel } from "../../../apps/editor/src/ui/ecs-inspector.js"
 import { ForgeEntityInspector } from "../../../apps/editor/src/ui/forge-inspector.js";
 import { ForgeSystemsPanel } from "../../../apps/editor/src/ui/forge-systems.js";
 import { ForgeIntegrationsPanel } from "../../../apps/editor/src/ui/forge-integrations.js";
+import { ForgeConsolePanel } from "../../../apps/editor/src/ui/forge-console.js";
 
 export const panels = [
   {
@@ -41,5 +42,14 @@ export const panels = [
     title: "Integrations",
     icon: "hub",
     render: () => <ForgeIntegrationsPanel />,
+  },
+  {
+    // One console over every stream the editor already produced
+    // (docs/EDITOR-UI-2026.md §2.6). Both mockups carry this tab.
+    id: "ecs-console",
+    workspace: "debug",
+    title: "Console",
+    icon: "terminal",
+    render: () => <ForgeConsolePanel />,
   },
 ];

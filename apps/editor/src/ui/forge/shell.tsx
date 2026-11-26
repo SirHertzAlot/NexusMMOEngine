@@ -20,6 +20,8 @@ import { ForgeProfilerView, type Timings } from "../forge-profiler.js";
 import { ForgeSystemsView, systemSignatures } from "../forge-systems.js";
 import { ForgeIntegrationsView, integrationRows } from "../forge-integrations.js";
 import { OutlinerBadges } from "../outliner-badges-view.js";
+import { ForgeConsoleView } from "../forge-console.js";
+import { everything, type ConsoleEntry } from "../console-log.js";
 import type { SceneNode } from "@mmo-engine/scene";
 import { indexEcsGraph, type EcsGraphPayload } from "../../ecs-graph-model.js";
 import { editorSelection } from "../editor-selection.js";
@@ -325,6 +327,49 @@ function OutlinerShot(): React.JSX.Element {
   );
 }
 
+/**
+ * The console shot. Entries are the shapes the three real sources push
+ * — a server log page through `lineTone`, a bake, an editor
+ * notification — and the panel's own filtering and counting decide
+ * everything on screen.
+ */
+const base = new Date(2026, 10, 26, 14, 3, 1).getTime();
+const CONSOLE: ConsoleEntry[] = [
+  { seq: 1, at: base, source: "server", level: "info", text: "[gateway] listening on 127.0.0.1:7777" },
+  { seq: 2, at: base + 1200, source: "server", level: "info", text: "[world] region 0182 loaded · 1,284 entities" },
+  { seq: 3, at: base + 2600, source: "bake", level: "info", text: "terrain: 42 tiles · 1.8 s" },
+  { seq: 4, at: base + 4100, source: "server", level: "warn", text: "WARN sidecar restart (attempt 1 of 3)" },
+  { seq: 5, at: base + 5500, source: "editor", level: "warn", text: "Fullscreen was blocked by the browser" },
+  { seq: 6, at: base + 7300, source: "bake", level: "error", text: "settlement: bake failed · no road reaches town 4" },
+  { seq: 7, at: base + 9100, source: "server", level: "error", text: "Error: failed to bind debug port 9229" },
+  { seq: 8, at: base + 11_200, source: "server", level: "info", text: "[tick] p50 8.42 ms · p99 21.70 ms" },
+];
+
+function ConsoleShot(): React.JSX.Element {
+  return (
+    <div
+      data-shot="console"
+      data-theme="forge"
+      style={{
+        width: 760,
+        height: 330,
+        background: "var(--fg-canvas)",
+        padding: 8,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <ForgeConsoleView
+        entries={CONSOLE}
+        filter={everything()}
+        onFilter={() => undefined}
+        onClear={() => undefined}
+      />
+    </div>
+  );
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("forge shell preview: #root missing");
 createRoot(root).render(
@@ -334,5 +379,6 @@ createRoot(root).render(
     <SystemsShot />
     <IntegrationsShot />
     <OutlinerShot />
+    <ConsoleShot />
   </div>,
 );

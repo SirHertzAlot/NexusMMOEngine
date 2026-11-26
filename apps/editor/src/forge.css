@@ -383,3 +383,39 @@
   font-weight: 700;
   opacity: 0.75;
 }
+
+/* ----------------------------------------------------------- console
+ * One log line (ui/forge-console.tsx): stamp, source, text, on a grid so
+ * the three columns line up down the whole scrollback.
+ */
+[data-theme="forge"] .fg-logline {
+  display: grid;
+  grid-template-columns: 56px 54px 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: var(--fg-radius-chip);
+}
+
+[data-theme="forge"] .fg-logline:hover {
+  background: var(--fg-hover);
+}
+
+[data-theme="forge"] .fg-logline > span:last-child {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* The find box: a hairline field, not a Material text field. */
+[data-theme="forge"] .fg-find {
+  width: 130px;
+  padding: 3px 7px;
+  background: var(--fg-sunken);
+  border: 1px solid var(--fg-line-soft);
+  border-radius: var(--fg-radius-chip);
+  color: var(--fg-text);
+}
+
+[data-theme="forge"] .fg-find::placeholder {
+  color: var(--fg-text-faint);
+}
