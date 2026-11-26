@@ -364,6 +364,44 @@ commit, upgrade checklist) are in the package's `README.md` and
 6. Start → immediately Stop during the 60 s readiness window is also
    safe: the owned group is still killed.
 
+## How the editor is layered
+
+Four layers, each named by where the file sits. The shape was already
+there; this says it out loud, and `apps/editor/test/layering.test.ts`
+holds the two rules that keep it.
+
+| Layer | Where | What it may do |
+|---|---|---|
+| **Host** | `src/*-host.ts` (and `src/host.ts`) | Node. Reads and writes the repository, validates a document the same way the game loads it, refuses with every issue and writes nothing. Never imports React. |
+| **Client** | `src/*-client.ts` | The browser's side of one host. One place per route family, built on `api.ts`'s `requestJson`, so a refusal turns back into the document's own error type. |
+| **Model** | `src/store.ts`, `src/ui/*-store.ts` | State a panel reads and more than one surface writes. `createStore` plus `useSyncExternalStore`. Never imports a renderer. |
+| **View** | `src/ui/*.tsx`, `modules/*/editor` | Draws, and nothing else. Reads through a client or a store. |
+
+Two rules the test enforces, because both have been broken by accident:
+
+- **A view does not call `fetch`.** It goes through a client. Seven
+  panels still do their own fetching; they are listed by name in the
+  test, and the list may only shrink — removing one is the fix, and the
+  test fails if a name in the list no longer fetches, so the list cannot
+  go stale.
+- **A model does not import a renderer.** Reading the play state used
+  to pull `@mmo-engine/client/render` in behind it, which is why
+  `playUiStore` and `getPlayController` were pulled out of
+  `ui/play-mode.tsx` into files of their own.
+
+A view may import a host's **types** (`import type { PoolEntry } from
+"../dungeon-host.js"`) — the import is erased at build, and the
+alternative is declaring the same shape twice. It may not import a
+host's code.
+
+One more convention, from the 2026 UI rebuild
+([EDITOR-UI-2026.md](EDITOR-UI-2026.md)): **one hook per data source,
+mounted by every presentation of it.** `useEcsInspectorSession()` and
+`useTickTimings()` are each mounted by both the Material 3 panel and its
+forge counterpart, so the two cannot drift on what they show or how
+often they ask. A second presentation that polls for itself is the bug
+this prevents.
+
 ## Code map
 
 ```text
