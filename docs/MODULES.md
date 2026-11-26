@@ -171,6 +171,13 @@ export class MyCombatSystem implements SimSystem {
 }
 ```
 
+Nothing in `ports.ts` names a system. A port's signatures mention only the
+shared vocabulary (`packages/engine-core/src/vocabulary.ts` — the events and
+views the engine and your systems must agree on), the protocol's wire types,
+and `SimWorld` where what a port answers depends on where things stand. So
+you can write a system against a port without importing the engine's own, and
+the engine never imports yours.
+
 Replace the engine's combat system with your own and the gateway finds yours,
 because it never looked for a class in the first place. Offer a port without
 the methods it needs and the boot ends naming the system and the methods it

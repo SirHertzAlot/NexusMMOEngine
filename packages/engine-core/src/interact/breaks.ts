@@ -29,6 +29,7 @@ import type { SystemAccess } from "../system-access.js";
 import type { PlacesStore } from "./places-store.js";
 import type { ChestView } from "@mmo-engine/protocol";
 import { PORTS } from "@mmo-engine/sdk";
+import type { RepairCheck, RepairResult } from "../vocabulary.js";
 
 /** What a break tells the host: where, what it was, what it breaks into, and who dealt the last blow. */
 export interface BreakEvent {
@@ -90,9 +91,6 @@ interface Ruin {
   snap: Snap;
   poolHandle: number;
 }
-
-export type RepairCheck = { ok: true; castSeconds: number; spell: string } | { ok: false; error: string };
-export type RepairResult = { ok: true } | { ok: false; error: string };
 
 interface Pending {
   key: string | null;

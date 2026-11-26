@@ -41,6 +41,7 @@ import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import type { LivingSimSystem } from "../sim/living-sim-system.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { ResidentInfo, ResidentTier } from "../vocabulary.js";
 
 /** The parts of a baked npc the system needs (settlement's Npc). */
 export interface ResidentNpc {
@@ -114,19 +115,6 @@ export interface ResidentOptions {
   maxFull?: number;
   /** Living simulation system (circadian rhythm, hunger, fatigue, digestion, shelter, entertainment). */
   livingSim?: LivingSimSystem;
-}
-
-export type ResidentTier = "full" | "coarse" | "none";
-
-/** What a resident is, for the interaction system (R5). */
-export interface ResidentInfo {
-  npc: string;
-  town: string;
-  role: string;
-  class: string;
-  cohort: string;
-  mastery?: string;
-  grandMaster?: boolean;
 }
 
 /** A small seeded generator (mulberry32). */

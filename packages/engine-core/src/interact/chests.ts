@@ -25,6 +25,7 @@ import type { SystemAccess } from "../system-access.js";
 import type { ChestView } from "@mmo-engine/protocol";
 import type { PlacesStore } from "./places-store.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { ChestCheck, ChestResult } from "../vocabulary.js";
 
 /** An interact request (catalog 0x27): an entity's wire id, or a quest giver's or dungeon entrance's content id. */
 const contentId = z.string().min(1).max(64);
@@ -76,9 +77,6 @@ interface Chest extends ChestSpec {
   body: number[] | null;
   poolHandle: number;
 }
-
-export type ChestResult = { ok: true; items: number } | { ok: false; error: string };
-export type ChestCheck = { ok: true; castSeconds: number; spell: string } | { ok: false; error: string };
 
 export class ChestSystem implements SimSystem {
   /** Offered to the host as the `chests` port: its chests and the doors they open. */

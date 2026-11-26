@@ -22,6 +22,7 @@ import type { SimWorld } from "../world.js";
 import type { SimSystem } from "../systems.js";
 import type { WalletSystem } from "./wallet.js";
 import { PORTS } from "@mmo-engine/sdk";
+import type { Trade, TradeEvent, TradeState } from "../vocabulary.js";
 
 /** How the trade moves bag items (wired to the ItemStore in server.ts). */
 export interface TradeItems {
@@ -31,34 +32,6 @@ export interface TradeItems {
   freeSlots(charId: number): number;
   /** Move `itemId` from one bag to another; false when it didn't move. */
   move(itemId: number, from: number, to: number): boolean;
-}
-
-export type TradeState = "open" | "settled" | "cancelled" | "expired";
-
-export interface TradeEvent {
-  tick: number;
-  id: number;
-  state: TradeState | "offer" | "accepted";
-  a: number;
-  b: number;
-  aGold: number;
-  bGold: number;
-  aItems: number[];
-  bItems: number[];
-  aAccepted: boolean;
-  bAccepted: boolean;
-}
-
-interface Trade {
-  a: number;
-  b: number;
-  aGold: number;
-  bGold: number;
-  aItems: number[];
-  bItems: number[];
-  aAccepted: boolean;
-  bAccepted: boolean;
-  expiresAt: number;
 }
 
 const msToTicks = (ms: number, tickHz: number): number => Math.max(0, Math.round((ms / 1000) * tickHz));
