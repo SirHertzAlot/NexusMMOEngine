@@ -30,7 +30,7 @@ async function main() {
       process.exit(2);
     }
     files = readdirSync(dir)
-      .filter((f) => f.endsWith(".json"))
+      .filter((f) => f.endsWith(".json") && !f.endsWith(".playtest.json"))
       .map((f) => join(dir, f));
   } else {
     files = args.filter((a) => !a.startsWith("--")).map((a) => resolve(a));
