@@ -30,6 +30,9 @@ import {
   type Vec3,
 } from "@mmo-engine/scene";
 import { keepLiveTransform, liveTransform, placePrefab, type LiveTransform } from "@mmo-engine/scene";
+import { clearOverride, prefabFromNodes } from "@mmo-engine/scene";
+import { GameplaySaveError, loadGameplay, saveGameplayRemote, type GameplayIssue } from "../gameplay-client.js";
+import { prefabNames, prefabOf, prefabTableContent } from "../scene-prefab.js";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
 import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
 import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
@@ -52,6 +55,7 @@ import { subscribeOpenAsset } from "./open-asset.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
 import { ScenePalette } from "./scene-palette.js";
+import { MakePrefabDialog, PrefabInstanceCard } from "./make-prefab-dialog.js";
 
 /** Scene names become file names: lowercase letters, digits and dashes, starting with a letter or digit. */
 export const SCENE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -106,6 +110,12 @@ export function ScenesPanel(): React.JSX.Element {
   const [ctx, setCtx] = React.useState<{ id: string; x: number; y: number } | null>(null);
   // Inline rename: node id being renamed.
   const [renaming, setRenaming] = React.useState<string | null>(null);
+  // EB3: the prefabs table, read once so the panel can name what a node
+  // places, say what it overrides, and add to it without dropping the rest.
+  const [prefabTable, setPrefabTable] = React.useState<unknown>(null);
+  const [making, setMaking] = React.useState(false);
+  const [makeBusy, setMakeBusy] = React.useState(false);
+  const [makeIssues, setMakeIssues] = React.useState<GameplayIssue[]>([]);
   const renameCancelled = React.useRef(false);
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
@@ -203,6 +213,42 @@ export function ScenesPanel(): React.JSX.Element {
     applyPositions("distribute", distributePositions(selectedPositions(), axis));
   const refresh = (): void => void listScenes().then(setNames, (e: Error) => setStatus(e.message));
   React.useEffect(refresh, []);
+  // The prefabs the project already has. A failed read is not an error the
+  // Scenes workspace reports — it only means "Make prefab" cannot say what
+  // would clash, so the button waits rather than offering a name twice.
+  const readPrefabs = React.useCallback(() => {
+    void loadGameplay().then(
+      (snapshot) => setPrefabTable(snapshot.tables.prefabs),
+      () => setPrefabTable(null),
+    );
+  }, []);
+  React.useEffect(readPrefabs, [readPrefabs]);
+
+  /**
+   * EB3: the chosen nodes become a prefab, and the scene keeps one node
+   * that places it. The file is written first, through the prefabs data
+   * table, so a refusal leaves the scene alone; the scene edit then goes
+   * through history like any other, undoable.
+   */
+  const makePrefab = async (name: string): Promise<void> => {
+    setMakeBusy(true);
+    setMakeIssues([]);
+    try {
+      const authored = prefabFromNodes(hist.doc, sel.ids, name);
+      const content = prefabTableContent(prefabTable, authored.prefab);
+      await saveGameplayRemote("prefabs", content);
+      setPrefabTable(content);
+      run(`make prefab ${name}`, () => authored.doc);
+      select(authored.id);
+      setMaking(false);
+      setStatus(`prefab "${name}" written; ${authored.took.length} node${authored.took.length === 1 ? "" : "s"} replaced by one that places it`);
+    } catch (e) {
+      if (e instanceof GameplaySaveError) setMakeIssues(e.issues);
+      else setMakeIssues([{ file: `${name}.prefab.json`, path: "", message: e instanceof Error ? e.message : String(e) }]);
+    } finally {
+      setMakeBusy(false);
+    }
+  };
 
   // Toolbar Save/Undo/Redo target while a scene is open.
   useDocActions(() => {
@@ -479,6 +525,19 @@ export function ScenesPanel(): React.JSX.Element {
               {sel.ids.length > 1 ? `Delete ${sel.ids.length}` : "Delete"}
             </Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => node && run("move to root", (d) => moveNode(d, node.id, null))}>To root</Button>
+            {/* EB3: arrange it in the viewport, then make it the prefab. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sel.ids.length === 0}
+              data-testid="make-prefab"
+              onClick={() => {
+                setMakeIssues([]);
+                setMaking(true);
+              }}
+            >
+              Make prefab
+            </Button>
           </div>
           {rows(doc.nodes).map(({ node: n, depth }) => (
             <div
@@ -654,6 +713,15 @@ export function ScenesPanel(): React.JSX.Element {
               </Select>
               <Label>Prefab</Label>
               <Input className="h-9" value={node.prefab ?? ""} placeholder="e.g. camps/goblin" onChange={(e) => run("prefab", (d) => setNodeProp(d, node.id, "prefab", e.target.value))} />
+              {/* EB3: what this node takes from its prefab, and what it says
+                  differently. The components below are the overrides. */}
+              {node.prefab && (
+                <PrefabInstanceCard
+                  node={node}
+                  prefab={prefabOf(prefabTable, node.prefab)}
+                  onRevert={(component, field) => run("revert override", (d) => clearOverride(d, node.id, component, field))}
+                />
+              )}
               {(["position", "rotation", "scale"] as const).map((key) => (
                 <div key={key}>
                   <Label>{key}</Label>
@@ -698,6 +766,16 @@ export function ScenesPanel(): React.JSX.Element {
           )}
         </section>
       </div>
+      <MakePrefabDialog
+        open={making}
+        doc={doc}
+        ids={sel.ids}
+        existing={prefabNames(prefabTable)}
+        busy={makeBusy}
+        issues={makeIssues}
+        onCancel={() => setMaking(false)}
+        onMake={(name) => void makePrefab(name)}
+      />
     </div>
   );
 }

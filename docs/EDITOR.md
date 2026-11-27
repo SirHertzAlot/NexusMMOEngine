@@ -468,6 +468,49 @@ settings all go back to their defaults drops out of the file rather
 than leaving `{}` behind. A run's `MMO_*` variable still wins over
 both.
 
+## 2k. Making a prefab from a selection (ROADMAP EB3)
+
+Prefabs are not new: a scene node with `prefab: "goblin-camp"` is the
+bundle in `content/prefabs/goblin-camp.prefab.json` with the node's own
+components laid over it field by field, prefabs may place prefabs, and
+the Gameplay grids have edited those files for as long as they have
+existed. What the Scenes workspace was missing is the direction an
+editor works in — arrange a camp in the viewport, then make that the
+camp.
+
+Select the nodes and press **Make prefab** in the Outliner. The form
+suggests a name from the selection, says which nodes go in (a node
+inside a chosen node comes along rather than twice) and where the
+prefab's origin lands: the middle of their spread on X and Z, at the
+lowest of them, so the instance drops on ground at another height
+without burying itself. It refuses what the host would refuse — a name
+that is not lowercase letters, digits and dashes, a name already taken,
+a selection that already places the prefab being made — and the host's
+`validatePrefab` still has the last word.
+
+What happens then is two steps on purpose. The prefab file is written
+first, through the prefabs data table (`data-host.ts`, validated by the
+engine's own loader), so a refusal leaves the scene untouched. Then the
+scene edit goes through the undo history like any other: the chosen
+nodes are replaced by one node that places the prefab, at the origin,
+and **Undo** brings them back. The file stays, to place again — the
+form says so, because a button that quietly leaves a file behind is
+worse than one that admits it.
+
+The nodes keep the transforms they were authored with. Nodes that
+shared a parent stay in that parent, with the instance under it, so the
+group goes on turning and scaling them as it did; nodes gathered from
+different parents have no shared frame to keep, so those are resolved
+into scene space and the instance lands at the root.
+
+Selecting an instance shows what it takes from its prefab and what it
+says differently — `3 overrides on this instance`, each with the
+prefab's own value beside it and a **Revert** that drops the instance's
+field so the prefab's applies again. The merge was always there; nothing
+showed which of a node's fields were the instance's own, so an override
+read as the prefab's value and editing the prefab looked like it had
+done nothing.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
