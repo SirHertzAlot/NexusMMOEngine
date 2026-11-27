@@ -11,12 +11,6 @@
         "name": "streamer"
       },
       {
-        "name": "chests"
-      },
-      {
-        "name": "breaks"
-      },
-      {
         "name": "collapse"
       }
     ]

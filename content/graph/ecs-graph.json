@@ -2860,8 +2860,8 @@
       "confidence": "introspected",
       "from": "system:breaks",
       "kind": "contributedBy",
-      "source": "modules/core/module.json",
-      "to": "module:core"
+      "source": "modules/props/module.json",
+      "to": "module:props"
     },
     {
       "confidence": "declared",
@@ -3287,8 +3287,8 @@
       "confidence": "introspected",
       "from": "system:chests",
       "kind": "contributedBy",
-      "source": "modules/core/module.json",
-      "to": "module:core"
+      "source": "modules/props/module.json",
+      "to": "module:props"
     },
     {
       "confidence": "declared",
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "e3864da8c60c64ab726d8d3209334189b74608fb",
+    "builtFromCommit": "db9b6f7048d703e1f7e01b4e769b39500264f6bc",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7574,7 +7574,7 @@
         "archetype": 4,
         "component": 28,
         "field": 99,
-        "module": 33,
+        "module": 34,
         "object": 185,
         "system": 45,
         "verb": 13,
@@ -7582,7 +7582,7 @@
       },
       "declaredSystems": 33,
       "edges": 1079,
-      "nodes": 423,
+      "nodes": 424,
       "simulationSystems": 33,
       "unresolved": 10
     },
@@ -7612,8 +7612,8 @@
         "status": "summary-only"
       },
       {
-        "count": 33,
-        "details": "33 enabled modules contributing 38 ordered tick systems",
+        "count": 34,
+        "details": "34 enabled modules contributing 38 ordered tick systems",
         "source": "modules/*/module.json",
         "status": "extracted"
       },
@@ -7636,14 +7636,14 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "609e7ff9d876cc13ca462da59489718adb8e663fbcf25c7260c9f93b07332bc0",
+    "graphHash": "0fb0c934d11e796647f0d11145a087f591af359a7c4aa6ff81d3634cbd17c929",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
       "apps/editor/src/authoring/verbs.ts": "a3e7b6d4308f5c1f1982776bfdc5357724fe411bf117834e9aca1a46db18185a",
       "apps/editor/src/authoring/widgets.ts": "52e08a3c14a45bca26c956ad84fc25440300b19cd9ab7cf2f167b759827660de",
       "apps/editor/src/ui/authoring-view.tsx": "ee94a73ab9fd48021d55cbb50db9d9414f66071b298cf1a7c89160da6c877777",
-      "content/modules.json": "dc020f8eb42d3e3b0501cc2a73a9bd18867a5644ee69825696f98b22ff90130a",
+      "content/modules.json": "dad2fdca25370a98359f6cbc3d1a257beb5f0c183928b1c367ed09c7e68c063f",
       "content/scenes/interior-crypt-hall.scene.json": "e514737a50c7419acf451e3f5414703e6107c305796399651f5c6fb7bd713cd1",
       "content/scenes/places.scene.json": "2c08a7bfd3a1e9997bbe2bf3fc3fe9247659fd7e6635f595f9a07d5c0337b03a",
       "content/scenes/synth-multi-level-descent.scene.json": "b08d577cdfc5ca811fb09084cf6dfb67ec174b65bd7753ef2d3b3d2504862a1d",
@@ -7664,7 +7664,7 @@
       "modules/civic/server.js": "b0713aeb3e0d3e06e063aa50fdcbd1f0aa2101b67eef14a25ee41b5c145dc95b",
       "modules/combat/module.json": "ae615ac7acfb0654d76414937106eedce1fd3070729d1abf8983d81c95c65684",
       "modules/combat/server.js": "eb374d765adcec397899119f88bb11806ef9499c2b4c0c99a3c7815c5cf413e0",
-      "modules/core/module.json": "5d9604c23a94fb7764841da6ecc56591955eb57f0cd2dfa6f4c0be87a537c2a4",
+      "modules/core/module.json": "e4056a2b3f9dbde62122530b9b6d5ee5dc0d070decf30e662d9e7a820979f381",
       "modules/creatures/module.json": "095a85e81bfba6bef2cd6c00b0cbefdf2a4a19cda91197c1c32d0edb8775bfd9",
       "modules/creatures/server.js": "dfd7459d00a74ab5f22b604bfc1a7e0e646d18ffbb30eca16751811d9af4454f",
       "modules/database/module.json": "8e42b9b27f3fda10cd25f27464200d533a57c66a3afdf878385fdbbbe0bf4ba2",
@@ -7676,7 +7676,7 @@
       "modules/ecs/module.json": "727e0ee9b9658d07a12d24a801c076b50c816a56fa54896c9b004cbaa3aa17f0",
       "modules/flow/module.json": "369cd95e6690ea948f595523e5910402e62eb25f9b9cbf85546da43634fbb441",
       "modules/gameplay/module.json": "6feee3188f7d174e5ba87a42f7c03a3d04c6ee57a32b0a042591f9c586c7d801",
-      "modules/gathering/module.json": "1beb1ea8775ba0b7e2f743b869ded37de9c4c43f5981f303f55a5eb914c6e77a",
+      "modules/gathering/module.json": "dcae94795ff13efee647721991547d65a299bba5666b02cf4342de9780268493",
       "modules/gathering/server.js": "6c8196cf3d433f80069e9a483250781eed466aebf7604449cdab42cd3239bb30",
       "modules/hud/module.json": "b4645547835447485461e6f8d2f43f745b19846cf4edf4398307e7c540ece54e",
       "modules/intent/module.json": "355871020da06db1a91beaa208a13b46a887d59fa8df007acdecdd1aa24a6820",
@@ -7687,11 +7687,13 @@
       "modules/network/module.json": "a2a47b4084218bafe31d0e52d8e9f925beaf930b91b6ba0bfea61686de0bc594",
       "modules/physics/module.json": "06563caed17d380aa0226ff9f71bbd2c384db625a8f616c1b008f084e82c4921",
       "modules/physics/server.js": "64184e68966f223225441d8a7bb301732fe2a3b3db4e31dfea78f913f2fe2c99",
+      "modules/props/module.json": "e1459bd2ce0be528e56d5f717b2a8f6b37c7a3236b0f373798d6b4a773493773",
+      "modules/props/server.js": "0361d7b3659c9700cd8c259bb5a3885e4327c919e168f37d635c9773b3513078",
       "modules/quests/module.json": "7cbd72b7e9817434461f399fc3cf1318b2b7b94d2eeddac8d42c8db671412731",
       "modules/quests/server.js": "800f96b39e9562d86706c807fee1e417103771e4de8dbd0b9fae90bde7c68a21",
       "modules/release/module.json": "b6c5bcb7471dccfcaa7ad256174fc36841e13567e9d5b8bd58bfbcf33b534e2d",
       "modules/residents/module.json": "4f5598d3302884c0957c662a5e7c00c4197a9dad58a0c3cb92f7d0a632183285",
-      "modules/residents/server.js": "00307b31f6615cff96414940e5300051618b65b80b42059138cc34ce1212e6aa",
+      "modules/residents/server.js": "de1ad7395b6258374518aad0f6d1604cfe8f8198b390b731c3f39f435d226c02",
       "modules/scenes/module.json": "a6505cacda47e7395b0f38791e1d31f69c4bd6b5d6974abb2880aa4c61f4bbed",
       "modules/social/module.json": "1b95bd6c2098e189030a9c9c4a249f55c633b13a724fadbb16aa2a6ae2a43ad0",
       "modules/social/server.js": "4adbb46b0707e1d1315257f11dcf4721380faf1458db2e5fc624ae66a5f57f94",
@@ -7771,7 +7773,7 @@
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "6b19514813ab57c35084008a1a0ade1ebc683a3546893ecf3292b41f1fb21aa2",
+      "packages/engine-core/src/index.ts": "095a7c42e43f3bd93072dcccb83bab380c6b23818f015ed3880731d2d8c3b53a",
       "packages/engine-core/src/interact/breaks.ts": "efc944442b87f34faa633a1a1aafab418168c737788d25d50e670cb0900c15fe",
       "packages/engine-core/src/interact/chests.ts": "64bee0760ab792e07f71dc289f31777956c31bcbc74e37574c6352169676652b",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
@@ -7864,7 +7866,7 @@
       "packages/engine-core/src/quests/quest-service.ts": "0e2427641a4abe1d14e8d00e0dedc602678a069299e12d3276b5eac61a28c2da",
       "packages/engine-core/src/quests/quest-store.ts": "c9f76e68003d77fd90e85359368579b20793534c592602285b73d20f14fe298c",
       "packages/engine-core/src/quests/worldbuilding-generics.ts": "57ded3b013541b1e165732a345171d0ec486668a6aab564c8398298241da9d01",
-      "packages/engine-core/src/residents/index.ts": "c3fec1a0b0d20e10e875edd99b1595a788fee0f6b0e9bf91c9c0a9387a583d0c",
+      "packages/engine-core/src/residents/index.ts": "0138b7f53ca52cd6ad5de1b690824d840e37da0188deaed18c6bacfc8dcdd81d",
       "packages/engine-core/src/residents/lessons.ts": "33aa49b4621de80a976e4323bea9ff5fa791f382a95f4e67f08b1e541b3ad30d",
       "packages/engine-core/src/residents/resident-system.ts": "f5c230f94d3c90fb56d43dcdf9d0a2894425a422b4b464607204a43a31530d37",
       "packages/engine-core/src/rules/boot.ts": "d06e37ec83d8c249952eca0b88519a5769d347bb78da44532d68b4132ef77319",
@@ -7879,8 +7881,8 @@
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
       "packages/engine-core/src/scene-spawn.ts": "b4e16eb0597a9dfa861169ecf21587e926bdd1605d47aead65d14f6a2d47e1b2",
       "packages/engine-core/src/server-settings.ts": "e7693685abc136300b30d06fbfbf97e34f0ef740bf8c20d7e3188824d7f4e0d6",
-      "packages/engine-core/src/server.ts": "76ae61774074c530877b05c6a4255e3082113009324bb840129760152bf7fc6a",
-      "packages/engine-core/src/services.ts": "f8d0c99734269e647b88361ee4e18a5d31020c9380c85ca5cdd3328ef393022d",
+      "packages/engine-core/src/server.ts": "e35103db6d563b01e54e29d9fc9e334f373f8b9a9a94fffb413cd338ad7013fe",
+      "packages/engine-core/src/services.ts": "9d19d76c660967ba7263b983a391c91ca67dd259bbd813d1a9cce2e0b0580087",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
@@ -9978,8 +9980,6 @@
       "systems": [
         "reloader",
         "streamer",
-        "chests",
-        "breaks",
         "collapse"
       ],
       "version": "0.1.0"
@@ -10147,6 +10147,19 @@
         "character-bridge",
         "prop-collision",
         "collider"
+      ],
+      "version": "0.1.0"
+    },
+    {
+      "description": "The world's chests, doors and breakable props (IX1, IX4, IX5): barrels, crates, urns, and the parts a building falls apart into.",
+      "entry": "server.js",
+      "id": "module:props",
+      "kind": "module",
+      "name": "props",
+      "source": "modules/props/module.json",
+      "systems": [
+        "chests",
+        "breaks"
       ],
       "version": "0.1.0"
     },
@@ -11962,7 +11975,7 @@
       "id": "system:breaks",
       "inRoster": true,
       "kind": "system",
-      "module": "core",
+      "module": "props",
       "name": "breaks",
       "role": "simulation",
       "simName": "breaks",
@@ -12001,7 +12014,7 @@
       "id": "system:chests",
       "inRoster": true,
       "kind": "system",
-      "module": "core",
+      "module": "props",
       "name": "chests",
       "role": "simulation",
       "simName": "chests",

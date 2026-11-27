@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { ENGINE_ROOT, openGameProject } from "@mmo-engine/sdk";
 import { assembleServerSystems, mergeModuleConfig } from "../src/modules.js";
 import { discoverModules, resolveModuleSet } from "@mmo-engine/modules";
@@ -18,11 +18,13 @@ const MODULES = join(REPO, "modules");
  * that own them (combat, creatures, physics, ...), each building its own
  * systems; core only holds what server.ts still builds for the whole host.
  *
- * `gathering` left for its own module at `ES5k`, and ticks back in its old
- * place through the `after`/`before` edges that module declares — which is
- * what the order test below pins.
+ * `gathering` left for its own module at `ES5k` and `chests`/`breaks` for
+ * `props` at `ES5l`; all three tick back in their old places through the
+ * `after`/`before` edges those modules declare, which `TICK_ORDER` below
+ * pins. What is left here is what no module owns: the rules reloader, the
+ * chunk streamer, and the collapse system every `before` edge anchors on.
  */
-const CORE_ORDER = ["reloader", "streamer", "chests", "breaks", "collapse"];
+const CORE_ORDER = ["reloader", "streamer", "collapse"];
 
 /** content/rules/gathering.json, enough of it for the module to open. */
 const GATHERING_RULES = { reachM: 2.5, cooldownSeconds: 1.2, castSeconds: 2, pouchMax: 999, trainDifficultyPerTier: 0.2 };
@@ -45,8 +47,8 @@ describe("server modules: the core module", () => {
     assert.deepEqual(r.order.map((s) => s.name), CORE_ORDER);
   });
   it("skips core systems the host did not build, keeping the rest in order", async () => {
-    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided(["chests", "auction"]) }, ctx });
-    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER.filter((n) => n !== "chests" && n !== "auction"));
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided(["collapse", "auction"]) }, ctx });
+    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER.filter((n) => n !== "collapse" && n !== "auction"));
   });
   it("refuses an instance the manifest does not list", async () => {
     await assert.rejects(
@@ -74,8 +76,10 @@ describe("server modules: the core module", () => {
  * physics, combat and intent. Kahn's algorithm takes the lowest ready
  * declaration index, and a module declared late in `content/modules.json`
  * has late indices, so where a module *sits in the set* decides where a
- * freely-ordered system ticks. `gathering` is listed right after `core` for
- * exactly that reason.
+ * freely-ordered system ticks. `gathering` and `props` are listed right
+ * after `core` for exactly that reason, and both anchor their `before` edges
+ * on `collapse`, a `core` system: an edge to another optional module's
+ * system would make either refuse to boot without the other.
  *
  * Update this list when a change is meant to move the tick, and read it
  * carefully when a change is not.
@@ -106,14 +110,15 @@ describe("server modules: the gathering module (ES5k)", () => {
   // it *ticks*: a node's regrow and a pouch write between the streamer and
   // the chests is the order the open world has always run. The module says
   // so with `after: streamer` / `before: chests`, and this is the pin.
-  it("ticks back in its old place, between the streamer and the chests", async () => {
+  it("ticks back in its old place, before the chests", async () => {
     const r = await assembleServerSystems({
       modulesDir: MODULES,
       setFile: setFile(["core", "gathering"]),
       provided: { core: coreProvided() },
       ctx: { ...ctx, config: { gathering: { dataDir: mkdtempSync(join(tmpdir(), "mmo-gathering-")), rules: GATHERING_RULES } } },
     });
-    assert.deepEqual(r.systems.map((s) => s.name), ["reloader", "streamer", "gathering", "chests", "breaks", "collapse"]);
+    // `chests` and `breaks` are the props module's (ES5l), not enabled here.
+    assert.deepEqual(r.systems.map((s) => s.name), ["reloader", "streamer", "gathering", "collapse"]);
   });
   it("hands the host what the world record needs, and nothing else", async () => {
     // The pouch and the node stocks ride a character's record and the range
@@ -141,6 +146,139 @@ describe("server modules: the gathering module (ES5k)", () => {
     records.replacePouch(7, { oak: 3, nonsense: -1, fractional: 0.5 });
     assert.deepEqual(records.loadPouch(7), { oak: 3 });
     await r.disposeModules();
+  });
+});
+
+describe("server modules: the residents module teaches (ES5m)", () => {
+  // The lessons file was the last thing `server.ts` loaded out of a kit
+  // module: it read `lessons.json`, ran it through `lessonTerms` and handed
+  // the gateway the result. The curve that prices a lesson is a game's own
+  // answer, so the module reads the file and publishes the terms.
+  const LESSONS = { version: 1, peak: 10, cost: 100, professions: { smith: "smithing" } };
+  const lessonsFile = (): string => {
+    const f = join(mkdtempSync(join(tmpdir(), "mmo-lessons-")), "lessons.json");
+    writeFileSync(f, JSON.stringify(LESSONS));
+    return f;
+  };
+
+  it("publishes the terms even when no town spawned", async () => {
+    // The point of publishing above the module's early returns: this set has
+    // no scene and no manifests, so `residents` itself does not tick. A town
+    // that did not spawn does not change what a lesson costs, and a trainer
+    // can still teach.
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "residents"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { residents: { lessonsFile: lessonsFile() } } },
+    });
+    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER);
+    const terms = stores["lessonTerms"] as { skillOf(m: string): string | undefined; offer(m: string, l: number, max: number, g: boolean): unknown };
+    assert.deepEqual(Object.keys(terms).sort(), ["offer", "skillOf"]);
+    assert.equal(terms.skillOf("smith"), "smithing");
+    assert.equal(terms.skillOf("cooper"), undefined, "a profession the file does not teach has no skill");
+    // A pupil at the top has nothing left to learn, which is a null offer
+    // rather than a zero-point one (the gateway answers unsupported).
+    assert.equal(terms.offer("smith", 100, 100, false), null);
+    assert.notEqual(terms.offer("smith", 30, 100, false), null);
+    await r.disposeModules();
+  });
+
+  it("leaves no terms when the module is absent, and none when the file is", async () => {
+    // Both absences are the same feature: there is nothing to teach. This is
+    // the answer the gateway has always given when `lessons.json` is missing.
+    const without = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided() }, ctx: { ...ctx, stores: {} } });
+    await without.disposeModules();
+
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "residents"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { residents: { lessonsFile: join(mkdtempSync(join(tmpdir(), "mmo-lessons-")), "absent.json") } } },
+    });
+    assert.equal(stores["lessonTerms"], undefined, "no file is no teaching, not an empty offer");
+    await r.disposeModules();
+  });
+
+  it("prices this game's own lessons.json the way it always did", async () => {
+    // The engine's own content, through the module rather than through
+    // `server.ts`: the same file, the same curve, the same gold.
+    const stores: Record<string, unknown> = {};
+    const own = resolve(MODULES, "..", "content", "lessons.json");
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "residents"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { residents: { lessonsFile: own } } },
+    });
+    const terms = stores["lessonTerms"] as { offer(m: string, l: number, max: number, g: boolean): { skill: string; points: number; cost: number } | null };
+    const file = JSON.parse(readFileSync(own, "utf8")) as { professions: Record<string, string> };
+    const mastery = Object.keys(file.professions)[0] as string;
+    const offer = terms.offer(mastery, 30, 100, false);
+    assert.ok(offer, `${mastery} should still have something to teach a pupil at 30`);
+    assert.equal(offer.skill, file.professions[mastery]);
+    // A grand master's lesson is worth more, and the top of the curve costs
+    // more gold than the bottom: the two properties the curve exists for.
+    assert.ok(terms.offer(mastery, 30, 100, true)!.points > offer.points);
+    assert.ok(terms.offer(mastery, 90, 100, false)!.cost > offer.cost);
+    await r.disposeModules();
+  });
+});
+
+describe("server modules: the props module (ES5l)", () => {
+  // `chests` and `breaks` were two of core's six, built by server.ts. The
+  // props module builds them now, and the three things that matter are that
+  // the old tick order survives, that the module says what it needs of the
+  // host rather than failing later, and that `core` keeps `collapse` —
+  // which is what both other modules' `before` edges anchor on, so neither
+  // has to require the other to be enabled.
+  const hostConfig = () => ({
+    placesStore: { apply: () => {}, record: () => {}, all: () => [] },
+    has: () => false,
+    take: () => false,
+    drop: () => 0,
+    materials: { count: () => 0, spend: () => false },
+    killerOf: () => undefined,
+    onBreak: () => {},
+  });
+
+  it("puts the chests and the breakables back where they ticked", async () => {
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "gathering", "props"]),
+      provided: { core: coreProvided() },
+      ctx: {
+        ...ctx,
+        config: {
+          gathering: { dataDir: mkdtempSync(join(tmpdir(), "mmo-gathering-")), rules: GATHERING_RULES },
+          props: hostConfig(),
+        },
+      },
+    });
+    assert.deepEqual(r.systems.map((s) => s.name), ["reloader", "streamer", "gathering", "chests", "breaks", "collapse"]);
+    await r.disposeModules();
+  });
+
+  it("says what it needs of the host instead of failing a tick later", async () => {
+    // `places.db` stays the host's, because a break and an opened chest ride
+    // the range snapshot. Without it the module cannot keep either, and it
+    // should say so at boot by name.
+    await assert.rejects(
+      assembleServerSystems({
+        modulesDir: MODULES,
+        setFile: setFile(["core", "props"]),
+        provided: { core: coreProvided() },
+        ctx: { ...ctx, config: { props: {} } },
+      }),
+      /placesStore/,
+    );
+  });
+
+  it("leaves the open world without chests or breakables when it is off", async () => {
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided() }, ctx });
+    assert.deepEqual(r.systems.map((s) => s.name), ["reloader", "streamer", "collapse"]);
   });
 });
 
@@ -281,7 +419,7 @@ describe("server modules: refusals", () => {
   const mod = (extra: object) => ({ name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x", ...extra }] } });
 
   it("a cycle stops the boot and names it", async () => {
-    const root = temp({ m: mod({ after: "chests", before: "reloader" }) }, { m: sys });
+    const root = temp({ m: mod({ after: "collapse", before: "reloader" }) }, { m: sys });
     await assert.rejects(assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }), /cycle/);
   });
   it("an unknown id stops the boot and names it", async () => {

@@ -57,7 +57,7 @@ A system is declared `{ "name": "...", "after": [...], "before": [...], "optiona
 
 - `after` and `before` name other systems by id, and may be a string or a list.
 - `optional: true` lets the entry leave the system out (bots when there are none, the crowd when no navigation backend provides one). The tick order drops it like any unbuilt system. Without `optional`, a declared system the entry does not return stops the boot.
-- The real orders are in the manifests. `core` fixes its own (`reloader`, `streamer`, `chests`, `breaks`, `collapse`), and `gathering` ticks back into the middle of that list from its own module with `{ "after": "streamer", "before": "chests" }` — which is how a module slots a system into an order it does not own; `combat` runs `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death`; `physics` pins the character bridge between `integrate` and `prop-collision`:
+- The real orders are in the manifests. `core` holds what no module owns (`reloader`, `streamer`, `collapse`), and `gathering` and `props` tick back into the middle of the old list from their own modules — `{ "after": "streamer", "before": "collapse" }` and `{ "before": "collapse" }` — which is how a module slots a system into an order it does not own. Both anchor on `collapse` rather than on each other, because `core` is always enabled and an edge to another optional module's system would make a module refuse to boot without it; `combat` runs `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death`; `physics` pins the character bridge between `integrate` and `prop-collision`:
 
 ```json
 { "name": "character-bridge", "after": "integrate", "before": "prop-collision" }
@@ -73,7 +73,9 @@ after `core` for exactly this reason: moving it out of `core` without that
 dropped it, and `chests`, `breaks` and `collapse` with it, from third in the
 tick to the far end. If a module's systems have to run at a particular point,
 give them edges **and** put the module where those edges want it, then check
-the boot's `[modules] … | tick order: …` line.
+the boot's `[modules] … | tick order: …` line. Point the edges at a `core`
+system where you can: an edge naming another optional module's system makes
+yours refuse to boot whenever that one is off.
 
 ## Writing a server module
 
@@ -118,7 +120,7 @@ A system is a `SimSystem`: a `name` and a `step(sim, dt)` that runs once per tic
 | `ctx.sim` | The `SimWorld`: the ECS and the tick number. |
 | `ctx.log(message)` | Log a line. |
 | `ctx.config` | Per-module bootstrap data: what the server wires (game rules, data dirs, callbacks) with the game's own settings under it (see below). Optional: tolerate its absence. |
-| `ctx.stores` | Shared domain stores. A module that owns a store (economy's wallet, the character store) publishes it here for the server to wire to the gateway. |
+| `ctx.stores` | What a module hands back. A module that owns a store (economy's wallet, the character store) publishes it here for the server to wire to the gateway, and so does a module that owns an *answer* the host needs rather than a system: `gatheringRecords` is what rides a character's world record, `lessonTerms` is what a lesson is worth. The host reads these through an accessor that returns `null` when no module published one, so an absent module is a feature the server does without rather than a boot failure. A module with an early return publishes an answer **before** it, when the answer does not depend on what the module spawned. |
 
 A module may also export `dispose(ctx)`; on shutdown the server runs every module's `dispose` in reverse dependency order.
 
@@ -367,13 +369,14 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 | `characters` | editor | `core` | Editor module: the Characters workspace's Records panel |
 | `chat` | — | none | Region chat (S1): shape validation, per-channel range and rate limits, text-filter hook |
 | `combat` | server: `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death` | none | Combat domain (M2/M5): stamina, body parts, magic, abilities, status effects, telegraphs, duels, combat resolution, an… |
-| `core` | server: `reloader`, `streamer`, `chests`, `breaks`, `collapse`; editor | none | The engine's own contribution: the server's systems in their fixed tick order |
+| `core` | server: `reloader`, `streamer`, `collapse`; editor | none | The engine's own contribution: what no module owns, in its fixed tick order |
 | `creatures` | server: `creatures`, `bots`, `crowd`, `needs` | `physics` | Creatures domain (AI1): creature AI, bots, crowd steering, and needs |
 | `database` | editor | `core` | Editor module: Database workspace: data grid, query console, audit log |
 | `debug` | editor | `core` | Editor module: Debug: play-mode viewport |
 | `dungeons` | editor; gateway extensions | `character` | Dungeon instances (D1): pool, content, InstanceManager as a gateway extension |
 | `economy` | server: `wallet`, `trade`, `vendor`, `auction` | none | Gold wallets, player trades, NPC vendors, and the auction house (EC1) |
 | `gathering` | server: `gathering` | none | Resource nodes and the materials pouch (EG1): tree stands, ore veins, fishing spots, and what a player carries from them |
+| `props` | server: `chests`, `breaks` | none | The world's chests and doors (IX1) and the props that break in it (IX4, IX5): barrels, crates, urns, and a building's parts |
 | `ecs` | editor | `core` | Editor module: ECS inspector viewport for the Scene workspace |
 | `flow` | editor | `core` | Editor module: the Flow workspace's flow graph editor |
 | `gameplay` | editor | `core` | Editor module: Gameplay data tooling: data grids, content browser, tables, rules |
@@ -385,7 +388,7 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 | `physics` | server: `physics`, `navigation`, `obstacles`, `integrate`, `character-bridge`, `prop-collision`, `collider` | none | Physics domain: Jolt physics, navigation mesh, obstacle cutting, collision, and integration |
 | `quests` | gateway extensions | none | Quests and dialogue (P1): the gateway's quest extension and a system checking places and bags |
 | `release` | editor | `core` | Editor module: Release: build pipeline and playtests |
-| `residents` | server: `residents` | none | Settlement residents (SG3b): the baked towns' people live a day in the world |
+| `residents` | server: `residents` | none | Settlement residents (SG3b): the baked towns' people live a day in the world. Also what this game's teaching is worth: it reads `lessons.json` and publishes a `LessonTerms` on `ctx.stores.lessonTerms`, above its own early returns, so a trainer can teach in a world with no baked towns in it |
 | `sample-heartbeat` | server: `sample-heartbeat` | `core` | Sample server module: one system that logs a heartbeat every 600 ticks |
 | `sample-sidecar` | sidecar | none | Sample sidecar module (EA11): a tiny HTTP health-check server demonstrating the sidecar lifecycle |
 | `scenes` | editor | `core` | Editor module: the Scenes workspace's Scene document panel |
