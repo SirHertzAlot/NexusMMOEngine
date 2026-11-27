@@ -298,3 +298,37 @@ describe("quest service", () => {
     assert.deepEqual(sent, []);
   });
 });
+
+describe("the service stands a quest's giver where a scene says (ES5o)", () => {
+  // `server.ts` carried this out itself, by reaching through the service
+  // into its `content` with a cast: it looked up the quest's giver and wrote
+  // the NPC's coordinates. Which quests have a giver, and that an NPC record
+  // is a thing with `x` and `z`, are this service's business — a game whose
+  // quests are keyed some other way could not be placed at all through that
+  // cast. The engine passes on the refusal and nothing else.
+  const svcOn = (c: QuestContent): QuestService =>
+    new QuestService({
+      content: c,
+      store: new MemoryQuestStore(),
+      speciesNear: () => goblins,
+      itemBases: () => [],
+      countInBag: () => 0,
+      grant: () => true,
+    });
+
+  it("moves the giver, and says nothing when it did", () => {
+    const c = structuredClone(content);
+    const [questId, quest] = Object.entries(c.quests)[0]!;
+    assert.equal(svcOn(c).place(questId, 123, -456), null);
+    assert.deepEqual({ x: c.npcs[quest.giver]!.x, z: c.npcs[quest.giver]!.z }, { x: 123, z: -456 });
+  });
+
+  it("refuses a quest it does not have, with the reason the scene reports", () => {
+    const c = structuredClone(content);
+    const before = structuredClone(c.npcs);
+    assert.equal(svcOn(c).place("no-such-quest", 1, 2), 'no quest "no-such-quest" with a giver');
+    // A refusal moves nobody: a scene with a typo in it leaves the world as
+    // the content authored it, rather than half-placed.
+    assert.deepEqual(c.npcs, before);
+  });
+});
