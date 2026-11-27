@@ -221,6 +221,33 @@ the rule the ports follow.
 
 Game rules belong in data, not in a module's code: put tunables in `content/rules/` and read them through the rules package ([ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data)).
 
+### Where a store lives
+
+A module that persists anything opens its own SQLite file, and the host says
+where: `ctx.config.<module>.dataDir`. `server.ts` resolves that from
+`game.json`'s `paths.dataDir` — the SDK seam whose default is `./data` — and
+creates the directory before it assembles anything, so in a real run the
+directory is already there and every module's files sit together.
+
+Absent is the interesting case. A test, an editor harness or a partial boot
+may build a module with no `dataDir` at all, and a module that treated that as
+`.` wrote its database into whatever the process's working directory happened
+to be: a run started from the repo root left `economy.db` beside the lockfile,
+twice. So the fallback is `./data` — the same place the configured path
+resolves to, and a directory `.gitignore` already covers — and each module
+creates it before opening:
+
+```js
+const configured = ctx.config?.social?.dataDir;
+const dataDir = typeof configured === "string" ? configured : "./data";
+fs.mkdirSync(dataDir, { recursive: true });
+```
+
+Seven shipped modules open a store this way (character, civic, dungeons,
+economy, gathering, quests, social). `packages/engine-core/test/server-modules.test.ts`
+finds them by looking for `new Sqlite` rather than from a list, so a module
+added later is held to the same rule without anyone remembering to add it.
+
 ## Other kinds of module
 
 A module may contribute more than one kind at once: a manifest with both

@@ -10,6 +10,8 @@
  * accessor, and lazy callbacks for items. All callbacks are lazy because
  * the items module assembles before quests.
  */
+import fs from "node:fs";
+import { join } from "node:path";
 import { QuestService } from "../../packages/engine-core/dist/src/quests/quest-service.js";
 import { loadQuestContent } from "../../packages/engine-core/dist/src/quests/content.js";
 import { SqliteQuestStore } from "../../packages/engine-core/dist/src/quests/quest-store.js";
@@ -19,7 +21,11 @@ export function createSystems(ctx) {
   const questContent = loadQuestContent(config.questDir);
 
   // On ctx.stores too: fleet mode carries each character's log in its world record (PL3b).
-  const store = new SqliteQuestStore(config.dataDir + "/quests.db");
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
+  const dataDir = typeof config.dataDir === "string" ? config.dataDir : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
+  const store = new SqliteQuestStore(join(dataDir, "quests.db"));
   ctx.stores.questStore = store;
   const quests = new QuestService({
     content: questContent,

@@ -3,6 +3,7 @@
  * moduleCtx.config.civic and ctx.stores.wallet. Publishes ctx.stores.civicStore
  * for shutdown cleanup, state inspection, and fleet snapshot checks.
  */
+import fs from "node:fs";
 import { join } from "node:path";
 import { loadCivicRules } from "../../packages/rules/dist/src/index.js";
 import {
@@ -12,7 +13,10 @@ import {
 
 export function createSystems(ctx) {
   const config = ctx.config?.civic ?? {};
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
   const dataDir = typeof config.dataDir === "string" ? config.dataDir : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
   const store = new SqliteCivicStore(join(dataDir, "civic.db"));
   ctx.stores = ctx.stores ?? {};
   ctx.stores.civicStore = store;

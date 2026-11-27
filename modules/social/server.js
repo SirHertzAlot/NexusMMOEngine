@@ -8,13 +8,18 @@
  *
  * Dependencies (via ctx.config.social): dataDir.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { SqliteGuildStore } from "../../packages/engine-core/dist/src/guild-store.js";
 import { SqliteSocialStore } from "../../packages/engine-core/dist/src/social-store.js";
 import { SqlitePartyStore } from "../../packages/engine-core/dist/src/party-store.js";
 
 export function createSystems(ctx) {
-  const dataDir = ctx.config?.social?.dataDir ?? ".";
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
+  const configured = ctx.config?.social?.dataDir;
+  const dataDir = typeof configured === "string" ? configured : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
 
   const guildStore = new SqliteGuildStore(path.join(dataDir, "guilds.db"));
   const socialStore = new SqliteSocialStore(path.join(dataDir, "social.db"));

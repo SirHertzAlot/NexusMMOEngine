@@ -19,12 +19,16 @@
  * and this module seeds them the moment it opens the store — which is what
  * the old code did by opening and closing `gathering.db` early.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "../../packages/engine-core/dist/src/gathering/index.js";
 
 export function createSystems(ctx) {
   const cfg = ctx.config?.gathering ?? {};
-  const dataDir = cfg.dataDir ?? ".";
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
+  const dataDir = typeof cfg.dataDir === "string" ? cfg.dataDir : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
   const rules = cfg.rules ?? {};
 
   const store = new SqliteGatheringStore(path.join(dataDir, "gathering.db"));
