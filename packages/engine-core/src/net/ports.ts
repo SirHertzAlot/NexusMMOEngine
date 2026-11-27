@@ -217,6 +217,8 @@ export interface WalletPort {
   balanceOf(charId: number): number;
   grant(charId: number, amount: number, tick: number): boolean;
   spend(charId: number, amount: number, tick: number): boolean;
+  /** Set `charId`'s gold to what the world server settled on (the sync's own call). */
+  reconcile(charId: number, gold: number, tick: number): void;
 }
 
 /** The auction house (catalog 0x21). */
@@ -287,6 +289,8 @@ export interface VendorPort {
     vendorEntity: number,
     itemId: number,
   ): { error: string } | { vendorId: string; def: number; price: number };
+  /** Declare a template outright, stock and all (what a boot or a scene does). */
+  define(def: Omit<VendorDef, "enabled"> & { enabled?: boolean }): void;
   create(id: string, name: string, buybackRate?: number): boolean;
   remove(id: string): boolean;
   /** Mark a world entity as a vendor of a defined template. */
@@ -403,7 +407,7 @@ export const GATEWAY_PORTS: readonly PortDecl[] = [
     methods: ["drainEvents", "open", "offerGold", "offerItem", "removeItem", "accept", "cancel", "pending", "settleFromWorld", "failSettlement"],
     what: "player-to-player trade",
   },
-  { key: "wallet", methods: ["drainChanges", "balanceOf", "grant", "spend"], what: "a character's gold" },
+  { key: "wallet", methods: ["drainChanges", "balanceOf", "grant", "spend", "reconcile"], what: "a character's gold" },
   {
     key: "auction",
     methods: ["drainEvents", "list", "browse", "bid", "buyout", "buyoutTerms", "cancel", "releaseEscrow", "settleFromWorld"],
@@ -411,7 +415,7 @@ export const GATEWAY_PORTS: readonly PortDecl[] = [
   },
   {
     key: "vendors",
-    methods: ["views", "vendorOf", "list", "buy", "buyTerms", "commitBuyStock", "sell", "sellTerms", "create", "remove", "attach", "attachedTo", "detach", "setEnabled", "setStock", "templateIds"],
+    methods: ["views", "vendorOf", "list", "buy", "buyTerms", "commitBuyStock", "sell", "sellTerms", "create", "define", "remove", "attach", "attachedTo", "detach", "setEnabled", "setStock", "templateIds"],
     what: "vendors and their stock",
   },
   {

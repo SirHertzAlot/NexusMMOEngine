@@ -61,7 +61,6 @@ import {
   type VendorTransactRequest,
 } from "./client.js";
 import type { CharacterEconomyView } from "./character-sync.js";
-import type { WalletSystem } from "../economy/wallet.js";
 import type { ItemStore } from "../items/item-store.js";
 import { LedgerKind } from "../persist/item-ledger.js";
 
@@ -236,14 +235,28 @@ export class WorldAtomicOps {
 }
 
 // ---------------------------------------------------------------------------
-// The local economy view: WalletSystem + ItemStore behind the sync's
+/**
+ * What the world sync asks of a wallet (`ES5i`).
+ *
+ * The sync reads a balance and writes back what the world server settled on,
+ * and nothing else; it named `WalletSystem` for those two, which tied the
+ * engine's own persistence to a module a game can replace.
+ */
+export interface SyncWallet {
+  /** The gold `charId` holds locally. */
+  balanceOf(charId: number): number;
+  /** Set `charId`'s gold to what the world server settled on. */
+  reconcile(charId: number, gold: number, tick: number): void;
+}
+
+// The local economy view: a wallet + ItemStore behind the sync's
 // CharacterEconomyView, so world records and settled outcomes speak
 // gold + bag inventory — the atomic operations' fields — in region
 // terms (integer item ids, one unit per item instance, bag slots).
 // ---------------------------------------------------------------------------
 
 export interface LocalEconomyViewOptions {
-  wallet: WalletSystem;
+  wallet: SyncWallet;
   store: ItemStore;
   /** Full durability for a def, for items the world creates locally. */
   durabilityOf: (def: number) => number;
@@ -252,7 +265,7 @@ export interface LocalEconomyViewOptions {
 }
 
 export class LocalEconomyView implements CharacterEconomyView {
-  private readonly wallet: WalletSystem;
+  private readonly wallet: SyncWallet;
   private readonly store: ItemStore;
   private readonly durabilityOf: (def: number) => number;
   private readonly tick: () => number;

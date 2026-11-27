@@ -47,7 +47,7 @@ import { spawnScatterEntity } from "./procgen/scatter-spawn.js";
 import { archetypeOk, landDry, LAND_MARGIN_M, STRUCTURE_MARGIN_M, surfaceAt } from "./procgen/habitat.js";
 import type { ModelBounds } from "./procgen/prop-shape.js";
 import type { ScaleResolver } from "./scale.js";
-import type { ResourceNodeSpec } from "./gathering/gathering.js";
+import type { ResourceNodeSpec } from "./vocabulary.js";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 /** The repo's content/scenes (this file is dist/src/scene-spawn.js). */

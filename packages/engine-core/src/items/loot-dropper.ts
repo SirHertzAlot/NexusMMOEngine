@@ -17,7 +17,18 @@ import type { ItemService } from "./item-service.js";
 import { rollTable, type LootTables } from "./loot-tables.js";
 
 const DEFAULT_RANKS = DEFAULT_LADDER.ranks.map((r) => r.id);
-import type { WalletSystem } from "../economy/wallet.js";
+
+/**
+ * What a loot roll asks of a wallet: somewhere to put the coin (`ES5i`).
+ *
+ * Named `WalletSystem` until the economy became a kit's to own, which made
+ * dropping loot depend on the module that holds the money. One method is the
+ * whole demand, and a game with no currency passes nothing.
+ */
+export interface LootWallet {
+  /** Put `amount` in `charId`'s purse; false if it could not be credited. */
+  grant(charId: number, amount: number, tick: number): boolean;
+}
 
 export interface LootDropperOptions {
   items: ItemService;
@@ -31,7 +42,7 @@ export interface LootDropperOptions {
   kindOf: (e: number) => string | undefined;
   seed?: number;
   /** Gold drops go here; absent: gold is not granted. */
-  wallet?: WalletSystem;
+  wallet?: LootWallet;
 }
 
 /** Drops scatter this far from the body, metres. */

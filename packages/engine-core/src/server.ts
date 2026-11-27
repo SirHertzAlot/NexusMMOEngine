@@ -207,7 +207,7 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
 }
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import type { Weapon, CombatSkills } from "./vocabulary.js";
-import type { BodyPort, MagicPort } from "./net/ports.js";
+import type { BodyPort, MagicPort, WalletPort } from "./net/ports.js";
 import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
 import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
@@ -256,7 +256,7 @@ import type { QuestService } from "./quests/quest-service.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { LivingSimSystem } from "./sim/living-sim-system.js";
-import { loadLessons } from "./residents/lessons.js";
+import { lessonTerms, loadLessons } from "./residents/lessons.js";
 import { BreakSystem, breakDefsOf, ChestSystem, CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
@@ -1004,7 +1004,7 @@ async function main(): Promise<void> {
   // wallet holder is filled post-assembly for pre-assembly configs that
   // need it (quests grantGold); the items module reads ctx.stores.wallet
   // directly since economy is its dependency.
-  const walletHolder: { current: import("./economy/wallet.js").WalletSystem | null } = { current: null };
+  const walletHolder: { current: WalletPort | null } = { current: null };
   // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
   // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
   // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
@@ -1599,7 +1599,7 @@ async function main(): Promise<void> {
   // mode constructs neither (byte-identical).
   const economyView = worldClient?.registered
     ? new LocalEconomyView({
-        wallet: walletHolder.current as import("./economy/wallet.js").WalletSystem,
+        wallet: walletHolder.current as WalletPort,
         store: itemsOf().store,
         durabilityOf: (def) => itemsOf().defs.durability[def] ?? 100,
       })
@@ -1681,7 +1681,7 @@ async function main(): Promise<void> {
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
     needs: game.rules.needs,
-    lessons: loadLessons(GAME.paths.lessonsFile),
+    lessons: ((l) => (l ? lessonTerms(l) : null))(loadLessons(GAME.paths.lessonsFile)),
     // A pupil takes one lesson a game day (a real day with no calendar).
     gameDay: gameDayOf,
     // GET /health and GET /metrics/civic (EA19, C7a); PCG's handler composes with it.
