@@ -2447,196 +2447,196 @@
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "component:God"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.blood"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.bloodMax"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.clot"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.hp"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.lost"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.seen"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.wound"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Injury.bits"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "reads",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.blood"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.bloodMax"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.clot"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.hp"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.lost"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.seen"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Body.wound"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Injury.bits"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Injury.flags"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Injury.move"
     },
     {
       "confidence": "declared",
       "from": "system:body",
       "kind": "writes",
-      "source": "packages/kit-combat/src/body.ts:131",
+      "source": "packages/kit-combat/src/body.ts:124",
       "to": "field:Injury.stamina"
     },
     {
@@ -3826,175 +3826,175 @@
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "component:God"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "component:Stamina"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.seq"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.started"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.yaw"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Locomotion.mode"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:PlayerIntent.buttons"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:PlayerIntent.lookPitch"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:PlayerIntent.lookYaw"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:PlayerIntent.mx"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:PlayerIntent.mz"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Transform.py"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "reads",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Velocity.lz"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.seq"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.started"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Action.yaw"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:combat",
       "kind": "writes",
-      "source": "packages/kit-combat/src/combat.ts:189",
+      "source": "packages/kit-combat/src/combat.ts:216",
       "to": "field:Velocity.lz"
     },
     {
@@ -4449,91 +4449,91 @@
       "confidence": "declared",
       "from": "system:death",
       "kind": "excludes",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "component:Breakable"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "component:Action"
     },
     {
       "confidence": "extracted",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:196",
+      "source": "packages/kit-combat/src/death.ts:212",
       "to": "component:Breakable"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "component:PlayerIntent"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Health.max"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "reads",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Action.move"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Health.current"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:PlayerIntent.buttons"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Velocity.lx"
     },
     {
       "confidence": "declared",
       "from": "system:death",
       "kind": "writes",
-      "source": "packages/kit-combat/src/death.ts:99",
+      "source": "packages/kit-combat/src/death.ts:115",
       "to": "field:Velocity.lz"
     },
     {
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "a4f76856880f74024d624c35deca61ecd0607151",
+    "builtFromCommit": "edb50c9e21acd5622a73ca848f8d8e6a739804ab",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7636,7 +7636,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "169773243d7d8c711223ad7a77f280a7e819cef07fbfdd9e387c022d577d4a02",
+    "graphHash": "a02bfb9408a9a224a38794d78bdc8c8f562dd4b6a7552242bff7125d282b7f56",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -7950,12 +7950,13 @@
       "packages/engine-core/src/world/webrpc-transport.ts": "e9b2db279a2943cb81ca2dac28551a4d3fa8e6670c418cb0390b5dc66c3b9c7e",
       "packages/graphify/src/roles.ts": "5831cbb151a9111e9e5748a4fddd8e5845bc4fedb21da90ee335baa320be2f1d",
       "packages/kit-combat/src/abilities.ts": "d472595bf727eb859af83b3efcdaebbbed68da4509734bf54144f80fba99a547",
-      "packages/kit-combat/src/body.ts": "e8a5c6b262f879910784cc8df3bf22e0eecf33e55e0eff19f145ec2627ae5eb0",
-      "packages/kit-combat/src/combat.ts": "41a603d74040693fa5339780793467fda2884e69f757a077fa8d6c5dc4743db2",
-      "packages/kit-combat/src/death.ts": "48356da7ffd2ed40b6a8b497984b164cc22cd63c327820937431401e7b9eea98",
+      "packages/kit-combat/src/blow-rng.ts": "e9850720c07bf72e29d3e05c135f8b1973d24ac810d7c4208b12c8986a50297d",
+      "packages/kit-combat/src/body.ts": "7ac23a037af2ad71ab601430dc899ea329200726fbf72588fd7bbc2e34cca442",
+      "packages/kit-combat/src/combat.ts": "a7cd7379a6cf285672f6487f5846caa43f8426794a4ad5c5764768aa7288564b",
+      "packages/kit-combat/src/death.ts": "c704c5acf55dd40675c7fa1e55ff4f5424a62b875a4b2894a74662f014e3802b",
       "packages/kit-combat/src/duel.ts": "ff03282f1f9824b4860345dfe917985d5346a6f5ee5c84b7dfe7140b18438fe1",
       "packages/kit-combat/src/dungeons/default-combat.ts": "7c95d60e3c8a36dde4dd6082c27f408d66625b685f5d0e42852e92e2b4bfae5b",
-      "packages/kit-combat/src/index.ts": "70615a6725747b9305d7efb2a4ee4e66ce1734110d0d54b1890f9e598377c48c",
+      "packages/kit-combat/src/index.ts": "1b63a1b13a4664e54c1aa68148b3ef658ca7698fff79b49705c5429d5e3fae3c",
       "packages/kit-combat/src/magic.ts": "d8f631a59f1f68fbee8fe2675fbd0b8462d71257c9ca04a76784bc99cbcaf218",
       "packages/kit-combat/src/stats/stamina-system.ts": "ec42d951ba54f78dd1f0158bf137a2a8d0b28de7a8ad033714a0fffaef46d65c",
       "packages/kit-combat/src/status.ts": "eaa6b26858fb8c9c9ddd530a8e692fa8225c4dfd90cfd9e8ef38e7163054be90",
@@ -11924,7 +11925,7 @@
       "name": "body",
       "role": "simulation",
       "simName": "body",
-      "source": "packages/kit-combat/src/body.ts:129",
+      "source": "packages/kit-combat/src/body.ts:122",
       "tickIndex": 16
     },
     {
@@ -12041,7 +12042,7 @@
       "name": "combat",
       "role": "simulation",
       "simName": "combat",
-      "source": "packages/kit-combat/src/combat.ts:185",
+      "source": "packages/kit-combat/src/combat.ts:212",
       "tickIndex": 22
     },
     {
@@ -12080,7 +12081,7 @@
       "name": "death",
       "role": "simulation",
       "simName": "death",
-      "source": "packages/kit-combat/src/death.ts:95",
+      "source": "packages/kit-combat/src/death.ts:111",
       "tickIndex": 23
     },
     {
