@@ -2,6 +2,7 @@
   "modules": [
     "core",
     "gathering",
+    "props",
     "characters",
     "scenes",
     "flow",

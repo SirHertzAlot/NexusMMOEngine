@@ -448,11 +448,34 @@ Four changes make that possible:
     valid. First use of the `after`/`before` edges for real: a module
     slots its system back into an order it does not own.
 
-   What is left is construction, in a test rather than implicit — the
-   `interact` barrel, `server.ts` building the gathering system because
-   gathering has no module of its own, and a dungeon run building breaks,
-   chests and gathering the way it built combat before stage 4d. Those are
-   the next three changes, in that order, and then `kit-economy`.
+11. **And nothing in the engine builds an economy system at all.**
+    *Done (ES5l, 2026-11-27.)* The last two were the `ChestSystem` and
+    the `BreakSystem`, and `modules/props/` builds them. The split is
+    along what each side owns rather than what is convenient: the host
+    keeps `places.db`, because a break and an opened chest ride the range
+    snapshot and recall seeds them back, which is its business with the
+    world server and not a game's; it keeps the respawn pool everything
+    respawning shares, the loot a table rolls, the pouch a repair spends,
+    who struck last, and `onBreak`, because a broken part is what topples
+    a building and `CollapseSystem` is `core`'s own. What it asks for is
+    a `ChestService` of one call and a `BreakService` of four. With that
+    `core` is down to `reloader`, `streamer` and `collapse`: what no
+    module owns.
+
+    The ordering lesson from `ES5k` paid for itself here. Both new
+    modules have to tick in the middle of a list they no longer belong
+    to, and the obvious edge — gathering `before: chests` — couples the
+    two modules' enablement, because an edge naming a system no enabled
+    module declares stops the boot. So both anchor on `collapse`
+    instead, which is always there, and the full resolved order comes
+    out byte-identical to before either module existed.
+
+   What is left is not construction but reach, in a test rather than
+   implicit: the `interact` barrel, which re-exports the two systems for
+   the module that builds them and goes when they move to the kit, and
+   one import in `server.ts` — it loads the lessons file and wraps it in
+   `lessonTerms` for the gateway, a seam `ES5i` opened and left half on
+   this side. That is the next change, and then `kit-economy`.
 
 ### 3.4 Hooks, reachable
 
@@ -580,6 +603,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 5b | **The economy stops being named** ✅ | The `ES5f` pass for the eight economy and world systems: three ports in the registry, two written-out wallet demands, `ResourceNodeSpec` and `LessonTerms` into the vocabulary, and the gateway asking a game what a lesson is worth | **Low**: type moves and one small seam, no runtime change | Engine-core 0 failures; a test naming the three construction sites that remain, which fails both when a fourth appears and when one of the three stops building |
 | 5c | **The run's world slot** ✅ | Item 6 for chests, breakables and veins: `dungeons/world-slot.ts` plus `dungeons/default-world.ts`, so the last dungeon file that builds an economy system is the one that moves into the kit. `ChestSpec` joins the vocabulary | **Low**: the `ES5e` shape, second time | A live run ticks what its game returned and is told about each chest and vein by the keys its own state reports; a propless run still boots; the construction list down to the `interact` barrel and `server.ts` |
 | 5d | **Gathering is a module** ✅ | `modules/gathering/` builds the system and its store; the host asks for a `GatheringService` (nine) and a `GatheringRecords` (three, `unknown` both ways). Recall's node stocks wait in the host and the module seeds them | **Medium**: nine call sites across crafting, civic, repair, the reloader, scene spawn and the world record, each needing an absent path | The resolved tick order pinned at exactly the old six (`after: streamer`, `before: chests`); the records' three calls and their validation tested through a real assembly |
+| 5e | **Chests and breakables are a module** ✅ | `modules/props/` builds the `ChestSystem` and the `BreakSystem`, the last two the engine's own wiring built; the host asks for a `ChestService` (one call) and a `BreakService` (four), and keeps `places.db`, the respawn pool, loot, the pouch, who struck last, and `onBreak` because toppling a building is `core`'s | **Low**: two systems, five call sites, and the ordering trap already found and pinned in `5d` | The resolved tick order byte-identical to before either module existed, pinned over the repo's real set by `TICK_ORDER` (38 systems); the module naming what the host must pass at boot; core alone leaving nothing to open and nothing to break |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |
 | 8 | **`create-mmo-game` + de-IP the schemas** | The template picker (`bare`, `survival`, `sandbox`, `full`); the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | Both CI jobs from §3.6: the five-minute walkable world, **and** `bare` booting with no kit installed. Existing `content/wildlife` still validates |
