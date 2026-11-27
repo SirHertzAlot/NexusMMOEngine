@@ -195,6 +195,16 @@ each of the nine builds without the rest, so dropping one costs you that
 feature and nothing else. Its `README` says what each system does and what the
 three ways to change it cost.
 
+A dungeon run is its own host, so it cannot ask for a system by port: it was
+the one building them. It declares two slots instead, and a module fills
+them. `dungeons/combat-slot.ts` is its fighting and `dungeons/world-slot.ts`
+is its chests, breakables and veins; each takes everything the run can say
+about itself and gives back the systems to tick plus the few things the run
+has to ask afterwards. `modules/dungeons/server.js` passes the engine's own
+two factories in, and a game passes its own in their place. Pass neither and
+a run still boots and ticks: it just has no fighting and no props, which is
+the rule the ports follow.
+
 **3. Try it.** Add `"sample-heartbeat"` to `content/modules.json` (or tick it in the editor's Modules workspace and press **Apply modules**). The boot line lists the system between `crowd` and `intent`, and the log shows the heartbeat.
 
 Game rules belong in data, not in a module's code: put tunables in `content/rules/` and read them through the rules package ([ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data)).

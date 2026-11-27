@@ -25,7 +25,7 @@ import type { SystemAccess } from "../system-access.js";
 import type { ChestView } from "@mmo-engine/protocol";
 import type { PlacesStore } from "./places-store.js";
 import { PORTS } from "@mmo-engine/sdk";
-import type { ChestCheck, ChestResult } from "../vocabulary.js";
+import type { ChestCheck, ChestResult, ChestSpec } from "../vocabulary.js";
 
 /** An interact request (catalog 0x27): an entity's wire id, or a quest giver's or dungeon entrance's content id. */
 const contentId = z.string().min(1).max(64);
@@ -35,18 +35,6 @@ export const InteractActionSchema = z.union([
   z.object({ kind: z.literal("interact"), entrance: contentId }).strict(),
 ]);
 
-export interface ChestSpec {
-  /** "chest" (default) rolls `table` when opened; a "door" toggles open and shut. */
-  kind?: "chest" | "door";
-  /** A loot.json table the chest rolls when opened. */
-  table?: string;
-  /** Seconds until an opened chest is full again. */
-  refillSeconds?: number;
-  /** Seconds the use takes (a cast bar); 0 or absent: at once. */
-  castSeconds?: number;
-  /** An item base the user must carry (a key); `consume` uses one up when it opens. */
-  requires?: { base: string; consume: boolean };
-}
 
 export interface ChestSystemOptions {
   /** Put the table's items on the ground at (x, z), owned by `owner`; returns how many. */

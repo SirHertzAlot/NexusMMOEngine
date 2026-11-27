@@ -474,6 +474,7 @@ export type {
   BodyView,
   ChestCheck,
   ChestResult,
+  ChestSpec,
   CombatSkills,
   DuelEndReason,
   DuelEvent,
@@ -674,3 +675,10 @@ export {
   type DungeonCombatContext,
   type DungeonCombatFactory,
 } from "./dungeons/combat-slot.js";
+export {
+  NO_DUNGEON_WORLD,
+  type DungeonVein,
+  type DungeonWorld,
+  type DungeonWorldContext,
+  type DungeonWorldFactory,
+} from "./dungeons/world-slot.js";

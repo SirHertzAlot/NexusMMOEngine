@@ -22,6 +22,11 @@ import { SqliteInstanceResultStore } from "../../packages/engine-core/dist/src/d
 // only thing a game replaces to fight differently underground. It moves
 // into @mmo-engine/kit-combat with the systems it builds.
 import { defaultDungeonCombat } from "@mmo-engine/kit-combat";
+// The chests, breakables and veins a run gets. Same shape as the fighting
+// above: `dungeons/instance.ts` knows only the slot (dungeons/world-slot.js),
+// and this is the engine's own wiring of it. It moves into
+// @mmo-engine/kit-economy with the three systems it builds.
+import { defaultDungeonWorld } from "../../packages/engine-core/dist/src/dungeons/default-world.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.dungeons ?? {};
@@ -48,6 +53,7 @@ export function createSystems(ctx) {
     weaponOf: (character) => config.getWeaponOf(character),
     armourOf: (character, kind) => config.getArmourOf(character, kind),
     combat: config.combat ?? defaultDungeonCombat,
+    world: config.world ?? defaultDungeonWorld,
     lootPool: () => config.getLootPool(),
     chestPool: () => config.getChestPool(),
     grant: (character, def) => config.grantItem(character, def),

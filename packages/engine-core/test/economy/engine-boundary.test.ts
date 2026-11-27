@@ -70,9 +70,10 @@ const BUILDS: Readonly<Record<string, string>> = {
   // `server.ts` builds the gathering system and its store inline, because
   // gathering is the one economy system with no module of its own yet.
   "server.ts": "gathering has no module to build it",
-  // A run builds breaks, chests and gathering the way it used to build
-  // combat, before `ES5e` gave it a slot. It needs the same for these.
-  "dungeons/instance.ts": "a run has no slot for its world systems",
+  // The engine's own wiring of the run's world slot (`ES5j`), kept off the
+  // boot path exactly so it can move into the kit unchanged — the same place
+  // `dungeons/default-combat.ts` stood before `ES5h` took it.
+  "dungeons/default-world.ts": "it is the kit's own file, waiting for the kit",
 };
 
 /** Every `.ts` under `src`, relative and posix. */
@@ -140,4 +141,8 @@ test("the vocabulary carries what the engine needs instead", () => {
 
   assert.doesNotMatch(code("scene-spawn.ts"), /gathering\//, "scene-spawn.ts should read the spec from the vocabulary");
   assert.doesNotMatch(code("net/gateway.ts"), /residents\/lessons/, "the gateway should ask a game what a lesson is worth");
+  // And a dungeon run reaches its chests, breakables and veins through the
+  // slot in `dungeons/world-slot.ts`, the way it reaches its fighting.
+  assert.doesNotMatch(code("dungeons/instance.ts"), /from "\.\.\/(interact|gathering)\//, "a run should ask for its props, not build them");
+  assert.match(code("dungeons/instance.ts"), /from "\.\/world-slot\.js"/, "the run should know the slot");
 });
