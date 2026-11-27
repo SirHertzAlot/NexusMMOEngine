@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
@@ -831,5 +831,62 @@ describe("server modules: edge routes (EA12)", () => {
       ctx,
     });
     assert.deepEqual(r.edgeRoutes, {});
+  });
+});
+
+describe("server modules: where a store lives", () => {
+  // `server.ts` resolves `GAME.paths.dataDir` and creates it before assembly,
+  // so a real run always says where a store belongs. A module built by a
+  // harness that configures nothing used to fall back to `.`, the process's
+  // working directory: a run started from the repo root left its database
+  // beside the lockfile, which is how a stray `economy.db` turned up twice.
+  // The fallback is `./data` now — the same directory the SDK's `dataDir`
+  // seam resolves to, and one `.gitignore` already covers.
+  it("falls back to ./data rather than the working directory", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "mmo-cwd-"));
+    const was = process.cwd();
+    process.chdir(cwd);
+    try {
+      // `social` is the cheapest of the seven to build: three stores and no
+      // other config at all, so an empty `config` is a fair test of absence.
+      const r = await assembleServerSystems({
+        modulesDir: MODULES,
+        setFile: setFile(["core", "social"]),
+        provided: { core: coreProvided() },
+        ctx: { ...ctx, stores: {}, config: {} },
+      });
+      assert.deepEqual(readdirSync(cwd), ["data"], "nothing should be written beside the working directory");
+      assert.deepEqual(
+        readdirSync(join(cwd, "data")).filter((f) => f.endsWith(".db")).sort(),
+        ["guilds.db", "parties.db", "social.db"],
+      );
+      await r.disposeModules();
+    } finally {
+      process.chdir(was);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("every module that opens a store derives its directory the same way", () => {
+    // Derived, not listed: a module added later that opens a store is held to
+    // the same rule without anyone remembering to add it here. A module that
+    // only *reads* from `dataDir` (items loads its defs) opens nothing and is
+    // not in the set.
+    const openers = readdirSync(MODULES)
+      .map((name) => [name, join(MODULES, name, "server.js")] as const)
+      .filter(([, file]) => {
+        try {
+          return readFileSync(file, "utf8").includes("new Sqlite");
+        } catch {
+          return false;
+        }
+      });
+    assert.ok(openers.length >= 7, `expected the known store openers, found ${openers.length}`);
+    for (const [name, file] of openers) {
+      const src = readFileSync(file, "utf8");
+      assert.match(src, /: "\.\/data"/, `${name} should fall back to ./data`);
+      assert.match(src, /fs\.mkdirSync\(dataDir, \{ recursive: true \}\)/, `${name} should create its data directory`);
+      assert.doesNotMatch(src, /dataDir \?\? "\."/, `${name} should not fall back to the working directory`);
+    }
   });
 });
