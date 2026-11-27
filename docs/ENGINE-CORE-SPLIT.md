@@ -470,12 +470,30 @@ Four changes make that possible:
     instead, which is always there, and the full resolved order comes
     out byte-identical to before either module existed.
 
-   What is left is not construction but reach, in a test rather than
-   implicit: the `interact` barrel, which re-exports the two systems for
-   the module that builds them and goes when they move to the kit, and
-   one import in `server.ts` — it loads the lessons file and wraps it in
-   `lessonTerms` for the gateway, a seam `ES5i` opened and left half on
-   this side. That is the next change, and then `kit-economy`.
+12. **And it imports nothing of theirs either.**
+    *Done (ES5m, 2026-11-27.)* The last import was the lessons file.
+    `server.ts` read `lessons.json`, ran it through `lessonTerms` and
+    handed the gateway the result — the half of the seam `ES5i` opened
+    and did not close. `modules/residents/` reads it and publishes the
+    terms on `ctx.stores.lessonTerms`, which is where it belongs: the
+    curve that prices a lesson is this game's answer, and the gateway
+    only ever asks a `LessonTerms`.
+
+    The one judgement was where in the module to publish. It returns
+    early in four places — residents off, no boot scene, no manifests,
+    no town matched — and the terms go above all four, because a town
+    that did not spawn does not change what a lesson costs: a trainer
+    can teach in a world with no baked towns. Absent module and absent
+    file are the same feature, nothing to teach, which is the answer
+    the gateway has always given when the file is not there.
+
+   What is left is not construction and not import but location: the
+   `interact` barrel, which re-exports the two systems for the module
+   that builds them, and `dungeons/default-world.ts`, the run's own
+   wiring kept off the boot path. Both are the kit's files already and
+   both go when the files move, which is `kit-economy` — a file move and
+   an import rewrite rather than a redesign, which was the whole point of
+   doing these eleven first.
 
 ### 3.4 Hooks, reachable
 
@@ -604,6 +622,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 5c | **The run's world slot** ✅ | Item 6 for chests, breakables and veins: `dungeons/world-slot.ts` plus `dungeons/default-world.ts`, so the last dungeon file that builds an economy system is the one that moves into the kit. `ChestSpec` joins the vocabulary | **Low**: the `ES5e` shape, second time | A live run ticks what its game returned and is told about each chest and vein by the keys its own state reports; a propless run still boots; the construction list down to the `interact` barrel and `server.ts` |
 | 5d | **Gathering is a module** ✅ | `modules/gathering/` builds the system and its store; the host asks for a `GatheringService` (nine) and a `GatheringRecords` (three, `unknown` both ways). Recall's node stocks wait in the host and the module seeds them | **Medium**: nine call sites across crafting, civic, repair, the reloader, scene spawn and the world record, each needing an absent path | The resolved tick order pinned at exactly the old six (`after: streamer`, `before: chests`); the records' three calls and their validation tested through a real assembly |
 | 5e | **Chests and breakables are a module** ✅ | `modules/props/` builds the `ChestSystem` and the `BreakSystem`, the last two the engine's own wiring built; the host asks for a `ChestService` (one call) and a `BreakService` (four), and keeps `places.db`, the respawn pool, loot, the pouch, who struck last, and `onBreak` because toppling a building is `core`'s | **Low**: two systems, five call sites, and the ordering trap already found and pinned in `5d` | The resolved tick order byte-identical to before either module existed, pinned over the repo's real set by `TICK_ORDER` (38 systems); the module naming what the host must pass at boot; core alone leaving nothing to open and nothing to break |
+| 5f | **The lessons move with the residents** ✅ | `modules/residents/` reads `lessons.json` and publishes the `LessonTerms` the gateway asks for; `server.ts` imports nothing from `residents/` and names neither the loader nor the curve | **Low**: one import and one config key — but the publish has to sit above the module's four early returns, since residents off must not stop a trainer teaching | The terms published with no scene and no manifests (shown failing with the publish moved below the early returns); absent module and absent file both leaving nothing to teach; this game's own `lessons.json` pricing a lesson exactly as it did |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |
 | 8 | **`create-mmo-game` + de-IP the schemas** | The template picker (`bare`, `survival`, `sandbox`, `full`); the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | Both CI jobs from §3.6: the five-minute walkable world, **and** `bare` booting with no kit installed. Existing `content/wildlife` still validates |

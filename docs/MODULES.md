@@ -120,7 +120,7 @@ A system is a `SimSystem`: a `name` and a `step(sim, dt)` that runs once per tic
 | `ctx.sim` | The `SimWorld`: the ECS and the tick number. |
 | `ctx.log(message)` | Log a line. |
 | `ctx.config` | Per-module bootstrap data: what the server wires (game rules, data dirs, callbacks) with the game's own settings under it (see below). Optional: tolerate its absence. |
-| `ctx.stores` | Shared domain stores. A module that owns a store (economy's wallet, the character store) publishes it here for the server to wire to the gateway. |
+| `ctx.stores` | What a module hands back. A module that owns a store (economy's wallet, the character store) publishes it here for the server to wire to the gateway, and so does a module that owns an *answer* the host needs rather than a system: `gatheringRecords` is what rides a character's world record, `lessonTerms` is what a lesson is worth. The host reads these through an accessor that returns `null` when no module published one, so an absent module is a feature the server does without rather than a boot failure. A module with an early return publishes an answer **before** it, when the answer does not depend on what the module spawned. |
 
 A module may also export `dispose(ctx)`; on shutdown the server runs every module's `dispose` in reverse dependency order.
 
@@ -361,7 +361,7 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 | `physics` | server: `physics`, `navigation`, `obstacles`, `integrate`, `character-bridge`, `prop-collision`, `collider` | none | Physics domain: Jolt physics, navigation mesh, obstacle cutting, collision, and integration |
 | `quests` | gateway extensions | none | Quests and dialogue (P1): the gateway's quest extension and a system checking places and bags |
 | `release` | editor | `core` | Editor module: Release: build pipeline and playtests |
-| `residents` | server: `residents` | none | Settlement residents (SG3b): the baked towns' people live a day in the world |
+| `residents` | server: `residents` | none | Settlement residents (SG3b): the baked towns' people live a day in the world. Also what this game's teaching is worth: it reads `lessons.json` and publishes a `LessonTerms` on `ctx.stores.lessonTerms`, above its own early returns, so a trainer can teach in a world with no baked towns in it |
 | `sample-heartbeat` | server: `sample-heartbeat` | `core` | Sample server module: one system that logs a heartbeat every 600 ticks |
 | `sample-sidecar` | sidecar | none | Sample sidecar module (EA11): a tiny HTTP health-check server demonstrating the sidecar lifecycle |
 | `scenes` | editor | `core` | Editor module: the Scenes workspace's Scene document panel |

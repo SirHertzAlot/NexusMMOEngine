@@ -206,7 +206,7 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
   }
 }
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
-import type { Weapon, CombatSkills } from "./vocabulary.js";
+import type { Weapon, CombatSkills, LessonTerms } from "./vocabulary.js";
 import type { BodyPort, MagicPort, WalletPort } from "./net/ports.js";
 import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
@@ -255,7 +255,6 @@ import type { QuestService } from "./quests/quest-service.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { LivingSimSystem } from "./sim/living-sim-system.js";
-import { lessonTerms, loadLessons } from "./residents/lessons.js";
 import { CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
@@ -1481,6 +1480,10 @@ async function main(): Promise<void> {
     livingSim,
     // No calendar, no day: the schedule keeps ordinary days (the bark still takes day 0).
     dayOf: gameDayOf,
+    // The teaching this game offers (ES5m). The file is a game's content and
+    // the curve that prices a lesson is its own, so the module reads both and
+    // hands back the `LessonTerms` the gateway asks for.
+    lessonsFile: GAME.paths.lessonsFile,
   };
   const moduleCtx: ServerModuleContext = {
     sim,
@@ -1502,6 +1505,14 @@ async function main(): Promise<void> {
    * snapshot carries no node stocks.
    */
   const gatheringRecords = (): GatheringRecords | null => (moduleCtx.stores?.gatheringRecords as GatheringRecords | undefined) ?? null;
+  /**
+   * What this game's teaching is worth (`ES5m`), from whatever module offers
+   * it. The gateway asks a `LessonTerms` and takes whatever answers, so the
+   * curve, the floors and the price stay with the game. Absent module: there
+   * is nothing to teach, which is what `lessons.json` being absent has always
+   * meant.
+   */
+  const lessonTermsOf = (): LessonTerms | null => (moduleCtx.stores?.lessonTerms as LessonTerms | undefined) ?? null;
   const assembled = await assembleServerSystems({
     modulesDir: GAME.paths.modulesDir,
     setFile: GAME.paths.modulesSetFile,
@@ -1725,7 +1736,9 @@ async function main(): Promise<void> {
     // Party, guild, chat and slot limits (EG9); a rules reload swaps them.
     social: game.rules.social,
     needs: game.rules.needs,
-    lessons: ((l) => (l ? lessonTerms(l) : null))(loadLessons(GAME.paths.lessonsFile)),
+    // What a lesson is worth, from whatever module offers teaching (ES5m). No
+    // module, no terms, and the gateway answers a lesson request unsupported.
+    lessons: lessonTermsOf(),
     // A pupil takes one lesson a game day (a real day with no calendar).
     gameDay: gameDayOf,
     // GET /health and GET /metrics/civic (EA19, C7a); PCG's handler composes with it.
