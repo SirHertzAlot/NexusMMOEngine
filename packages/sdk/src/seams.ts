@@ -61,6 +61,7 @@ const SEAM_TABLE = [
   { key: "settlementRulesFile", env: ["MMO_SETTLEMENT_RULES"], base: "content", rel: "settlements/rules.json", what: "the town generator's rules" },
   { key: "characterRulesFile", env: ["MMO_CHARACTER_RULES"], base: "content", rel: "settlements/character.json", what: "settlement character rules" },
   { key: "civicRulesFile", env: ["MMO_CIVIC_RULES"], base: "content", rel: "rules/civic.json", what: "civic and logistics rules" },
+  { key: "characterCreationFile", env: ["MMO_CHARACTER_CREATION"], base: "content", rel: "character-creation.json", what: "what a player may choose when creating a character (absent: the engine's defaults)" },
   { key: "lessonsFile", env: ["MMO_LESSONS"], base: "content", rel: "lessons.json", what: "lessons a pupil can take" },
   { key: "vendorsFile", env: ["MMO_VENDORS"], base: "content", rel: "vendors.json", what: "shop templates placed in scenes" },
   { key: "structuresFile", env: ["MMO_STRUCTURES"], base: "content", rel: "structures.json", what: "breakable structure kinds" },

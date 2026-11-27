@@ -16,6 +16,7 @@ import {
 } from "../src/character/modular-catalog.js";
 import { canonicalSkeleton, partScene } from "../src/convert/convert-modular.js";
 import { canonicalLook, effectiveColours, heldOf, lookToJson, lostOf, parseLook, resolveLook, validateLook, withHeld, withLost, type CharacterLook } from "../src/character/look.js";
+import { creationLookProblems } from "../src/character/creation-rules.js";
 import { DEFAULT_COLOURS } from "../src/character/colour-slots.js";
 
 describe("part names", () => {
@@ -190,13 +191,15 @@ describe("character looks", () => {
   });
 
   it("validates a new character: appearance free, armour locked, colours hex", () => {
+    // What the server asks of a new character: the catalog questions and
+    // the creation rules, the two halves checkNewLook runs together.
+    const asNew = (look: CharacterLook): string[] =>
+      [...validateLook(catalog, look), ...creationLookProblems(catalog, look)].map((p) => p.field);
     const ok: CharacterLook = { gender: "female", parts: { head: "Chr_Head_Female_01", hair: "Chr_Hair_05", eyebrows: "Chr_Eyebrow_Female_01" }, colours: { skin: "#8d5524", hair: "#1c1c1c" } };
-    assert.deepEqual(validateLook(catalog, ok, { creation: true }), []);
-    const problems = validateLook(
-      catalog,
+    assert.deepEqual(asNew(ok), []);
+    const problems = asNew(
       { gender: "female", parts: { torso: "Chr_Torso_Female_05", helmet: "Chr_HelmetAttachment_01", eyebrows: "Chr_Eyebrow_Male_02", tail: "x" } as CharacterLook["parts"], colours: { primary: "#ffffff", skin: "red" } },
-      { creation: true },
-    ).map((p) => p.field);
+    );
     assert.deepEqual(problems.sort(), ["colours.primary", "colours.skin", "parts.eyebrows", "parts.helmet", "parts.tail", "parts.torso"].sort());
     assert.deepEqual(validateLook(catalog, { gender: "male", parts: { torso: "Chr_Torso_Male_05" }, colours: { primary: "#ffffff" } }), [], "later (not creation): any set, any colour");
   });

@@ -388,6 +388,7 @@ export {
   DEFAULT_MAX_CHARACTERS,
   listCharacters,
   loadCharacterCatalog,
+  loadCreationRules,
   MemoryCharacterStore,
   readCharacterView,
   SqliteCharacterStore,

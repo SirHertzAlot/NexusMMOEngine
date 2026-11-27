@@ -6,6 +6,7 @@
 export * from "./modular-catalog.js";
 export * from "./colour-slots.js";
 export * from "./look.js";
+export * from "./creation-rules.js";
 export * from "./animations.js";
 export * from "./clip-map.js";
 export * from "./clip-playback.js";

@@ -50,6 +50,7 @@ world specs, ecology plans, PCG graphs.
 |---|---|---|
 | `MMO_PLAYER_ABILITIES` | `swim` | What new players can do: `swim`, `swim,fly`, or `none` (walk only). |
 | `MMO_CHARACTER_CATALOG` | the converted pack's `catalog.json` under `assets/` | The modular part catalog new characters' looks are checked against. Without it, looks are checked structurally only. |
+| `MMO_CHARACTER_CREATION` | `content/character-creation.json` | What a player may choose when creating a character: the part categories, the colours and their swatches, the genders, the body lock. No file: the engine's defaults. Edited in the editor under Characters › Creation. |
 | `MMO_ALLOW_REGISTER` | enabled | `0` turns off in-client account creation. **Turn it off before any public deployment.** |
 
 ### Life in the world

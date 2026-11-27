@@ -228,7 +228,7 @@ import { loadScatterContent } from "./procgen/scatter-spawn.js";
 import { landDry, riverAtFromMap, surfaceAt } from "./procgen/habitat.js";
 import { NavObstacleSystem } from "./navigation/obstacle-system.js";
 import { TILE_CACHE_SETTINGS } from "./navigation/chunk-baker.js";
-import { loadCharacterCatalog, MemoryCharacterStore } from "./characters/index.js";
+import { loadCharacterCatalog, loadCreationRules, MemoryCharacterStore } from "./characters/index.js";
 import { ART_CATALOG, makeWorldPopulator } from "./procgen/world-populator.js";
 import { catalogBounds } from "./procgen/prop-shape.js";
 import { loadScale } from "./scale.js";
@@ -782,6 +782,18 @@ async function main(): Promise<void> {
     characterCatalog
       ? `[characters] ${characterCatalog.parts.length} modular parts (${catalogFile})`
       : `[characters] no part catalog at ${catalogFile}: looks are checked structurally`,
+  );
+  // What a player may choose at creation (EB7). No file is the normal
+  // case and means the engine's defaults; a file that is there and wrong
+  // is said out loud, because a game that wrote it meant it.
+  const creation = loadCreationRules(GAME.paths.characterCreationFile);
+  for (const problem of creation.problems) console.warn(`[characters] character-creation.json: ${problem}`);
+  console.log(
+    creation.from && creation.problems.length === 0
+      ? `[characters] creation: ${creation.rules.parts.length} categories, ${creation.rules.colours.length} colours (${creation.from})`
+      : creation.from
+        ? `[characters] creation: the engine's defaults (${creation.from} was refused)`
+        : "[characters] creation: the engine's defaults (no character-creation.json)",
   );
   // Kinematic character control (gravity/jump/grounding) corrects the
   // integrated Y in the same tick, before snapshot collection. Players are
@@ -1738,6 +1750,7 @@ async function main(): Promise<void> {
     socialStore: socialSync?.socialStore ?? socialStore,
     partyStore: socialSync?.partyStore ?? partyStore,
     characterCatalog,
+    creationRules: creation.rules,
     playerAbilities,
     dayClock: dayClock ?? undefined,
     startTick: freshBoot ? 1 : restoredTick! + 1,

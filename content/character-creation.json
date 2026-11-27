@@ -1,0 +1,107 @@
+{
+  "genders": [
+    "male",
+    "female"
+  ],
+  "lockBodyToStarter": true,
+  "parts": [
+    {
+      "slot": "head",
+      "optional": false
+    },
+    {
+      "slot": "hair",
+      "optional": true
+    },
+    {
+      "slot": "eyebrows",
+      "optional": true
+    },
+    {
+      "slot": "facialHair",
+      "optional": true,
+      "gender": "male"
+    },
+    {
+      "slot": "ears",
+      "optional": true
+    }
+  ],
+  "colours": [
+    {
+      "slot": "skin",
+      "optional": false,
+      "swatches": [
+        "#ffdbc4",
+        "#f7d0b4",
+        "#eac09e",
+        "#e0ac86",
+        "#c68a64",
+        "#a86f4c",
+        "#8d5524",
+        "#6e4225",
+        "#4f2f1c",
+        "#3b2217"
+      ]
+    },
+    {
+      "slot": "hair",
+      "optional": false,
+      "swatches": [
+        "#0f0d0c",
+        "#2a1d15",
+        "#433622",
+        "#6a4a2e",
+        "#8b5a2b",
+        "#a0522d",
+        "#b8864b",
+        "#d6b370",
+        "#e8d5a3",
+        "#9c9c9c",
+        "#dcdcdc"
+      ]
+    },
+    {
+      "slot": "stubble",
+      "optional": true,
+      "swatches": [
+        "#0f0d0c",
+        "#2a1d15",
+        "#433622",
+        "#6a4a2e",
+        "#8b5a2b",
+        "#a0522d",
+        "#b8864b",
+        "#d6b370",
+        "#e8d5a3",
+        "#9c9c9c",
+        "#dcdcdc"
+      ],
+      "gender": "male"
+    },
+    {
+      "slot": "scar",
+      "optional": true,
+      "swatches": [
+        "#e6b8a2",
+        "#c98f7a",
+        "#a86d5c",
+        "#7a4a3c"
+      ]
+    },
+    {
+      "slot": "bodyArt",
+      "optional": true,
+      "swatches": [
+        "#2b4c8c",
+        "#4566a9",
+        "#6b2f8f",
+        "#8c2b2b",
+        "#2f6b3a",
+        "#1c1c1c",
+        "#c8a24a",
+        "#e8e8e8"
+      ]
+    }
+  ]
+}

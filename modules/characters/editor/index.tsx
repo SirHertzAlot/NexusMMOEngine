@@ -4,6 +4,7 @@
 import * as React from "react";
 import { CharacterRecordPanel } from "../../../apps/editor/src/ui/character-view.js";
 import { AnimationPanel } from "../../../apps/editor/src/ui/animation-panel.js";
+import { CreationRulesPanel } from "../../../apps/editor/src/ui/creation-rules-panel.js";
 
 export const panels = [
   {
@@ -12,6 +13,14 @@ export const panels = [
     title: "Records",
     icon: "person",
     render: () => <CharacterRecordPanel />,
+  },
+  {
+    // EB7: what a player may choose when making one of these records.
+    id: "characters.creation",
+    workspace: "characters",
+    title: "Creation",
+    icon: "face",
+    render: () => <CreationRulesPanel />,
   },
   {
     id: "animation",

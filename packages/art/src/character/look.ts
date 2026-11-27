@@ -8,16 +8,16 @@
  *  - A head covering hides what it covers (hair, facial hair).
  *  - Facial hair is male-only (the pack has no female set).
  *
- * validateLook checks a look against the catalog; `creation` also locks
- * the body to the starter armour (a new character chooses everything but
- * its armour). Browser- and Node-safe.
+ * validateLook checks a look against the catalog: the slots exist, the
+ * parts are in them, and they are for this gender. What a *new*
+ * character may choose is a separate question with its own answer per
+ * game, and lives in creation-rules.ts. Browser- and Node-safe.
  */
 
-import { APPEARANCE_COLOURS, COLOUR_SLOTS, DEFAULT_COLOURS, isHexColour, type ColourSlot } from "./colour-slots.js";
+import { COLOUR_SLOTS, DEFAULT_COLOURS, isHexColour, type ColourSlot } from "./colour-slots.js";
 import {
   BODY_SLOTS,
   DETAIL_SLOTS,
-  STARTER_SET,
   starterArmour,
   type CatalogPart,
   type Gender,
@@ -79,11 +79,11 @@ export interface LookProblem {
 }
 
 /**
- * Problems with a look (empty = valid). `creation`: a new character —
- * the body must be the starter armour, and only appearance colours may
- * be set.
+ * Problems with a look (empty = valid). This is the question "could a
+ * character look like this at all"; "may a player choose this when
+ * creating one" is `creationLookProblems` in creation-rules.ts.
  */
-export function validateLook(catalog: ModularCatalog, look: CharacterLook, opts: { creation?: boolean } = {}): LookProblem[] {
+export function validateLook(catalog: ModularCatalog, look: CharacterLook): LookProblem[] {
   const problems: LookProblem[] = [];
   if (look.gender !== "male" && look.gender !== "female") {
     return [{ field: "gender", message: "must be male or female" }];
@@ -101,20 +101,9 @@ export function validateLook(catalog: ModularCatalog, look: CharacterLook, opts:
     else if (p.slot !== slot) problems.push({ field: `parts.${slot}`, message: `${name} belongs in ${p.slot}` });
     else if (p.gender !== null && p.gender !== look.gender) problems.push({ field: `parts.${slot}`, message: `${name} is for ${p.gender} characters` });
   }
-  if (opts.creation) {
-    for (const slot of BODY_SLOTS) {
-      const name = look.parts?.[slot];
-      if (name !== undefined && name !== null && byName.get(name)?.index !== STARTER_SET) {
-        problems.push({ field: `parts.${slot}`, message: "a new character wears the starter armour" });
-      }
-    }
-    for (const slot of ["helmet", "headCovering", "back", "shoulderRight", "shoulderLeft", "elbowRight", "elbowLeft", "hipsAttachment", "kneeRight", "kneeLeft"] as const) {
-      if (look.parts?.[slot]) problems.push({ field: `parts.${slot}`, message: "armour attachments come later, not at creation" });
-    }
-  }
-  const allowed = new Set<string>(opts.creation ? APPEARANCE_COLOURS : COLOUR_SLOTS);
+  const allowed = new Set<string>(COLOUR_SLOTS);
   for (const [slot, colour] of Object.entries(look.colours ?? {})) {
-    if (!allowed.has(slot)) problems.push({ field: `colours.${slot}`, message: opts.creation ? "not chosen at creation" : "is not a colour slot" });
+    if (!allowed.has(slot)) problems.push({ field: `colours.${slot}`, message: "is not a colour slot" });
     else if (typeof colour !== "string" || !isHexColour(colour)) problems.push({ field: `colours.${slot}`, message: "must be #rrggbb" });
   }
   return problems;

@@ -410,6 +410,35 @@ editor, so the line under the toolbar is `maskUrl`'s version: every
 Anything that prints a play URL — a log line, a status message — should
 print that form, not the real one.
 
+## 2i. What a player may choose at creation (ROADMAP EB7)
+
+**Characters › Creation** edits `content/character-creation.json`: the
+part categories the character screen offers, the colours and their
+swatches, the genders, and whether a new character's body is locked to
+the starter armour.
+
+It had been three lists that had to agree. The client's character screen
+held the categories and the swatch palettes; the server's creation check
+held a denylist of the ten armour attachments, which was the complement
+of the five categories the client drew; and nothing connected them. Now
+one file answers for all three: `loadCreationRules` reads it at boot and
+the gateway checks every new character against it, the client fetches it
+(`/content/character-creation.json`) before drawing the pickers, and this
+panel writes it, validated by the art package's own reader so the form
+cannot save a document the server would refuse.
+
+A game with no file is the normal case and means the engine's defaults,
+which are exactly what it did before the file existed. The panel says so
+and offers to write the defaults out, rather than starting you from an
+empty document that would mean something quite different.
+
+Two things deliberately stay outside it. How many characters an account
+may hold is `content/rules/social.json`'s `characters.slots`, which the
+gateway can already change live — one number, one owner. And whether a
+part *exists* is still the catalog's question: a game may offer the
+`helmet` slot here, and on a machine without the licensed pack the
+server will check the name's shape rather than the pack.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
