@@ -39,7 +39,7 @@ const EXEMPT_DIRS = [join(root, "packages", "logging", "src")];
 const BUDGETS = [
   // Boot banners + fatal handler (docs/internals/SAB-LOGGING-LAYER-SPEC.md §2.1 note in server.ts):
   // visible even when the log worker is not up.
-  { file: "packages/engine-core/src/server.ts", budget: 40, justification: "boot banners + fatal, spec-kept on stdio; + the enemy models file problem line (EM1, boot only); + region.db migration/cache banners (#645); + the service table's summary beside the module banner (ES4, boot only)" },
+  { file: "packages/engine-core/src/server.ts", budget: 41, justification: "boot banners + fatal, spec-kept on stdio; + the enemy models file problem line (EM1, boot only); + region.db migration/cache banners (#645); + the service table's summary beside the module banner (ES4, boot only); + what a player may choose at creation, one line carrying any problems (EB7, boot only)" },
   { file: "packages/world-server/src/server.ts", budget: 8, justification: "boot banners + fatal, spec-kept on stdio; + op-dedup sweeper periodic report and error" },
   { file: "packages/world-server/src/surreal-store.ts", budget: 1, justification: "boot-time warning when op_dedup unique index cannot be installed" },
   // CLI products: stdout is the report.

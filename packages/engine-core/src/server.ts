@@ -787,13 +787,15 @@ async function main(): Promise<void> {
   // case and means the engine's defaults; a file that is there and wrong
   // is said out loud, because a game that wrote it meant it.
   const creation = loadCreationRules(GAME.paths.characterCreationFile);
-  for (const problem of creation.problems) console.warn(`[characters] character-creation.json: ${problem}`);
+  // One line, carrying the problems, rather than one line each: stdio at
+  // this boundary is budgeted (scripts/lint-no-console.mjs) and a refused
+  // file belongs with the boot banners, not in a list of its own.
   console.log(
-    creation.from && creation.problems.length === 0
-      ? `[characters] creation: ${creation.rules.parts.length} categories, ${creation.rules.colours.length} colours (${creation.from})`
-      : creation.from
-        ? `[characters] creation: the engine's defaults (${creation.from} was refused)`
-        : "[characters] creation: the engine's defaults (no character-creation.json)",
+    creation.from === undefined
+      ? "[characters] creation: the engine's defaults (no character-creation.json)"
+      : creation.problems.length === 0
+        ? `[characters] creation: ${creation.rules.parts.length} categories, ${creation.rules.colours.length} colours (${creation.from})`
+        : `[characters] creation: the engine's defaults — ${creation.from} was refused: ${creation.problems.join("; ")}`,
   );
   // Kinematic character control (gravity/jump/grounding) corrects the
   // integrated Y in the same tick, before snapshot collection. Players are

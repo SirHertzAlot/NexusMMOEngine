@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "d3bd73b273a4c83a0e79e3e7874d910c88584269",
+    "builtFromCommit": "57a256dd5329dcdae7f669879c7aa232096a44cf",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7880,7 +7880,7 @@
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
       "packages/engine-core/src/scene-spawn.ts": "0c9002f0aa75dc79c28ed8a1f0e9d6b468858a4acef96e18a4bb8b335cfd41a1",
       "packages/engine-core/src/server-settings.ts": "e7693685abc136300b30d06fbfbf97e34f0ef740bf8c20d7e3188824d7f4e0d6",
-      "packages/engine-core/src/server.ts": "4936807e04058baeb9c32899eabc39fbac0b014aa7eb10605ae648be46406ff3",
+      "packages/engine-core/src/server.ts": "c07071f546e9601787b6b56b0fada59d35e8a15df608f1d253949fd189e675ea",
       "packages/engine-core/src/services.ts": "c30f3a57d7489442aa1dae840ae506e909ec453f1ad03353ba4e9a734ea22861",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
