@@ -22,7 +22,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { lessonTerms, loadLessons, ResidentSystem } from "../../packages/engine-core/dist/src/residents/index.js";
+import { lessonTerms, loadLessons, ResidentSystem } from "@mmo-engine/kit-economy";
 import { barkFor, scheduleAt, SQUARE } from "../../packages/settlement/dist/src/index.js";
 
 export function createSystems(ctx) {

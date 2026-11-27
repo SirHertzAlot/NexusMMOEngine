@@ -20,7 +20,7 @@
  * the old code did by opening and closing `gathering.db` early.
  */
 import path from "node:path";
-import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "../../packages/engine-core/dist/src/gathering/index.js";
+import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const cfg = ctx.config?.gathering ?? {};

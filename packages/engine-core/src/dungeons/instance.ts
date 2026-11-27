@@ -133,9 +133,9 @@ export interface DungeonInstanceOptions {
    * The game's chests, breakables and veins for this run (`./world-slot.ts`).
    *
    * Absent: the run has no props at all — no chest opens, nothing breaks,
-   * and no vein stands. `defaultDungeonWorld` in `./default-world.ts` is the
-   * engine's own, which `modules/dungeons/server.js` passes in beside the
-   * fighting.
+   * and no vein stands. `defaultDungeonWorld` in `@mmo-engine/kit-economy`
+   * is the one this engine ships with, which `modules/dungeons/server.js`
+   * passes in beside the fighting.
    */
   world?: DungeonWorldFactory;
   /** Item definitions a kill may roll (the mob pool); empty: no loot. */

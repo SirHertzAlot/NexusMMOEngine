@@ -104,6 +104,11 @@ export {
 } from "./systems.js";
 export type { SimSystem, PhysicsBackend, PhysicsAddBatch, WaterSurface } from "./systems.js";
 export type { AccessRef, SystemAccess } from "./system-access.js";
+// The host's own record of what a scene placed and what has happened to it
+// (`places.db`): an opened chest, a broken part, a resident who moved in. A
+// kit's systems take it as a type, so it is exported here rather than
+// reachable only through the `interact` barrel (`ES5n`).
+export type { PlaceKind, PlaceRecord, PlacesStore } from "./interact/places-store.js";
 export { waterSurfaceFromMaps } from "./terrain/water-surface.js";
 
 export {
@@ -147,6 +152,7 @@ export type { GatewayOptions } from "./net/gateway.js";
 export { makeDebugSource } from "./net/debug-source.js";
 export type { DebugSource, DebugSourceDeps } from "./net/debug-source.js";
 export { encodeIntentMessage, decodeIntentMessage, sanitizeIntent } from "./net/intent.js";
+export { InteractActionSchema, type InteractAction } from "./net/requests.js";
 export type { DecodedIntentMessage } from "./net/intent.js";
 
 export {
