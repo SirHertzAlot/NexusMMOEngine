@@ -67,9 +67,11 @@ const CLASSES = [
 const BUILDS: Readonly<Record<string, string>> = {
   // A barrel over `breaks.ts` and `chests.ts`: it goes when they do.
   "interact/index.ts": "the interact barrel re-exports them",
-  // `server.ts` builds the gathering system and its store inline, because
-  // gathering is the one economy system with no module of its own yet.
-  "server.ts": "gathering has no module to build it",
+  // `server.ts` still builds the chest and break systems inline. Gathering
+  // left for `modules/gathering` at `ES5k`; these two share the places
+  // store, the respawn pool, the loot table and the collapse system with
+  // the host, so they take a module of their own (`ES5l`).
+  "server.ts": "chests and breaks have no module to build them",
   // The engine's own wiring of the run's world slot (`ES5j`), kept off the
   // boot path exactly so it can move into the kit unchanged — the same place
   // `dungeons/default-combat.ts` stood before `ES5h` took it.
@@ -145,4 +147,7 @@ test("the vocabulary carries what the engine needs instead", () => {
   // slot in `dungeons/world-slot.ts`, the way it reaches its fighting.
   assert.doesNotMatch(code("dungeons/instance.ts"), /from "\.\.\/(interact|gathering)\//, "a run should ask for its props, not build them");
   assert.match(code("dungeons/instance.ts"), /from "\.\/world-slot\.js"/, "the run should know the slot");
+  // And the entry point asks for gathering rather than building it (ES5k).
+  assert.doesNotMatch(code("server.ts"), /from "\.\/gathering\//, "server.ts should ask for the gathering service");
+  assert.match(code("services.ts"), /gathering: GatheringService/, "the registry should carry it");
 });

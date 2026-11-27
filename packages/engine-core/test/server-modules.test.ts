@@ -16,8 +16,15 @@ const MODULES = join(REPO, "modules");
  * tick order. The rest of the old server.ts list moved out into the modules
  * that own them (combat, creatures, physics, ...), each building its own
  * systems; core only holds what server.ts still builds for the whole host.
+ *
+ * `gathering` left for its own module at `ES5k`, and ticks back in its old
+ * place through the `after`/`before` edges that module declares — which is
+ * what the order test below pins.
  */
-const CORE_ORDER = ["reloader", "streamer", "gathering", "chests", "breaks", "collapse"];
+const CORE_ORDER = ["reloader", "streamer", "chests", "breaks", "collapse"];
+
+/** content/rules/gathering.json, enough of it for the module to open. */
+const GATHERING_RULES = { reachM: 2.5, cooldownSeconds: 1.2, castSeconds: 2, pouchMax: 999, trainDifficultyPerTier: 0.2 };
 
 const fake = (name: string): SimSystem => ({ name, step() {} });
 const coreProvided = (skip: string[] = []): Record<string, SimSystem | undefined> =>
@@ -37,8 +44,8 @@ describe("server modules: the core module", () => {
     assert.deepEqual(r.order.map((s) => s.name), CORE_ORDER);
   });
   it("skips core systems the host did not build, keeping the rest in order", async () => {
-    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided(["gathering", "auction"]) }, ctx });
-    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER.filter((n) => n !== "gathering" && n !== "auction"));
+    const r = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided(["chests", "auction"]) }, ctx });
+    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER.filter((n) => n !== "chests" && n !== "auction"));
   });
   it("refuses an instance the manifest does not list", async () => {
     await assert.rejects(
@@ -52,6 +59,50 @@ describe("server modules: the core module", () => {
     // instances agree, which is what a drifting manifest breaks.
     const listed = JSON.parse(readFileSync(join(MODULES, "core", "module.json"), "utf8")).server.systems.map((s: { name: string }) => s.name);
     assert.deepEqual(listed, CORE_ORDER);
+  });
+});
+
+describe("server modules: the gathering module (ES5k)", () => {
+  // `gathering` used to be one of core's six, built by server.ts. It is a
+  // module now, which moves where it is *declared* but must not move where
+  // it *ticks*: a node's regrow and a pouch write between the streamer and
+  // the chests is the order the open world has always run. The module says
+  // so with `after: streamer` / `before: chests`, and this is the pin.
+  it("ticks back in its old place, between the streamer and the chests", async () => {
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "gathering"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, config: { gathering: { dataDir: mkdtempSync(join(tmpdir(), "mmo-gathering-")), rules: GATHERING_RULES } } },
+    });
+    assert.deepEqual(r.systems.map((s) => s.name), ["reloader", "streamer", "gathering", "chests", "breaks", "collapse"]);
+  });
+  it("hands the host what the world record needs, and nothing else", async () => {
+    // The pouch and the node stocks ride a character's record and the range
+    // snapshot (PL3b, PL3a). The host carries them without reading inside,
+    // so the module publishes the three calls and validates on its own side.
+    const dataDir = mkdtempSync(join(tmpdir(), "mmo-gathering-"));
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "gathering"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { gathering: { dataDir, rules: GATHERING_RULES, recalledNodes: () => [{ key: "vein-1", stock: 2, regrowAt: null }, { key: "bad" }] } } },
+    });
+    const records = stores["gatheringRecords"] as {
+      loadPouch(id: number): Record<string, number>;
+      replacePouch(id: number, pouch: unknown): void;
+      allNodes(): readonly unknown[];
+    };
+    assert.deepEqual(Object.keys(records).sort(), ["allNodes", "loadPouch", "replacePouch"]);
+    // The recalled rows were seeded as the store opened, and the row that is
+    // not a node stock was dropped rather than stored or thrown over.
+    assert.deepEqual(records.allNodes(), [{ key: "vein-1", stock: 2, regrowAt: null }]);
+    // A recalled pouch comes in as whatever the record held; the module keeps
+    // the whole counts and drops the rest.
+    records.replacePouch(7, { oak: 3, nonsense: -1, fractional: 0.5 });
+    assert.deepEqual(records.loadPouch(7), { oak: 3 });
+    await r.disposeModules();
   });
 });
 
@@ -192,7 +243,7 @@ describe("server modules: refusals", () => {
   const mod = (extra: object) => ({ name: "m", version: "0.1.0", server: { entry: "server/index.js", systems: [{ name: "x", ...extra }] } });
 
   it("a cycle stops the boot and names it", async () => {
-    const root = temp({ m: mod({ after: "gathering", before: "reloader" }) }, { m: sys });
+    const root = temp({ m: mod({ after: "chests", before: "reloader" }) }, { m: sys });
     await assert.rejects(assembleServerSystems({ modulesDir: root, setFile: setFile(["m"]), provided: { core: coreProvided() }, ctx }), /cycle/);
   });
   it("an unknown id stops the boot and names it", async () => {

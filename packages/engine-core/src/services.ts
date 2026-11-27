@@ -33,6 +33,8 @@
 
 import { openServiceRegistry, type ServiceDecl, type ServiceRegistry } from "@mmo-engine/sdk";
 import type { BodyPort, MagicPort, ResidentPort, VendorPort, WalletPort } from "./net/ports.js";
+import type { GatheringRules } from "@mmo-engine/rules";
+import type { ResourceNodeSpec } from "./vocabulary.js";
 import type { SimWorld } from "./world.js";
 import type { TelegraphSpec } from "./vocabulary.js";
 import type { PhysicsSystem } from "./systems.js";
@@ -71,6 +73,53 @@ export interface TelegraphService {
   cancelFrom(source: number, tick: number): number;
 }
 
+/**
+ * What the host asks of a game's gathering (`ES5k`).
+ *
+ * Not the gateway's `GatheringPort`, which is about a player reaching a node
+ * — views, a gather, a cast bar, a pouch message. These are the host's own
+ * nine: the pouch is where mending a building spends its materials, where a
+ * quest's reward lands, and what the world record carries, and the host
+ * registers a scene's nodes as it spawns them and re-reads the rules when
+ * they reload.
+ */
+export interface GatheringService {
+  /** How much of `material` `holder` is carrying. */
+  countOf(holder: number, material: string): number;
+  /** Take `qty` of `material` out of the pouch; false if it isn't there. */
+  take(holder: number, material: string, qty: number): boolean;
+  /** Put `qty` of `material` in; false if the pouch has no room. */
+  grant(holder: number, material: string, qty: number): boolean;
+  /** Whether `qty` more of `material` would fit. Changes nothing. */
+  hasRoom(holder: number, material: string, qty: number): boolean;
+  /** Spend `qty` of `material` on something; false if it isn't there. */
+  spend(holder: number, material: string, qty: number): boolean;
+  /** Make entity `eid` the node `key` (a scene's tree stand, ore vein, fishing spot). */
+  register(eid: number, key: string, spec: ResourceNodeSpec): void;
+  /** Re-read the gathering rules after a hot reload (EG11). */
+  setRules(rules: GatheringRules): void;
+  /** Drop a character's cached pouch, so the next read loads it again. */
+  forgetPouch(holder: number): void;
+}
+
+/**
+ * Where a game's gathering keeps what it has saved, as the world record
+ * needs it (`ES5k`).
+ *
+ * The host carries these rows between the region and the world server and
+ * never reads inside them, so they are `unknown` going each way: validating a
+ * recalled pouch or a node stock is the business of whatever wrote it, which
+ * is also the only thing that knows what a valid one looks like.
+ */
+export interface GatheringRecords {
+  /** A character's pouch, for the world record's `extras.pouch`. */
+  loadPouch(charId: number): Record<string, number>;
+  /** Put a recalled pouch back, dropping whatever it does not recognise. */
+  replacePouch(charId: number, pouch: unknown): void;
+  /** Every node's stock, for the range snapshot (PL3a: the stocks are the range's, held by the world). */
+  allNodes(): readonly unknown[];
+}
+
 /** Every service the server reads, and what it is. */
 export interface EngineServices {
   items: ItemService;
@@ -88,6 +137,7 @@ export interface EngineServices {
   character: CharacterSystem;
   mastery: MasterySystem;
   residents: ResidentPort;
+  gathering: GatheringService;
   dropper: LootDropper;
   dungeons: InstanceManager;
   quests: QuestService;
@@ -118,6 +168,7 @@ export const SERVICE_TABLE: readonly ServiceDecl[] = [
   { key: "character", module: "character", kind: "system", required: true, what: "players: ground height, bounds, movement" },
   { key: "mastery", module: "character", kind: "system", required: true, what: "what a character has got better at" },
   { key: "residents", module: "residents", kind: "system", required: false, what: "the towns' people (off without a scene and a baked manifest)" },
+  { key: "gathering", module: "gathering", kind: "system", required: false, what: "resource nodes and the materials pouch (no module, no pouch: a building cannot be mended)" },
 
   // Gateway extensions: consumed directly, never ticked.
   { key: "dungeons", module: "dungeons", kind: "extension", required: false, what: "dungeon instances" },

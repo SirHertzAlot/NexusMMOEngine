@@ -208,7 +208,6 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import type { Weapon, CombatSkills } from "./vocabulary.js";
 import type { BodyPort, MagicPort, WalletPort } from "./net/ports.js";
-import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "./gathering/index.js";
 import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health, Transform } from "./components.js";
@@ -240,7 +239,7 @@ import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
 import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
-import { openEngineServices, type EngineServiceRegistry } from "./services.js";
+import { openEngineServices, type EngineServiceRegistry, type GatheringRecords, type GatheringService } from "./services.js";
 
 /**
  * A numeric `MMO_*` variable, or `undefined` when it is unset or empty — so
@@ -463,6 +462,16 @@ async function main(): Promise<void> {
   const REGION_CAPACITY = Number(process.env.REGION_CAPACITY ?? 1000);
   let worldClient: WorldClient | null = null;
   let migrationCoordinator: MigrationCoordinator | null = null;
+  /**
+   * The node stocks recall brought back (PL3a), held for the gathering
+   * module (`ES5k`).
+   *
+   * Recall finishes before the gateway ticks and long before the modules are
+   * assembled, so the stocks wait here rather than in a store this entry
+   * point opens: whatever provides gathering seeds them when it opens its
+   * own, and is the only thing that knows which rows are valid.
+   */
+  let recalledNodes: unknown;
   // Persistence P5: the boot mode is planned from the env alone.
   // Standalone (no WORLD_URL) constructs no client and makes no world
   // calls. Explicit (REGION_CHUNK_RANGE set) is the P3 path verbatim.
@@ -519,14 +528,11 @@ async function main(): Promise<void> {
         store,
         ledger: itemLedger,
         log: (line) => logRecallShardLog(worldLog, `[server] ${line}`),
-        // Node stocks (PL3a) go into gathering.db before the gathering system opens it, below.
+        // Node stocks (PL3a) are kept for the gathering module, which seeds
+        // them the moment it opens its store: recall finishes long before
+        // assembly, and only that side knows which rows are valid (ES5k).
         seedPlaces: (places) => {
-          const nodes = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
-          try {
-            nodes.replaceNodes(nodeStocksOf(places["resource_nodes"]));
-          } finally {
-            nodes.close();
-          }
+          recalledNodes = places["resource_nodes"];
           // Broken props, opened chests and doors (IX5) go into places.db the same way.
           const records = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
           try {
@@ -1005,24 +1011,37 @@ async function main(): Promise<void> {
   // need it (quests grantGold); the items module reads ctx.stores.wallet
   // directly since economy is its dependency.
   const walletHolder: { current: WalletPort | null } = { current: null };
-  // Gathering: resource nodes from the boot scene (tree stands, ore veins, fishing spots) and the materials pouch.
-  // A gather trains the node's skill (woodcutting, mining, fishing) on the gatherer's sheet.
-  // Reach, pace, pouch size, training and regrow pace come from content/rules/gathering.json (hot-reloaded, EG11).
-  const gatheringStore = new SqliteGatheringStore(path.join(DATA_DIR, "gathering.db"));
-  const gathering = new GatheringSystem({
-    reachM: game.rules.gathering.reachM,
-    cooldownMs: game.rules.gathering.cooldownSeconds * 1000,
-    pouchMax: game.rules.gathering.pouchMax,
-    trainPerTier: game.rules.gathering.trainDifficultyPerTier,
-    regrowCheckSeconds: game.rules.gathering.regrowCheckSeconds,
-    regrowHourMs: game.rules.gathering.regrowHourSeconds * 1000,
-    store: gatheringStore,
+  // Gathering (EG1, ES5k): resource nodes from the boot scene (tree stands,
+  // ore veins, fishing spots) and the materials pouch. The gathering module
+  // builds both during assembly (see modules/gathering/server.js); the host
+  // only states what it asks of them, and goes without when that module is
+  // off — the nodes a scene names are not registered, and the pouch is empty
+  // and takes nothing, so a building cannot be mended and a gathered reward
+  // does not land. Reach, pace, pouch size, training and regrow pace come
+  // from content/rules/gathering.json (hot-reloaded, EG11, through setRules).
+  const gatheringHolder: { current: GatheringService | null } = { current: null };
+  const pouch: GatheringService = {
+    countOf: (h, m) => gatheringHolder.current?.countOf(h, m) ?? 0,
+    take: (h, m, q) => gatheringHolder.current?.take(h, m, q) ?? false,
+    grant: (h, m, q) => gatheringHolder.current?.grant(h, m, q) ?? false,
+    hasRoom: (h, m, q) => gatheringHolder.current?.hasRoom(h, m, q) ?? false,
+    spend: (h, m, q) => gatheringHolder.current?.spend(h, m, q) ?? false,
+    register: (e, k, spec) => void gatheringHolder.current?.register(e, k, spec),
+    setRules: (r) => void gatheringHolder.current?.setRules(r),
+    forgetPouch: (h) => void gatheringHolder.current?.forgetPouch(h),
+  };
+  // A gather trains the node's skill (woodcutting, mining, fishing) on the
+  // gatherer's sheet, which is the host's mastery rather than the module's.
+  const gatheringConfig = {
+    dataDir: DATA_DIR,
+    rules: game.rules.gathering,
     pool: respawnPool,
-    train: (avatar, skill, difficulty, key) => {
+    recalledNodes: () => recalledNodes,
+    train: (avatar: number, skill: string, difficulty: number, key: number) => {
       const i = masteryOf().index.of(skill);
       if (i >= 0) masteryOf().sheetOf(avatar).train(i, difficulty, key, Date.now());
     },
-  });
+  };
   // Items (roadmap M3a, slice 2): the items module builds the service from
   // this config during assembly. No inline construction — see
   // modules/items/server.js.
@@ -1066,8 +1085,8 @@ async function main(): Promise<void> {
   const craftingService = new CraftingService({
     rules: crafting ?? EMPTY_CRAFTING_RULES,
     masteryOf: (entity, skill) => masteryOf().sheetOf(entity).get(skill),
-    countMaterial: (character, material) => gathering.countOf(character, material),
-    takeMaterial: (character, material, qty) => gathering.take(character, material, qty),
+    countMaterial: (character, material) => pouch.countOf(character, material),
+    takeMaterial: (character, material, qty) => pouch.take(character, material, qty),
     hasBagRoom: (character) => itemsOf().store.hasRoom(character),
     grantItem: (character, item, rank) => {
       const d = itemsOf().defs;
@@ -1158,7 +1177,7 @@ async function main(): Promise<void> {
     sim.movement = g.rules.movement;
     masteryOf().setDisciplines(g.rules.disciplines.disciplines);
     masteryOf().setPacing(g.rules.skills.pacing);
-    gathering.setRules(g.rules.gathering);
+    pouch.setRules(g.rules.gathering);
     // Social limits (EG9): the reloader only watches after the gateway exists.
     gw.setSocial(g.rules.social);
     magicRef?.setRules(g.rules.spells);
@@ -1213,7 +1232,7 @@ async function main(): Promise<void> {
     store: placesStore,
     pool: respawnPool,
     // Mending a building spends the pouch (gathered materials).
-    materials: { count: (holder, material) => gathering.countOf(holder, material), spend: (holder, material, n) => gathering.spend(holder, material, n) },
+    materials: { count: (holder, material) => pouch.countOf(holder, material), spend: (holder, material, n) => pouch.spend(holder, material, n) },
     killerOf: (e: number): number | undefined => services.optional("combat")?.lastAttacker(e),
     onBreak: (s, ev) => {
       collapse.partBroken(s, ev.eid);
@@ -1267,7 +1286,7 @@ async function main(): Promise<void> {
           },
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
-        resources: { register: (eid, key, spec) => gathering.register(eid, key, spec) },
+        resources: { register: (eid, key, spec) => pouch.register(eid, key, spec) },
         chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
         // A region shard spawns only what stands in its chunks (the migration.ts convention: x0 <= cx < x1).
         inRange: fleetChunkRange
@@ -1388,10 +1407,10 @@ async function main(): Promise<void> {
     dataDir: DATA_DIR,
     rules: loadCivicRules(GAME.paths.civicRulesFile),
     dayOf: () => (gameDayOf ? gameDayOf(sim.currentTick) : Math.floor(Date.now() / 86_400_000)),
-    countMaterial: (charId: number, material: string) => gathering.countOf(charId, material),
-    takeMaterial: (charId: number, material: string, qty: number) => gathering.take(charId, material, qty),
-    grantMaterial: (charId: number, material: string, qty: number) => gathering.grant(charId, material, qty),
-    hasMaterialRoom: (charId: number, material: string, qty: number) => gathering.hasRoom(charId, material, qty),
+    countMaterial: (charId: number, material: string) => pouch.countOf(charId, material),
+    takeMaterial: (charId: number, material: string, qty: number) => pouch.take(charId, material, qty),
+    grantMaterial: (charId: number, material: string, qty: number) => pouch.grant(charId, material, qty),
+    hasMaterialRoom: (charId: number, material: string, qty: number) => pouch.hasRoom(charId, material, qty),
     hasBagRoom: (charId: number) => itemsOf().store.hasRoom(charId),
     craftAndGrantItem: (charId: number, item: string, rank: string) => {
       const d = itemsOf().defs;
@@ -1456,10 +1475,16 @@ async function main(): Promise<void> {
     // module the host wires nothing for still reads its manifest settings,
     // which is how a game's own module is configured without touching this.
     config: mergeModuleConfig(
-      { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
+      { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, gathering: gatheringConfig, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
       GAME.moduleConfig,
     ),
   };
+  /**
+   * What a game's gathering has saved, as the world record needs it
+   * (`ES5k`). Absent module: no pouch rides a character's record and the
+   * snapshot carries no node stocks.
+   */
+  const gatheringRecords = (): GatheringRecords | null => (moduleCtx.stores?.gatheringRecords as GatheringRecords | undefined) ?? null;
   const assembled = await assembleServerSystems({
     modulesDir: GAME.paths.modulesDir,
     setFile: GAME.paths.modulesSetFile,
@@ -1467,7 +1492,6 @@ async function main(): Promise<void> {
       core: {
         reloader,
         streamer,
-        gathering,
         chests,
         breaks,
         collapse,
@@ -1487,6 +1511,8 @@ async function main(): Promise<void> {
   itemsRef = services.optional("items") ?? null;
   // The economy module owns the wallet; pre-assembly configs use it lazily.
   walletHolder.current = services.optional("wallet") ?? null;
+  // The gathering module owns the nodes and the pouch, the same way (ES5k).
+  gatheringHolder.current = services.optional("gathering") ?? null;
   dropperRef = services.optional("dropper") ?? null;
   const dungeons = services.optional("dungeons") ?? null;
   questsRef = services.optional("quests") ?? null;
@@ -1612,12 +1638,12 @@ async function main(): Promise<void> {
           economy: economyView ?? undefined,
           // PL3b: the character's quest log and pouch ride its world record, so they follow it to any region.
           extras: {
-            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringStore.loadPouch(id) }),
+            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringRecords()?.loadPouch(id) ?? {} }),
             seed: (id, extras) => {
               if (questStore && extras.quests !== undefined) questStore.replace(id, questRecordsOf(extras.quests));
               if (extras.pouch !== undefined) {
-                gatheringStore.replacePouch(id, materialCountsOf(extras.pouch));
-                gathering.forgetPouch(id);
+                gatheringRecords()?.replacePouch(id, extras.pouch);
+                pouch.forgetPouch(id);
               }
             },
           },
@@ -1826,7 +1852,7 @@ async function main(): Promise<void> {
         log: (line) => logShardShipperLog(worldLog, `[server] ${line}`),
         // The range's place state outside the ECS rides each snapshot (PL3a, B4); recall seeds it back.
         places: () => ({
-          resource_nodes: gatheringStore.allNodes(),
+          resource_nodes: gatheringRecords()?.allNodes() ?? [],
           place_records: placesStore.all(),
           ...(moduleCtx.stores?.civicStore
             ? { civic: exportCivicSnapshot(moduleCtx.stores.civicStore as SqliteCivicStore) }

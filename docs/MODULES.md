@@ -57,7 +57,7 @@ A system is declared `{ "name": "...", "after": [...], "before": [...], "optiona
 
 - `after` and `before` name other systems by id, and may be a string or a list.
 - `optional: true` lets the entry leave the system out (bots when there are none, the crowd when no navigation backend provides one). The tick order drops it like any unbuilt system. Without `optional`, a declared system the entry does not return stops the boot.
-- The real orders are in the manifests. `core` fixes its own (`reloader`, `streamer`, `gathering`, `chests`, `breaks`); `combat` runs `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death`; `physics` pins the character bridge between `integrate` and `prop-collision`:
+- The real orders are in the manifests. `core` fixes its own (`reloader`, `streamer`, `chests`, `breaks`, `collapse`), and `gathering` ticks back into the middle of that list from its own module with `{ "after": "streamer", "before": "chests" }` — which is how a module slots a system into an order it does not own; `combat` runs `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death`; `physics` pins the character bridge between `integrate` and `prop-collision`:
 
 ```json
 { "name": "character-bridge", "after": "integrate", "before": "prop-collision" }
@@ -328,12 +328,13 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 | `characters` | editor | `core` | Editor module: the Characters workspace's Records panel |
 | `chat` | — | none | Region chat (S1): shape validation, per-channel range and rate limits, text-filter hook |
 | `combat` | server: `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death` | none | Combat domain (M2/M5): stamina, body parts, magic, abilities, status effects, telegraphs, duels, combat resolution, an… |
-| `core` | server: `reloader`, `streamer`, `gathering`, `chests`, `breaks`; editor | none | The engine's own contribution: the server's systems in their fixed tick order |
+| `core` | server: `reloader`, `streamer`, `chests`, `breaks`, `collapse`; editor | none | The engine's own contribution: the server's systems in their fixed tick order |
 | `creatures` | server: `creatures`, `bots`, `crowd`, `needs` | `physics` | Creatures domain (AI1): creature AI, bots, crowd steering, and needs |
 | `database` | editor | `core` | Editor module: Database workspace: data grid, query console, audit log |
 | `debug` | editor | `core` | Editor module: Debug: play-mode viewport |
 | `dungeons` | editor; gateway extensions | `character` | Dungeon instances (D1): pool, content, InstanceManager as a gateway extension |
 | `economy` | server: `wallet`, `trade`, `vendor`, `auction` | none | Gold wallets, player trades, NPC vendors, and the auction house (EC1) |
+| `gathering` | server: `gathering` | none | Resource nodes and the materials pouch (EG1): tree stands, ore veins, fishing spots, and what a player carries from them |
 | `ecs` | editor | `core` | Editor module: ECS inspector viewport for the Scene workspace |
 | `flow` | editor | `core` | Editor module: the Flow workspace's flow graph editor |
 | `gameplay` | editor | `core` | Editor module: Gameplay data tooling: data grids, content browser, tables, rules |

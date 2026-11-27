@@ -4547,8 +4547,8 @@
       "confidence": "introspected",
       "from": "system:gathering",
       "kind": "contributedBy",
-      "source": "modules/core/module.json",
-      "to": "module:core"
+      "source": "modules/gathering/module.json",
+      "to": "module:gathering"
     },
     {
       "confidence": "declared",
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "e1cea3e2dee82ba9bbba8c48f757dd48a1e3e5fb",
+    "builtFromCommit": "df6f58ef543c54a1bb6008a04ab76c8b720b454e",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7574,7 +7574,7 @@
         "archetype": 4,
         "component": 28,
         "field": 99,
-        "module": 32,
+        "module": 33,
         "object": 185,
         "system": 45,
         "verb": 13,
@@ -7582,7 +7582,7 @@
       },
       "declaredSystems": 33,
       "edges": 1079,
-      "nodes": 422,
+      "nodes": 423,
       "simulationSystems": 33,
       "unresolved": 10
     },
@@ -7612,8 +7612,8 @@
         "status": "summary-only"
       },
       {
-        "count": 32,
-        "details": "32 enabled modules contributing 38 ordered tick systems",
+        "count": 33,
+        "details": "33 enabled modules contributing 38 ordered tick systems",
         "source": "modules/*/module.json",
         "status": "extracted"
       },
@@ -7636,14 +7636,14 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "8781d77a97ab407b347315bd3a2bf2bf18d2a4a4045769a41c01487de7da0bcd",
+    "graphHash": "a1326c331020aaa7be544f2bd25ebea9b3d68d951f00b95aa9e3b8aa1f75b8de",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
       "apps/editor/src/authoring/verbs.ts": "a3e7b6d4308f5c1f1982776bfdc5357724fe411bf117834e9aca1a46db18185a",
       "apps/editor/src/authoring/widgets.ts": "52e08a3c14a45bca26c956ad84fc25440300b19cd9ab7cf2f167b759827660de",
       "apps/editor/src/ui/authoring-view.tsx": "ee94a73ab9fd48021d55cbb50db9d9414f66071b298cf1a7c89160da6c877777",
-      "content/modules.json": "3a40d5324bdcaa84bac5bd10b3a4745ce6109a0c85c77903f34daf13ee88a04c",
+      "content/modules.json": "a6bbf718436f3583fe2250013b954b112924f175c838196b0103a1f6d9d86f48",
       "content/scenes/interior-crypt-hall.scene.json": "e514737a50c7419acf451e3f5414703e6107c305796399651f5c6fb7bd713cd1",
       "content/scenes/places.scene.json": "2c08a7bfd3a1e9997bbe2bf3fc3fe9247659fd7e6635f595f9a07d5c0337b03a",
       "content/scenes/synth-multi-level-descent.scene.json": "b08d577cdfc5ca811fb09084cf6dfb67ec174b65bd7753ef2d3b3d2504862a1d",
@@ -7664,7 +7664,7 @@
       "modules/civic/server.js": "bb62e52e4fc953b9faf0ab612a53c803fb9f544075da7296633c85260e02eb13",
       "modules/combat/module.json": "ae615ac7acfb0654d76414937106eedce1fd3070729d1abf8983d81c95c65684",
       "modules/combat/server.js": "eb374d765adcec397899119f88bb11806ef9499c2b4c0c99a3c7815c5cf413e0",
-      "modules/core/module.json": "c83dca0dbf70615bb4d15d3184f56f27d0435949c38cfbcb187fa434d76140eb",
+      "modules/core/module.json": "5d9604c23a94fb7764841da6ecc56591955eb57f0cd2dfa6f4c0be87a537c2a4",
       "modules/creatures/module.json": "095a85e81bfba6bef2cd6c00b0cbefdf2a4a19cda91197c1c32d0edb8775bfd9",
       "modules/creatures/server.js": "dfd7459d00a74ab5f22b604bfc1a7e0e646d18ffbb30eca16751811d9af4454f",
       "modules/database/module.json": "8e42b9b27f3fda10cd25f27464200d533a57c66a3afdf878385fdbbbe0bf4ba2",
@@ -7676,6 +7676,8 @@
       "modules/ecs/module.json": "727e0ee9b9658d07a12d24a801c076b50c816a56fa54896c9b004cbaa3aa17f0",
       "modules/flow/module.json": "369cd95e6690ea948f595523e5910402e62eb25f9b9cbf85546da43634fbb441",
       "modules/gameplay/module.json": "6feee3188f7d174e5ba87a42f7c03a3d04c6ee57a32b0a042591f9c586c7d801",
+      "modules/gathering/module.json": "1beb1ea8775ba0b7e2f743b869ded37de9c4c43f5981f303f55a5eb914c6e77a",
+      "modules/gathering/server.js": "788725ce0c7b289c847d9a6bc60611bfafea4aa40fbf7d7ddd36579f1b3536ff",
       "modules/hud/module.json": "b4645547835447485461e6f8d2f43f745b19846cf4edf4398307e7c540ece54e",
       "modules/intent/module.json": "355871020da06db1a91beaa208a13b46a887d59fa8df007acdecdd1aa24a6820",
       "modules/intent/server.js": "1d2fd0ad3f94f178e7438397fa7bbb0c37feba8db5a79838adc574e1b4858f6a",
@@ -7769,7 +7771,7 @@
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "2e7f0c1f2b3f827eab96848d6346ac4a5389264bc8229c03c152c1ee56c4f52b",
+      "packages/engine-core/src/index.ts": "6b19514813ab57c35084008a1a0ade1ebc683a3546893ecf3292b41f1fb21aa2",
       "packages/engine-core/src/interact/breaks.ts": "efc944442b87f34faa633a1a1aafab418168c737788d25d50e670cb0900c15fe",
       "packages/engine-core/src/interact/chests.ts": "64bee0760ab792e07f71dc289f31777956c31bcbc74e37574c6352169676652b",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
@@ -7877,8 +7879,8 @@
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
       "packages/engine-core/src/scene-spawn.ts": "b4e16eb0597a9dfa861169ecf21587e926bdd1605d47aead65d14f6a2d47e1b2",
       "packages/engine-core/src/server-settings.ts": "e7693685abc136300b30d06fbfbf97e34f0ef740bf8c20d7e3188824d7f4e0d6",
-      "packages/engine-core/src/server.ts": "b0b8ce2fec45462a714547aeb493f1b24b0accdd6cfd91a432ea6ee730bd7978",
-      "packages/engine-core/src/services.ts": "230c08a35adf497ba8427d9ac33633dea8cf0bf6897aadabfecd126810828aa2",
+      "packages/engine-core/src/server.ts": "76ae61774074c530877b05c6a4255e3082113009324bb840129760152bf7fc6a",
+      "packages/engine-core/src/services.ts": "f8d0c99734269e647b88361ee4e18a5d31020c9380c85ca5cdd3328ef393022d",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
@@ -9976,7 +9978,6 @@
       "systems": [
         "reloader",
         "streamer",
-        "gathering",
         "chests",
         "breaks",
         "collapse"
@@ -10066,6 +10067,18 @@
       "name": "gameplay",
       "source": "modules/gameplay/module.json",
       "systems": [],
+      "version": "0.1.0"
+    },
+    {
+      "description": "Resource nodes and the materials pouch (EG1): tree stands, ore veins, fishing spots, and what a player carries from them.",
+      "entry": "server.js",
+      "id": "module:gathering",
+      "kind": "module",
+      "name": "gathering",
+      "source": "modules/gathering/module.json",
+      "systems": [
+        "gathering"
+      ],
       "version": "0.1.0"
     },
     {
@@ -11889,7 +11902,7 @@
       "role": "simulation",
       "simName": "abilities",
       "source": "packages/kit-combat/src/abilities.ts:48",
-      "tickIndex": 18
+      "tickIndex": 14
     },
     {
       "className": "AnimationSystem",
@@ -11902,7 +11915,7 @@
       "role": "simulation",
       "simName": "AnimationSystem",
       "source": "packages/engine-core/src/animation.ts:58",
-      "tickIndex": 12
+      "tickIndex": 8
     },
     {
       "className": "AuctionSystem",
@@ -11915,7 +11928,7 @@
       "role": "infrastructure",
       "simName": "auction",
       "source": "packages/engine-core/src/economy/auction.ts:56",
-      "tickIndex": 9
+      "tickIndex": 5
     },
     {
       "className": "BodySystem",
@@ -11928,7 +11941,7 @@
       "role": "simulation",
       "simName": "body",
       "source": "packages/kit-combat/src/body.ts:122",
-      "tickIndex": 16
+      "tickIndex": 12
     },
     {
       "className": "BotSystem",
@@ -11941,7 +11954,7 @@
       "role": "simulation",
       "simName": "bots",
       "source": "packages/engine-core/src/bots.ts:67",
-      "tickIndex": 32
+      "tickIndex": 28
     },
     {
       "className": "BreakSystem",
@@ -11954,7 +11967,7 @@
       "role": "simulation",
       "simName": "breaks",
       "source": "packages/engine-core/src/interact/breaks.ts:107",
-      "tickIndex": 4
+      "tickIndex": 35
     },
     {
       "className": "CharacterSystem",
@@ -11967,7 +11980,7 @@
       "role": "simulation",
       "simName": "character",
       "source": "packages/engine-core/src/systems.ts:218",
-      "tickIndex": 11
+      "tickIndex": 7
     },
     {
       "className": "CharacterBridgeSystem",
@@ -11980,7 +11993,7 @@
       "role": "simulation",
       "simName": "character-bridge",
       "source": "packages/engine-core/src/character-bridge.ts:50",
-      "tickIndex": 28
+      "tickIndex": 24
     },
     {
       "className": "ChestSystem",
@@ -11993,7 +12006,7 @@
       "role": "simulation",
       "simName": "chests",
       "source": "packages/engine-core/src/interact/chests.ts:69",
-      "tickIndex": 3
+      "tickIndex": 34
     },
     {
       "className": "CivicService",
@@ -12019,7 +12032,7 @@
       "role": "simulation",
       "simName": "collapse",
       "source": "packages/engine-core/src/interact/collapse.ts:156",
-      "tickIndex": 5
+      "tickIndex": 36
     },
     {
       "className": "ColliderSystem",
@@ -12032,7 +12045,7 @@
       "role": "simulation",
       "simName": "colliders",
       "source": "packages/engine-core/src/systems.ts:475",
-      "tickIndex": 30
+      "tickIndex": 26
     },
     {
       "className": "CombatSystem",
@@ -12045,7 +12058,7 @@
       "role": "simulation",
       "simName": "combat",
       "source": "packages/kit-combat/src/combat.ts:212",
-      "tickIndex": 22
+      "tickIndex": 18
     },
     {
       "className": "CreatureSystem",
@@ -12058,7 +12071,7 @@
       "role": "simulation",
       "simName": "creatures",
       "source": "packages/engine-core/src/creatures.ts:218",
-      "tickIndex": 31
+      "tickIndex": 27
     },
     {
       "className": "CrowdSystem",
@@ -12071,7 +12084,7 @@
       "role": "simulation",
       "simName": "crowd",
       "source": "packages/engine-core/src/navigation/crowd-system.ts:35",
-      "tickIndex": 33
+      "tickIndex": 29
     },
     {
       "className": "DeathSystem",
@@ -12084,7 +12097,7 @@
       "role": "simulation",
       "simName": "death",
       "source": "packages/kit-combat/src/death.ts:111",
-      "tickIndex": 23
+      "tickIndex": 19
     },
     {
       "className": "DuelSystem",
@@ -12097,7 +12110,7 @@
       "role": "simulation",
       "simName": "duel",
       "source": "packages/kit-combat/src/duel.ts:34",
-      "tickIndex": 21
+      "tickIndex": 17
     },
     {
       "className": "GatheringSystem",
@@ -12105,12 +12118,12 @@
       "id": "system:gathering",
       "inRoster": true,
       "kind": "system",
-      "module": "core",
+      "module": "gathering",
       "name": "gathering",
       "role": "simulation",
       "simName": "gathering",
       "source": "packages/engine-core/src/gathering/gathering.ts:85",
-      "tickIndex": 2
+      "tickIndex": 33
     },
     {
       "declared": false,
@@ -12186,7 +12199,7 @@
       "role": "simulation",
       "simName": "integrate",
       "source": "packages/engine-core/src/systems.ts:420",
-      "tickIndex": 27
+      "tickIndex": 23
     },
     {
       "className": "IntentSystem",
@@ -12199,7 +12212,7 @@
       "role": "simulation",
       "simName": "intent",
       "source": "packages/engine-core/src/systems.ts:99",
-      "tickIndex": 36
+      "tickIndex": 32
     },
     {
       "className": "ItemService",
@@ -12212,7 +12225,7 @@
       "role": "simulation",
       "simName": "items",
       "source": "packages/engine-core/src/items/item-service.ts:85",
-      "tickIndex": 10
+      "tickIndex": 6
     },
     {
       "className": "MagicSystem",
@@ -12225,7 +12238,7 @@
       "role": "simulation",
       "simName": "magic",
       "source": "packages/kit-combat/src/magic.ts:149",
-      "tickIndex": 17
+      "tickIndex": 13
     },
     {
       "className": "MasterySystem",
@@ -12238,7 +12251,7 @@
       "role": "simulation",
       "simName": "mastery",
       "source": "packages/engine-core/src/stats/mastery-system.ts:43",
-      "tickIndex": 13
+      "tickIndex": 9
     },
     {
       "className": "NavigationSystem",
@@ -12251,7 +12264,7 @@
       "role": "simulation",
       "simName": "NavigationSystem",
       "source": "packages/engine-core/src/navigation/system.ts:62",
-      "tickIndex": 25
+      "tickIndex": 21
     },
     {
       "className": "NeedsSystem",
@@ -12264,7 +12277,7 @@
       "role": "simulation",
       "simName": "needs",
       "source": "packages/engine-core/src/stats/needs-system.ts:28",
-      "tickIndex": 34
+      "tickIndex": 30
     },
     {
       "className": "NavObstacleSystem",
@@ -12277,7 +12290,7 @@
       "role": "simulation",
       "simName": "nav-obstacles",
       "source": "packages/engine-core/src/navigation/obstacle-system.ts:62",
-      "tickIndex": 26
+      "tickIndex": 22
     },
     {
       "className": "PhysicsSystem",
@@ -12290,7 +12303,7 @@
       "role": "simulation",
       "simName": "physics",
       "source": "packages/engine-core/src/systems.ts:680",
-      "tickIndex": 24
+      "tickIndex": 20
     },
     {
       "className": "PropCollisionSystem",
@@ -12303,7 +12316,7 @@
       "role": "simulation",
       "simName": "prop-collision",
       "source": "packages/engine-core/src/prop-collision.ts:198",
-      "tickIndex": 29
+      "tickIndex": 25
     },
     {
       "className": "RulesReloader",
@@ -12329,7 +12342,7 @@
       "role": "simulation",
       "simName": "residents",
       "source": "packages/engine-core/src/residents/resident-system.ts:161",
-      "tickIndex": 35
+      "tickIndex": 31
     },
     {
       "className": "StaminaSystem",
@@ -12342,7 +12355,7 @@
       "role": "simulation",
       "simName": "stamina",
       "source": "packages/kit-combat/src/stats/stamina-system.ts:36",
-      "tickIndex": 15
+      "tickIndex": 11
     },
     {
       "className": "StatsSystem",
@@ -12355,7 +12368,7 @@
       "role": "simulation",
       "simName": "stats",
       "source": "packages/engine-core/src/stats/stats-system.ts:19",
-      "tickIndex": 14
+      "tickIndex": 10
     },
     {
       "className": "StatusSystem",
@@ -12368,7 +12381,7 @@
       "role": "simulation",
       "simName": "status",
       "source": "packages/kit-combat/src/status.ts:76",
-      "tickIndex": 19
+      "tickIndex": 15
     },
     {
       "className": "ChunkStreamer",
@@ -12394,7 +12407,7 @@
       "role": "simulation",
       "simName": "telegraph",
       "source": "packages/kit-combat/src/telegraph.ts:57",
-      "tickIndex": 20
+      "tickIndex": 16
     },
     {
       "className": "TradeSystem",
@@ -12407,7 +12420,7 @@
       "role": "infrastructure",
       "simName": "trade",
       "source": "packages/engine-core/src/economy/trade.ts:39",
-      "tickIndex": 7
+      "tickIndex": 3
     },
     {
       "className": "VendorSystem",
@@ -12420,7 +12433,7 @@
       "role": "simulation",
       "simName": "vendor",
       "source": "packages/engine-core/src/economy/vendor.ts:48",
-      "tickIndex": 8
+      "tickIndex": 4
     },
     {
       "className": "WalletSystem",
@@ -12433,7 +12446,7 @@
       "role": "infrastructure",
       "simName": "wallet",
       "source": "packages/engine-core/src/economy/wallet.ts:26",
-      "tickIndex": 6
+      "tickIndex": 2
     },
     {
       "aliases": [

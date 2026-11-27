@@ -462,7 +462,7 @@ export type {
   WalletPort,
 } from "./net/ports.js";
 export { openEngineServices, SERVICE_TABLE } from "./services.js";
-export type { CombatService, EngineServiceRegistry, EngineServices, TelegraphService } from "./services.js";
+export type { CombatService, EngineServiceRegistry, EngineServices, GatheringRecords, GatheringService, TelegraphService } from "./services.js";
 export { DEFAULT_RULES_DIR, loadGameRules, openGameRules } from "./rules/boot.js";
 export type { GameRules, GameRulesSource } from "./rules/boot.js";
 export type {

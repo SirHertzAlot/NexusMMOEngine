@@ -436,6 +436,18 @@ Four changes make that possible:
    gather makes the run spawn no vein entities, because an ore seam
    nothing can mine is worse than no seam.
 
+10. **And the entry point stops building the economy.**
+    *Done (ES5k, 2026-11-27.)* `server.ts` had handed the gateway a
+    `GatheringSystem` and a store it built itself, through
+    `provided.core`, and called nine of its methods from nine places.
+    `modules/gathering/` builds both now and the host states its own
+    demand — a `GatheringService` of those nine, which is not the
+    gateway's `GatheringPort`, and a `GatheringRecords` of three for
+    what rides a character's world record and the range snapshot, both
+    directions `unknown` because only the writer knows which rows are
+    valid. First use of the `after`/`before` edges for real: a module
+    slots its system back into an order it does not own.
+
    What is left is construction, in a test rather than implicit — the
    `interact` barrel, `server.ts` building the gathering system because
    gathering has no module of its own, and a dungeon run building breaks,
@@ -567,6 +579,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 5a | **`kit-combat`** ✅ | The first of the six: the nine fighting systems and the dungeon factory into `@mmo-engine/kit-combat`, the 28 tests that construct them with it, and the engine's index trading the nine for the kit contract (ports, services, rules loader, eleven components) | **Medium as it turned out**, not high: the files moved unchanged and the compiler found every import. What took the work was the three couplings that would have made the kit one block — see 3.3(7) | Kit 203 tests 0 fail; engine-core 1,856 tests 0 fail; the ECS graph identical in every count (422 nodes, 1,079 edges, declared=33/33) with only source paths moved; each of the nine deletable on its own; a boundary test both ways |
 | 5b | **The economy stops being named** ✅ | The `ES5f` pass for the eight economy and world systems: three ports in the registry, two written-out wallet demands, `ResourceNodeSpec` and `LessonTerms` into the vocabulary, and the gateway asking a game what a lesson is worth | **Low**: type moves and one small seam, no runtime change | Engine-core 0 failures; a test naming the three construction sites that remain, which fails both when a fourth appears and when one of the three stops building |
 | 5c | **The run's world slot** ✅ | Item 6 for chests, breakables and veins: `dungeons/world-slot.ts` plus `dungeons/default-world.ts`, so the last dungeon file that builds an economy system is the one that moves into the kit. `ChestSpec` joins the vocabulary | **Low**: the `ES5e` shape, second time | A live run ticks what its game returned and is told about each chest and vein by the keys its own state reports; a propless run still boots; the construction list down to the `interact` barrel and `server.ts` |
+| 5d | **Gathering is a module** ✅ | `modules/gathering/` builds the system and its store; the host asks for a `GatheringService` (nine) and a `GatheringRecords` (three, `unknown` both ways). Recall's node stocks wait in the host and the module seeds them | **Medium**: nine call sites across crafting, civic, repair, the reloader, scene spawn and the world record, each needing an absent path | The resolved tick order pinned at exactly the old six (`after: streamer`, `before: chests`); the records' three calls and their validation tested through a real assembly |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |
 | 8 | **`create-mmo-game` + de-IP the schemas** | The template picker (`bare`, `survival`, `sandbox`, `full`); the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | Both CI jobs from §3.6: the five-minute walkable world, **and** `bare` booting with no kit installed. Existing `content/wildlife` still validates |

@@ -1,0 +1,1 @@
+{"dependsOn":[],"description":"Resource nodes and the materials pouch (EG1): tree stands, ore veins, fishing spots, and what a player carries from them.","name":"gathering","server":{"entry":"server.js","systems":[{"name":"gathering","after":["streamer"],"before":["chests"],"optional":false}]},"version":"0.1.0"}
