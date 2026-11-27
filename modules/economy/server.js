@@ -7,12 +7,16 @@
  * is assembled separately; the wallet is published on `ctx.stores` so the
  * items module (assembled later) can hand it to its LootDropper.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { AuctionSystem, SqliteWalletStore, TradeSystem, VendorSystem, WalletSystem } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const cfg = ctx.config?.economy ?? {};
-  const dataDir = cfg.dataDir ?? ".";
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
+  const dataDir = typeof cfg.dataDir === "string" ? cfg.dataDir : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
   const itemsOf = cfg.itemsOf ?? (() => { throw new Error("economy: items not yet assembled"); });
 
   // Gold wallets (SQLite-backed). Built here; the items module reads it from

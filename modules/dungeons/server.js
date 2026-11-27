@@ -12,6 +12,7 @@
  * gateway doesn't exist yet at assembly time. The character store comes
  * from ctx.stores (dependsOn: character, so it is built first).
  */
+import fs from "node:fs";
 import path from "node:path";
 import { loadDungeonContent } from "../../packages/engine-core/dist/src/dungeons/content.js";
 import { DungeonPool } from "../../packages/engine-core/dist/src/dungeons/pool.js";
@@ -29,7 +30,10 @@ import { defaultDungeonWorld } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const config = ctx.config?.dungeons ?? {};
-  const dataDir = config.dataDir ?? ".";
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
+  const dataDir = typeof config.dataDir === "string" ? config.dataDir : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
   const dungeonPool = new DungeonPool(dataDir + "/dungeons");
 
   // Instance results (SQLite-backed): runs commit here; the world reporter

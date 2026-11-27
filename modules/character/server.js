@@ -11,6 +11,7 @@
  * Dependencies (via ctx.config.character): data dir, chunk source, world
  * seed/size/bounds, water, game rules, and a lazy body ref for fall damage.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { CharacterSystem } from "../../packages/engine-core/dist/src/index.js";
 import { AnimationSystem } from "../../packages/engine-core/dist/src/animation.js";
@@ -20,7 +21,10 @@ import { SqliteCharacterStore } from "../../packages/engine-core/dist/src/charac
 
 export function createSystems(ctx) {
   const config = ctx.config?.character ?? {};
-  const dataDir = config.dataDir ?? ".";
+  // No configured dataDir means a harness, not a server: ./data (gitignored)
+  // rather than the working directory. See docs/MODULES.md, "Where a store lives".
+  const dataDir = typeof config.dataDir === "string" ? config.dataDir : "./data";
+  fs.mkdirSync(dataDir, { recursive: true });
 
   // Character persistence (SQLite-backed). Published on ctx.stores: the
   // dungeons module reads it during assembly, and server.ts hands it to
