@@ -9,15 +9,32 @@
  * structure id). Off unless the scene and a manifest match, or when MMO_RESIDENTS=0.
  *
  * Config (ctx.config.residents): structurePositions() -> Map<node id, {x, z}> | null (the boot scene),
- * manifestsDir, catalog, timeOfDay(tick), groundHeightAt, maxEntities.
+ * manifestsDir, catalog, timeOfDay(tick), groundHeightAt, maxEntities, lessonsFile.
+ *
+ * Teaching (ES5m). A master of a profession teaches a skill for gold, and what a lesson is worth is
+ * this game's answer, not the engine's: the curve, the floors and the price live in `lessons.js`
+ * beside the system, and the gateway only ever asks a `LessonTerms`. So this module reads
+ * `lessons.json` and publishes the terms on `ctx.stores.lessonTerms` for the host to hand the
+ * gateway. It is published *above* every early return below, because a town that did not spawn does
+ * not change what a lesson costs: residents off still leaves a trainer able to teach. With the
+ * module absent there are no terms, and the gateway answers a lesson request unsupported — the same
+ * answer it has always given when `lessons.json` is not there.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ResidentSystem } from "../../packages/engine-core/dist/src/residents/index.js";
+import { lessonTerms, loadLessons, ResidentSystem } from "../../packages/engine-core/dist/src/residents/index.js";
 import { barkFor, scheduleAt, SQUARE } from "../../packages/settlement/dist/src/index.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.residents ?? {};
+  // Before the early returns: see "Teaching" above.
+  if (config.lessonsFile) {
+    const lessons = loadLessons(config.lessonsFile);
+    if (lessons) {
+      ctx.stores ??= {};
+      ctx.stores.lessonTerms = lessonTerms(lessons);
+    }
+  }
   if (process.env.MMO_RESIDENTS === "0") return {};
   const positions = config.structurePositions?.();
   if (!positions || !config.manifestsDir || !existsSync(config.manifestsDir)) return {};

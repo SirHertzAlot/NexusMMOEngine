@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { ENGINE_ROOT, openGameProject } from "@mmo-engine/sdk";
 import { assembleServerSystems, mergeModuleConfig } from "../src/modules.js";
 import { discoverModules, resolveModuleSet } from "@mmo-engine/modules";
@@ -145,6 +145,84 @@ describe("server modules: the gathering module (ES5k)", () => {
     // the whole counts and drops the rest.
     records.replacePouch(7, { oak: 3, nonsense: -1, fractional: 0.5 });
     assert.deepEqual(records.loadPouch(7), { oak: 3 });
+    await r.disposeModules();
+  });
+});
+
+describe("server modules: the residents module teaches (ES5m)", () => {
+  // The lessons file was the last thing `server.ts` loaded out of a kit
+  // module: it read `lessons.json`, ran it through `lessonTerms` and handed
+  // the gateway the result. The curve that prices a lesson is a game's own
+  // answer, so the module reads the file and publishes the terms.
+  const LESSONS = { version: 1, peak: 10, cost: 100, professions: { smith: "smithing" } };
+  const lessonsFile = (): string => {
+    const f = join(mkdtempSync(join(tmpdir(), "mmo-lessons-")), "lessons.json");
+    writeFileSync(f, JSON.stringify(LESSONS));
+    return f;
+  };
+
+  it("publishes the terms even when no town spawned", async () => {
+    // The point of publishing above the module's early returns: this set has
+    // no scene and no manifests, so `residents` itself does not tick. A town
+    // that did not spawn does not change what a lesson costs, and a trainer
+    // can still teach.
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "residents"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { residents: { lessonsFile: lessonsFile() } } },
+    });
+    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER);
+    const terms = stores["lessonTerms"] as { skillOf(m: string): string | undefined; offer(m: string, l: number, max: number, g: boolean): unknown };
+    assert.deepEqual(Object.keys(terms).sort(), ["offer", "skillOf"]);
+    assert.equal(terms.skillOf("smith"), "smithing");
+    assert.equal(terms.skillOf("cooper"), undefined, "a profession the file does not teach has no skill");
+    // A pupil at the top has nothing left to learn, which is a null offer
+    // rather than a zero-point one (the gateway answers unsupported).
+    assert.equal(terms.offer("smith", 100, 100, false), null);
+    assert.notEqual(terms.offer("smith", 30, 100, false), null);
+    await r.disposeModules();
+  });
+
+  it("leaves no terms when the module is absent, and none when the file is", async () => {
+    // Both absences are the same feature: there is nothing to teach. This is
+    // the answer the gateway has always given when `lessons.json` is missing.
+    const without = await assembleServerSystems({ modulesDir: MODULES, setFile: setFile(["core"]), provided: { core: coreProvided() }, ctx: { ...ctx, stores: {} } });
+    await without.disposeModules();
+
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "residents"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { residents: { lessonsFile: join(mkdtempSync(join(tmpdir(), "mmo-lessons-")), "absent.json") } } },
+    });
+    assert.equal(stores["lessonTerms"], undefined, "no file is no teaching, not an empty offer");
+    await r.disposeModules();
+  });
+
+  it("prices this game's own lessons.json the way it always did", async () => {
+    // The engine's own content, through the module rather than through
+    // `server.ts`: the same file, the same curve, the same gold.
+    const stores: Record<string, unknown> = {};
+    const own = resolve(MODULES, "..", "content", "lessons.json");
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "residents"]),
+      provided: { core: coreProvided() },
+      ctx: { ...ctx, stores, config: { residents: { lessonsFile: own } } },
+    });
+    const terms = stores["lessonTerms"] as { offer(m: string, l: number, max: number, g: boolean): { skill: string; points: number; cost: number } | null };
+    const file = JSON.parse(readFileSync(own, "utf8")) as { professions: Record<string, string> };
+    const mastery = Object.keys(file.professions)[0] as string;
+    const offer = terms.offer(mastery, 30, 100, false);
+    assert.ok(offer, `${mastery} should still have something to teach a pupil at 30`);
+    assert.equal(offer.skill, file.professions[mastery]);
+    // A grand master's lesson is worth more, and the top of the curve costs
+    // more gold than the bottom: the two properties the curve exists for.
+    assert.ok(terms.offer(mastery, 30, 100, true)!.points > offer.points);
+    assert.ok(terms.offer(mastery, 90, 100, false)!.cost > offer.cost);
     await r.disposeModules();
   });
 });

@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "55756063669dc2f38f189ac582ab948b63736ca2",
+    "builtFromCommit": "0398e7e3da8ff9a9bbe815cf567ef8391ff4ba5b",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7693,7 +7693,7 @@
       "modules/quests/server.js": "d87a3277c28f7b7873fed2a010d2a4fbfab6e392db97acbe099ff82ae623ace1",
       "modules/release/module.json": "b6c5bcb7471dccfcaa7ad256174fc36841e13567e9d5b8bd58bfbcf33b534e2d",
       "modules/residents/module.json": "4f5598d3302884c0957c662a5e7c00c4197a9dad58a0c3cb92f7d0a632183285",
-      "modules/residents/server.js": "00307b31f6615cff96414940e5300051618b65b80b42059138cc34ce1212e6aa",
+      "modules/residents/server.js": "de1ad7395b6258374518aad0f6d1604cfe8f8198b390b731c3f39f435d226c02",
       "modules/scenes/module.json": "a6505cacda47e7395b0f38791e1d31f69c4bd6b5d6974abb2880aa4c61f4bbed",
       "modules/social/module.json": "1b95bd6c2098e189030a9c9c4a249f55c633b13a724fadbb16aa2a6ae2a43ad0",
       "modules/social/server.js": "8688b923cb0770954a16e0bed235a057ee528039fe9daeba51b069e422c53072",
@@ -7866,7 +7866,7 @@
       "packages/engine-core/src/quests/quest-service.ts": "0e2427641a4abe1d14e8d00e0dedc602678a069299e12d3276b5eac61a28c2da",
       "packages/engine-core/src/quests/quest-store.ts": "c9f76e68003d77fd90e85359368579b20793534c592602285b73d20f14fe298c",
       "packages/engine-core/src/quests/worldbuilding-generics.ts": "57ded3b013541b1e165732a345171d0ec486668a6aab564c8398298241da9d01",
-      "packages/engine-core/src/residents/index.ts": "c3fec1a0b0d20e10e875edd99b1595a788fee0f6b0e9bf91c9c0a9387a583d0c",
+      "packages/engine-core/src/residents/index.ts": "0138b7f53ca52cd6ad5de1b690824d840e37da0188deaed18c6bacfc8dcdd81d",
       "packages/engine-core/src/residents/lessons.ts": "33aa49b4621de80a976e4323bea9ff5fa791f382a95f4e67f08b1e541b3ad30d",
       "packages/engine-core/src/residents/resident-system.ts": "f5c230f94d3c90fb56d43dcdf9d0a2894425a422b4b464607204a43a31530d37",
       "packages/engine-core/src/rules/boot.ts": "d06e37ec83d8c249952eca0b88519a5769d347bb78da44532d68b4132ef77319",
@@ -7881,7 +7881,7 @@
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
       "packages/engine-core/src/scene-spawn.ts": "b4e16eb0597a9dfa861169ecf21587e926bdd1605d47aead65d14f6a2d47e1b2",
       "packages/engine-core/src/server-settings.ts": "e7693685abc136300b30d06fbfbf97e34f0ef740bf8c20d7e3188824d7f4e0d6",
-      "packages/engine-core/src/server.ts": "6d67543337d06daddca88da477f9ecb24c7a95e82cb0736a37818bda830da50a",
+      "packages/engine-core/src/server.ts": "e35103db6d563b01e54e29d9fc9e334f373f8b9a9a94fffb413cd338ad7013fe",
       "packages/engine-core/src/services.ts": "9d19d76c660967ba7263b983a391c91ca67dd259bbd813d1a9cce2e0b0580087",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
