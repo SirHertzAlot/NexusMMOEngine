@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import * as ts from "typescript";
 import { discoverModules, readEnabledSet, resolveModuleSet } from "@mmo-engine/modules";
@@ -748,6 +748,25 @@ function parseServerModuleClassBindings(
   return bindings;
 }
 
+
+/**
+ * The `src` directory of every kit package, sorted, so a scan is stable.
+ *
+ * A kit is `packages/kit-<name>` with a `src` directory: the convention the
+ * engine/game split uses for the packages that own a game's systems. Sorted
+ * because the artifact is compared byte for byte, and a directory listing's
+ * order is the filesystem's business, not ours.
+ */
+export function kitSrcDirs(repoRoot: string): string[] {
+  const packages = resolve(repoRoot, "packages");
+  if (!existsSync(packages)) return [];
+  return readdirSync(packages)
+    .filter((name) => name.startsWith("kit-"))
+    .map((name) => resolve(packages, name, "src"))
+    .filter((dir) => existsSync(dir))
+    .sort();
+}
+
 export function extractAllFromAst(
   repoRoot: string,
   introspected: readonly IntrospectedComponent[],
@@ -853,11 +872,17 @@ export function extractAllFromAst(
     });
   }
 
-  // S3 & S4: Scan TS sources for SimSystem classes and module-level queries
-  const engineSrcDir = resolve(repoRoot, "packages/engine-core/src");
-  const tsFiles = walkFiles(
-    engineSrcDir,
-    (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts"),
+  // S3 & S4: Scan TS sources for SimSystem classes and module-level queries.
+  //
+  // The engine's own src, and every kit package beside it (roadmap ES5g).
+  // A kit owns systems the engine used to hold — `kit-combat` takes the nine
+  // combat ones — and they are the same tick systems, declared the same way,
+  // so the graph has to find them wherever they live or the editor's view of
+  // the tick loses them. Kits are `packages/kit-*` by convention; a repo with
+  // none scans exactly what it scanned before.
+  const simSrcDirs = [resolve(repoRoot, "packages/engine-core/src"), ...kitSrcDirs(repoRoot)];
+  const tsFiles = simSrcDirs.flatMap((dir) =>
+    walkFiles(dir, (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts")),
   );
   const allSimClasses: ParsedClassOrObj[] = [];
   const fileContexts = new Map<string, FileAnalysisContext>();
