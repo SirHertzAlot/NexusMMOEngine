@@ -32,6 +32,7 @@ import * as C from "../components.js";
 import type { DungeonContent } from "./content.js";
 import { DungeonInstance, type InstanceMember, type InstanceResult } from "./instance.js";
 import type { ArmourKind, DungeonCombatFactory } from "./combat-slot.js";
+import type { DungeonWorldFactory } from "./world-slot.js";
 import type { DungeonPool } from "./pool.js";
 import type { InstanceResultStore } from "./results.js";
 
@@ -53,6 +54,11 @@ export interface InstanceManagerOptions {
    * (`./combat-slot.ts`); absent: its runs have no fighting at all.
    */
   combat?: DungeonCombatFactory;
+  /**
+   * The game's chests, breakables and veins for every run it starts
+   * (`./world-slot.ts`); absent: its runs have no props at all.
+   */
+  world?: DungeonWorldFactory;
   lootPool?: () => readonly number[];
   chestPool?: () => readonly number[];
   /** Put item definition `def` in a character's bag; false when it couldn't. */
@@ -168,6 +174,7 @@ export class InstanceManager implements GatewayExtension {
         weaponOf: this.opts.weaponOf,
         armourOf: this.opts.armourOf,
         ...(this.opts.combat ? { combat: this.opts.combat } : {}),
+        ...(this.opts.world ? { world: this.opts.world } : {}),
         lootPool: this.opts.lootPool?.() ?? [],
         chestPool: this.opts.chestPool?.() ?? [],
         onEnd: (result) => this.commit(result),

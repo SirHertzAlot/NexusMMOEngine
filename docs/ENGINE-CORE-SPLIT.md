@@ -412,6 +412,48 @@ Four changes make that possible:
    now and the other eight still build, which is what lets a game keep
    part of the kit.
 
+8. **Nothing names an economy system either.**
+   *Done (ES5i, 2026-11-26.)* The same pass for the eight economy and
+   world systems. The registry asked for `WalletSystem`,
+   `VendorSystem` and `ResidentSystem` by class; loot drops and the world
+   sync each named `WalletSystem` for one and two methods;
+   `scene-spawn.ts` imported the gathering module only to name
+   `ResourceNodeSpec`; and the gateway imported `residents/lessons.ts` to
+   work out what a lesson gives and costs. All four are written out or
+   shared now, and teaching became a seam: the gateway keeps whose session
+   asked, one lesson a game day, the wallet and the message, and asks a
+   `LessonTerms` what the lesson *is*.
+
+9. **And a dungeon run takes its props from its game.**
+   *Done (ES5j, 2026-11-27.)* Item 6 again, for the three systems that
+   dress a run rather than fight in it. `dungeons/instance.ts` built its
+   own `ChestSystem`, `BreakSystem` and `GatheringSystem` for the same
+   reason it had built the fighting, and the fix is the same shape: a slot
+   in `dungeons/world-slot.ts`, with `dungeons/default-world.ts` holding
+   the engine's own wiring off the boot path, passed in by
+   `modules/dungeons/server.js` beside the fighting. The one thing the run
+   keeps deciding is its own dressing: a world that says it does not
+   gather makes the run spawn no vein entities, because an ore seam
+   nothing can mine is worse than no seam.
+
+10. **And the entry point stops building the economy.**
+    *Done (ES5k, 2026-11-27.)* `server.ts` had handed the gateway a
+    `GatheringSystem` and a store it built itself, through
+    `provided.core`, and called nine of its methods from nine places.
+    `modules/gathering/` builds both now and the host states its own
+    demand — a `GatheringService` of those nine, which is not the
+    gateway's `GatheringPort`, and a `GatheringRecords` of three for
+    what rides a character's world record and the range snapshot, both
+    directions `unknown` because only the writer knows which rows are
+    valid. First use of the `after`/`before` edges for real: a module
+    slots its system back into an order it does not own.
+
+   What is left is construction, in a test rather than implicit — the
+   `interact` barrel, `server.ts` building the gathering system because
+   gathering has no module of its own, and a dungeon run building breaks,
+   chests and gathering the way it built combat before stage 4d. Those are
+   the next three changes, in that order, and then `kit-economy`.
+
 ### 3.4 Hooks, reachable
 
 `game.json`'s `hooks` entry is loaded at boot and passed to
@@ -535,6 +577,9 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 4d | **Nothing names a system** ✅ | The vocabulary (29 types) and the components a kit's systems write move to where neither owns the other, so every port is written in shared terms; then the dungeon run stops constructing combat at all and takes it from its game | **Low**: type moves and one construction seam, no runtime change | `net/ports.ts` imports four neutral specifiers; `instance.ts` and `manager.ts` build none of the three; a live run ticks the systems its game returned |
 | 5 | **Kits** | `@mmo-engine/kit-combat`, `-progress`, `-economy`, `-quests`, `-dungeons`, `-social`. Code moves out of `engine-core/src` into kit packages; modules import the kit, not `dist/`. Each kit is written to be **forked and edited**, not just configured: small files, no cross-kit imports, and a `README` that says which hook or system to change for the common edits | **High.** ~13,000 LOC moving. Mitigated: one kit per PR, pure file moves with import rewrites and **no behaviour change in the same commit**; the roadmap row records the before/after test counts | Per kit: that kit's tests plus the full root suite; a measured duel and a measured loot roll identical before and after. Plus: the kit still builds with one system deleted, proving a game can drop part of it |
 | 5a | **`kit-combat`** ✅ | The first of the six: the nine fighting systems and the dungeon factory into `@mmo-engine/kit-combat`, the 28 tests that construct them with it, and the engine's index trading the nine for the kit contract (ports, services, rules loader, eleven components) | **Medium as it turned out**, not high: the files moved unchanged and the compiler found every import. What took the work was the three couplings that would have made the kit one block — see 3.3(7) | Kit 203 tests 0 fail; engine-core 1,856 tests 0 fail; the ECS graph identical in every count (422 nodes, 1,079 edges, declared=33/33) with only source paths moved; each of the nine deletable on its own; a boundary test both ways |
+| 5b | **The economy stops being named** ✅ | The `ES5f` pass for the eight economy and world systems: three ports in the registry, two written-out wallet demands, `ResourceNodeSpec` and `LessonTerms` into the vocabulary, and the gateway asking a game what a lesson is worth | **Low**: type moves and one small seam, no runtime change | Engine-core 0 failures; a test naming the three construction sites that remain, which fails both when a fourth appears and when one of the three stops building |
+| 5c | **The run's world slot** ✅ | Item 6 for chests, breakables and veins: `dungeons/world-slot.ts` plus `dungeons/default-world.ts`, so the last dungeon file that builds an economy system is the one that moves into the kit. `ChestSpec` joins the vocabulary | **Low**: the `ES5e` shape, second time | A live run ticks what its game returned and is told about each chest and vein by the keys its own state reports; a propless run still boots; the construction list down to the `interact` barrel and `server.ts` |
+| 5d | **Gathering is a module** ✅ | `modules/gathering/` builds the system and its store; the host asks for a `GatheringService` (nine) and a `GatheringRecords` (three, `unknown` both ways). Recall's node stocks wait in the host and the module seeds them | **Medium**: nine call sites across crafting, civic, repair, the reloader, scene spawn and the world record, each needing an absent path | The resolved tick order pinned at exactly the old six (`after: streamer`, `before: chests`); the records' three calls and their validation tested through a real assembly |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |
 | 8 | **`create-mmo-game` + de-IP the schemas** | The template picker (`bare`, `survival`, `sandbox`, `full`); the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | Both CI jobs from §3.6: the five-minute walkable world, **and** `bare` booting with no kit installed. Existing `content/wildlife` still validates |

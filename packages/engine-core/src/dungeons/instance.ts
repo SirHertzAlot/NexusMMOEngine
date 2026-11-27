@@ -3,8 +3,9 @@
  * prebaked layout, apart from the open world. It is its own SimWorld and
  * Gateway on its own port, running the engine's own systems (stats,
  * creatures, intents, integration) plus whatever fighting its game supplies
- * through the slot in `./combat-slot.ts`, with the layout's walls as its
- * collider. In-process for now; a child process
+ * through the slot in `./combat-slot.ts` and whatever chests, breakables and
+ * veins it supplies through the slot in `./world-slot.ts`, with the layout's
+ * walls as its collider. In-process for now; a child process
  * later (the world-server spec's deployment path).
  *
  * Players come in with a token the region asked this gateway to `admit`
@@ -30,6 +31,7 @@ import { CreatureSystem } from "../creatures.js";
 import type { LifeEvent } from "../vocabulary.js";
 import type { GameRules } from "../rules/boot.js";
 import { NO_DUNGEON_COMBAT, type ArmourKind, type DungeonCombatFactory } from "./combat-slot.js";
+import { NO_DUNGEON_WORLD, type DungeonWorld, type DungeonWorldFactory } from "./world-slot.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { IntegrateSystem, IntentSystem, type SimSystem } from "../systems.js";
 import { SimWorld } from "../world.js";
@@ -44,8 +46,6 @@ import { propMesh } from "./prop-mesh.js";
 import { hash } from "../procgen/ecology.js";
 import { spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import type { ScaleResolver } from "../scale.js";
-import { BreakSystem, breakDefsOf, ChestSystem } from "../interact/index.js";
-import { GatheringSystem } from "../gathering/index.js";
 import type { DungeonLooks, DungeonProps, InstanceRules } from "./content.js";
 import type { InstanceLayout, LayoutProp } from "./pool.js";
 import { placeChestsAndTraps } from "./placement.js";
@@ -129,6 +129,15 @@ export interface DungeonInstanceOptions {
    * is the engine's own, which `modules/dungeons/server.js` passes in.
    */
   combat?: DungeonCombatFactory;
+  /**
+   * The game's chests, breakables and veins for this run (`./world-slot.ts`).
+   *
+   * Absent: the run has no props at all — no chest opens, nothing breaks,
+   * and no vein stands. `defaultDungeonWorld` in `./default-world.ts` is the
+   * engine's own, which `modules/dungeons/server.js` passes in beside the
+   * fighting.
+   */
+  world?: DungeonWorldFactory;
   /** Item definitions a kill may roll (the mob pool); empty: no loot. */
   lootPool?: readonly number[];
   /** Item definitions an opened chest may roll (the chest pool); empty: no loot. */
@@ -151,9 +160,8 @@ export class DungeonInstance {
   readonly gateway: Gateway;
   /** Chests placed for the run, in room-id order (`chest-0`, …). */
   readonly chests: InstanceChest[] = [];
-  private readonly chestSystem: ChestSystem;
-  /** The run's resource nodes (its baked veins), when the rules switch them on; the gateway finds it among the systems. */
-  private readonly gathering: GatheringSystem | null;
+  /** The game's chests, breakables and veins for this run (`./world-slot.ts`). */
+  private readonly dungeonWorld: DungeonWorld;
   /** How many chests were open at the last state push (a change pushes the state at once). */
   private openChests = 0;
   /** Each chest's facing (chests[i]), kept for the open model that replaces it. */
@@ -162,7 +170,7 @@ export class DungeonInstance {
   readonly traps: InstanceTrap[] = [];
   /** Resource nodes the run's veins spawned (0 when the rules switch them off). */
   get resourceNodes(): number {
-    return this.gathering?.size ?? 0;
+    return this.dungeonWorld.resourceNodes();
   }
   readonly creatures: CreatureSystem;
   readonly startedAt: number;
@@ -216,26 +224,23 @@ export class DungeonInstance {
         onDeath: (s, ev) => this.onDeath(s, ev),
       }) ?? NO_DUNGEON_COMBAT;
     const director: SimSystem = { name: "dungeon-director", step: () => this.direct() };
-    // Chests are entities opened with E (interact, 0x27): the opener's rolls from the chest pool join the run's loot.
-    this.gathering = opts.rules.veinNodes
-      ? new GatheringSystem({
-          reachM: opts.game.rules.gathering.reachM,
-          cooldownMs: opts.game.rules.gathering.cooldownSeconds * 1000,
-          pouchMax: opts.game.rules.gathering.pouchMax,
-          trainPerTier: opts.game.rules.gathering.trainDifficultyPerTier,
-          now: this.now,
-        })
-      : null;
-    this.chestSystem = new ChestSystem({
-      reachM: opts.rules.chestOpenRadiusM,
-      drop: (_s, _table, _x, _z, owner) => this.rollChest(owner),
-    });
-    // Props that break (IX4): barrels, crates, urns. The run's blows hurt them like anything with Health; a break rolls loot for the last attacker.
-    const breaks = new BreakSystem(breakDefsOf(opts.props), {
-      killerOf: (e) => fighting.lastAttacker(e),
-      onBreak: (_s, ev) => this.onPropBroken(ev.killer, ev.loot !== undefined),
-      spawnDebris: (s, debris, x, y, z, yaw) => this.spawnDebris(s, debris, x, y, z, yaw),
-    });
+    // The run's whole demand on a game's props, in one place. Chests are
+    // entities opened with E (interact, 0x27) and the opener's rolls from the
+    // chest pool join the run's loot; props that break (IX4) are barrels,
+    // crates and urns, hurt like anything with Health, and a break rolls
+    // loot for whoever struck last.
+    this.dungeonWorld =
+      opts.world?.({
+        rules,
+        chestReachM: opts.rules.chestOpenRadiusM,
+        veins: opts.rules.veinNodes,
+        props: opts.props,
+        now: this.now,
+        killerOf: (e) => fighting.lastAttacker(e),
+        onBreak: (killer, hasLoot) => this.onPropBroken(killer, hasLoot),
+        spawnDebris: (s, debris, x, y, z, yaw) => this.spawnDebris(s, debris, x, y, z, yaw),
+        openChest: (owner) => this.rollChest(owner),
+      }) ?? NO_DUNGEON_WORLD;
     // Its position, health and stamina here are the run's, never the character's saved state.
     const store: CharacterStore = {
       list: (u) => opts.characterStore.list(u),
@@ -259,7 +264,7 @@ export class DungeonInstance {
     this.gateway = new Gateway({
       port: opts.port ?? 0,
       world: this.world,
-      systems: [new StatsSystem(), this.creatures, new IntentSystem(), ...fighting.systems, new IntegrateSystem(), breaks, this.chestSystem, ...(this.gathering ? [this.gathering] : []), new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
+      systems: [new StatsSystem(), this.creatures, new IntentSystem(), ...fighting.systems, new IntegrateSystem(), ...this.dungeonWorld.systems, new DungeonWallSystem(opts.layout, { bodyRadiusM: opts.rules.wallBodyRadiusM, teleportStepM: opts.rules.teleportStepM }), director],
       credentialStore: opts.credentialStore,
       characterStore: store,
       spawnPoint: opts.layout.entrance,
@@ -498,16 +503,16 @@ export class DungeonInstance {
     placed.traps.forEach((t, i) => this.traps.push({ id: `trap-${i}`, x: t.x, z: t.z, sprung: false, eid: this.opts.props ? this.spawnProp({ kind: "trap", x: t.x, z: t.z, yaw: 0, scale: 1, radius: 0 }) : -1 }));
     placed.chests.forEach((p, i) => {
       const eid = this.spawnChest(p.x, p.z, p.prop === undefined ? undefined : this.opts.layout.props[p.prop]);
-      this.chestSystem.register(eid, `chest-${i}`, { table: "run", refillSeconds: 1e9 });
-      const sys = this.chestSystem;
-      const chest: InstanceChest = { id: `chest-${i}`, eid, x: p.x, z: p.z, get opened() { return sys.isOpen(this.eid); } };
+      this.dungeonWorld.registerChest(eid, `chest-${i}`);
+      const world = this.dungeonWorld;
+      const chest: InstanceChest = { id: `chest-${i}`, eid, x: p.x, z: p.z, get opened() { return world.chestIsOpen(this.eid); } };
       this.chests.push(chest);
       this.chestYaw.push(p.prop === undefined ? 0 : this.opts.layout.props[p.prop]!.yaw);
     });
-    if (this.gathering) {
+    if (this.dungeonWorld.gathers) {
       this.opts.layout.veins.forEach((v, i) => {
         const eid = this.spawnVein(v.x, v.z);
-        this.gathering!.register(eid, `vein-${i}`, { kind: v.kind, material: v.kind, tier: v.tier, skill: "mining", stock: 3, regrowHours: 0, halfX: 0.5, halfZ: 0.5 });
+        this.dungeonWorld.registerVein(eid, `vein-${i}`, { kind: v.kind, tier: v.tier });
       });
     }
     const rules = this.opts.game.rules.creatures.creatures;
@@ -608,7 +613,7 @@ export class DungeonInstance {
       if (open < 0) return;
       this.world.despawn(was);
       c.eid = open;
-      this.chestSystem.rebind(was, open);
+      this.dungeonWorld.rebindChest(was, open);
     });
   }
   private readonly shownOpen = new Set<string>();

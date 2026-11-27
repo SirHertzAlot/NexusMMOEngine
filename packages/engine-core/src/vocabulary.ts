@@ -419,3 +419,75 @@ export interface MagicSystemHooks {
   /** Creature species & current biome info for elemental immunity/vulnerability. */
   creatureInfo?: (e: number) => MagicCreatureInfo | undefined;
 }
+
+/**
+ * What a thing worth gathering is (`ES5i`).
+ *
+ * `scene-spawn.ts` builds resource nodes out of a scene and hands them to
+ * whatever is gathering — it has never cared which system that is, and only
+ * imported the gathering module to name this shape. So the shape is shared
+ * and the module is not.
+ */
+export interface ResourceNodeSpec {
+  kind: string;
+  material: string;
+  tier: number;
+  skill: string;
+  stock: number;
+  regrowHours: number;
+  /** Half the node's footprint, metres: the gather range is measured from its edge. */
+  halfX: number;
+  halfZ: number;
+}
+
+/**
+ * What a townsperson's lesson is worth, as the host asks it (`ES5i`).
+ *
+ * The gateway owns the parts that are the engine's: whose session asked, that
+ * a pupil gets one lesson a game day, charging the wallet, granting the
+ * points, telling them what happened. What a lesson *is* — which skill a
+ * profession teaches, how much it gives at this level, what it costs — is the
+ * game's, and the gateway used to compute it from `residents/lessons.ts`.
+ *
+ * A game with no teaching supplies nothing and the `learn` message does
+ * nothing, which is the rule the ports follow.
+ */
+export interface LessonTerms {
+  /**
+   * What this master would teach this pupil, or null if there is nothing.
+   *
+   * `mastery` is the master's profession, `level` the pupil's standing in the
+   * skill it teaches out of `max`, and `grand` whether the master is a grand
+   * master of it.
+   */
+  offer(mastery: string, level: number, max: number, grand: boolean): LessonOffer | null;
+  /** The skill a profession teaches, for the host to find the pupil's level in. */
+  skillOf(mastery: string): string | undefined;
+}
+
+/** One lesson on offer: the skill, the points it adds, and the gold it costs. */
+export interface LessonOffer {
+  readonly skill: string;
+  readonly points: number;
+  readonly cost: number;
+}
+
+/**
+ * What a chest or door is, as a host registers one (`ES5j`).
+ *
+ * A dungeon run places its chests and says what they hold; it does not want
+ * to know which system keeps them. Declared here with `ChestCheck` and
+ * `ChestResult`, which `ES5d` moved for the same reason.
+ */
+export interface ChestSpec {
+  /** "chest" (default) rolls `table` when opened; a "door" toggles open and shut. */
+  kind?: "chest" | "door";
+  /** A loot.json table the chest rolls when opened. */
+  table?: string;
+  /** Seconds until an opened chest is full again. */
+  refillSeconds?: number;
+  /** Seconds the use takes (a cast bar); 0 or absent: at once. */
+  castSeconds?: number;
+  /** An item base the user must carry (a key); `consume` uses one up when it opens. */
+  requires?: { base: string; consume: boolean };
+}

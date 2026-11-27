@@ -25,6 +25,7 @@ import { DungeonPool, readLayout, walkableAt, CELL_M } from "../../src/dungeons/
 import { DungeonWallSystem } from "../../src/dungeons/walls.js";
 import { PROP_SLOTS } from "../../src/dungeons/prop-mesh.js";
 import { DungeonInstance, type InstanceResult } from "../../src/dungeons/instance.js";
+import { defaultDungeonWorld } from "../../src/dungeons/default-world.js";
 import type { Weapon } from "../../src/vocabulary.js";
 import { InstanceManager } from "../../src/dungeons/manager.js";
 import { MemoryInstanceResultStore, SqliteInstanceResultStore } from "../../src/dungeons/results.js";
@@ -184,6 +185,71 @@ describe("dungeon instance", () => {
     assert.equal(bare.remaining().creatures, 3, "its creatures still stand, they simply cannot be fought");
   });
 
+  it("runs the chests, breakables and veins its game supplied, and ticks without any (ES5j)", async () => {
+    // The same move as ES5e, for the three systems that dress a run rather
+    // than fight in it. The run builds none of them now: it hands a game what
+    // it knows about itself and splices in whatever comes back.
+    SimWorld.resetEntityCursorForTesting();
+    let steps = 0;
+    const chests: string[] = [];
+    const veins: Array<[string, string, number]> = [];
+    let seen: { chestReachM: number; veins: boolean; propKinds: number; techniques: number; killer: number | undefined } | null = null;
+    const inst = new DungeonInstance({
+      id: "run-world", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+      props: content.props, lootPool: [], onEnd: () => {}, now: () => 3_000_000, clock: () => Date.now(), transport: "ws",
+      combat: () => ({ systems: [], lastAttacker: () => 42 }),
+      world: (ctx) => {
+        // Everything the run promises the slot, answered at build time.
+        seen = {
+          chestReachM: ctx.chestReachM,
+          veins: ctx.veins,
+          propKinds: Object.keys(ctx.props?.archetypes ?? {}).length,
+          techniques: Object.keys(ctx.rules.combat.techniques).length,
+          // The run forwards the fighting's answer, so a broken barrel's loot
+          // can reach whoever struck it without the two systems meeting.
+          killer: ctx.killerOf(1),
+        };
+        return {
+          systems: [{ name: "marker", step: () => { steps++; } }],
+          gathers: ctx.veins,
+          resourceNodes: () => veins.length,
+          registerChest: (_eid, key) => { chests.push(key); },
+          chestIsOpen: () => false,
+          rebindChest: () => {},
+          registerVein: (_eid, key, v) => { veins.push([key, v.kind, v.tier]); },
+        };
+      },
+    });
+    await inst.start();
+    closers.push(() => inst.close());
+    assert.deepEqual(seen, {
+      chestReachM: content.rules.chestOpenRadiusM,
+      veins: content.rules.veinNodes,
+      propKinds: Object.keys(content.props?.archetypes ?? {}).length,
+      techniques: Object.keys(game.rules.combat.techniques).length,
+      killer: 42,
+    });
+    // The run told it about its own dressing, by the keys the state reports.
+    assert.deepEqual(chests, inst.chests.map((c) => c.id));
+    assert.deepEqual(veins.map(([k]) => k), readLayout(fixture()).veins.map((_v, i) => `vein-${i}`));
+    assert.equal(inst.resourceNodes, veins.length, "the run reports what its game counts, not a number of its own");
+    await until(() => steps > 0);
+
+    // And a run whose game supplies no props: it starts and ticks all the
+    // same, with no chest, nothing to break and no vein standing.
+    SimWorld.resetEntityCursorForTesting();
+    const bareWorld = new DungeonInstance({
+      id: "run-propless", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
+      members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
+      props: content.props, lootPool: [], onEnd: () => {}, now: () => 3_000_000, clock: () => Date.now(), transport: "ws",
+    });
+    await bareWorld.start();
+    closers.push(() => bareWorld.close());
+    assert.equal(bareWorld.resourceNodes, 0, "no gathering, so no vein stands");
+    assert.deepEqual(bareWorld.chests.map((c) => c.opened), bareWorld.chests.map(() => false), "a chest nothing registered never opens");
+  });
+
   it("admits a member by token at the entrance, ends cleared with the boss room, and reports once", async () => {
     SimWorld.resetEntityCursorForTesting();
     const characters = new MemoryCharacterStore();
@@ -191,6 +257,7 @@ describe("dungeon instance", () => {
     const results: InstanceResult[] = [];
     let now = 1_000_000;
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-1", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       lootPool: [7, 8, 9], onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
@@ -246,6 +313,7 @@ describe("dungeon instance", () => {
       for (const a of [C.Transform.px, C.Transform.py, C.Transform.pz, C.Transform.qx, C.Transform.sx, C.AssetRef.variant]) a.fill(0);
     });
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-shell", entrance: "barrow-gate", layout: { ...readLayout(fixture()), shell: join(dir, "grim-abc.shell.pcgm") }, rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
@@ -299,6 +367,7 @@ describe("dungeon instance", () => {
     assert.equal(layout.props[3].radius, 0.5, "the bake's footprint, in metres");
     assert.ok(Math.abs(layout.props[1].yaw - -Math.PI / 2) < 1e-9, "a mounted kind faces out of its wall");
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-props", entrance: "barrow-gate", layout, rules: content.rules, props: content.props, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
       onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
@@ -346,6 +415,7 @@ describe("dungeon instance", () => {
       torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }],
     };
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-meshes", entrance: "barrow-gate", layout: { ...readLayout(baked), shell: join(dir, "grim-abc.shell.pcgm") }, rules: content.rules, props: content.props, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
@@ -373,6 +443,7 @@ describe("dungeon instance", () => {
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const list = async (baked: Record<string, unknown>, props: typeof content.props | undefined): Promise<string[]> => {
       const inst = new DungeonInstance({
+        world: defaultDungeonWorld,
         id: "run-noshell", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, ...(props ? { props } : {}), game,
         members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
         onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
@@ -403,6 +474,7 @@ describe("dungeon instance", () => {
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const run = async (looks: typeof content.looks): Promise<Ctl[]> => {
       const inst = new DungeonInstance({
+        world: defaultDungeonWorld,
         id: "run-look", entrance: "barrow-gate", layout: readLayout(fixture("grim-look", "grim")), rules: content.rules, game,
         ...(looks ? { looks } : {}),
         members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
@@ -485,6 +557,7 @@ describe("dungeon instance", () => {
       const art = parseDungeonContent(content.rules, entrances, rawProps, undefined, { version: 1, assets: { pillar: "SomePillarModel", torch: "SomeTorchModel" }, scales: { pillar: 2 } });
       const baked = { ...fixture("grim-art", "grim"), props: [{ kind: "pillar", x: 3, y: 5, rot: 0, scale: 1, room: 0 }], torches: [{ x: 23.5, y: 6, dx: -1, dy: 0 }] };
       const inst = new DungeonInstance({
+        world: defaultDungeonWorld,
         id: "run-art", entrance: "barrow-gate", layout: readLayout(baked), rules: content.rules, props: art.props, looks: content.looks!, artAssets: art.artAssets, artScales: art.artScales, game,
         members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
         onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
@@ -509,6 +582,7 @@ describe("dungeon instance", () => {
   it("runs as before when the dungeon was baked without a shell", async () => {
     SimWorld.resetEntityCursorForTesting();
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-bare", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
       onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
@@ -525,6 +599,7 @@ describe("dungeon instance", () => {
     const results: InstanceResult[] = [];
     const now = 2_000_000;
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-chest", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       lootPool: [7, 8, 9], chestPool: [11, 12], onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
@@ -566,6 +641,7 @@ describe("dungeon instance", () => {
       { kind: "gold-vein", tier: 2, x: 19 * CELL_M, z: 3 * CELL_M, room: 1 },
     ]);
     const on = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-veins-on", entrance: "barrow-gate", layout, rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       onEnd: () => {}, now: () => 1, clock: () => Date.now(), transport: "ws",
@@ -574,6 +650,7 @@ describe("dungeon instance", () => {
     closers.push(() => on.close());
     assert.equal(on.resourceNodes, 2, "each vein is a node");
     const off = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-veins-off", entrance: "barrow-gate", layout: readLayout(veined), rules: { ...content.rules, veinNodes: false }, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       onEnd: () => {}, now: () => 1, clock: () => Date.now(), transport: "ws",
@@ -589,6 +666,7 @@ describe("dungeon instance", () => {
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const results: InstanceResult[] = [];
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-chest-state", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       lootPool: [], chestPool: [11], onEnd: (r) => results.push(r), now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
@@ -622,6 +700,7 @@ describe("dungeon instance", () => {
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const results: InstanceResult[] = [];
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-trap", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       lootPool: [], onEnd: (r) => results.push(r), now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
@@ -651,6 +730,7 @@ describe("dungeon instance", () => {
     const characters = new MemoryCharacterStore();
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-trap-state", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       lootPool: [], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
@@ -683,6 +763,7 @@ describe("dungeon instance", () => {
       const results: InstanceResult[] = [];
       let now = 5_000_000;
       const inst = new DungeonInstance({
+        world: defaultDungeonWorld,
         id: `run-${want}`, entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
         members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
         onEnd: (r) => results.push(r), now: () => now, clock: () => Date.now(), transport: "ws",
@@ -701,6 +782,7 @@ describe("dungeon instance", () => {
     const rec = await characterStore.create("alice", "Alice", "{}", 1);
     const results: InstanceResult[] = [];
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-death-test", entrance: "barrow-gate", layout: readLayout(fixture()), rules: content.rules, game,
       members: [{ characterId: rec.id, username: "alice", name: "Alice", look: "{}" }],
       credentialStore: await makeCredentialStore(), characterStore,
@@ -749,6 +831,7 @@ describe("instance manager", () => {
     let gw!: Gateway;
     const rules = partySizes ? { ...dungeons.rules, partySize: partySizes } : dungeons.rules;
     const mgr = new InstanceManager({
+      world: defaultDungeonWorld,
       content: { ...dungeons, rules }, pool: new DungeonPool(dir), game: () => game,
       credentialStore, characterStore: characters, partyOf: (n) => gw.partyOf(n),
       lootPool: () => [42], grant: (c, d) => (granted.push([c, d]), true),

@@ -8,6 +8,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+import type { LessonOffer, LessonTerms } from "../vocabulary.js";
 
 const LessonsSchema = z.object({
   version: z.literal(1),
@@ -45,4 +46,24 @@ export function lessonPoints(l: Lessons, level: number, max: number, grand: bool
 /** What a lesson costs a pupil at `level`. */
 export function lessonCost(l: Lessons, level: number, max: number): number {
   return Math.round(l.cost * (1 + Math.min(1, Math.max(0, level / max)) * l.costSlope));
+}
+
+/**
+ * This game's teaching, as the host asks for it (`ES5i`).
+ *
+ * The curve and the cost above are what *we* decided a lesson is worth; the
+ * gateway asks a `LessonTerms` and takes whatever answers, so a game that
+ * prices lessons differently writes its own instead of editing ours.
+ */
+export function lessonTerms(l: Lessons): LessonTerms {
+  return {
+    skillOf: (mastery) => l.professions[mastery],
+    offer: (mastery, level, max, grand): LessonOffer | null => {
+      const skill = l.professions[mastery];
+      if (skill === undefined) return null;
+      const points = lessonPoints(l, level, max, grand);
+      if (points <= 0) return null;
+      return { skill, points, cost: lessonCost(l, level, max) };
+    },
+  };
 }

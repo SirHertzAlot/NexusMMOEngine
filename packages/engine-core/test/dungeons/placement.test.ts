@@ -19,6 +19,7 @@ import { loadDungeonContent } from "../../src/dungeons/content.js";
 import { readLayout, walkableAt } from "../../src/dungeons/pool.js";
 import { CHEST_KINDS, footprint, placeChestsAndTraps, SPACING_M } from "../../src/dungeons/placement.js";
 import { DungeonInstance } from "../../src/dungeons/instance.js";
+import { defaultDungeonWorld } from "../../src/dungeons/default-world.js";
 import { HeadlessClient } from "../net/headless-client.js";
 import { makeCredentialStore } from "../net/auth-harness.js";
 
@@ -54,6 +55,7 @@ describe("chest and trap placement", () => {
     const characters = new MemoryCharacterStore();
     const layout = bake(77, "grim");
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-chest-entity", entrance: "barrow-gate", layout, rules: content.rules, props: content.props, game: loadGameRules(),
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       chestPool: [11], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
@@ -79,6 +81,7 @@ describe("chest and trap placement", () => {
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const layout = bake(77, "grim");
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-chest-open", entrance: "barrow-gate", layout, rules: content.rules, props: content.props, game: loadGameRules(),
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       chestPool: [11], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
@@ -115,6 +118,7 @@ describe("chest and trap placement", () => {
     const characters = new MemoryCharacterStore();
     const rec = await characters.create("alice", "Alice", "{}", 8);
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-trap-model", entrance: "barrow-gate", layout: bake(77, "grim"), rules: content.rules, props: content.props, game: loadGameRules(),
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       chestPool: [11], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",
@@ -152,6 +156,7 @@ describe("chest and trap placement", () => {
     const layout = bake(77, "grim");
     assert.ok(layout.props.some((p) => p.kind === "bossCrystal"), "the bake dresses a boss crystal");
     const inst = new DungeonInstance({
+      world: defaultDungeonWorld,
       id: "run-crystal", entrance: "barrow-gate", layout, rules: content.rules, props: content.props, game: loadGameRules(),
       members: [], credentialStore: await makeCredentialStore(), characterStore: characters,
       chestPool: [11], onEnd: () => {}, now: () => 2_000_000, clock: () => Date.now(), transport: "ws",

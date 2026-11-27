@@ -462,7 +462,7 @@ export type {
   WalletPort,
 } from "./net/ports.js";
 export { openEngineServices, SERVICE_TABLE } from "./services.js";
-export type { CombatService, EngineServiceRegistry, EngineServices, TelegraphService } from "./services.js";
+export type { CombatService, EngineServiceRegistry, EngineServices, GatheringRecords, GatheringService, TelegraphService } from "./services.js";
 export { DEFAULT_RULES_DIR, loadGameRules, openGameRules } from "./rules/boot.js";
 export type { GameRules, GameRulesSource } from "./rules/boot.js";
 export type {
@@ -474,12 +474,15 @@ export type {
   BodyView,
   ChestCheck,
   ChestResult,
+  ChestSpec,
   CombatSkills,
   DuelEndReason,
   DuelEvent,
   GatherResult,
   HitEvent,
   LifeEvent,
+  LessonOffer,
+  LessonTerms,
   Listing,
   ListingView,
   MagicCreatureInfo,
@@ -489,6 +492,7 @@ export type {
   RepairResult,
   ResidentInfo,
   ResidentTier,
+  ResourceNodeSpec,
   SpellEvent,
   StatusChange,
   TelegraphEvent,
@@ -671,3 +675,10 @@ export {
   type DungeonCombatContext,
   type DungeonCombatFactory,
 } from "./dungeons/combat-slot.js";
+export {
+  NO_DUNGEON_WORLD,
+  type DungeonVein,
+  type DungeonWorld,
+  type DungeonWorldContext,
+  type DungeonWorldFactory,
+} from "./dungeons/world-slot.js";

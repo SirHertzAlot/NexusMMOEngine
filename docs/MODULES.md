@@ -57,11 +57,23 @@ A system is declared `{ "name": "...", "after": [...], "before": [...], "optiona
 
 - `after` and `before` name other systems by id, and may be a string or a list.
 - `optional: true` lets the entry leave the system out (bots when there are none, the crowd when no navigation backend provides one). The tick order drops it like any unbuilt system. Without `optional`, a declared system the entry does not return stops the boot.
-- The real orders are in the manifests. `core` fixes its own (`reloader`, `streamer`, `gathering`, `chests`, `breaks`); `combat` runs `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death`; `physics` pins the character bridge between `integrate` and `prop-collision`:
+- The real orders are in the manifests. `core` fixes its own (`reloader`, `streamer`, `chests`, `breaks`, `collapse`), and `gathering` ticks back into the middle of that list from its own module with `{ "after": "streamer", "before": "chests" }` — which is how a module slots a system into an order it does not own; `combat` runs `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death`; `physics` pins the character bridge between `integrate` and `prop-collision`:
 
 ```json
 { "name": "character-bridge", "after": "integrate", "before": "prop-collision" }
 ```
+
+**Where a module sits in the set matters.** The resolver takes the lowest
+*declaration* index that is ready, and indices run `core` first and then the
+enabled set in order, so two systems that no edge separates run in set order.
+A system whose module is listed late therefore ticks late, however early its
+`after` anchor is — and a `before` edge can pull the system it points at
+*later*, because that one now has to wait. `gathering` is listed immediately
+after `core` for exactly this reason: moving it out of `core` without that
+dropped it, and `chests`, `breaks` and `collapse` with it, from third in the
+tick to the far end. If a module's systems have to run at a particular point,
+give them edges **and** put the module where those edges want it, then check
+the boot's `[modules] … | tick order: …` line.
 
 ## Writing a server module
 
@@ -195,6 +207,16 @@ each of the nine builds without the rest, so dropping one costs you that
 feature and nothing else. Its `README` says what each system does and what the
 three ways to change it cost.
 
+A dungeon run is its own host, so it cannot ask for a system by port: it was
+the one building them. It declares two slots instead, and a module fills
+them. `dungeons/combat-slot.ts` is its fighting and `dungeons/world-slot.ts`
+is its chests, breakables and veins; each takes everything the run can say
+about itself and gives back the systems to tick plus the few things the run
+has to ask afterwards. `modules/dungeons/server.js` passes the engine's own
+two factories in, and a game passes its own in their place. Pass neither and
+a run still boots and ticks: it just has no fighting and no props, which is
+the rule the ports follow.
+
 **3. Try it.** Add `"sample-heartbeat"` to `content/modules.json` (or tick it in the editor's Modules workspace and press **Apply modules**). The boot line lists the system between `crowd` and `intent`, and the log shows the heartbeat.
 
 Game rules belong in data, not in a module's code: put tunables in `content/rules/` and read them through the rules package ([ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data)).
@@ -318,12 +340,13 @@ Generated from `modules/*/module.json`; the 34 below are what `content/modules.j
 | `characters` | editor | `core` | Editor module: the Characters workspace's Records panel |
 | `chat` | — | none | Region chat (S1): shape validation, per-channel range and rate limits, text-filter hook |
 | `combat` | server: `stamina`, `body`, `magic`, `abilities`, `status`, `telegraphs`, `duels`, `combat`, `death` | none | Combat domain (M2/M5): stamina, body parts, magic, abilities, status effects, telegraphs, duels, combat resolution, an… |
-| `core` | server: `reloader`, `streamer`, `gathering`, `chests`, `breaks`; editor | none | The engine's own contribution: the server's systems in their fixed tick order |
+| `core` | server: `reloader`, `streamer`, `chests`, `breaks`, `collapse`; editor | none | The engine's own contribution: the server's systems in their fixed tick order |
 | `creatures` | server: `creatures`, `bots`, `crowd`, `needs` | `physics` | Creatures domain (AI1): creature AI, bots, crowd steering, and needs |
 | `database` | editor | `core` | Editor module: Database workspace: data grid, query console, audit log |
 | `debug` | editor | `core` | Editor module: Debug: play-mode viewport |
 | `dungeons` | editor; gateway extensions | `character` | Dungeon instances (D1): pool, content, InstanceManager as a gateway extension |
 | `economy` | server: `wallet`, `trade`, `vendor`, `auction` | none | Gold wallets, player trades, NPC vendors, and the auction house (EC1) |
+| `gathering` | server: `gathering` | none | Resource nodes and the materials pouch (EG1): tree stands, ore veins, fishing spots, and what a player carries from them |
 | `ecs` | editor | `core` | Editor module: ECS inspector viewport for the Scene workspace |
 | `flow` | editor | `core` | Editor module: the Flow workspace's flow graph editor |
 | `gameplay` | editor | `core` | Editor module: Gameplay data tooling: data grids, content browser, tables, rules |
