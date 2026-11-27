@@ -88,6 +88,13 @@ content/dungeons/props.local.json
 graphify-out/
 packages/graphify-out/
 
+# Databases a server or a test leaves at the repo root when it is started
+# from here rather than from packages/engine-core. Root-anchored, so the
+# tracked packages/engine-core/economy.db bench fixture is unaffected.
+/*.db
+/*.db-shm
+/*.db-wal
+
 # Engine-core runtime data written by a running server (world, saves, logs,
 # bake output). Generated locally; never commit. Tracked files are unaffected.
 packages/engine-core/*.db-shm
