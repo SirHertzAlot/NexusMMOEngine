@@ -32,7 +32,7 @@
  */
 
 import { openServiceRegistry, type ServiceDecl, type ServiceRegistry } from "@mmo-engine/sdk";
-import type { BodyPort, MagicPort } from "./net/ports.js";
+import type { BodyPort, MagicPort, ResidentPort, VendorPort, WalletPort } from "./net/ports.js";
 import type { SimWorld } from "./world.js";
 import type { TelegraphSpec } from "./vocabulary.js";
 import type { PhysicsSystem } from "./systems.js";
@@ -44,12 +44,9 @@ import type { CharacterSystem } from "./index.js";
 import type { MasterySystem } from "./stats/mastery-system.js";
 import type { ItemService } from "./items/index.js";
 import type { LootDropper } from "./items/loot-dropper.js";
-import type { WalletSystem } from "./economy/wallet.js";
-import type { VendorSystem } from "./economy/vendor.js";
 import type { InstanceManager } from "./dungeons/manager.js";
 import type { QuestService } from "./quests/quest-service.js";
 import type { CivicService } from "./civic/index.js";
-import type { ResidentSystem } from "./residents/index.js";
 
 /**
  * What the host itself calls on a game's combat and telegraphs (`ES5f`).
@@ -77,8 +74,8 @@ export interface TelegraphService {
 /** Every service the server reads, and what it is. */
 export interface EngineServices {
   items: ItemService;
-  wallet: WalletSystem;
-  vendor: VendorSystem;
+  wallet: WalletPort;
+  vendor: VendorPort;
   body: BodyPort;
   magic: MagicPort;
   telegraphs: TelegraphService;
@@ -90,7 +87,7 @@ export interface EngineServices {
   navigation: NavigationSystem;
   character: CharacterSystem;
   mastery: MasterySystem;
-  residents: ResidentSystem;
+  residents: ResidentPort;
   dropper: LootDropper;
   dungeons: InstanceManager;
   quests: QuestService;

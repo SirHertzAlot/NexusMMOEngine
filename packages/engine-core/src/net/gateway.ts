@@ -185,6 +185,7 @@ import {
   encodeSnapshotFromSim,
 } from "../snapshot.js";
 import type { ChunkDataSource } from "../procgen/chunk-source.js";
+import type { LessonTerms } from "../vocabulary.js";
 import { STEP_MS, TickLoop } from "../tick-loop.js";
 import { PartyBook, PartyOpSchema, type PartyResult, type PartyStore } from "../party.js";
 import { GuildBook, GuildOpSchema, type GuildResult, type GuildStore } from "../guild.js";
@@ -196,7 +197,6 @@ import { CHARACTER_CAPSULE, IntentSystem, IntegrateSystem, type SimSystem } from
 import { clearOfStatics } from "../prop-collision.js";
 import type { ScaleResolver } from "../scale.js";
 import { runCivicAdminCommand, type CivicService } from "../civic/index.js";
-import { lessonCost, lessonPoints, type Lessons } from "../residents/lessons.js";
 import { StatsSystem } from "../stats/stats-system.js";
 import { SimWorld } from "../world.js";
 import { decodeIntentMessage, sanitizeIntent } from "./intent.js";
@@ -370,8 +370,8 @@ export interface GatewayOptions {
   damageStages?: Record<string, number[]> | (() => Record<string, number[]> | undefined);
   /** Needs rules: how long eating and drinking take (a cast; 0 at once). */
   needs?: { eatSeconds: number };
-  /** What a master townsperson's lesson gives and costs (content/lessons.json); absent: no lessons. */
-  lessons?: Lessons | null;
+  /** What a master townsperson's lesson gives and costs; absent: no lessons. */
+  lessons?: LessonTerms | null;
   /** The game day at a tick (0 is a Sunday): a pupil takes one lesson a day. Absent: a real day. */
   gameDay?: (tick: number) => number;
   /** Session token TTL. Default 24 h. */
@@ -4510,8 +4510,9 @@ export class Gateway {
   private teach(s: ClientSession, avatar: number, info: { npc: string; mastery?: string; grandMaster?: boolean }): void {
     const l = this.lessons;
     if (!l || !info.mastery || !this.mastery) return;
-    const skill = l.professions[info.mastery];
-    const i = skill === undefined ? -1 : this.mastery.index.of(skill);
+    const skill = l.skillOf(info.mastery);
+    if (skill === undefined) return;
+    const i = this.mastery.index.of(skill);
     if (i < 0) return;
     const who = s.character?.id ?? -1;
     const day = this.gameDay ? this.gameDay(this.tick) : Math.floor(Date.now() / 86_400_000);
@@ -4520,9 +4521,9 @@ export class Gateway {
     const sheet = this.mastery.sheetOf(avatar);
     const level = sheet.get(skill);
     const max = this.mastery.index.rules.max;
-    const points = lessonPoints(l, level, max, info.grandMaster === true);
-    if (points <= 0) return this.sendSystem(s, `You have nothing left to learn about ${skill} from them.`);
-    const cost = lessonCost(l, level, max);
+    const offer = l.offer(info.mastery, level, max, info.grandMaster === true);
+    if (!offer) return this.sendSystem(s, `You have nothing left to learn about ${skill} from them.`);
+    const { points, cost } = offer;
     const wallet = this.ports.first("wallet");
     if (cost > 0 && (!wallet || !wallet.spend(this.holderOf(s), cost, this.tick))) return this.sendSystem(s, `A lesson in ${skill} costs ${cost} gold.`);
     sheet.grant(i, points, Date.now());
@@ -6633,7 +6634,7 @@ export class Gateway {
 
   /** How long eating and drinking take, seconds (rules needs.json); 0 at once. */
   private readonly eatSeconds: number;
-  private readonly lessons: Lessons | null;
+  private readonly lessons: LessonTerms | null;
   private readonly gameDay: ((tick: number) => number) | undefined;
   /** The game day a pupil last took a lesson from a master, by character and npc. */
   private readonly lessonDay = new Map<string, number>();

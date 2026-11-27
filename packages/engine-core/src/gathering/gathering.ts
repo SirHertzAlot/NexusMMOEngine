@@ -24,6 +24,10 @@ import type { SystemAccess } from "../system-access.js";
 import type { SimWorld } from "../world.js";
 import { PORTS } from "@mmo-engine/sdk";
 import type { GatherResult } from "../vocabulary.js";
+import type { ResourceNodeSpec } from "../vocabulary.js";
+
+// Shared vocabulary now (ES5i); re-exported so a deep importer is unaffected.
+export type { ResourceNodeSpec } from "../vocabulary.js";
 
 export interface GatheringStore {
   /** A node's saved stock and regrow time (unix ms; null: none due), or undefined when never saved. */
@@ -35,17 +39,6 @@ export interface GatheringStore {
 }
 
 /** What a scene's ResourceNode component says about a node. */
-export interface ResourceNodeSpec {
-  kind: string;
-  material: string;
-  tier: number;
-  skill: string;
-  stock: number;
-  regrowHours: number;
-  /** Half the node's footprint, metres: the gather range is measured from its edge. */
-  halfX: number;
-  halfZ: number;
-}
 
 export interface GatheringOptions {
   store?: GatheringStore;

@@ -2,7 +2,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { lessonCost, lessonPoints, type Lessons } from "../../src/residents/lessons.js";
+import { lessonCost, lessonPoints, lessonTerms, type Lessons } from "../../src/residents/lessons.js";
 
 const L: Lessons = { version: 1, peak: 6, floor: 0.05, startFloor: 0.35, grandFactor: 1.5, cost: 10, costSlope: 4, professions: { smithing: "mining" } };
 
@@ -23,3 +23,38 @@ describe("lessons", () => {
     assert.equal(lessonCost(L, 100, 100), 50);
   });
 });
+
+describe("ES5i: what the host asks of a game's teaching", () => {
+  // The gateway used to read `professions`, `lessonPoints` and `lessonCost`
+  // itself, which made the `learn` message depend on this file. It asks a
+  // `LessonTerms` now and takes whatever answers, so these are the guards that
+  // our own answer still says what it said.
+  const terms = lessonTerms(L);
+
+  it("offers the skill, the points and the cost this game's curve gives", () => {
+    const offer = terms.offer("smithing", 30, 100, false);
+    assert.ok(offer, "a smith at 30 has something to teach");
+    assert.equal(offer.skill, "mining");
+    assert.equal(offer.points, lessonPoints(L, 30, 100, false));
+    assert.equal(offer.cost, lessonCost(L, 30, 100));
+    assert.equal(terms.skillOf("smithing"), "mining");
+  });
+
+  it("offers nothing where the gateway used to send the two refusals", () => {
+    // Both of these were `points <= 0` and an unknown profession in the
+    // gateway; they are the game's answers now, and a null offer is what the
+    // host turns into "nothing left to learn".
+    assert.equal(terms.offer("smithing", 100, 100, false), null, "nothing left at the top");
+    assert.equal(terms.offer("cooking", 30, 100, false), null, "a profession that teaches nothing");
+    assert.equal(terms.skillOf("cooking"), undefined);
+  });
+
+  it("a grand master's offer is worth more", () => {
+    const plain = terms.offer("smithing", 30, 100, false);
+    const grand = terms.offer("smithing", 30, 100, true);
+    assert.ok(plain && grand);
+    assert.ok(grand.points > plain.points, "a grand master teaches more");
+    assert.equal(grand.cost, plain.cost, "but charges the same");
+  });
+});
+
