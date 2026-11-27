@@ -4554,14 +4554,14 @@
       "confidence": "declared",
       "from": "system:gathering",
       "kind": "reads",
-      "source": "packages/engine-core/src/gathering/gathering.ts:96",
+      "source": "packages/engine-core/src/gathering/gathering.ts:89",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:gathering",
       "kind": "reads",
-      "source": "packages/engine-core/src/gathering/gathering.ts:96",
+      "source": "packages/engine-core/src/gathering/gathering.ts:89",
       "to": "field:Transform.pz"
     },
     {
@@ -4750,7 +4750,7 @@
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "reads",
-      "source": "packages/engine-core/src/net/gateway.ts:6677",
+      "source": "packages/engine-core/src/net/gateway.ts:6678",
       "to": "field:Action.move"
     },
     {
@@ -4869,84 +4869,84 @@
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7077",
+      "source": "packages/engine-core/src/net/gateway.ts:7078",
       "to": "component:Action"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7081",
+      "source": "packages/engine-core/src/net/gateway.ts:7082",
       "to": "component:CharacterRef"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7053",
+      "source": "packages/engine-core/src/net/gateway.ts:7054",
       "to": "component:Health"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7056",
+      "source": "packages/engine-core/src/net/gateway.ts:7057",
       "to": "component:Locomotion"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7055",
+      "source": "packages/engine-core/src/net/gateway.ts:7056",
       "to": "component:Needs"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7052",
+      "source": "packages/engine-core/src/net/gateway.ts:7053",
       "to": "component:PlayerIntent"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7054",
+      "source": "packages/engine-core/src/net/gateway.ts:7055",
       "to": "component:Stamina"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7050",
+      "source": "packages/engine-core/src/net/gateway.ts:7051",
       "to": "component:Transform"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7051",
+      "source": "packages/engine-core/src/net/gateway.ts:7052",
       "to": "component:Velocity"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7078",
+      "source": "packages/engine-core/src/net/gateway.ts:7079",
       "to": "field:Action.move"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7082",
+      "source": "packages/engine-core/src/net/gateway.ts:7083",
       "to": "field:CharacterRef.idHi"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7083",
+      "source": "packages/engine-core/src/net/gateway.ts:7084",
       "to": "field:CharacterRef.idLo"
     },
     {
@@ -4960,28 +4960,28 @@
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7070",
+      "source": "packages/engine-core/src/net/gateway.ts:7071",
       "to": "field:Health.max"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7058",
+      "source": "packages/engine-core/src/net/gateway.ts:7059",
       "to": "field:Locomotion.abilities"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7059",
+      "source": "packages/engine-core/src/net/gateway.ts:7060",
       "to": "field:Locomotion.breath"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7057",
+      "source": "packages/engine-core/src/net/gateway.ts:7058",
       "to": "field:Locomotion.mode"
     },
     {
@@ -4995,28 +4995,28 @@
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:6400",
+      "source": "packages/engine-core/src/net/gateway.ts:6401",
       "to": "field:Needs.hunger"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7074",
+      "source": "packages/engine-core/src/net/gateway.ts:7075",
       "to": "field:Needs.hungerMax"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:6401",
+      "source": "packages/engine-core/src/net/gateway.ts:6402",
       "to": "field:Needs.thirst"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7075",
+      "source": "packages/engine-core/src/net/gateway.ts:7076",
       "to": "field:Needs.thirstMax"
     },
     {
@@ -5030,7 +5030,7 @@
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7072",
+      "source": "packages/engine-core/src/net/gateway.ts:7073",
       "to": "field:Stamina.max"
     },
     {
@@ -5058,49 +5058,49 @@
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7067",
+      "source": "packages/engine-core/src/net/gateway.ts:7068",
       "to": "field:Transform.qw"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7067",
+      "source": "packages/engine-core/src/net/gateway.ts:7068",
       "to": "field:Transform.qx"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7067",
+      "source": "packages/engine-core/src/net/gateway.ts:7068",
       "to": "field:Transform.qy"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7067",
+      "source": "packages/engine-core/src/net/gateway.ts:7068",
       "to": "field:Transform.qz"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7068",
+      "source": "packages/engine-core/src/net/gateway.ts:7069",
       "to": "field:Transform.sx"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7068",
+      "source": "packages/engine-core/src/net/gateway.ts:7069",
       "to": "field:Transform.sy"
     },
     {
       "confidence": "extracted",
       "from": "system:infra-net-gateway",
       "kind": "writes",
-      "source": "packages/engine-core/src/net/gateway.ts:7068",
+      "source": "packages/engine-core/src/net/gateway.ts:7069",
       "to": "field:Transform.sz"
     },
     {
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "edb50c9e21acd5622a73ca848f8d8e6a739804ab",
+    "builtFromCommit": "0efe80f35b3287fb94be33792eac9d7c69df8e30",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7636,7 +7636,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "a02bfb9408a9a224a38794d78bdc8c8f562dd4b6a7552242bff7125d282b7f56",
+    "graphHash": "5131d3577f3ab83a33e405d9cf0c5096706509afa6462c69e3f93beec7ce8c6a",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -7762,12 +7762,12 @@
       "packages/engine-core/src/friend-store.ts": "a391d04b3b3b14f46840726f247186f30647cbc955bd0ebcdfb3193799703033",
       "packages/engine-core/src/friends.ts": "cb6f12d9b550192d78d86285be8dbbfe4f4c4bb49d20c97323fb6c97e389271d",
       "packages/engine-core/src/gathering/gathering-store.ts": "3e101a08d09c854e2d6eba4dbce50b45677ba759d61b68a3d42eb4e8f0495f45",
-      "packages/engine-core/src/gathering/gathering.ts": "f5e64eaf9bf27334098cf0d4af4a1095d412a28f6d3fe08307f6a8a3d1933be6",
+      "packages/engine-core/src/gathering/gathering.ts": "b2348c29030274743e4843f25642e9b5d49646c072ddcbb84dde3a786630a37d",
       "packages/engine-core/src/gathering/index.ts": "1a89fa7cf5ef0038a65e28d7c3b0ec5782b31245d0604a42fadcc542393520b6",
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "6509cfcab7f63be0d314d40d80b6fa94f49e5121ede0bb51498f35b162499481",
+      "packages/engine-core/src/index.ts": "78df4c9c9f731b9df4e1c964a2ea8c5a56455d69f21a41e5ebdfc16b2b34555d",
       "packages/engine-core/src/interact/breaks.ts": "efc944442b87f34faa633a1a1aafab418168c737788d25d50e670cb0900c15fe",
       "packages/engine-core/src/interact/chests.ts": "809486b1bf65d758a5e42a7fc3827852a7836a19d73b460c8cb5e5f6a95ba908",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
@@ -7780,7 +7780,7 @@
       "packages/engine-core/src/items/item-defs.ts": "3ee3af98d199c08ee636b6330ba4be9dfd1bdf5e98821bd23d8172ef0cf7ab8a",
       "packages/engine-core/src/items/item-service.ts": "68d4fdcd87ee6afd1e5b18ad8af23c1cb20d5d69dfaa7b49949420ca63b064a7",
       "packages/engine-core/src/items/item-store.ts": "d820a47b269d5843080cecea59562f728642dd0dd1a96ba4631dccd9a147aaca",
-      "packages/engine-core/src/items/loot-dropper.ts": "f17979cd3e97a9f34c489b3afb0be37b24be4ea238f690b67335f3c7eac76318",
+      "packages/engine-core/src/items/loot-dropper.ts": "d7620ee2f2139e3faf2a842e5e135d38942c7854d66ecdbc58a9c2004bd5322d",
       "packages/engine-core/src/items/loot-tables.ts": "e310fb9fcb328fdb396890eaf123e67b5f766705be50e111fafb5941bd6c0e92",
       "packages/engine-core/src/items/rebake.ts": "a9faf621efa22886c4b199a04ca1a48795c95f3ed4e8dd1bdde0701a0da0ab45",
       "packages/engine-core/src/items/trait-modifiers.ts": "eb2f7343768b4001fc0bea91dff8c58e2399797a0ddde6f3747089eda3cfe513",
@@ -7800,12 +7800,12 @@
       "packages/engine-core/src/net/channel-transport.ts": "ba0553f86a3ef9b4d32c80af1838fd8c2758804a0088015a427f5291e7e3f453",
       "packages/engine-core/src/net/debug-source.ts": "e7a553eb63df5b6012e4cca6cc2762603a9dfb670210496f7d0ef88d290de662",
       "packages/engine-core/src/net/extension.ts": "32295c510149d2e83b54911f39c1c7481838e37ad3cbdb7ea4fc6f17d2c52e0a",
-      "packages/engine-core/src/net/gateway.ts": "a33292151730b2e06ec14d234b4d4b203417af5cf1521757bf3a920b57283ca2",
+      "packages/engine-core/src/net/gateway.ts": "811ee7da3201035c87b423ca09e86f815aa6310c744be802e5fbd498d0692f31",
       "packages/engine-core/src/net/health.ts": "2390f128d08c25d35ed7269a1de0d8060432a9594b790b3937d966fe560ffa81",
       "packages/engine-core/src/net/intent.ts": "33c0cbcef59870c980c864a95744492cee5889a552e9030ec58a8929c292df76",
       "packages/engine-core/src/net/interest.ts": "0554d26dd7bb2469133c05501f2520861e6e35a091767b8dfc5017695d02e3cd",
       "packages/engine-core/src/net/native-fanout.ts": "a6ee7243ee1abed8b13a44a534ac705bd71eebb7ef85e6018df2c7225f28713e",
-      "packages/engine-core/src/net/ports.ts": "473970d7447f905a3071e5fbb7f998e03b93e2ae229eaa7c55d93ac20f043940",
+      "packages/engine-core/src/net/ports.ts": "00c5b81f7d8efa4f94287d1f3f4df8b23f3a4383681caaf7ab8b5c1d523352a4",
       "packages/engine-core/src/net/rpc-http.ts": "6a1fb2ffb497d94edb331cb2c079e5770a16bdf793e716bb03a185231cbd55d0",
       "packages/engine-core/src/net/sector.ts": "9f3f6551511ac993f7a54dcba97bc4edc310f8ab79c89d0e84513b972c92dcc4",
       "packages/engine-core/src/net/transport-bench.ts": "c7f8d7fdfaae1686528b234f9b8f021612e268b8880242a790338673638cedf1",
@@ -7861,7 +7861,7 @@
       "packages/engine-core/src/quests/quest-store.ts": "c9f76e68003d77fd90e85359368579b20793534c592602285b73d20f14fe298c",
       "packages/engine-core/src/quests/worldbuilding-generics.ts": "57ded3b013541b1e165732a345171d0ec486668a6aab564c8398298241da9d01",
       "packages/engine-core/src/residents/index.ts": "c3fec1a0b0d20e10e875edd99b1595a788fee0f6b0e9bf91c9c0a9387a583d0c",
-      "packages/engine-core/src/residents/lessons.ts": "ae3f55e33d77d695e3b97214c9f4972e7e073f4a6a2f080540c92d5f3a0882e5",
+      "packages/engine-core/src/residents/lessons.ts": "33aa49b4621de80a976e4323bea9ff5fa791f382a95f4e67f08b1e541b3ad30d",
       "packages/engine-core/src/residents/resident-system.ts": "f5c230f94d3c90fb56d43dcdf9d0a2894425a422b4b464607204a43a31530d37",
       "packages/engine-core/src/rules/boot.ts": "d06e37ec83d8c249952eca0b88519a5769d347bb78da44532d68b4132ef77319",
       "packages/engine-core/src/rules/hook-overrides.ts": "36571830567d11f5106f265f872514d60984916ecd8968d95e06fa959c431eb1",
@@ -7873,10 +7873,10 @@
       "packages/engine-core/src/sab-probe-worker.ts": "9cc4eb16d205be55fa6e6f6d38603921888030607d4925d08b3e017864e2aa8a",
       "packages/engine-core/src/sab-store.ts": "4dc6d4fbf0150dac83d9acc558f589d23f36ca91f410b66344c798794b7d57d4",
       "packages/engine-core/src/scale.ts": "b3d72d676284ff3d0eaeeba41f92f3125575c40aef64bd3f932880ce02ce8629",
-      "packages/engine-core/src/scene-spawn.ts": "0c9002f0aa75dc79c28ed8a1f0e9d6b468858a4acef96e18a4bb8b335cfd41a1",
+      "packages/engine-core/src/scene-spawn.ts": "b4e16eb0597a9dfa861169ecf21587e926bdd1605d47aead65d14f6a2d47e1b2",
       "packages/engine-core/src/server-settings.ts": "e7693685abc136300b30d06fbfbf97e34f0ef740bf8c20d7e3188824d7f4e0d6",
-      "packages/engine-core/src/server.ts": "1672067d57cb8ee166d8a8880d6065ce5e73ba9246a65330e576e93f4bfc4339",
-      "packages/engine-core/src/services.ts": "bb7db43ff860808b91db238790bac0e3642c0be539dd9a40717d09bdcdf52d00",
+      "packages/engine-core/src/server.ts": "b0b8ce2fec45462a714547aeb493f1b24b0accdd6cfd91a432ea6ee730bd7978",
+      "packages/engine-core/src/services.ts": "230c08a35adf497ba8427d9ac33633dea8cf0bf6897aadabfecd126810828aa2",
       "packages/engine-core/src/session.ts": "9fee4bad296a9f3a4d98fee3fd1dd8ba75814b9802c0a0d420aa8621c56f5de5",
       "packages/engine-core/src/sim-worker.ts": "a6dd85d279f8a5370afe4cecd0fc314271d469049c90e51169630980d175aba7",
       "packages/engine-core/src/sim.ts": "95958dbfdf1799f340e26a457d1e7001fae8bfb5d53a7a3a3dca2d2ad42bb0e1",
@@ -7935,10 +7935,10 @@
       "packages/engine-core/src/terrain/world-spec.ts": "476ec098282f28ead73ac0e21dbcc47d89c8433c32f72ee0a57e91adbc945235",
       "packages/engine-core/src/tick-loop.ts": "a1fc7d55d2cdf3ff1a146611f6a0a7669a4ae256efad881ef79a28f7cac5cec1",
       "packages/engine-core/src/tick-timings.ts": "100c945d9e7c1ac32e48e881e5d5430eaf5bd43250858c638ebb0f7c14dcf267",
-      "packages/engine-core/src/vocabulary.ts": "9e20d4dfc0e95d5d5dcf2233d08d16caae47d484effe28e0f6719b961dcd508e",
+      "packages/engine-core/src/vocabulary.ts": "f2860719db1386c6becd5d698118b110c35409ae5230f437a69f7c1e2756fee8",
       "packages/engine-core/src/world-snapshot.ts": "13ddac1eaf6dd096fb836fbe0c49def38529bf8ff90dbea5a59e7ebe2324a3d2",
       "packages/engine-core/src/world.ts": "cef8742e397da21cb04c67f142325a2a27b96a722afab38263c8ba3e6db46484",
-      "packages/engine-core/src/world/atomic-ops.ts": "e128530811fe152aaea4f19f86cce81bd559d5b5ca8c8a91fafa41a4a6e3ed72",
+      "packages/engine-core/src/world/atomic-ops.ts": "4712121c446e54b1af8a260e4a54e846b9d736a0a114f238340b55347aaa6b47",
       "packages/engine-core/src/world/character-sync.ts": "3a90aeb3e2190990b215310eedf53efa9e79506787cd7cd80e4c5e584dc060fe",
       "packages/engine-core/src/world/civic-sync.ts": "f4e8388506204906acc287bc8f1f454df1db2b0543b856f4e68b2fe3679a16e9",
       "packages/engine-core/src/world/client.ts": "950cdbffbf7e78dc0921192b5fa95c703014be66e029584464954ad75a79bf32",
@@ -12107,7 +12107,7 @@
       "name": "gathering",
       "role": "simulation",
       "simName": "gathering",
-      "source": "packages/engine-core/src/gathering/gathering.ts:92",
+      "source": "packages/engine-core/src/gathering/gathering.ts:85",
       "tickIndex": 2
     },
     {
