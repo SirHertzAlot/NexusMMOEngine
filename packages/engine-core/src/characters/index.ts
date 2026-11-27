@@ -37,4 +37,5 @@ export {
   MAX_CREATE_PAYLOAD_BYTES,
   checkNewLook,
   loadCharacterCatalog,
+  loadCreationRules,
 } from "./rules.js";

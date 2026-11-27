@@ -8,11 +8,12 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildCatalog } from "@mmo-engine/art/character";
+import { buildCatalog, DEFAULT_CREATION_RULES } from "@mmo-engine/art/character";
 import {
   CHARACTER_NAME_RE,
   CharacterRefusedError,
   checkNewLook,
+  loadCreationRules,
   MemoryCharacterStore,
   SqliteCharacterStore,
   type CharacterStore,
@@ -123,7 +124,9 @@ describe("new character rules", () => {
     };
     assert.match(problems({ gender: "male", parts: { torso: "Chr_Torso_Male_07" }, colours: {} }).join(), /starter armour/);
     assert.match(problems({ gender: "male", parts: { head: "Chr_Head_Female_02" }, colours: {} }).join(), /female characters/);
-    assert.match(problems({ gender: "male", parts: { helmet: "Chr_HelmetAttachment_01" }, colours: {} }).join(), /attachments/);
+    // Armour attachments are refused because the creation rules do not
+    // offer those slots, so the wording is the rules' (EB7).
+    assert.match(problems({ gender: "male", parts: { helmet: "Chr_HelmetAttachment_01" }, colours: {} }).join(), /not chosen at creation/);
     assert.match(problems({ gender: "male", parts: {}, colours: { primary: "#ffffff" } }).join(), /not chosen at creation/);
     assert.match(problems({ gender: "male", parts: { head: "Chr_Wings_01" }, colours: {} }).join(), /not a part/);
     assert.deepEqual(problems("nonsense"), ["look: not a look"]);
@@ -134,5 +137,63 @@ describe("new character rules", () => {
     assert.ok("json" in checkNewLook(catalog, { gender: "male", parts: { head: "Chr_Head_Male_01" }, colours: {} }));
     const r = checkNewLook(catalog, { gender: "male", parts: { head: "Chr_Head_Male_09" }, colours: {} });
     assert.ok("problems" in r && /not a part/.test(r.problems.join()));
+  });
+});
+
+/**
+ * The creation rules file (roadmap EB7): the server reads what a player
+ * may choose from `content/character-creation.json`, and behaves exactly
+ * as it used to when there is no file.
+ */
+describe("character creation rules", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mmo-creation-"));
+  const write = (name: string, body: string): string => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, body, "utf8");
+    return file;
+  };
+  const catalog = buildCatalog(["Chr_Head_Male_01", "Chr_Hair_05", "Chr_Ear_Ear_01", "Chr_HelmetAttachment_01"]).catalog;
+  const look = (parts: Record<string, string>): unknown => ({ gender: "male", parts, colours: {} });
+
+  it("is the engine's defaults when the game has no file", () => {
+    const loaded = loadCreationRules(path.join(dir, "nothing-here.json"));
+    assert.equal(loaded.from, null);
+    assert.deepEqual(loaded.problems, []);
+    assert.equal(loaded.rules, DEFAULT_CREATION_RULES);
+  });
+
+  it("reads a game's file and refuses what it stopped offering", () => {
+    const file = write("no-ears.json", JSON.stringify({ parts: [{ slot: "head", optional: false }, { slot: "hair" }] }));
+    const loaded = loadCreationRules(file);
+    assert.deepEqual(loaded.problems, []);
+    assert.equal(loaded.from, file);
+    const refused = checkNewLook(catalog, look({ head: "Chr_Head_Male_01", ears: "Chr_Ear_Ear_01" }), loaded.rules);
+    assert.ok("problems" in refused);
+    assert.deepEqual(refused.problems, ["parts.ears: is not chosen at creation"]);
+    assert.ok("json" in checkNewLook(catalog, look({ head: "Chr_Head_Male_01", hair: "Chr_Hair_05" }), loaded.rules));
+  });
+
+  it("accepts at creation what a game opens up", () => {
+    const file = write("helmets.json", JSON.stringify({ parts: [{ slot: "head", optional: false }, { slot: "helmet" }] }));
+    const { rules } = loadCreationRules(file);
+    assert.ok("json" in checkNewLook(catalog, look({ head: "Chr_Head_Male_01", helmet: "Chr_HelmetAttachment_01" }), rules));
+    assert.ok("problems" in checkNewLook(catalog, look({ head: "Chr_Head_Male_01", helmet: "Chr_HelmetAttachment_01" })), "and refuses it by default");
+  });
+
+  it("falls back to the defaults and says so when a file is wrong", () => {
+    for (const body of ['{"parts": []}', "{not json"]) {
+      const loaded = loadCreationRules(write("broken.json", body));
+      assert.equal(loaded.rules, DEFAULT_CREATION_RULES);
+      assert.ok(loaded.problems.length > 0, `${body} should be reported`);
+      assert.ok(loaded.from !== null, "the file it could not use is named");
+    }
+  });
+
+  it("checks the same look the same way with the defaults as before", () => {
+    // The old behaviour, spelled out: a face is free, armour is not.
+    assert.ok("json" in checkNewLook(catalog, look({ head: "Chr_Head_Male_01", hair: "Chr_Hair_05" })));
+    const refused = checkNewLook(catalog, look({ head: "Chr_Head_Male_01", helmet: "Chr_HelmetAttachment_01" }));
+    assert.ok("problems" in refused);
+    assert.deepEqual(refused.problems, ["parts.helmet: is not chosen at creation"]);
   });
 });

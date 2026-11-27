@@ -223,7 +223,7 @@ import type { MasterySystem } from "../stats/mastery-system.js";
 import type { MagicSystem } from "../magic.js";
 import type { BodySystem } from "../body.js";
 import { PlayTelemetry } from "../stats/telemetry.js";
-import { parseLook, withHeld, withLost, type ModularCatalog } from "@mmo-engine/art/character";
+import { DEFAULT_CREATION_RULES, parseLook, withHeld, withLost, type CreationRules, type ModularCatalog } from "@mmo-engine/art/character";
 import {
   CharacterRefusedError,
   checkNewLook,
@@ -359,6 +359,12 @@ export interface GatewayOptions {
    * null/absent = structural checks only (a server without the art).
    */
   characterCatalog?: ModularCatalog | null;
+  /**
+   * What a player may choose when creating a character (EB7,
+   * content/character-creation.json). Absent: the engine's defaults,
+   * which are what it did before the file existed.
+   */
+  creationRules?: CreationRules;
   /** Characters an account may have. Default 8, or social.characters.slots; this option wins over both. */
   maxCharacters?: number;
   /**
@@ -870,6 +876,7 @@ export class Gateway {
       | "presence"
       | "partyStore"
       | "characterCatalog"
+      | "creationRules"
       | "maxCharacters"
       | "social"
       | "sessionTtlMs"
@@ -937,6 +944,7 @@ export class Gateway {
   /** Atomic operations commit path (slice A2, fleet mode); null standalone. */
   private readonly atomicOps: WorldAtomicOps | null;
   private readonly characterCatalog: ModularCatalog | null;
+  private readonly creationRules: CreationRules;
   private maxCharacters: number;
   /** GatewayOptions.maxCharacters was given, so social.json's slots don't apply. */
   private readonly fixedMaxCharacters: boolean;
@@ -1099,6 +1107,7 @@ export class Gateway {
     this.worldCharacters = opts.worldCharacters ?? null;
     this.atomicOps = opts.atomicOps ?? null;
     this.characterCatalog = opts.characterCatalog ?? null;
+    this.creationRules = opts.creationRules ?? DEFAULT_CREATION_RULES;
     this.maxCharacters = opts.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
     this.fixedMaxCharacters = opts.maxCharacters !== undefined;
     if (opts.social) this.setSocial(opts.social);
@@ -4991,7 +5000,7 @@ export class Gateway {
       this.sendError(s, 4003, "malformed create_character (name: 3-16 letters, ' or -)");
       return;
     }
-    const checked = checkNewLook(this.characterCatalog, parsed.data.look);
+    const checked = checkNewLook(this.characterCatalog, parsed.data.look, this.creationRules);
     if ("problems" in checked) {
       this.sendError(s, 4005, `look refused: ${checked.problems.slice(0, 3).join("; ")}`);
       return;

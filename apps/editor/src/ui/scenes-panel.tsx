@@ -30,17 +30,32 @@ import {
   type Vec3,
 } from "@mmo-engine/scene";
 import { keepLiveTransform, liveTransform, placePrefab, type LiveTransform } from "@mmo-engine/scene";
+import { clearOverride, prefabFromNodes } from "@mmo-engine/scene";
+import { GameplaySaveError, loadGameplay, saveGameplayRemote, type GameplayIssue } from "../gameplay-client.js";
+import { prefabNames, prefabOf, prefabTableContent } from "../scene-prefab.js";
 import { SceneSaveError, getScene, listScenes, saveScene } from "../scenes-client.js";
 import { onNewSceneRequest, openScene, takeNewSceneRequest } from "../open-scene.js";
 import { parentIdOf, withFreshIds } from "../scene-node-copy.js";
 import { nodeSelection } from "../viewport-model.js";
+import {
+  NO_SELECTION,
+  clickSelection,
+  pruneSelection,
+  selectOnly,
+  selectionLabel,
+  type SceneSelection,
+} from "../scene-selection.js";
+import { alignPositions, distributePositions, isMove, offsetPositions, positionDelta, type Axis, type AlignMode } from "../scene-align.js";
 import { Button, Input, Label, NumberInput, SectionTitle, Select } from "./components.js";
 import { OutlinerBadges } from "./outliner-badges-view.js";
+import { AlignBar } from "./align-bar.js";
 import { useDocActions } from "./doc-actions.js";
 import { readClipboard, writeClipboard } from "./clipboard.js";
 import { subscribeOpenAsset } from "./open-asset.js";
 import { editorSelection, useEditorSelection, type SelectionSource } from "./editor-selection.js";
 import { SceneViewport } from "./scene-viewport.js";
+import { ScenePalette } from "./scene-palette.js";
+import { MakePrefabDialog, PrefabInstanceCard } from "./make-prefab-dialog.js";
 
 /** Scene names become file names: lowercase letters, digits and dashes, starting with a letter or digit. */
 export const SCENE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -82,7 +97,10 @@ export function ScenesPanel(): React.JSX.Element {
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
   const [names, setNames] = React.useState<string[]>([]);
   const [open, setOpen] = React.useState<string | null>(null);
-  const [selected, setSelected] = React.useState<string | null>(null);
+  // EB2: a set, not one node. `primary` is what the gizmo rides and what
+  // Details shows; the rest follow a drag and take part in align.
+  const [sel, setSel] = React.useState<SceneSelection>(NO_SELECTION);
+  const selected = sel.primary;
   const [issues, setIssues] = React.useState<SceneIssue[]>([]);
   const [status, setStatus] = React.useState("");
   // Inline "new scene" dialog (window.prompt is blocked in some webviews).
@@ -92,6 +110,12 @@ export function ScenesPanel(): React.JSX.Element {
   const [ctx, setCtx] = React.useState<{ id: string; x: number; y: number } | null>(null);
   // Inline rename: node id being renamed.
   const [renaming, setRenaming] = React.useState<string | null>(null);
+  // EB3: the prefabs table, read once so the panel can name what a node
+  // places, say what it overrides, and add to it without dropping the rest.
+  const [prefabTable, setPrefabTable] = React.useState<unknown>(null);
+  const [making, setMaking] = React.useState(false);
+  const [makeBusy, setMakeBusy] = React.useState(false);
+  const [makeIssues, setMakeIssues] = React.useState<GameplayIssue[]>([]);
   const renameCancelled = React.useRef(false);
   const doc = hist.doc;
   const node = selected ? findNode(doc, selected) : undefined;
@@ -102,16 +126,31 @@ export function ScenesPanel(): React.JSX.Element {
   // play mode stays available to "Keep" after the selection moves on.
   const shared = useEditorSelection();
   const [live, setLive] = React.useState<{ label: string; t: LiveTransform } | null>(null);
-  const select = (id: string | null, source: SelectionSource = "outliner"): void => {
-    setSelected(id);
-    const n = id ? findNode(hist.doc, id) : undefined;
+  /** Publish a whole selection; the shared model follows its primary. */
+  const selectSet = (next: SceneSelection, source: SelectionSource = "outliner"): void => {
+    setSel(next);
+    const n = next.primary ? findNode(hist.doc, next.primary) : undefined;
     if (n) editorSelection.select(nodeSelection(source, n));
     else editorSelection.clear();
+  };
+  const select = (id: string | null, source: SelectionSource = "outliner"): void => selectSet(selectOnly(id), source);
+  /** The outliner's row order: what a shift-click ranges over. */
+  const rowOrder = (): string[] => rows(hist.doc.nodes).map((r) => r.node.id);
+  const clickNode = (
+    id: string | null,
+    mods: { additive: boolean; range: boolean },
+    source: SelectionSource,
+  ): void => {
+    if (id === null) {
+      if (!mods.additive && !mods.range) selectSet(NO_SELECTION, source);
+      return;
+    }
+    selectSet(clickSelection(sel, rowOrder(), id, mods), source);
   };
   React.useEffect(() => {
     if (!shared) return;
     if (shared.kind === "scene-node") {
-      if (shared.id !== selected && findNode(hist.doc, shared.id)) setSelected(shared.id);
+      if (shared.id !== selected && findNode(hist.doc, shared.id)) setSel(selectOnly(shared.id));
       return;
     }
     const t = liveTransform(shared.components);
@@ -144,10 +183,72 @@ export function ScenesPanel(): React.JSX.Element {
   };
   const deleteNode = (id: string): void => {
     run("delete node", (d) => removeNode(d, id));
+    setSel((cur) => pruneSelection({ ...cur, ids: cur.ids.filter((x) => x !== id) }, (x) => Boolean(findNode(hist.doc, x))));
     if (selected === id) select(null);
   };
+  /** Delete every selected node in one undo step (EB2). */
+  const deleteSelection = (): void => {
+    const ids = sel.ids;
+    if (ids.length === 0) return;
+    run(ids.length === 1 ? "delete node" : `delete ${ids.length} nodes`, (d) => ids.reduce((acc, id) => removeNode(acc, id), d));
+    select(null);
+  };
+  /** Each selected node's own position, which is what align and distribute move. */
+  const selectedPositions = (): Record<string, [number, number, number]> => {
+    const out: Record<string, [number, number, number]> = {};
+    for (const id of sel.ids) {
+      const n = findNode(hist.doc, id);
+      if (n) out[id] = [...(n.transform?.position ?? [0, 0, 0])] as [number, number, number];
+    }
+    return out;
+  };
+  const applyPositions = (label: string, moved: Record<string, [number, number, number]>): void => {
+    const ids = Object.keys(moved);
+    if (ids.length === 0) return;
+    run(label, (d) => ids.reduce((acc, id) => setTransform(acc, id, { position: moved[id] }), d));
+  };
+  const alignSelection = (axis: Axis, mode: AlignMode): void =>
+    applyPositions(`align ${mode}`, alignPositions(selectedPositions(), axis, mode));
+  const distributeSelection = (axis: Axis): void =>
+    applyPositions("distribute", distributePositions(selectedPositions(), axis));
   const refresh = (): void => void listScenes().then(setNames, (e: Error) => setStatus(e.message));
   React.useEffect(refresh, []);
+  // The prefabs the project already has. A failed read is not an error the
+  // Scenes workspace reports — it only means "Make prefab" cannot say what
+  // would clash, so the button waits rather than offering a name twice.
+  const readPrefabs = React.useCallback(() => {
+    void loadGameplay().then(
+      (snapshot) => setPrefabTable(snapshot.tables.prefabs),
+      () => setPrefabTable(null),
+    );
+  }, []);
+  React.useEffect(readPrefabs, [readPrefabs]);
+
+  /**
+   * EB3: the chosen nodes become a prefab, and the scene keeps one node
+   * that places it. The file is written first, through the prefabs data
+   * table, so a refusal leaves the scene alone; the scene edit then goes
+   * through history like any other, undoable.
+   */
+  const makePrefab = async (name: string): Promise<void> => {
+    setMakeBusy(true);
+    setMakeIssues([]);
+    try {
+      const authored = prefabFromNodes(hist.doc, sel.ids, name);
+      const content = prefabTableContent(prefabTable, authored.prefab);
+      await saveGameplayRemote("prefabs", content);
+      setPrefabTable(content);
+      run(`make prefab ${name}`, () => authored.doc);
+      select(authored.id);
+      setMaking(false);
+      setStatus(`prefab "${name}" written; ${authored.took.length} node${authored.took.length === 1 ? "" : "s"} replaced by one that places it`);
+    } catch (e) {
+      if (e instanceof GameplaySaveError) setMakeIssues(e.issues);
+      else setMakeIssues([{ file: `${name}.prefab.json`, path: "", message: e instanceof Error ? e.message : String(e) }]);
+    } finally {
+      setMakeBusy(false);
+    }
+  };
 
   // Toolbar Save/Undo/Redo target while a scene is open.
   useDocActions(() => {
@@ -291,7 +392,7 @@ export function ScenesPanel(): React.JSX.Element {
       (d) => {
         hist.replace(d);
         setOpen(name);
-        setSelected(null);
+        setSel(NO_SELECTION);
         editorSelection.select({
           source: "outliner",
           kind: "scene",
@@ -334,7 +435,7 @@ export function ScenesPanel(): React.JSX.Element {
     }
     hist.replace(emptyScene(name, "arena"));
     setOpen(name);
-    setSelected(null);
+    setSel(NO_SELECTION);
     setIssues(validateScene(hist.doc));
     setNaming(null);
     setNameError("");
@@ -407,7 +508,11 @@ export function ScenesPanel(): React.JSX.Element {
           {issues.map((i, k) => <li key={k}><code>{i.path || "(scene)"}</code>: {i.message}</li>)}
         </ul>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(150px,1fr)_minmax(320px,3fr)_minmax(220px,1.3fr)] gap-3">
+      {/* EB4: the viewport is the workspace, so it takes the room and the
+          rest is a rail either side of it — the tree and what you can drop
+          on the left, the selection on the right. */}
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(190px,1fr)_minmax(420px,4fr)_minmax(240px,1.4fr)] gap-3">
+        <div className="grid min-h-0 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-2">
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Outliner">
           <SectionTitle>Outliner</SectionTitle>
           <div className="mb-2 flex flex-wrap gap-1">
@@ -416,28 +521,48 @@ export function ScenesPanel(): React.JSX.Element {
               run("add node", (d) => addNode(d, selected, { id, kind: "group" }));
               select(id);
             }}>Add child</Button>
-            <Button size="sm" variant="outline" disabled={!node} onClick={() => {
-              if (!node) return;
-              run("delete node", (d) => removeNode(d, node.id));
-              select(null);
-            }}>Delete</Button>
+            <Button size="sm" variant="outline" disabled={sel.ids.length === 0} onClick={deleteSelection}>
+              {sel.ids.length > 1 ? `Delete ${sel.ids.length}` : "Delete"}
+            </Button>
             <Button size="sm" variant="outline" disabled={!node} onClick={() => node && run("move to root", (d) => moveNode(d, node.id, null))}>To root</Button>
+            {/* EB3: arrange it in the viewport, then make it the prefab. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sel.ids.length === 0}
+              data-testid="make-prefab"
+              onClick={() => {
+                setMakeIssues([]);
+                setMaking(true);
+              }}
+            >
+              Make prefab
+            </Button>
           </div>
           {rows(doc.nodes).map(({ node: n, depth }) => (
             <div
               key={n.id}
               role="treeitem"
-              aria-selected={n.id === selected}
+              aria-selected={sel.ids.includes(n.id)}
               tabIndex={0}
-              onClick={() => select(n.id)}
-              onKeyDown={(e) => e.key === "Enter" && select(n.id)}
+              onClick={(e) => clickNode(n.id, { additive: e.ctrlKey || e.metaKey, range: e.shiftKey }, "outliner")}
+              onKeyDown={(e) => e.key === "Enter" && clickNode(n.id, { additive: e.ctrlKey || e.metaKey, range: e.shiftKey }, "outliner")}
               onContextMenu={(e) => {
                 e.preventDefault();
                 select(n.id);
                 setCtx({ id: n.id, x: e.clientX, y: e.clientY });
               }}
               className="cursor-pointer rounded px-2 py-1"
-              style={{ paddingLeft: 8 + depth * 14, background: n.id === selected ? "var(--m3-secondary-container)" : undefined }}
+              style={{
+                paddingLeft: 8 + depth * 14,
+                // The primary is the stronger fill: the set is what will
+                // move, the primary is what the gizmo is on.
+                background: n.id === selected
+                  ? "var(--m3-secondary-container)"
+                  : sel.ids.includes(n.id)
+                    ? "color-mix(in srgb, var(--m3-secondary-container) 55%, transparent)"
+                    : undefined,
+              }}
             >
               {renaming === n.id ? (
                 <input
@@ -467,8 +592,10 @@ export function ScenesPanel(): React.JSX.Element {
               ) : (
                 <>
                   <span className="flex items-baseline gap-1.5">
-                    <span className="min-w-0 truncate">{n.name || n.id}</span>
-                    <span className="text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
+                    {/* The name takes the free space first: before EB4 the
+                        chips pushed it down to "Aren…" on every row. */}
+                    <span className="min-w-0 flex-1 truncate">{n.name || n.id}</span>
+                    <span className="shrink-0 text-xs opacity-60">{n.prefab ?? n.kind ?? "group"}</span>
                     {/* EU4: the component chips both mockups put on every
                         outliner row. Same data the ECS entity list has always
                         badged; this tree simply never drew it. */}
@@ -509,25 +636,57 @@ export function ScenesPanel(): React.JSX.Element {
           )}
           {open && doc.nodes.length === 0 && <p className="text-xs opacity-70">Empty scene. Add a node.</p>}
         </section>
+        <ScenePalette
+          enabled={Boolean(open)}
+          onPlace={(prefab, position) => {
+            const placed = placePrefab(hist.doc, prefab, position);
+            run(`place ${prefab}`, () => placed.doc);
+            select(placed.id, "viewport");
+          }}
+        />
+        </div>
         <section className="min-h-0" aria-label="Viewport">
           <SceneViewport
             doc={doc}
-            selected={selected}
-            onSelect={(id) => select(id, "viewport")}
-            onTransform={(id, t) => run("transform", (d) => keepLiveTransform(d, id, t))}
+            selection={sel}
+            onSelect={(id, mods) => clickNode(id, mods, "viewport")}
+            onTransform={(id, t) => {
+              // EB2: the gizmo drags the primary; everything else selected
+              // moves by the same amount, in the same undo step.
+              const before = findNode(hist.doc, id)?.transform?.position ?? [0, 0, 0];
+              const delta = positionDelta([...before] as [number, number, number], [...t.position] as [number, number, number]);
+              const others = sel.ids.filter((x) => x !== id);
+              if (others.length === 0 || !isMove(delta)) {
+                run("transform", (d) => keepLiveTransform(d, id, t));
+                return;
+              }
+              const positions: Record<string, [number, number, number]> = {};
+              for (const other of others) {
+                const n = findNode(hist.doc, other);
+                if (n) positions[other] = [...(n.transform?.position ?? [0, 0, 0])] as [number, number, number];
+              }
+              const moved = offsetPositions(positions, delta);
+              run(`move ${sel.ids.length} nodes`, (d) => {
+                const withPrimary = keepLiveTransform(d, id, t);
+                return Object.keys(moved).reduce((acc, other) => setTransform(acc, other, { position: moved[other] }), withPrimary);
+              });
+            }}
             onPlace={(prefab, position) => {
               const placed = placePrefab(hist.doc, prefab, position);
               run(`place ${prefab}`, () => placed.doc);
               select(placed.id, "viewport");
             }}
-            onDelete={(id) => {
-              run("delete node", (d) => removeNode(d, id));
-              select(null);
-            }}
+            onDelete={() => deleteSelection()}
           />
         </section>
         <section className="m3-scroll min-h-0 overflow-auto" aria-label="Details">
           <SectionTitle>Details</SectionTitle>
+          {sel.ids.length > 1 && (
+            <p className="mb-1 text-xs" style={{ color: "var(--m3-on-surface-variant)" }} data-testid="selection-count">
+              {selectionLabel(sel)}
+            </p>
+          )}
+          <AlignBar count={sel.ids.length} onAlign={alignSelection} onDistribute={distributeSelection} />
           {!node ? (
             open ? (
               <div className="flex flex-col gap-2">
@@ -554,6 +713,15 @@ export function ScenesPanel(): React.JSX.Element {
               </Select>
               <Label>Prefab</Label>
               <Input className="h-9" value={node.prefab ?? ""} placeholder="e.g. camps/goblin" onChange={(e) => run("prefab", (d) => setNodeProp(d, node.id, "prefab", e.target.value))} />
+              {/* EB3: what this node takes from its prefab, and what it says
+                  differently. The components below are the overrides. */}
+              {node.prefab && (
+                <PrefabInstanceCard
+                  node={node}
+                  prefab={prefabOf(prefabTable, node.prefab)}
+                  onRevert={(component, field) => run("revert override", (d) => clearOverride(d, node.id, component, field))}
+                />
+              )}
               {(["position", "rotation", "scale"] as const).map((key) => (
                 <div key={key}>
                   <Label>{key}</Label>
@@ -598,6 +766,16 @@ export function ScenesPanel(): React.JSX.Element {
           )}
         </section>
       </div>
+      <MakePrefabDialog
+        open={making}
+        doc={doc}
+        ids={sel.ids}
+        existing={prefabNames(prefabTable)}
+        busy={makeBusy}
+        issues={makeIssues}
+        onCancel={() => setMaking(false)}
+        onMake={(name) => void makePrefab(name)}
+      />
     </div>
   );
 }

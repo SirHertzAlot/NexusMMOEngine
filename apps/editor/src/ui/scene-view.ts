@@ -14,19 +14,26 @@
  */
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { ViewHelper } from "three/examples/jsm/helpers/ViewHelper.js";
 import { worldNodes, type LiveTransform, type SceneDoc, type Vec3 } from "@mmo-engine/scene";
 import { buildChunkGeometry, writeChunkGeometry } from "../terrain/terrain-view.js";
+import { visualFor, type NodeVisual } from "../scene-visuals.js";
+import { NO_SELECTION, selectedSet, type SceneSelection } from "../scene-selection.js";
 import { makeHeightSampler, markerFor, type HeightTile } from "../viewport-model.js";
 import { FLY_BOOST, FLY_KEYS, FLY_SPEED, flyAxes } from "./scene-camera.js";
 
 export type GizmoMode = "translate" | "rotate" | "scale";
 
 export interface SceneViewHandlers {
-  /** A click picked a node (or empty space: null). */
-  onSelect(id: string | null): void;
+  /**
+   * A click picked a node (or empty space: null). `mods` carries the keys
+   * held down, so the panel can decide what the click means (EB2): ctrl or
+   * cmd adds to the selection, shift extends it.
+   */
+  onSelect(id: string | null, mods: { additive: boolean; range: boolean }): void;
   /** A gizmo drag finished: the node's new scene-space transform. */
   onTransform(id: string, t: LiveTransform): void;
   /** A content-browser item was dropped on the ground at `position`. */
@@ -44,6 +51,38 @@ function markerGeometry(shape: "box" | "cone" | "octahedron"): THREE.BufferGeome
   if (shape === "cone") return new THREE.ConeGeometry(0.5, 1.4, 16).translate(0, 0.7, 0);
   if (shape === "octahedron") return new THREE.OctahedronGeometry(0.4).translate(0, 0.4, 0);
   return new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+}
+
+/**
+ * The stand-in body for a node of known size (EB1): a capsule at the
+ * engine's own body size for a creature, a box at the scale document's size
+ * for a prop. Both stand on y = 0, like the markers, so the node's own
+ * transform still reads as its position.
+ */
+function visualGeometry(visual: NodeVisual): THREE.BufferGeometry {
+  const [x, y, z] = visual.size;
+  if (visual.shape === "capsule") {
+    const radius = Math.max(x / 2, 0.01);
+    // THREE's capsule length is the cylinder between the two caps.
+    const cylinder = Math.max(y - radius * 2, 0.01);
+    return new THREE.CapsuleGeometry(radius, cylinder, 8, 12).translate(0, y / 2, 0);
+  }
+  return new THREE.BoxGeometry(Math.max(x, 0.01), Math.max(y, 0.01), Math.max(z, 0.01)).translate(0, y / 2, 0);
+}
+
+/**
+ * Free what a node group owns. A loaded model's clone shares its geometry
+ * and material with the template in the view's cache (userData.shared), so
+ * a redraw must leave those alone or the next node draws nothing.
+ */
+function disposeOwned(o: THREE.Object3D): void {
+  if (o.userData.shared === true) return;
+  const m = o as THREE.Mesh;
+  m.geometry?.dispose();
+  const material = m.material as THREE.Material | THREE.Material[] | undefined;
+  if (Array.isArray(material)) for (const one of material) one.dispose();
+  else material?.dispose();
+  for (const child of o.children) disposeOwned(child);
 }
 
 export class SceneView {
@@ -67,10 +106,17 @@ export class SceneView {
     new THREE.MeshBasicMaterial({ visible: false }),
   );
   private readonly objects = new Map<string, THREE.Object3D>();
+  /** The visual table (EB1): placeable id → the size and model the engine gives it. */
+  private visuals: Readonly<Record<string, NodeVisual>> = {};
+  /** Loaded model templates by URL; null once a URL has answered with nothing. */
+  private readonly modelTemplates = new Map<string, THREE.Object3D | null>();
+  private readonly modelLoads = new Set<string>();
+  private loader: GLTFLoader | null = null;
+  private alive = true;
   private heightAt: (x: number, z: number) => number | null = () => null;
   private snapTerrain = true;
-  private selected: string | null = null;
-  private last: [SceneDoc, string | null, ReadonlySet<string>] | null = null;
+  private selection: SceneSelection = NO_SELECTION;
+  private last: [SceneDoc, SceneSelection, ReadonlySet<string>] | null = null;
   private mode: GizmoMode = "translate";
   /** Ground height under the dragged object at the last change (to keep its offset). */
   private lastGround = 0;
@@ -120,13 +166,14 @@ export class SceneView {
     this.gizmo.addEventListener("dragging-changed", (e) => {
       const dragging = (e as unknown as { value: boolean }).value;
       this.orbit.enabled = !dragging;
-      const id = this.selected;
+      const id = this.selection.primary;
       const obj = id ? this.objects.get(id) : undefined;
       if (dragging && obj) this.lastGround = this.heightAt(obj.position.x, obj.position.z) ?? 0;
       if (!dragging && id && obj) this.commit(id, obj);
     });
     this.gizmo.addEventListener("objectChange", () => {
-      const obj = this.selected ? this.objects.get(this.selected) : undefined;
+      const primary = this.selection.primary;
+      const obj = primary ? this.objects.get(primary) : undefined;
       if (obj) this.followGround(obj);
     });
 
@@ -140,7 +187,7 @@ export class SceneView {
       if (e.button !== 0 || down.onGizmo || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       // A click on the corner triad is a camera snap, not a pick.
       if (this.handleAxesClick(e)) return;
-      this.handlers.onSelect(this.pick(e));
+      this.handlers.onSelect(this.pick(e), { additive: e.ctrlKey || e.metaKey, range: e.shiftKey });
     };
     const onDragOver = (e: DragEvent): void => e.preventDefault();
     const onDrop = (e: DragEvent): void => {
@@ -345,47 +392,111 @@ export class SceneView {
     if (this.last) this.setDoc(...this.last);
   }
 
-  /** Redraw the nodes for `doc` and attach the gizmo to `selected`. */
-  setDoc(doc: SceneDoc, selected: string | null, species: ReadonlySet<string>): void {
-    this.last = [doc, selected, species];
+  /**
+   * Hand the view the visual table (scene-visuals-host.ts). Nodes redraw at
+   * the engine's own sizes, and any model the art pack names starts loading.
+   */
+  setVisuals(visuals: Readonly<Record<string, NodeVisual>>): void {
+    this.visuals = visuals;
+    if (this.last) this.setDoc(...this.last);
+  }
+
+  /**
+   * The loaded template for `url`, or null while it loads (or if it never
+   * arrives — a checkout without the art pack answers 404 for every model,
+   * and the stand-in body is then what the node keeps).
+   */
+  private requestModel(url: string): THREE.Object3D | null {
+    const cached = this.modelTemplates.get(url);
+    if (cached !== undefined) return cached;
+    if (!this.modelLoads.has(url)) {
+      this.modelLoads.add(url);
+      this.loader ??= new GLTFLoader();
+      this.loader.load(
+        url,
+        (gltf) => {
+          if (!this.alive) return;
+          this.modelTemplates.set(url, gltf.scene);
+          if (this.last) this.setDoc(...this.last);
+        },
+        undefined,
+        () => void this.modelTemplates.set(url, null),
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Redraw the nodes for `doc`, highlight everything in `selection` and
+   * attach the gizmo to its primary (EB2: the whole set lights up, the
+   * gizmo rides the one node, and the panel moves the rest by the delta).
+   */
+  setDoc(doc: SceneDoc, selection: SceneSelection, species: ReadonlySet<string>): void {
+    this.last = [doc, selection, species];
     this.gizmo.detach();
     for (const o of this.objects.values()) {
       this.nodes.remove(o);
-      o.traverse((c) => {
-        const m = c as THREE.Mesh;
-        m.geometry?.dispose();
-        (m.material as THREE.Material | undefined)?.dispose();
-      });
+      disposeOwned(o);
     }
     this.objects.clear();
     for (const w of worldNodes(doc)) {
       const marker = markerFor(w.node, species);
+      // Spawn points and groups keep their marker shapes: they are not
+      // things in the world, so they have no size to be accurate about.
+      const visual = marker.shape === "box" ? visualFor(w.node, this.visuals) : null;
       const group = new THREE.Group();
       group.userData.nodeId = w.node.id;
-      const mesh = new THREE.Mesh(markerGeometry(marker.shape), new THREE.MeshStandardMaterial({ color: marker.color, roughness: 0.6, wireframe: this.wireframe }));
+      const mesh = new THREE.Mesh(
+        visual ? visualGeometry(visual) : markerGeometry(marker.shape),
+        new THREE.MeshStandardMaterial({ color: marker.color, roughness: 0.6, wireframe: this.wireframe }),
+      );
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x000000 })));
       group.add(mesh);
+      // The pack's model, at the scale the server spawns it with — never
+      // stretched to fit the stand-in. Wireframe keeps the stand-in on
+      // screen instead, so the toggle always shows something.
+      const model = visual?.model && !this.wireframe ? this.requestModel(visual.model) : null;
+      if (model && visual) {
+        const drawn = model.clone(true);
+        // Its geometry and material belong to the template in the cache, so
+        // a redraw must not dispose them with the node.
+        drawn.traverse((c) => void (c.userData.shared = true));
+        drawn.scale.setScalar(visual.factor);
+        group.add(drawn);
+        mesh.visible = false;
+      }
       group.position.set(w.position[0], (this.heightAt(w.position[0], w.position[2]) ?? 0) + w.position[1], w.position[2]);
       group.rotation.y = (w.yawDeg / DEG);
       group.scale.set(...w.scale);
       this.nodes.add(group);
       this.objects.set(w.node.id, group);
     }
-    this.selected = selected && this.objects.has(selected) ? selected : null;
+    const live = selection.ids.filter((id) => this.objects.has(id));
+    this.selection = {
+      ids: live,
+      primary: selection.primary && this.objects.has(selection.primary) ? selection.primary : (live[live.length - 1] ?? null),
+    };
+    const lit = selectedSet(this.selection);
     for (const [id, o] of this.objects) {
       const mesh = o.children[0] as THREE.Mesh;
-      (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(id === this.selected ? 0x666666 : 0x000000);
+      // The primary is brighter than the rest of the set, so "which one is
+      // the gizmo on" is answered by looking rather than by dragging.
+      const glow = id === this.selection.primary ? 0x666666 : lit.has(id) ? 0x33373f : 0x000000;
+      (mesh.material as THREE.MeshStandardMaterial).emissive.setHex(glow);
     }
-    if (this.selected) this.gizmo.attach(this.objects.get(this.selected)!);
+    if (this.selection.primary) this.gizmo.attach(this.objects.get(this.selection.primary)!);
     this.gizmo.getHelper().visible = this.gizmosOn;
   }
 
   /** Move the camera to look at the selection (or the scene's centre). */
   frame(): void {
     const target = new THREE.Vector3();
-    const sel = this.selected ? this.objects.get(this.selected) : undefined;
-    if (sel) target.copy(sel.position);
-    else if (this.objects.size > 0) {
+    // Framing a set frames all of it, not just the node the gizmo is on.
+    const picked = this.selection.ids.map((id) => this.objects.get(id)).filter((o): o is THREE.Object3D => o !== undefined);
+    if (picked.length > 0) {
+      for (const o of picked) target.add(o.position);
+      target.divideScalar(picked.length);
+    } else if (this.objects.size > 0) {
       for (const o of this.objects.values()) target.add(o.position);
       target.divideScalar(this.objects.size);
     }
@@ -466,6 +577,7 @@ export class SceneView {
   }
 
   dispose(): void {
+    this.alive = false;
     cancelAnimationFrame(this.frameId);
     this.cleanup.forEach((f) => f());
     this.observer.disconnect();

@@ -145,13 +145,15 @@ not in the world (no entity, no deltas). The client then sends:
 "female", parts: {slot: partName}, colours: {slot: "#rrggbb"}}`. Parts
 are the Modular Fantasy Hero pack's (`Chr_Head_Female_04`, `Chr_Hair_12`,
 …); a missing body slot is the starter armour (set 01), a missing detail
-slot is empty. A **new** character wears the starter armour and no
-attachments; only its appearance is chosen: face (which brings the eyes),
-hair, eyebrows, facial hair (men), ears, and the colours of skin, hair,
-stubble, scars and body art. The server validates against the pack's part
-catalog when it has the art (`MMO_CHARACTER_CATALOG`, default the
-converted pack under `assets/`), and structurally otherwise, then stores
-the look in canonical JSON.
+slot is empty. What a **new** character may choose is the game's
+(`content/character-creation.json`, `MMO_CHARACTER_CREATION`, EB7); with
+no such file the engine's defaults apply, which are the starter armour
+and no attachments, with the appearance chosen: face (which brings the
+eyes), hair, eyebrows, facial hair (men), ears, and the colours of skin,
+hair, stubble, scars and body art. The server validates against the
+pack's part catalog when it has the art (`MMO_CHARACTER_CATALOG`,
+default the converted pack under `assets/`), and structurally otherwise,
+then stores the look in canonical JSON.
 
 A **character is in the world once**: entering it while another session
 plays it ends that session (4005 "entered the world elsewhere", then

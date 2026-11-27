@@ -8,7 +8,9 @@
 
 import * as React from "react";
 import type { LiveTransform, SceneDoc, Vec3 } from "@mmo-engine/scene";
-import { fetchPlaceables, type Placeables } from "../scene-content-client.js";
+import type { SceneSelection } from "../scene-selection.js";
+import { usePlaceables } from "./placeables-store.js";
+import { fetchSceneVisuals } from "../scene-visuals-client.js";
 import { loadTerrain } from "../terrain/terrain-api.js";
 import { SceneView, type GizmoMode } from "./scene-view.js";
 import { Button, CheckField } from "./components.js";
@@ -20,8 +22,9 @@ import { gizmoModeFor, toolForGizmoMode } from "./viewport-tools.js";
 
 export interface SceneViewportProps {
   doc: SceneDoc;
-  selected: string | null;
-  onSelect(id: string | null): void;
+  /** Every selected node; the gizmo rides its primary (EB2). */
+  selection: SceneSelection;
+  onSelect(id: string | null, mods: { additive: boolean; range: boolean }): void;
   onTransform(id: string, t: LiveTransform): void;
   onPlace(prefab: string, position: Vec3): void;
   onDelete(id: string): void;
@@ -50,12 +53,16 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   const setMode = (next: GizmoMode): void => setTool(toolForGizmoMode(next));
   const [snapTerrain, setSnapTerrain] = React.useState(true);
   const [snapGrid, setSnapGrid] = React.useState(false);
-  const [content, setContent] = React.useState<Placeables | null>(null);
   const [note, setNote] = React.useState("");
   const [webgl, setWebgl] = React.useState(true);
   const [flying, setFlying] = React.useState(false);
   const [goTo, setGoTo] = React.useState("");
   const [goToError, setGoToError] = React.useState<string | null>(null);
+  // One hook for the placeables, shared with the palette (EB4): the
+  // viewport needs it only to know which ids are creatures.
+  const { content } = usePlaceables();
+  /** False once the host says the art pack resolved no model at all. */
+  const [art, setArt] = React.useState(true);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -63,7 +70,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     let view: SceneView;
     try {
       view = new SceneView(canvas, {
-        onSelect: (id) => latest.current.onSelect(id),
+        onSelect: (id, mods) => latest.current.onSelect(id, mods),
         onTransform: (id, t) => latest.current.onTransform(id, t),
         onPlace: (prefab, position) => latest.current.onPlace(prefab, position),
         // Play menu "Start from camera position" reads this store.
@@ -95,9 +102,16 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
       (t) => alive && view.setTerrain(t.tiles, t.chunkWorldSize),
       () => alive && setNote("No terrain (grid only)"),
     );
-    fetchPlaceables().then(
-      (p) => alive && setContent(p),
-      (e: Error) => alive && setNote(e.message),
+    // The sizes and models the engine gives each placeable (EB1). Without
+    // the table every node is a marker, which is what the viewport drew
+    // before, so a failure here costs nothing but accuracy.
+    fetchSceneVisuals().then(
+      (t) => {
+        if (!alive) return;
+        view.setVisuals(t.visuals);
+        if (!t.art) setArt(false);
+      },
+      () => undefined,
     );
     return () => {
       alive = false;
@@ -114,8 +128,8 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
 
   const species = React.useMemo(() => new Set(content?.species.map((s) => s.id) ?? []), [content]);
   React.useEffect(() => {
-    viewRef.current?.setDoc(props.doc, props.selected, species);
-  }, [props.doc, props.selected, species, content]);
+    viewRef.current?.setDoc(props.doc, props.selection, species);
+  }, [props.doc, props.selection, species, content]);
   React.useEffect(() => viewRef.current?.setMode(mode), [mode]);
   // With select, the gizmo goes away entirely: left-drag orbits, a click
   // picks. That is what `select` already means in every other viewport.
@@ -134,7 +148,7 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     if (hit) setMode(hit[0]);
     else if (e.key.toLowerCase() === SELECT_KEY) setTool("select");
     else if (e.key === "Delete" || e.key === "Backspace") {
-      if (props.selected) props.onDelete(props.selected);
+      if (props.selection.primary) props.onDelete(props.selection.primary);
     } else if (e.key.toLowerCase() === "f") viewRef.current?.frame();
   };
   const toggleFly = (): void => {
@@ -152,84 +166,91 @@ export function SceneViewport(props: SceneViewportProps): React.JSX.Element {
     setGoToError(null);
     viewRef.current?.lookAt(p.x, p.z);
   };
-  const placeAtCentre = (id: string): void => props.onPlace(id, viewRef.current?.centre() ?? [0, 0, 0]);
-
-  const group = (title: string, items: Array<{ id: string; label: string }> | undefined): React.JSX.Element | null =>
-    items && items.length > 0 ? (
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-xs opacity-70">{title}</span>
-        {items.map((it) => (
-          <button
-            key={`${title}:${it.id}`}
-            type="button"
-            draggable
-            data-testid={`placeable-${title}-${it.id}`}
-            title="Drag into the viewport, or click to place at the view centre"
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/plain", `mmo-placeable:${it.id}`);
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => placeAtCentre(it.id)}
-            className="cursor-grab rounded-md border border-border px-2 py-0.5 text-xs hover:bg-accent"
-          >
-            {it.label}
-          </button>
-        ))}
-      </div>
-    ) : null;
+  const statusLine = [note, goToError, art ? null : "Stand-in sizes (no art pack)"].filter(Boolean) as string[];
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="scene-viewport" tabIndex={0} onKeyDown={onKey}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          size="sm"
-          variant={gizmo === null ? "default" : "outline"}
-          aria-pressed={gizmo === null}
-          title="Select (V) — camera and pick, no gizmo"
-          onClick={() => setTool("select")}
+    <div
+      className="relative h-full min-h-0 overflow-hidden rounded-md border"
+      style={{ borderColor: "var(--m3-outline-variant)", background: "#000" }}
+      data-testid="scene-viewport"
+      tabIndex={0}
+      onKeyDown={onKey}
+    >
+      {webgl ? <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" /> : <p className="p-3 text-xs">WebGL is not available here.</p>}
+      {/* EB4: the canvas is the workspace, so the controls sit on it rather
+          than pushing it down the page. Only the controls take the pointer. */}
+      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-1.5">
+        <div
+          className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1.5 shadow-lg backdrop-blur"
+          style={{
+            borderColor: "var(--m3-outline-variant)",
+            background: "color-mix(in srgb, var(--m3-surface) 82%, transparent)",
+          }}
+          role="toolbar"
+          aria-label="Viewport tools"
         >
-          Select
-        </Button>
-        {MODES.map(([m, label, key]) => (
-          <Button key={m} size="sm" variant={gizmo === m ? "default" : "outline"} aria-pressed={gizmo === m} title={`${label} (${key.toUpperCase()})`} onClick={() => setMode(m)}>
-            {label}
+          <Button
+            size="sm"
+            variant={gizmo === null ? "default" : "outline"}
+            aria-pressed={gizmo === null}
+            title="Select (V) — camera and pick, no gizmo"
+            onClick={() => setTool("select")}
+          >
+            Select
           </Button>
-        ))}
-        <CheckField checked={snapTerrain} onChange={setSnapTerrain} label="Snap to terrain" />
-        <CheckField checked={snapGrid} onChange={setSnapGrid} label="Grid snap" />
-        <Button size="sm" variant="outline" title="Frame selection (F)" onClick={() => viewRef.current?.frame()}>Frame</Button>
-        <label className="flex items-center gap-1 text-xs">
-          <span className="opacity-70">Go to x, z</span>
-          <input
-            aria-label="Go to x, z"
-            aria-invalid={goToError ? true : undefined}
-            data-testid="scene-goto"
-            value={goTo}
-            placeholder="344, 576"
-            onChange={(e) => setGoTo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") goToPoint();
+          {MODES.map(([m, label, key]) => (
+            <Button key={m} size="sm" variant={gizmo === m ? "default" : "outline"} aria-pressed={gizmo === m} title={`${label} (${key.toUpperCase()})`} onClick={() => setMode(m)}>
+              {label}
+            </Button>
+          ))}
+          <span className="mx-0.5 h-5 w-px" style={{ background: "var(--m3-outline-variant)" }} aria-hidden="true" />
+          <CheckField checked={snapTerrain} onChange={setSnapTerrain} label="Snap to terrain" />
+          <CheckField checked={snapGrid} onChange={setSnapGrid} label="Grid snap" />
+          <span className="mx-0.5 h-5 w-px" style={{ background: "var(--m3-outline-variant)" }} aria-hidden="true" />
+          <Button size="sm" variant="outline" title="Frame selection (F)" onClick={() => viewRef.current?.frame()}>Frame</Button>
+          <label className="flex items-center gap-1 text-xs">
+            <span className="opacity-70">Go to x, z</span>
+            <input
+              aria-label="Go to x, z"
+              aria-invalid={goToError ? true : undefined}
+              data-testid="scene-goto"
+              value={goTo}
+              placeholder="344, 576"
+              onChange={(e) => setGoTo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") goToPoint();
+              }}
+              className="w-24 rounded-md border bg-transparent px-2 py-0.5 text-xs"
+              style={{ borderColor: "var(--m3-outline-variant)" }}
+            />
+          </label>
+          <Button size="sm" variant="outline" title="Move the view to that ground point" onClick={goToPoint}>Go</Button>
+          <Button size="sm" variant={flying ? "default" : "outline"} aria-pressed={flying} title="Free camera: W/S forward and back, A/D left and right, Q/E down and up, Shift faster, Esc to stop" onClick={toggleFly}>
+            Fly
+          </Button>
+          <Button size="sm" variant="outline" disabled={props.selection.ids.length === 0} title="Delete (Del)" onClick={() => props.selection.primary && props.onDelete(props.selection.primary)}>Delete</Button>
+        </div>
+      </div>
+      {statusLine.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 flex flex-wrap gap-2">
+          <span
+            className="pointer-events-auto rounded-md border px-2 py-1 text-xs backdrop-blur"
+            data-testid="viewport-status"
+            style={{
+              borderColor: "var(--m3-outline-variant)",
+              background: "color-mix(in srgb, var(--m3-surface) 82%, transparent)",
+              color: goToError ? "var(--m3-error)" : "var(--m3-on-surface-variant)",
             }}
-            className="w-28 rounded-md border border-border bg-transparent px-2 py-0.5 text-xs"
-          />
-        </label>
-        <Button size="sm" variant="outline" title="Move the view to that ground point" onClick={goToPoint}>Go</Button>
-        <Button size="sm" variant={flying ? "default" : "outline"} aria-pressed={flying} title="Free camera: W/S forward and back, A/D left and right, Q/E down and up, Shift faster, Esc to stop" onClick={toggleFly}>
-          Fly
-        </Button>
-        {goToError && <span className="text-xs text-red-400">{goToError}</span>}
-        <Button size="sm" variant="outline" disabled={!props.selected} title="Delete (Del)" onClick={() => props.selected && props.onDelete(props.selected)}>Delete</Button>
-        {note && <span className="text-xs opacity-70">{note}</span>}
-      </div>
-      <div className="relative min-h-[260px] flex-1 overflow-hidden rounded-md border border-border bg-black">
-        {webgl ? <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" /> : <p className="p-3 text-xs">WebGL is not available here.</p>}
-      </div>
-      <div className="m3-scroll flex max-h-24 flex-col gap-1 overflow-auto" aria-label="Content browser">
-        {group("species", content?.species)}
-        {group("props", content?.props)}
-        {group("PICG", content?.pcg)}
-        {content && content.species.length + content.props.length + content.pcg.length === 0 && <span className="text-xs opacity-70">Nothing to place.</span>}
-      </div>
+            title={
+              art
+                ? undefined
+                : "assets/manifest.json resolved no model, so nodes are drawn at the size the engine spawns them: creatures as their capsule, props as a stand-in at the scale document's factor."
+            }
+          >
+            {statusLine.join(" · ")}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

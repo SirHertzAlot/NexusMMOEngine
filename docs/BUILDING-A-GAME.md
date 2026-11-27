@@ -79,6 +79,7 @@ content/strings/    user-visible text
 content/pcg/        procedural asset graphs
 content/scenes/     baked scene documents
 content/modules.json  which modules are enabled
+content/character-creation.json  what a player may choose at creation
 ```
 
 Rules reload while the server runs (the `reloader` system), so the loop here

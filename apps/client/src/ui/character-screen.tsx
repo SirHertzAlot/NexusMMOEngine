@@ -13,18 +13,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CHARACTER_NAME_RE, type CharacterEntry } from "@mmo-engine/protocol";
 import {
+  DEFAULT_CREATION_RULES,
   HAIR_COLOURS,
   SKIN_TONES,
+  coloursForGender,
   parseLook,
   partsFor,
+  partsForGender,
   randomLook,
   type CatalogPart,
   type CharacterLook,
   type ColourSlot,
+  type CreationColour,
+  type CreationPart,
+  type CreationRules,
   type Gender,
   type ModularCatalog,
   type Slot,
 } from "@mmo-engine/art/browser";
+import { fetchCreationRules, slotLabel } from "../creation-rules.js";
 import { CharacterStage } from "../render/character/character-stage.js";
 import { Button, Input, Label } from "./components.js";
 import { t } from "../i18n.js";
@@ -49,44 +56,8 @@ export interface CharacterScreenProps {
   onModeChange?: (mode: "list" | "create") => void;
 }
 
-interface Category {
-  slot: Slot;
-  /** May be left empty. */
-  optional: boolean;
-  /** Offered to this gender only. */
-  gender?: Gender;
-}
-
-// Eyes, nose and mouth come with the face (the pack's heads).
-const CATEGORIES: Category[] = [
-  { slot: "head", optional: false },
-  { slot: "hair", optional: true },
-  { slot: "eyebrows", optional: true },
-  { slot: "facialHair", optional: true, gender: "male" },
-  { slot: "ears", optional: true },
-];
-
-interface ColourRow {
-  slot: ColourSlot;
-  swatches: readonly string[];
-  /** May be left unset (the region follows the skin). */
-  optional: boolean;
-  gender?: Gender;
-}
-
-const BODY_ART = ["#2b4c8c", "#4566a9", "#6b2f8f", "#8c2b2b", "#2f6b3a", "#1c1c1c", "#c8a24a", "#e8e8e8"] as const;
-const SCARS = ["#e6b8a2", "#c98f7a", "#a86d5c", "#7a4a3c"] as const;
-
-const COLOUR_ROWS: ColourRow[] = [
-  { slot: "skin", swatches: SKIN_TONES, optional: false },
-  { slot: "hair", swatches: HAIR_COLOURS, optional: false },
-  { slot: "stubble", swatches: HAIR_COLOURS, optional: true, gender: "male" },
-  { slot: "scar", swatches: SCARS, optional: true },
-  { slot: "bodyArt", swatches: BODY_ART, optional: true },
-];
-
 /** The options a category offers (mask heads are for helmets, not faces). */
-function optionsFor(catalog: ModularCatalog, c: Category, gender: Gender): CatalogPart[] {
+function optionsFor(catalog: ModularCatalog, c: CreationPart, gender: Gender): CatalogPart[] {
   return partsFor(catalog, c.slot, gender).filter((p) => !p.mask);
 }
 
@@ -148,11 +119,11 @@ function Swatches({
   value,
   onChange,
 }: {
-  row: ColourRow;
+  row: CreationColour;
   value: string | undefined;
   onChange(colour: string | undefined): void;
 }): React.ReactElement {
-  const label = t(`character.colour.${row.slot}`);
+  const label = slotLabel(`character.colour.${row.slot}`, t(`character.colour.${row.slot}`));
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
@@ -203,6 +174,18 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
   };
   const [selected, setSelected] = useState<number | null>(characters[0]?.id ?? null);
   const [look, setLook] = useState<CharacterLook>(() => startingLook(null, "male"));
+  // What this game offers at creation. The defaults render immediately;
+  // a game's own file replaces them when it arrives (EB7).
+  const [rules, setRules] = useState<CreationRules>(DEFAULT_CREATION_RULES);
+  useEffect(() => {
+    let live = true;
+    void fetchCreationRules().then((r) => {
+      if (live) setRules(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,7 +248,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
       const { stubble: _stubble, ...colours } = l.colours;
       return { ...startingLook(catalog, gender), colours: gender === "male" ? l.colours : colours };
     });
-  const stepCategory = (c: Category, d: number): void =>
+  const stepCategory = (c: CreationPart, d: number): void =>
     setLook((l) => {
       if (!catalog) return l;
       const part = stepPart(optionsFor(catalog, c, l.gender), l.parts[c.slot], c.optional, d);
@@ -323,7 +306,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
               )}
             </div>
             <div className="flex gap-2">
-              {(["male", "female"] as const).map((g) => (
+              {rules.genders.map((g) => (
                 <Button key={g} className="flex-1" variant={look.gender === g ? "default" : "outline"} onClick={() => setGender(g)}>
                   {t(`character.gender.${g}`)}
                 </Button>
@@ -331,10 +314,10 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
             </div>
             {catalog ? (
               <div className="space-y-2">
-                {CATEGORIES.filter((c) => !c.gender || c.gender === look.gender).map((c) => (
+                {partsForGender(rules, look.gender).map((c) => (
                   <Picker
                     key={c.slot}
-                    label={t(`character.part.${c.slot}`)}
+                    label={slotLabel(`character.part.${c.slot}`, t(`character.part.${c.slot}`))}
                     options={optionsFor(catalog, c, look.gender)}
                     value={look.parts[c.slot]}
                     onStep={(d) => stepCategory(c, d)}
@@ -345,7 +328,7 @@ export function CharacterScreen(props: CharacterScreenProps): React.ReactElement
               <div className="text-sm text-muted-foreground">{artError ? t("character.artUnavailable") : t("character.artLoading")}</div>
             )}
             <div className="space-y-2">
-              {COLOUR_ROWS.filter((r) => !r.gender || r.gender === look.gender).map((r) => (
+              {coloursForGender(rules, look.gender).map((r) => (
                 <Swatches key={r.slot} row={r} value={look.colours[r.slot]} onChange={(c) => setColour(r.slot, c)} />
               ))}
             </div>

@@ -196,6 +196,7 @@ describe("ES2: the resolver's defaults are the engine's own", () => {
       "modulesDir",
       "settlementRulesFile",
       "characterRulesFile",
+      "characterCreationFile",
       "scaleLocalFile",
       "catalogFile",
       "characterCatalogFile",
@@ -212,6 +213,7 @@ describe("ES2: the resolver's defaults are the engine's own", () => {
 
   it("resolves the remaining seams where the repo actually keeps them", () => {
     assert.equal(project.paths.speciesDir, join(REPO_ROOT, "content", "species"));
+    assert.equal(project.paths.characterCreationFile, join(REPO_ROOT, "content", "character-creation.json"));
     assert.equal(project.paths.synthesisFile, join(REPO_ROOT, "content", "synthesis", "fantasy-kingdom.local.json"));
     assert.equal(project.paths.animationClipsFile, join(REPO_ROOT, "content", "animation", "clips.json"));
     assert.equal(project.paths.graphFile, join(REPO_ROOT, "content", "graph", "ecs-graph.json"));

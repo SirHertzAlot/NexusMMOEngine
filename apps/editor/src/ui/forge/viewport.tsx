@@ -13,6 +13,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 import type { SceneDoc } from "@mmo-engine/scene";
 import { SceneView } from "../scene-view.js";
+import { selectOnly } from "../../scene-selection.js";
 import { setTool } from "../tool-store.js";
 import { gizmoModeFor } from "../viewport-tools.js";
 
@@ -40,7 +41,7 @@ function Preview(): React.JSX.Element {
       onPlace: () => undefined,
     });
     viewRef.current = view;
-    view.setDoc(DOC, "a", new Set());
+    view.setDoc(DOC, selectOnly("a"), new Set());
     // Frame, then close in, so the gizmo fills the shot rather than sitting
     // at the default orbit distance.
     view.frame();

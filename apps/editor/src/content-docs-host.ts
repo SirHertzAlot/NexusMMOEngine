@@ -76,6 +76,15 @@ export const CONTENT_DOC_CHECKS: Record<ContentDocName, ContentDoc["check"]> = {
   persistence: engineSchema("persistence", "server-settings.js", "PersistenceSettingsSchema"),
   world: engineSchema("world", "server-settings.js", "WorldSettingsSchema"),
   vfxBudgets: async (repoRoot, content) => schemaIssues("vfxBudgets", (await packageModule(repoRoot, "art", "particle-budgets.js")).ParticleBudgets as Schema, content),
+  // The art package's own reader — the one the server and the client use
+  // — rather than a schema written beside it (EB7).
+  characterCreation: async (repoRoot, content) => {
+    const parse = (await packageModule(repoRoot, "art", "character/creation-rules.js")).parseCreationRules as (
+      raw: unknown,
+    ) => { rules: unknown } | { problems: Array<{ path: string; message: string }> };
+    const parsed = parse(content);
+    return "problems" in parsed ? parsed.problems.map((p) => ({ file: "characterCreation.json", path: p.path, message: p.message })) : [];
+  },
 };
 
 /** The keys a document's form owns, when another view edits the rest of its file. */

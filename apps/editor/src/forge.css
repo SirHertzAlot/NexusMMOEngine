@@ -115,6 +115,31 @@
   --m3-outline: #3c5064;
   --m3-outline-variant: var(--fg-line);
 
+  /* ==================================================================
+   * Remap: the legacy shadcn aliases (EB4b).
+   * The primitives in ui/components.tsx — every Button, Input and Select
+   * in the editor — read these, not the --m3-* roles above, so until they
+   * were remapped the whole Scenes workspace stayed Material 3 purple
+   * under this theme while its panels went dark. Each one keeps the
+   * channel space it is consumed in (app.css reads --background and the
+   * foregrounds through rgb(), and --border, --input and --ring through
+   * hsl()), so this is a value swap and nothing else.
+   * ================================================================== */
+  --background: 5 10 18;
+  --foreground: 215 227 240;
+  --card: 10 17 27;
+  --card-foreground: 215 227 240;
+  --primary: 34 211 238;
+  --primary-foreground: 4 34 42;
+  --secondary: 22 32 44;
+  --secondary-foreground: 215 227 240;
+  --muted-foreground: 143 163 184;
+  --accent: 22 32 44;
+  --accent-foreground: 215 227 240;
+  --border: 210 30% 21%;
+  --input: 210 25% 31%;
+  --ring: 188 86% 53%;
+
   --m3-font-ui: var(--fg-font-ui);
   --m3-font-mono: var(--fg-font-mono);
 

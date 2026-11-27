@@ -296,6 +296,221 @@ outer edge pinned to the unloaded neighbours). For a baked world
 The map and follow logic are `src/inspectors/world-map.ts` (pure TS,
 tested); the tool side is `packages/engine-core/src/terrain/region-regen.ts`.
 
+## 2e. What the scene viewport draws (ROADMAP EB1)
+
+The viewport used to draw one 1 m cube per node, which made a wolf, a pine
+and a longhouse the same object on screen. It now draws each node at the
+size the engine would actually spawn it at, and the editor does not decide
+what that size is:
+
+- **A creature** is its physics capsule: `CHARACTER_CAPSULE` from the engine,
+  times the body scale `CreatureService.spawnOne` resolves — the creature's
+  own `behavior.size` when it sets one that is not 1, else the species'
+  `SPECIES_NATURAL_SCALE`, else 1. An unlisted humanoid therefore stands
+  1.80 m, like a player.
+- **A prop, tree, rock, plant or building** is a stand-in box for its
+  category, multiplied by `content/scale.json` through the same
+  `resolveScale` the server applies where baked objects spawn. The stand-in
+  size is the editor's (art is what measures an object, and there may be
+  none), so it is labelled as one: `basis: "stand-in"`, and the toolbar says
+  "Stand-in sizes (no art pack)" when the pack resolved no model at all.
+- **A model**, where `assets/manifest.json` names one for the id, is loaded
+  once per URL, cloned per node and drawn at the server's scale factor. It is
+  never stretched to fit the stand-in, because the point is to see what the
+  server will spawn.
+- **Spawn points and groups** keep their marker shapes. They are not things
+  in the world, so they have no size to be accurate about.
+
+`scene-visuals.ts` holds the rules and is pure; `scene-visuals-host.ts` does
+the reading and serves `GET /api/editor/scene/visuals`; `ui/scene-view.ts`
+draws it. A checkout without `assets/` loses only the models: every size
+above still comes out right.
+
+## 2f. The Scenes workspace layout (ROADMAP EB4, EB4b)
+
+The canvas is the workspace, not a figure inside a form:
+
+- The viewport's tools float on the canvas in a translucent bar, and its
+  notes — "No terrain (grid only)", "Stand-in sizes (no art pack)" — sit in
+  a status strip at its foot. Nothing above or below pushes the canvas down
+  the page.
+- What you can drop into the scene is a column of its own beside the
+  Outliner (`ui/scene-palette.tsx`): searchable, grouped (Creatures, Props,
+  PICG) and scrolling. Drag an item onto the ground, or click it to place it
+  at the point the camera is looking at. `placeables-filter.ts` holds the
+  search so the ordering and the "no match" case are testable on their own.
+- The palette and the viewport read one hook for the list
+  (`ui/placeables-store.ts`), which is the rule in
+  [How the editor is layered](#how-the-editor-is-layered): one hook per data
+  source, mounted by every presentation of it.
+
+Selecting more than one node (`scene-selection.ts`) works the way every
+editor's does: a plain click replaces the set, ctrl or cmd toggles one node
+in or out, shift ranges over the rows the outliner draws. The *primary* —
+the last node added — is what the gizmo rides and what Details shows; the
+rest of the set lights up more faintly, follows a gizmo drag by the same
+delta, and goes with Delete, each in one undo step. Align and distribute
+(`scene-align.ts`, controls in `ui/align-bar.tsx`) act on each node's own
+transform position, so what they do can be read off the inspector.
+
+The forge theme reaches these controls through variables, not components.
+Every primitive in `ui/components.tsx` reads the legacy shadcn aliases
+(`--primary`, `--background`, `--input` and the rest), so `forge.css`
+redefines all of them alongside the `--m3-*` roles; until it did, every
+Button, Input and Select in the editor stayed Material 3 purple under the
+theme. `test/forge-aliases.test.ts` fails if a variable one theme declares
+is missing from the other.
+
+## 2g. Turning a module off (ROADMAP EB9)
+
+`dependsOn` makes the module set a graph, and the server fails the boot
+closed, so a switch flipped in the editor used to be answered at the next
+restart. The panel now says it first: `module-blast.ts` walks the graph
+transitively from the module being turned off and reports the enabled
+modules that go with it, the systems leaving the tick order, the editor
+panels that disappear and the sidecars that stop. Every enabled card
+carries the one-line cost, and a switch that takes other modules with it
+asks before acting.
+
+The same closure is what gets saved. Closing the set one level deep — the
+modules that name the disabled one, but not the ones that name those —
+produces a set `resolveModuleSet` refuses, which is what used to happen
+with `economy → items → civic`.
+
+**New module** (EB8) writes the four things that have to agree: the
+manifest, a server entry whose keys match the system names it declares, an
+optional editor entry, and the name you then enable. `module-scaffold.ts`
+holds the generator and its refusals and is browser-safe, so the form and
+`POST /api/editor/modules/scaffold` apply one set of rules; the route
+writes all of the files or none of them, and never over a folder that is
+already there.
+
+## 2h. Previewing a flow's screens (ROADMAP EB6)
+
+The Flow panel edits the path a player takes — login, character creation,
+character select, the world — and **Play from** has always been able to
+open any node, because the client takes `?start=<node>` and the dev
+account rides in the query string beside it. What it did was open a tab,
+which put the graph and the screen it describes on two different windows.
+
+The preview pane under **Play from** frames that same URL in an iframe, at
+Fit or one of three fixed sizes (1280 × 720, 1024 × 640, 390 × 844), so a
+screen can be judged at the size it will be played at without leaving the
+graph. It needs the client's own dev server running (`npm run dev
+--workspace=@mmo-engine/client`); the URL field above the buttons is where
+that address comes from, and the pane says so when it is empty. **Open in
+a tab** stays, because devtools, a second window and pointer lock still
+want a window of their own.
+
+One detail is not cosmetic. The play URL carries the dev account's name
+and password as query parameters, which is tolerable while the URL only
+goes to `window.open` and is not tolerable on a line of text in the
+editor, so the line under the toolbar is `maskUrl`'s version: every
+`user=`, `pass=`, `password=` and `token=` value is replaced with `…`.
+Anything that prints a play URL — a log line, a status message — should
+print that form, not the real one.
+
+## 2i. What a player may choose at creation (ROADMAP EB7)
+
+**Characters › Creation** edits `content/character-creation.json`: the
+part categories the character screen offers, the colours and their
+swatches, the genders, and whether a new character's body is locked to
+the starter armour.
+
+It had been three lists that had to agree. The client's character screen
+held the categories and the swatch palettes; the server's creation check
+held a denylist of the ten armour attachments, which was the complement
+of the five categories the client drew; and nothing connected them. Now
+one file answers for all three: `loadCreationRules` reads it at boot and
+the gateway checks every new character against it, the client fetches it
+(`/content/character-creation.json`) before drawing the pickers, and this
+panel writes it, validated by the art package's own reader so the form
+cannot save a document the server would refuse.
+
+A game with no file is the normal case and means the engine's defaults,
+which are exactly what it did before the file existed. The panel says so
+and offers to write the defaults out, rather than starting you from an
+empty document that would mean something quite different.
+
+Two things deliberately stay outside it. How many characters an account
+may hold is `content/rules/social.json`'s `characters.slots`, which the
+gateway can already change live — one number, one owner. And whether a
+part *exists* is still the catalog's question: a game may offer the
+`helmet` slot here, and on a machine without the licensed pack the
+server will check the name's shape rather than the pack.
+
+## 2j. The game's manifest and its module settings (ROADMAP EB10)
+
+**Modules › Game** edits `game.json`: the game's name, and the settings
+each module reads from it (`modules.<name>.<key>`, which reaches the
+module as `ctx.config[name][key]`).
+
+Two things had to exist before a settings editor could. Modules had no
+way to say what they read, so the panel declares nothing on their
+behalf: a module lists its settings in its own `module.json` ([Settings
+a game can change](MODULES.md#settings-a-game-can-change)) and gets a
+labelled, typed field per declaration. A key this game sets that no
+module declared is shown anyway, as a free text box, because the engine
+fixes no key list and a game's own module reads whatever it likes.
+
+And the engine checkout has no `game.json` at all. Writing one turns a
+checkout into a game project and changes how every path resolves at
+boot, so the panel never writes one as a side effect of being opened:
+it says there is none, explains what a manifest does, and offers a
+button. The host refuses to write over a manifest that is already there
+— `POST` answers 409 and the panel edits the file instead. Every save
+goes through `GameManifestSchema` from `@mmo-engine/sdk`, the same
+strict schema the server boots with, so the editor cannot write a
+manifest the engine would refuse.
+
+An empty field means the module's own default, and a module whose
+settings all go back to their defaults drops out of the file rather
+than leaving `{}` behind. A run's `MMO_*` variable still wins over
+both.
+
+## 2k. Making a prefab from a selection (ROADMAP EB3)
+
+Prefabs are not new: a scene node with `prefab: "goblin-camp"` is the
+bundle in `content/prefabs/goblin-camp.prefab.json` with the node's own
+components laid over it field by field, prefabs may place prefabs, and
+the Gameplay grids have edited those files for as long as they have
+existed. What the Scenes workspace was missing is the direction an
+editor works in — arrange a camp in the viewport, then make that the
+camp.
+
+Select the nodes and press **Make prefab** in the Outliner. The form
+suggests a name from the selection, says which nodes go in (a node
+inside a chosen node comes along rather than twice) and where the
+prefab's origin lands: the middle of their spread on X and Z, at the
+lowest of them, so the instance drops on ground at another height
+without burying itself. It refuses what the host would refuse — a name
+that is not lowercase letters, digits and dashes, a name already taken,
+a selection that already places the prefab being made — and the host's
+`validatePrefab` still has the last word.
+
+What happens then is two steps on purpose. The prefab file is written
+first, through the prefabs data table (`data-host.ts`, validated by the
+engine's own loader), so a refusal leaves the scene untouched. Then the
+scene edit goes through the undo history like any other: the chosen
+nodes are replaced by one node that places the prefab, at the origin,
+and **Undo** brings them back. The file stays, to place again — the
+form says so, because a button that quietly leaves a file behind is
+worse than one that admits it.
+
+The nodes keep the transforms they were authored with. Nodes that
+shared a parent stay in that parent, with the instance under it, so the
+group goes on turning and scaling them as it did; nodes gathered from
+different parents have no shared frame to keep, so those are resolved
+into scene space and the instance lands at the root.
+
+Selecting an instance shows what it takes from its prefab and what it
+says differently — `3 overrides on this instance`, each with the
+prefab's own value beside it and a **Revert** that drops the instance's
+field so the prefab's applies again. The merge was always there; nothing
+showed which of a node's fields were the instance's own, so an override
+read as the prefab's value and editing the prefab looked like it had
+done nothing.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):
@@ -364,11 +579,50 @@ commit, upgrade checklist) are in the package's `README.md` and
 6. Start → immediately Stop during the 60 s readiness window is also
    safe: the owned group is still killed.
 
+## How the editor is layered
+
+Four layers, each named by where the file sits. The shape was already
+there; this says it out loud, and `apps/editor/test/layering.test.ts`
+holds the two rules that keep it.
+
+| Layer | Where | What it may do |
+|---|---|---|
+| **Host** | `src/*-host.ts` (and `src/host.ts`) | Node. Reads and writes the repository, validates a document the same way the game loads it, refuses with every issue and writes nothing. Never imports React. |
+| **Client** | `src/*-client.ts` | The browser's side of one host. One place per route family, built on `api.ts`'s `requestJson`, so a refusal turns back into the document's own error type. |
+| **Model** | `src/store.ts`, `src/ui/*-store.ts` | State a panel reads and more than one surface writes. `createStore` plus `useSyncExternalStore`. Never imports a renderer. |
+| **View** | `src/ui/*.tsx`, `modules/*/editor` | Draws, and nothing else. Reads through a client or a store. |
+
+Two rules the test enforces, because both have been broken by accident:
+
+- **A view does not call `fetch`.** It goes through a client. Seven
+  panels still do their own fetching; they are listed by name in the
+  test, and the list may only shrink — removing one is the fix, and the
+  test fails if a name in the list no longer fetches, so the list cannot
+  go stale.
+- **A model does not import a renderer.** Reading the play state used
+  to pull `@mmo-engine/client/render` in behind it, which is why
+  `playUiStore` and `getPlayController` were pulled out of
+  `ui/play-mode.tsx` into files of their own.
+
+A view may import a host's **types** (`import type { PoolEntry } from
+"../dungeon-host.js"`) — the import is erased at build, and the
+alternative is declaring the same shape twice. It may not import a
+host's code.
+
+One more convention, from the 2026 UI rebuild
+([EDITOR-UI-2026.md](EDITOR-UI-2026.md)): **one hook per data source,
+mounted by every presentation of it.** `useEcsInspectorSession()` and
+`useTickTimings()` are each mounted by both the Material 3 panel and its
+forge counterpart, so the two cannot drift on what they show or how
+often they ask. A second presentation that polls for itself is the bug
+this prevents.
+
 ## Code map
 
 ```text
 apps/editor/
   src/host.ts                 dev-only server/assets control API (vite plugin)
+  src/scene-visuals.ts        the size the engine spawns each placeable at (EB1)
   src/play-mode.ts            PlayModeController (idle→starting→running→stopping→idle→error)
   src/inspectors/ecs.ts       read-only ECS view-model (no React, unit-tested)
   src/ui/App.tsx              tab shell — one tab per inspector

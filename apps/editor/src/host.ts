@@ -138,6 +138,7 @@ import { handleScaleRoute } from "./scale-host.js";
 import { handleCodeRoute } from "./code-host.js";
 import { handleBlenderRoute } from "./blender-host.js";
 import { handleContentDocsRoute } from "./content-docs-host.js";
+import { handleGameRoute } from "./game-host.js";
 import { handleSettlementRoute } from "./settlement-host.js";
 import { SettlementBake } from "./settlement-bake.js";
 import { handleRigRoute } from "./rig-host.js";
@@ -145,6 +146,7 @@ import { handlePlaytestRoute } from "./playtest-host.js";
 import { createScratchRunner } from "./playtest-server.js";
 import { handleNetworkRoute } from "./network-host.js";
 import { handleContentRoute, playSceneEnv, type PlaySceneRequest } from "./scene-play.js";
+import { handleSceneVisualsRoute } from "./scene-visuals-host.js";
 import { handleGraphRoute } from "./graph-host.js";
 import { handleVcsRoute } from "./vcs-host.js";
 import { handleGameplayRoute } from "./gameplay-routes.js";
@@ -1508,6 +1510,11 @@ export function editorHost(options: EditorHostOptions): Plugin {
             sendJson(res, contentReply.status, contentReply.body);
             return;
           }
+          const visualsReply = handleSceneVisualsRoute(repoRoot, req.method ?? "GET", new URL(req.url ?? "/", "http://localhost").pathname);
+          if (visualsReply) {
+            sendJson(res, visualsReply.status, visualsReply.body);
+            return;
+          }
           const modulesUrl = new URL(req.url ?? "/", "http://localhost");
           const modulesReply = await handleModulesRoute(
             repoRoot,
@@ -1606,6 +1613,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (docsReply) {
             sendJson(res, docsReply.status, docsReply.body);
+            return;
+          }
+          // The game manifest and its per-module settings (game.json, game-host.ts).
+          const gameReply = await handleGameRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "GET" ? undefined : await readBody(req),
+          );
+          if (gameReply) {
+            sendJson(res, gameReply.status, gameReply.body);
             return;
           }
           // The town generator's rules and the town preview (content/settlements/rules.json, settlement-host.ts).

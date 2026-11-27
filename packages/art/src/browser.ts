@@ -18,6 +18,7 @@ export * from "./credits.js";
 export * from "./character/modular-catalog.js";
 export * from "./character/colour-slots.js";
 export * from "./character/look.js";
+export * from "./character/creation-rules.js";
 export * from "./character/animations.js";
 export * from "./character/clip-map.js";
 export * from "./character/clip-playback.js";

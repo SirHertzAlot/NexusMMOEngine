@@ -20,6 +20,8 @@ export const CONTENT_DOC_FILES = {
   persistence: "server/persistence.json",
   /** The day cycle and server-run bots (EG14); the MMO_DAY_* and MMO_BOTS* variables still win. */
   world: "server/world.json",
+  /** What a player may choose when creating a character (EB7): the categories, the colours and their swatches. */
+  characterCreation: "character-creation.json",
 } as const;
 
 export type ContentDocName = keyof typeof CONTENT_DOC_FILES;

@@ -28,6 +28,34 @@ export interface SystemSpec {
    */
   optional?: boolean;
 }
+/**
+ * One setting a module reads from its game's `game.json`
+ * (`modules.<name>.<key>`, reaching the module as `ctx.config[name][key]`).
+ *
+ * Declaring one changes nothing at boot: the module still reads its own
+ * key with its own default, and a key nobody declared still works. What
+ * a declaration buys is that a tool can show the setting — the editor's
+ * Game panel draws a labelled field per declaration (roadmap EB10)
+ * instead of asking a designer to type JSON at a module it cannot
+ * describe.
+ */
+export interface SettingSpec {
+  /** The key under `modules.<module>` in game.json. */
+  key: string;
+  type: "number" | "string" | "boolean" | "enum";
+  /** What the module does when the game sets nothing. Shown as the placeholder. */
+  default?: number | string | boolean;
+  /** A short label; the key itself when absent. */
+  label?: string;
+  /** One line a designer reads: what it does, in game terms. */
+  help?: string;
+  /** `enum` only: the values offered. */
+  options?: string[];
+  /** `number` only. */
+  min?: number;
+  max?: number;
+  int?: boolean;
+}
 export interface ModuleManifest {
   name: string;
   version: string;
@@ -85,6 +113,13 @@ export interface ModuleManifest {
    * loads them into the db-function registry alongside content files.
    */
   db?: { functions?: string[]; caches?: string[] };
+  /**
+   * The settings this module reads from `game.json` (EB10). Optional, and
+   * not a list of what a game may set: an undeclared key reaches the
+   * module exactly as a declared one does. It is what lets a tool show
+   * them.
+   */
+  settings?: SettingSpec[];
 }
 export interface Problem {
   module: string;
@@ -104,6 +139,8 @@ const NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const ENTRY_RE = /^(?!\/)(?!.*\.\.)(?![A-Za-z]:)[\w./-]+\.(?:js|mjs|ts|tsx|jsx)$/;
 const NATIVE_ENTRY_RE = /^(?!\/)(?!.*\.\.)(?![A-Za-z]:)[\w./-]+\.node$/;
+/** A settings key as a game writes it under `modules.<name>`. */
+const SETTING_KEY_RE = /^[A-Za-z][\w-]*$/;
 
 const cmp = (a: string, b: string): number => {
   const x = a.split(".").map(Number);
@@ -129,7 +166,7 @@ export function validateManifest(
   const only = (o: Record<string, unknown>, keys: string[], at: string): void => {
     for (const k of Object.keys(o)) if (!keys.includes(k)) bad(at ? `${at}.${k}` : k, `unknown key "${k}"`);
   };
-  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native", "sidecar", "edge", "tools", "db"], "");
+  only(raw, ["name", "version", "description", "engine", "dependsOn", "editor", "server", "native", "sidecar", "edge", "tools", "db", "settings"], "");
   if (typeof raw.name !== "string" || !NAME_RE.test(raw.name)) bad("name", "must be lowercase letters, digits and dashes, starting with a letter");
   else if (raw.name !== dirName) bad("name", `must match the folder name "${dirName}"`);
   if (typeof raw.version !== "string" || !SEMVER_RE.test(raw.version)) bad("version", 'must be "major.minor.patch"');
@@ -359,6 +396,66 @@ export function validateManifest(
       else if (problems.length === before) db = { ...(functions ? { functions } : {}), ...(caches ? { caches } : {}) };
     }
   }
+  let settings: SettingSpec[] | undefined;
+  if (raw.settings !== undefined) {
+    if (!Array.isArray(raw.settings)) bad("settings", "must be a list of settings");
+    else {
+      const before = problems.length;
+      const seen = new Set<string>();
+      const out: SettingSpec[] = [];
+      raw.settings.forEach((v, i) => {
+        const at = `settings[${i}]`;
+        if (!isObj(v)) {
+          bad(at, "must be an object");
+          return;
+        }
+        only(v, ["key", "type", "default", "label", "help", "options", "min", "max", "int"], at);
+        if (typeof v.key !== "string" || !SETTING_KEY_RE.test(v.key)) {
+          bad(`${at}.key`, "must be a key name: letters, digits, dashes or underscores, starting with a letter");
+          return;
+        }
+        if (seen.has(v.key)) bad(`${at}.key`, `"${v.key}" is declared twice`);
+        seen.add(v.key);
+        const type = v.type;
+        if (type !== "number" && type !== "string" && type !== "boolean" && type !== "enum") {
+          bad(`${at}.type`, 'must be "number", "string", "boolean" or "enum"');
+          return;
+        }
+        const spec: SettingSpec = { key: v.key, type };
+        if (type === "enum") {
+          if (!Array.isArray(v.options) || v.options.length === 0 || v.options.some((o) => typeof o !== "string")) {
+            bad(`${at}.options`, "an enum setting must list its values");
+          } else spec.options = v.options as string[];
+        } else if (v.options !== undefined) bad(`${at}.options`, "only an enum setting has options");
+        if (v.default !== undefined) {
+          const ok =
+            type === "number" ? typeof v.default === "number"
+            : type === "boolean" ? typeof v.default === "boolean"
+            : typeof v.default === "string" && (type !== "enum" || (spec.options?.includes(v.default) ?? false));
+          if (!ok) bad(`${at}.default`, type === "enum" ? "must be one of the options" : `must be a ${type}`);
+          else spec.default = v.default as SettingSpec["default"];
+        }
+        for (const k of ["min", "max"] as const) {
+          if (v[k] === undefined) continue;
+          if (type !== "number") bad(`${at}.${k}`, "only a number setting has a range");
+          else if (typeof v[k] !== "number") bad(`${at}.${k}`, "must be a number");
+          else spec[k] = v[k];
+        }
+        if (v.int !== undefined) {
+          if (type !== "number") bad(`${at}.int`, "only a number setting can be whole");
+          else if (typeof v.int !== "boolean") bad(`${at}.int`, "must be true or false");
+          else spec.int = v.int;
+        }
+        if (spec.min !== undefined && spec.max !== undefined && spec.min > spec.max) bad(`${at}.min`, "is above max");
+        if (typeof v.label === "string") spec.label = v.label;
+        else if (v.label !== undefined) bad(`${at}.label`, "must be a string");
+        if (typeof v.help === "string") spec.help = v.help;
+        else if (v.help !== undefined) bad(`${at}.help`, "must be a string");
+        out.push(spec);
+      });
+      if (problems.length === before) settings = out;
+    }
+  }
   if (problems.length > 0) return { problems };
   return {
     manifest: {
@@ -374,6 +471,7 @@ export function validateManifest(
       ...(edge ? { edge } : {}),
       ...(tools ? { tools } : {}),
       ...(db ? { db } : {}),
+      ...(settings ? { settings } : {}),
     },
     problems,
   };
