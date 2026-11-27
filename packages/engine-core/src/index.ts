@@ -467,6 +467,24 @@ export type {
   VendorPort,
   WalletPort,
 } from "./net/ports.js";
+/**
+ * What a gateway extension is, for a kit that writes one.
+ *
+ * A port is a system the gateway ticks and asks (`net/ports.ts`); an
+ * extension is a system that speaks to a player directly — it is handed the
+ * player on join and leave and its own messages while they are online. The
+ * quests kit's service is one, and `QuestExtension` is the three questions
+ * the gateway asks of whatever registers under `"quest"`, declared here so
+ * that a kit can satisfy it by name rather than by guessing (`ES5o`).
+ */
+export type { ExtensionPlayer, GatewayExtension, QuestExtension } from "./net/extension.js";
+/**
+ * The engine's deterministic integer mixer: the one every procgen layer
+ * derives its seed from. A kit that generates anything — a quest for a day,
+ * a creature for a region — takes this rather than its own, because two runs
+ * of the same world have to agree.
+ */
+export { hash } from "./procgen/ecology.js";
 export { openEngineServices, SERVICE_TABLE } from "./services.js";
 export type { BreakService, ChestService, CombatService, EngineServiceRegistry, EngineServices, GatheringRecords, GatheringService, QuestRecords, QuestService, TelegraphService } from "./services.js";
 export { DEFAULT_RULES_DIR, loadGameRules, openGameRules } from "./rules/boot.js";

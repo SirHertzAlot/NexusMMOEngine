@@ -63,8 +63,7 @@ import {
 import { MigrationCoordinator, type MigrationEvent } from "@mmo-engine/engine-core/dist/src/world/migration.js";
 import { HeadlessClient } from "@mmo-engine/engine-core/dist/test/net/headless-client.js";
 import { materialCountsOf, SqliteGatheringStore } from "../src/index.js";
-import { questRecordsOf, SqliteQuestStore } from "@mmo-engine/engine-core/dist/src/quests/quest-store.js";
-import type { QuestRecord } from "@mmo-engine/engine-core/dist/src/quests/quest-log.js";
+import { questRecordsOf, type QuestRecord, SqliteQuestStore } from "@mmo-engine/kit-quests";
 import { makeCredentialStore, TEST_PASSWORD } from "@mmo-engine/engine-core/dist/test/net/auth-harness.js";
 
 const RANGE_A = { x0: 0, z0: 0, x1: 100, z1: 100 };

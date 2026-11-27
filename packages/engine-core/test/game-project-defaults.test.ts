@@ -24,7 +24,6 @@ import { DEFAULT_BIOME_REGISTRY } from "../src/procgen/biome-registry.js";
 import { DEFAULT_NATURAL_WEAPONS } from "../src/procgen/wildlife-creatures.js";
 import { DEFAULT_WILDLIFE_TABLE } from "../src/procgen/wildlife-table.js";
 import { DEFAULT_ECOLOGY_PLAN } from "../src/procgen/world-populator.js";
-import { DEFAULT_QUEST_DIR } from "../src/quests/content.js";
 import { DEFAULT_RULES_DIR } from "../src/rules/boot.js";
 import { DEFAULT_SCALE_FILE } from "../src/scale.js";
 import { DEFAULT_PREFABS_DIR, DEFAULT_SCENES_DIR } from "../src/scene-spawn.js";
@@ -46,7 +45,6 @@ const CONSTANTS: Partial<Record<SeamKey, string>> = {
   serverSettingsDir: DEFAULT_SERVER_SETTINGS_DIR,
   combatFile: DEFAULT_COMBAT_FILE,
   craftingFile: DEFAULT_CRAFTING_FILE,
-  questsDir: DEFAULT_QUEST_DIR,
   dungeonsDir: DEFAULT_DUNGEON_CONTENT,
   speciesFile: DEFAULT_SPECIES_FILE,
   scaleFile: DEFAULT_SCALE_FILE,
@@ -79,7 +77,7 @@ describe("ES2: the resolver's defaults are the engine's own", () => {
       "packages/engine-core/src/procgen/wildlife-creatures.ts",
       "packages/engine-core/src/procgen/wildlife-table.ts",
       "packages/engine-core/src/procgen/world-populator.ts",
-      "packages/engine-core/src/quests/content.ts",
+      "packages/kit-quests/src/content.ts",
       "packages/engine-core/src/rules/boot.ts",
       "packages/engine-core/src/scale.ts",
       "packages/engine-core/src/scene-spawn.ts",
@@ -169,6 +167,22 @@ describe("ES2: the resolver's defaults are the engine's own", () => {
     );
   });
 
+  it("agrees with the quests kit's own constant, which engine-core does not depend on", () => {
+    // `DEFAULT_QUEST_DIR` moved to `@mmo-engine/kit-quests` with the rest of
+    // the quests (ES5p), and the engine may not import a kit — so this reads
+    // the kit's text, the same way the settlement CLIs' resolver is read
+    // below. What is asserted is both halves: the kit still resolves
+    // `content/quests`, and the seam the engine hands a module resolves to
+    // the same place.
+    const text = source("packages/kit-quests/src/content.ts");
+    assert.match(text, /export const DEFAULT_QUEST_DIR = resolveQuestDir\(\);/);
+    for (const literal of ['"../../../../../content/quests"', '"../../../../content/quests"', 'resolve(process.cwd(), "content/quests")']) {
+      assert.ok(text.includes(literal), `${literal} is no longer in kit-quests/src/content.ts`);
+    }
+    assert.equal(project.paths.questsDir, join(REPO_ROOT, "content", "quests"));
+    assert.equal(project.sources.questsDir, "default");
+  });
+
   it("reads every variable the engine documents for a path", () => {
     const text = source("docs/CONFIGURATION.md");
     for (const seam of SEAMS) {
@@ -187,6 +201,7 @@ describe("ES2: the resolver's defaults are the engine's own", () => {
   it("leaves nothing in the table unchecked", () => {
     const checked = new Set<string>([
       ...Object.keys(CONSTANTS),
+      "questsDir",
       "vendorsFile",
       "structuresFile",
       "civicRulesFile",

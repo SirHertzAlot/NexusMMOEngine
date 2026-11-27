@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ../../scripts/dep-build.mjs @mmo-engine/engine-core && node ../../scripts/dep-build.mjs @mmo-engine/kit-combat && tsc -p tsconfig.json",
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/engine-core && node ../../scripts/dep-build.mjs @mmo-engine/kit-combat && node ../../scripts/dep-build.mjs @mmo-engine/kit-quests && tsc -p tsconfig.json",
     "test": "npm run build && node --expose-gc --test --test-force-exit \"dist/test/**/*.test.js\""
   },
   "types": "dist/src/index.d.ts",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@mmo-engine/kit-combat": "0.1.0",
+    "@mmo-engine/kit-quests": "0.1.0",
     "@types/better-sqlite3": "^9.6.0"
   },
   "sideEffects": false

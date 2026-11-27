@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "de7f13bec3d6f37a3856c1f8d131d9b53b3e8efe",
+    "builtFromCommit": "18153a18f0372cb7afd853a2100d8dbb0de6c627",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7690,7 +7690,7 @@
       "modules/props/module.json": "e1459bd2ce0be528e56d5f717b2a8f6b37c7a3236b0f373798d6b4a773493773",
       "modules/props/server.js": "35a2a80212e8573f2e84f4850836622aef347c67119e05de41a2d40a40c8596d",
       "modules/quests/module.json": "7cbd72b7e9817434461f399fc3cf1318b2b7b94d2eeddac8d42c8db671412731",
-      "modules/quests/server.js": "13708c6260bcda50617fc19076dc224f73848a4e059f434ed09e911ebc8bbfaa",
+      "modules/quests/server.js": "531658b96e21d737794141d3ccc2f56ab8cf680170321423a7f9bd53d3bcdd84",
       "modules/release/module.json": "b6c5bcb7471dccfcaa7ad256174fc36841e13567e9d5b8bd58bfbcf33b534e2d",
       "modules/residents/module.json": "4f5598d3302884c0957c662a5e7c00c4197a9dad58a0c3cb92f7d0a632183285",
       "modules/residents/server.js": "f35d07dfce98977f4ed038ab22039957bc31606818c487c6f1e255ca8d625fe2",
@@ -7764,7 +7764,7 @@
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "f15d1a3e59e969a28951e69bdde2d852ee9789e81725f20e9bcd28fa89102973",
+      "packages/engine-core/src/index.ts": "185d559b745f4265340d669851c30d21cf546b18ffd6021ccf9650a078b1d8da",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
       "packages/engine-core/src/interact/index.ts": "d8b5b613ee7ed0e936170488f3329260f274ac9c792bc117dddaa447a83ecc95",
       "packages/engine-core/src/interact/places-store.ts": "821758c3491eac0aa6046d2cde2b9e7461bec469b70a8e4db868a93730524640",
@@ -7849,13 +7849,6 @@
       "packages/engine-core/src/procgen/wildlife-table.ts": "7975d1f6d8b84d47efc9c271b99b8193065a00396bb4adce2d25af0dc640ebe7",
       "packages/engine-core/src/procgen/world-populator.ts": "b6a182ab57fdd3ed94bbf8dd14660c2580934e595922e4cc2c2cdde332b5f58c",
       "packages/engine-core/src/prop-collision.ts": "24e745bb28f8aaad5fd3a76cd63306605e8b1e285766fc7abef9bd4a7ad16b61",
-      "packages/engine-core/src/quests/content.ts": "e7a3c3cf4ba06d206f3ad080957175865466c309a0558f4ad15579702f320a53",
-      "packages/engine-core/src/quests/generate.ts": "a6d4b19a60e8400a32066244799ed2eb6a44059042724c2cae30f83792ab28e7",
-      "packages/engine-core/src/quests/quest-def.ts": "dc2de1da7be0e0401652b96dab90a68966da397c2b3aae12f1ee9e5b2b7f4765",
-      "packages/engine-core/src/quests/quest-log.ts": "0454ef43f0f3ef0cff27ec4deb291183ee795b3549462a75df08bf137a46cdb4",
-      "packages/engine-core/src/quests/quest-service.ts": "8366ec409644e17375758ce5637dd5ce1023d0046bfdb835b06b793865ed6cf0",
-      "packages/engine-core/src/quests/quest-store.ts": "c9f76e68003d77fd90e85359368579b20793534c592602285b73d20f14fe298c",
-      "packages/engine-core/src/quests/worldbuilding-generics.ts": "57ded3b013541b1e165732a345171d0ec486668a6aab564c8398298241da9d01",
       "packages/engine-core/src/rules/boot.ts": "d06e37ec83d8c249952eca0b88519a5769d347bb78da44532d68b4132ef77319",
       "packages/engine-core/src/rules/hook-overrides.ts": "36571830567d11f5106f265f872514d60984916ecd8968d95e06fa959c431eb1",
       "packages/engine-core/src/rules/reload.ts": "f61a3a5cdfd7d232349040f9ee4d0c7fb7274f41e822f64b4421ffb3de5e4ed7",
@@ -7967,6 +7960,14 @@
       "packages/kit-economy/src/vendor.ts": "41e518e89d17cd0776b849d75bf0dbf912385aa60ff76bf9303612f2f0a578cd",
       "packages/kit-economy/src/wallet-store.ts": "a8ef85c5dbe516922e1ddff8fabd66cfefb55c2a62d9e049123b3f020d1dbd81",
       "packages/kit-economy/src/wallet.ts": "e0841edcbb1cfbf822e67eb2fb48395e4765c656c690dcf70d5e33f73d3e8afa",
+      "packages/kit-quests/src/content.ts": "e7a3c3cf4ba06d206f3ad080957175865466c309a0558f4ad15579702f320a53",
+      "packages/kit-quests/src/generate.ts": "a6d4b19a60e8400a32066244799ed2eb6a44059042724c2cae30f83792ab28e7",
+      "packages/kit-quests/src/index.ts": "cd9a853cf317fd23eda884ef1302c661a0db7aaa852fd31e1ac3fca662825569",
+      "packages/kit-quests/src/quest-def.ts": "dc2de1da7be0e0401652b96dab90a68966da397c2b3aae12f1ee9e5b2b7f4765",
+      "packages/kit-quests/src/quest-log.ts": "0454ef43f0f3ef0cff27ec4deb291183ee795b3549462a75df08bf137a46cdb4",
+      "packages/kit-quests/src/quest-service.ts": "2954b37d5eba69c5a34a87b607b400a9863dcac943334df787d05436c7a35277",
+      "packages/kit-quests/src/quest-store.ts": "c9f76e68003d77fd90e85359368579b20793534c592602285b73d20f14fe298c",
+      "packages/kit-quests/src/worldbuilding-generics.ts": "57ded3b013541b1e165732a345171d0ec486668a6aab564c8398298241da9d01",
       "packages/protocol/src/codec.ts": "5f8fc62a59cddee868d23cede0e898b7e5375ff814475eedad79a091f4aa317f"
     },
     "unresolved": [
