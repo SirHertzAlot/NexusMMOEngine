@@ -53,7 +53,7 @@
 
 import * as crypto from "node:crypto";
 import { z } from "zod";
-import type { ExtensionPlayer, GatewayExtension } from "./extension.js";
+import type { ExtensionPlayer, GatewayExtension, QuestExtension } from "./extension.js";
 import { openPorts, type PortSet } from "@mmo-engine/sdk";
 import {
   type BodyPort,
@@ -2192,7 +2192,7 @@ export class Gateway {
   private readonly canonicalInterestSets = new Map<string, ReadonlySet<string>>();
   private readonly globalOnlySet: ReadonlySet<string> = freezeCanonicalSet(new Set<string>([GLOBAL_SECTOR]));
   private tickFarVisible: readonly number[] | null = null;
-  private tickQuestExt: { pinnedResidentsOf?(characterId: number | null): string[] } | null | undefined = undefined;
+  private tickQuestExt: QuestExtension | null | undefined = undefined;
 
   /**
    * Fan one tick's state out to every connected session (broadcast). With MMO_UWS_CORK=1 the uWS
@@ -2254,7 +2254,7 @@ export class Gateway {
     this.playerIndex = null;
     this.tickFarVisible = frame ? farVisibleOf(this.world) : null;
     this.tickQuestExt = frame
-      ? ((this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined) ?? null)
+      ? ((this.extensions.get("quest") as QuestExtension | undefined) ?? null)
       : undefined;
     const bySector = frame ? this.namedBySector() : null;
     const dropped = frame && this.items ? this.droppedIndex() : null;
@@ -2571,7 +2571,7 @@ export class Gateway {
     // Quest NPCs of the active steps (IM5): their resident, when it stands in the world now.
     const quests = this.tickQuestExt !== undefined
       ? this.tickQuestExt
-      : (this.extensions.get("quest") as unknown as { pinnedResidentsOf?(characterId: number | null): string[] } | undefined);
+      : (this.extensions.get("quest") as QuestExtension | undefined);
     if (quests?.pinnedResidentsOf) {
       for (const name of quests.pinnedResidentsOf(s.character?.id ?? null)) {
         const e = this.residents?.entityOf(name);
@@ -6557,7 +6557,7 @@ export class Gateway {
       const talk = this.residents!.talk(eid, this.tick);
       if (!talk) return this.sendError(s, 4005, "they have nothing to say");
       // A townsperson who gives quests opens that dialog instead of their usual line (RS5 quest).
-      const questExt = this.extensions.get("quest") as unknown as { npcOfResident?(r: string): string | undefined; talkAt?(p: ExtensionPlayer, npc: string): void } | undefined;
+      const questExt = this.extensions.get("quest") as QuestExtension | undefined;
       const giver = questExt?.npcOfResident?.(talk.npc);
       if (giver !== undefined && questExt?.talkAt) {
         questExt.talkAt(this.extensionPlayer(s), giver);

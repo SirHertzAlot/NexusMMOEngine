@@ -208,7 +208,6 @@ async function loadChatRules(): Promise<import("./net/gateway.js").ChatRules | u
 import { HooksDelegate, RulesReloader } from "./rules/reload.js";
 import type { Weapon, CombatSkills, LessonTerms } from "./vocabulary.js";
 import type { BodyPort, MagicPort, WalletPort } from "./net/ports.js";
-import { questRecordsOf } from "./quests/quest-store.js";
 import { hasComponent } from "bitecs";
 import { CharacterRef, God, Health, Transform } from "./components.js";
 import { SkillSheet } from "./stats/mastery.js";
@@ -239,7 +238,7 @@ import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
 import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
-import { openEngineServices, type BreakService, type ChestService, type EngineServiceRegistry, type GatheringRecords, type GatheringService } from "./services.js";
+import { openEngineServices, type BreakService, type ChestService, type EngineServiceRegistry, type GatheringRecords, type GatheringService, type QuestRecords, type QuestService } from "./services.js";
 
 /**
  * A numeric `MMO_*` variable, or `undefined` when it is unset or empty — so
@@ -251,7 +250,6 @@ const envNumber = (name: string): number | undefined => {
   return raw === undefined || raw === "" ? undefined : Number(raw);
 };
 import type { LootDropper } from "./items/loot-dropper.js";
-import type { QuestService } from "./quests/quest-service.js";
 import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { LivingSimSystem } from "./sim/living-sim-system.js";
@@ -1315,18 +1313,9 @@ async function main(): Promise<void> {
         collapse: { registerBuilding: (s, key, parts, o) => collapse.registerBuilding(s, key, parts, o) },
         structureBreakable: (kind) => structureKinds.get(kind),
         vendors: { attach: attachVendor },
-        quests: {
-          place: (quest, x, z) => {
-            const content = (questsRef as unknown as { content: { quests: Record<string, { giver?: string }>; npcs: Record<string, { x: number; z: number }> } })?.content;
-            if (!content) return "quests not yet assembled";
-            const giver = content.quests[quest]?.giver;
-            const npc = giver === undefined ? undefined : content.npcs[giver];
-            if (!npc) return `no quest "${quest}" with a giver`;
-            npc.x = x;
-            npc.z = z;
-            return null;
-          },
-        },
+        // `ES5o`: which quests have a giver, and what an NPC record looks
+        // like, is the quest service's business and not this file's.
+        quests: { place: (quest, x, z) => questsRef?.place(quest, x, z) ?? "quests not yet assembled" },
       },
       store,
     );
@@ -1545,7 +1534,7 @@ async function main(): Promise<void> {
   dropperRef = services.optional("dropper") ?? null;
   const dungeons = services.optional("dungeons") ?? null;
   questsRef = services.optional("quests") ?? null;
-  const quests = questsRef as import("./net/extension.js").GatewayExtension | null;
+  const quests = questsRef;
   const civic = services.optional("civic") ?? null;
   civicRef = civic;
   itemsRef?.setProvenanceLookup((id) => civic?.provenanceOf(id));
@@ -1594,7 +1583,13 @@ async function main(): Promise<void> {
   const socialStore = moduleCtx.stores!.socialStore as import("./index.js").SqliteSocialStore | undefined;
   const partyStore = moduleCtx.stores!.partyStore as import("./index.js").SqlitePartyStore | undefined;
   const instanceResults = moduleCtx.stores!.instanceResults as import("./dungeons/results.js").SqliteInstanceResultStore | undefined;
-  const questStore = moduleCtx.stores!.questStore as import("./quests/quest-store.js").SqliteQuestStore | undefined;
+  /**
+   * What this game's quests have saved, as the world record needs it
+   * (`ES5o`), from whatever module offers it. Absent module: no log rides a
+   * character's record, which is what a server with no quests has always
+   * done.
+   */
+  const questRecords = (): QuestRecords | null => (moduleCtx.stores?.questRecords as QuestRecords | undefined) ?? null;
   // PL3c: guilds, parties, friends and blocks are world records; the local stores are seeded from them
   // here, before the gateway's books read them, and written through the sync's tracked stores after.
   const socialSync =
@@ -1667,9 +1662,9 @@ async function main(): Promise<void> {
           economy: economyView ?? undefined,
           // PL3b: the character's quest log and pouch ride its world record, so they follow it to any region.
           extras: {
-            extrasOf: (id) => ({ ...(questStore ? { quests: questStore.load(id) } : {}), pouch: gatheringRecords()?.loadPouch(id) ?? {} }),
+            extrasOf: (id) => ({ ...(questRecords() ? { quests: questRecords()!.loadQuests(id) } : {}), pouch: gatheringRecords()?.loadPouch(id) ?? {} }),
             seed: (id, extras) => {
-              if (questStore && extras.quests !== undefined) questStore.replace(id, questRecordsOf(extras.quests));
+              if (extras.quests !== undefined) questRecords()?.replaceQuests(id, extras.quests);
               if (extras.pouch !== undefined) {
                 gatheringRecords()?.replacePouch(id, extras.pouch);
                 pouch.forgetPouch(id);
@@ -1764,7 +1759,7 @@ async function main(): Promise<void> {
     systems: assembled.systems,
     // Each one is here only while its module is: an absent extension is a
     // feature the gateway answers "unsupported" for, not a null to guard.
-    extensions: [quests, dungeons, craftingService, civic].filter((x): x is import("./net/extension.js").GatewayExtension => x !== null),
+    extensions: [quests, dungeons, craftingService, civic].filter((x): x is NonNullable<typeof x> => x !== null),
     ...(itemsRef ? { items: itemsRef } : {}),
     // Players spawn standing on the terrain (a baked world's ground is
     // anywhere from a swamp floor below 0 to mountain tops).

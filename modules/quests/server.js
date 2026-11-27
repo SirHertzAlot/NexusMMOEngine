@@ -14,19 +14,27 @@ import fs from "node:fs";
 import { join } from "node:path";
 import { QuestService } from "../../packages/engine-core/dist/src/quests/quest-service.js";
 import { loadQuestContent } from "../../packages/engine-core/dist/src/quests/content.js";
-import { SqliteQuestStore } from "../../packages/engine-core/dist/src/quests/quest-store.js";
+import { questRecordsOf, SqliteQuestStore } from "../../packages/engine-core/dist/src/quests/quest-store.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.quests ?? {};
   const questContent = loadQuestContent(config.questDir);
 
-  // On ctx.stores too: fleet mode carries each character's log in its world record (PL3b).
   // No configured dataDir means a harness, not a server: ./data (gitignored)
   // rather than the working directory. See docs/MODULES.md, "Where a store lives".
   const dataDir = typeof config.dataDir === "string" ? config.dataDir : "./data";
   fs.mkdirSync(dataDir, { recursive: true });
   const store = new SqliteQuestStore(join(dataDir, "quests.db"));
-  ctx.stores.questStore = store;
+  // Fleet mode carries each character's log in its world record (PL3b). The
+  // host used to take the store itself off ctx.stores and call into it; it
+  // moves the rows through this facade now and never reads inside them
+  // (ES5o), so validating a recalled log is this module's job: it is the only
+  // thing that knows what a valid one looks like, and it drops whatever it
+  // does not recognise.
+  ctx.stores.questRecords = {
+    loadQuests: (charId) => store.load(charId),
+    replaceQuests: (charId, rows) => store.replace(charId, questRecordsOf(rows)),
+  };
   const quests = new QuestService({
     content: questContent,
     store,

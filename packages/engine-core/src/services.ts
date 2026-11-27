@@ -48,8 +48,9 @@ import type { MasterySystem } from "./stats/mastery-system.js";
 import type { ItemService } from "./items/index.js";
 import type { LootDropper } from "./items/loot-dropper.js";
 import type { InstanceManager } from "./dungeons/manager.js";
-import type { QuestService } from "./quests/quest-service.js";
 import type { CivicService } from "./civic/index.js";
+import type { GatewayExtension } from "./net/extension.js";
+import type { LifeEvent } from "./vocabulary.js";
 
 /**
  * What the host itself calls on a game's combat and telegraphs (`ES5f`).
@@ -149,6 +150,51 @@ export interface GatheringRecords {
   replacePouch(charId: number, pouch: unknown): void;
   /** Every node's stock, for the range snapshot (PL3a: the stocks are the range's, held by the world). */
   allNodes(): readonly unknown[];
+}
+
+/**
+ * What the host itself calls on a game's quests (`ES5o`).
+ *
+ * The quest service is a gateway extension first — the gateway hands it a
+ * player's messages by its `kind` — and what the *host* asks of it beyond
+ * that is two things, both of which it used to take by naming the class.
+ *
+ * `place` is the interesting one. A scene may say where a quest's giver
+ * stands, and `server.ts` carried that out by reaching through the service
+ * into its `content` with a cast, looking up the quest's giver and writing
+ * the NPC's coordinates. That is a game's content shape in the engine's
+ * entry point: a game whose quests are not keyed by giver, or whose NPCs are
+ * not a flat record, could not be placed at all. The service answers now,
+ * and the engine only passes on what it refused.
+ *
+ * Absent service: a scene's quest-giver nodes are refused with a reason, the
+ * same as any other node the run cannot place, and a death credits no quest.
+ */
+export interface QuestService extends GatewayExtension {
+  /**
+   * Stand the giver of `quest` at `x, z`. `null` means placed; a string is
+   * the reason it was not, which the scene loader reports as the node's
+   * skip reason.
+   */
+  place(quest: string, x: number, z: number): string | null;
+  /** A death, for the steps that count kills. `kindOf` names a creature. */
+  onDeath(sim: SimWorld, ev: LifeEvent, kindOf: (e: number) => string | undefined): void;
+}
+
+/**
+ * Where a game's quests keep what they have saved, as the world record
+ * needs it (`ES5o`) — the same shape `GatheringRecords` has, for the same
+ * reason.
+ *
+ * A character's quest log rides its world record between regions (PL3b), and
+ * the host carries the rows without reading inside them: validating a
+ * recalled log is the business of whatever wrote it. So `unknown` each way.
+ */
+export interface QuestRecords {
+  /** A character's log, for the world record's `extras.quests`. */
+  loadQuests(charId: number): readonly unknown[];
+  /** Put a recalled log back, dropping whatever it does not recognise. */
+  replaceQuests(charId: number, rows: unknown): void;
 }
 
 /** Every service the server reads, and what it is. */
