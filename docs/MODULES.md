@@ -63,6 +63,18 @@ A system is declared `{ "name": "...", "after": [...], "before": [...], "optiona
 { "name": "character-bridge", "after": "integrate", "before": "prop-collision" }
 ```
 
+**Where a module sits in the set matters.** The resolver takes the lowest
+*declaration* index that is ready, and indices run `core` first and then the
+enabled set in order, so two systems that no edge separates run in set order.
+A system whose module is listed late therefore ticks late, however early its
+`after` anchor is — and a `before` edge can pull the system it points at
+*later*, because that one now has to wait. `gathering` is listed immediately
+after `core` for exactly this reason: moving it out of `core` without that
+dropped it, and `chests`, `breaks` and `collapse` with it, from third in the
+tick to the far end. If a module's systems have to run at a particular point,
+give them edges **and** put the module where those edges want it, then check
+the boot's `[modules] … | tick order: …` line.
+
 ## Writing a server module
 
 The shipped example is `modules/sample-heartbeat/`. It logs a line every 600 ticks.

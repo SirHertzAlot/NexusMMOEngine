@@ -1,6 +1,7 @@
 {
   "modules": [
     "core",
+    "gathering",
     "characters",
     "scenes",
     "flow",
@@ -29,7 +30,6 @@
     "art",
     "release",
     "economy",
-    "gathering",
     "social",
     "authoring",
     "civic"
