@@ -33,8 +33,9 @@
 
 import { openServiceRegistry, type ServiceDecl, type ServiceRegistry } from "@mmo-engine/sdk";
 import type { BodyPort, MagicPort, ResidentPort, VendorPort, WalletPort } from "./net/ports.js";
+import type { Breakable } from "@mmo-engine/scatter";
 import type { GatheringRules } from "@mmo-engine/rules";
-import type { ResourceNodeSpec } from "./vocabulary.js";
+import type { ChestSpec, ResourceNodeSpec } from "./vocabulary.js";
 import type { SimWorld } from "./world.js";
 import type { TelegraphSpec } from "./vocabulary.js";
 import type { PhysicsSystem } from "./systems.js";
@@ -103,6 +104,36 @@ export interface GatheringService {
 }
 
 /**
+ * What the host asks of a game's chests and doors (`ES5l`).
+ *
+ * Not the gateway's `ChestPort`, which is a player opening one. This is the
+ * one call the host makes: a scene's nodes become chests as it spawns them.
+ */
+export interface ChestService {
+  /** Make entity `eid` the chest or door `key`. */
+  register(eid: number, key: string, spec: ChestSpec, sim?: SimWorld): void;
+}
+
+/**
+ * What the host asks of a game's breakable props (`ES5l`).
+ *
+ * Not the gateway's `BreakPort` either. The host registers a scene's
+ * breakables, and the combat path asks three questions of them: whether a
+ * blow may land on this target at all, how much a damage kind counts for
+ * against it, and what the client should be told about damage stages.
+ */
+export interface BreakService {
+  /** Make entity `eid` the breakable `key`, as its archetype describes it. */
+  register(sim: SimWorld, eid: number, key: string, def: Breakable): void;
+  /** Whether `attacker` may strike `target`; a building refuses the weak. */
+  canHit(sim: SimWorld, attacker: number, target: number): boolean;
+  /** How much a blow of `kind` counts for against `target`. */
+  kindScale(target: number, kind: string): number;
+  /** The damage stages the client draws, by archetype; undefined: none. */
+  damageStages(): Record<string, number[]> | undefined;
+}
+
+/**
  * Where a game's gathering keeps what it has saved, as the world record
  * needs it (`ES5k`).
  *
@@ -138,6 +169,8 @@ export interface EngineServices {
   mastery: MasterySystem;
   residents: ResidentPort;
   gathering: GatheringService;
+  chests: ChestService;
+  breaks: BreakService;
   dropper: LootDropper;
   dungeons: InstanceManager;
   quests: QuestService;
@@ -169,6 +202,8 @@ export const SERVICE_TABLE: readonly ServiceDecl[] = [
   { key: "mastery", module: "character", kind: "system", required: true, what: "what a character has got better at" },
   { key: "residents", module: "residents", kind: "system", required: false, what: "the towns' people (off without a scene and a baked manifest)" },
   { key: "gathering", module: "gathering", kind: "system", required: false, what: "resource nodes and the materials pouch (no module, no pouch: a building cannot be mended)" },
+  { key: "chests", module: "props", kind: "system", required: false, what: "the world's chests and the doors that open with them" },
+  { key: "breaks", module: "props", kind: "system", required: false, what: "props that break: barrels, crates, urns, and a building's parts" },
 
   // Gateway extensions: consumed directly, never ticked.
   { key: "dungeons", module: "dungeons", kind: "extension", required: false, what: "dungeon instances" },

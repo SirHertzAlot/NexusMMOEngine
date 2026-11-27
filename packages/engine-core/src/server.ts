@@ -239,7 +239,7 @@ import { DEFAULT_WILDLIFE_TABLE, loadWildlifeTable, planWildlifeChunk } from "./
 import { loadNaturalWeapons, wildlifeCreatures, withWildlife } from "./procgen/wildlife-creatures.js";
 import { townSettlements } from "./procgen/wildlife-settlements.js";
 import type { RaidSettlement } from "./creatures.js";
-import { openEngineServices, type EngineServiceRegistry, type GatheringRecords, type GatheringService } from "./services.js";
+import { openEngineServices, type BreakService, type ChestService, type EngineServiceRegistry, type GatheringRecords, type GatheringService } from "./services.js";
 
 /**
  * A numeric `MMO_*` variable, or `undefined` when it is unset or empty — so
@@ -256,7 +256,7 @@ import { ecologySeed32 } from "./procgen/ecology.js";
 import { lineDef, rollTable } from "./items/index.js";
 import { LivingSimSystem } from "./sim/living-sim-system.js";
 import { lessonTerms, loadLessons } from "./residents/lessons.js";
-import { BreakSystem, breakDefsOf, ChestSystem, CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
+import { CollapseSystem, loadStructureBreakables, loadVendors, placeRecordsOf, SqlitePlacesStore } from "./interact/index.js";
 import { SqliteSessionStore } from "./auth/index.js";
 import { coreChannelPort, startCoreChannel } from "./channel-server.js";
 import {
@@ -1196,13 +1196,23 @@ async function main(): Promise<void> {
   };
   // What players changed in the world that the snapshot does not keep: broken props, opened chests and doors (IX5).
   const placesStore = new SqlitePlacesStore(path.join(DATA_DIR, "places.db"));
-  const chests = new ChestSystem({
-    has: (holder, base) => itemsOf().countBase(holder, base) > 0,
-    take: (holder, base) => itemsOf().takeBase(holder, base),
-    drop: dropTable,
-    store: placesStore,
-    pool: respawnPool,
-  });
+  // The props module builds the chests and the breakables (ES5l); the host
+  // states what it asks of them and goes without when that module is off,
+  // which means a scene's chests and breakables are simply not registered,
+  // so nothing opens and nothing breaks.
+  const chestHolder: { current: ChestService | null } = { current: null };
+  const breakHolder: { current: BreakService | null } = { current: null };
+  const chestsOf: ChestService = {
+    register: (eid, key, spec, s) => void chestHolder.current?.register(eid, key, spec, s),
+  };
+  // The three absent answers are the ones the system itself gives when
+  // nothing is registered: anyone may strike, a blow counts once, no stages.
+  const breaksOf: BreakService = {
+    register: (s, eid, key, def) => void breakHolder.current?.register(s, eid, key, def),
+    canHit: (s, attacker, target) => breakHolder.current?.canHit(s, attacker, target) ?? true,
+    kindScale: (target, kind) => breakHolder.current?.kindScale(target, kind) ?? 1,
+    damageStages: () => breakHolder.current?.damageStages(),
+  };
   // Props that break (IX4, IX5): a scene node with a Breakable component. The last attacker owns the loot.
   // Shops placed in scenes (IX8): content/vendors.json templates, defined on the economy's vendor system the first time a node names one.
   const { templates: vendorTemplates, byArchetype: shopByArchetype } = loadVendors(GAME.paths.vendorsFile);
@@ -1228,20 +1238,27 @@ async function main(): Promise<void> {
   const structureKinds = loadStructureBreakables(GAME.paths.structuresFile);
   // Buildings that fall when their parts break (DE4): parts stay static until one breaks.
   const collapse = new CollapseSystem({ store: placesStore });
-  const breaks: BreakSystem = new BreakSystem(breakDefsOf(), {
-    store: placesStore,
+  // What the props module needs from the host: where a break and an opened
+  // chest are kept, the pool everything respawning shares, the items a
+  // chest costs and a table rolls, the pouch a repair spends, who struck
+  // last, and what a break means to a building — `CollapseSystem` is the
+  // host's own, so toppling stays here.
+  const propsConfig = {
+    placesStore,
     pool: respawnPool,
-    // Mending a building spends the pouch (gathered materials).
-    materials: { count: (holder, material) => pouch.countOf(holder, material), spend: (holder, material, n) => pouch.spend(holder, material, n) },
+    has: (holder: number, base: string) => itemsOf().countBase(holder, base) > 0,
+    take: (holder: number, base: string) => itemsOf().takeBase(holder, base),
+    drop: dropTable,
+    materials: { count: (holder: number, material: string) => pouch.countOf(holder, material), spend: (holder: number, material: string, n: number) => pouch.spend(holder, material, n) },
     killerOf: (e: number): number | undefined => services.optional("combat")?.lastAttacker(e),
-    onBreak: (s, ev) => {
+    onBreak: (s: SimWorld, ev: { eid: number; x: number; z: number; loot?: string; killer?: number }) => {
       collapse.partBroken(s, ev.eid);
       if (ev.loot === undefined) return;
       const killer = ev.killer;
       const owner = killer !== undefined && hasComponent(s.ecs, CharacterRef, killer) ? CharacterRef.idHi[killer] * 4294967296 + CharacterRef.idLo[killer] : 0;
       dropTable(s, ev.loot, ev.x, ev.z, owner);
     },
-  });
+  };
   // Quests and dialog (P1, slice 4): the quests module builds the service
   // from this config during assembly. See modules/quests/server.js.
   const questsConfig = {
@@ -1287,7 +1304,7 @@ async function main(): Promise<void> {
           discard: (ids) => ids.forEach((i) => itemsOf().discardGround(sim, i)),
         },
         resources: { register: (eid, key, spec) => pouch.register(eid, key, spec) },
-        chests: { register: (eid, key, spec) => chests.register(eid, key, spec, sim) },
+        chests: { register: (eid, key, spec) => chestsOf.register(eid, key, spec, sim) },
         // A region shard spawns only what stands in its chunks (the migration.ts convention: x0 <= cx < x1).
         inRange: fleetChunkRange
           ? (x, z) => {
@@ -1295,7 +1312,7 @@ async function main(): Promise<void> {
               return cx >= r.x0 && cx < r.x1 && cz >= r.z0 && cz < r.z1;
             }
           : undefined,
-        breakables: { register: (eid, key, def) => breaks.register(sim, eid, key, def) },
+        breakables: { register: (eid, key, def) => breaksOf.register(sim, eid, key, def) },
         collapse: { registerBuilding: (s, key, parts, o) => collapse.registerBuilding(s, key, parts, o) },
         structureBreakable: (kind) => structureKinds.get(kind),
         vendors: { attach: attachVendor },
@@ -1370,8 +1387,8 @@ async function main(): Promise<void> {
   // from this config during assembly. See modules/combat/server.js.
   const combatConfig = {
     // A building holds out against a blow from anyone below its minStrength (IX6).
-    canBreak: (attacker: number, target: number): boolean => breaks.canHit(sim, attacker, target),
-    kindScale: (target: number, kind: string): number => breaks.kindScale(target, kind),
+    canBreak: (attacker: number, target: number): boolean => breaksOf.canHit(sim, attacker, target),
+    kindScale: (target: number, kind: string): number => breaksOf.kindScale(target, kind),
     // A building part is hit at its middle, not at the pivot it is placed by (DE4c).
     hitBody: (target: number) => collapse.hitBody(sim, target),
     rules: game.rules,
@@ -1475,7 +1492,7 @@ async function main(): Promise<void> {
     // module the host wires nothing for still reads its manifest settings,
     // which is how a game's own module is configured without touching this.
     config: mergeModuleConfig(
-      { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, gathering: gatheringConfig, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
+      { items: itemsConfig, dungeons: dungeonsConfig, quests: questsConfig, combat: combatConfig, creatures: creaturesConfig, character: characterConfig, physics: physicsConfig, economy: { dataDir: DATA_DIR, itemsOf }, gathering: gatheringConfig, props: propsConfig, social: { dataDir: DATA_DIR }, residents: residentsConfig, civic: civicConfig },
       GAME.moduleConfig,
     ),
   };
@@ -1492,8 +1509,6 @@ async function main(): Promise<void> {
       core: {
         reloader,
         streamer,
-        chests,
-        breaks,
         collapse,
       },
     },
@@ -1513,6 +1528,9 @@ async function main(): Promise<void> {
   walletHolder.current = services.optional("wallet") ?? null;
   // The gathering module owns the nodes and the pouch, the same way (ES5k).
   gatheringHolder.current = services.optional("gathering") ?? null;
+  // And the props module owns the chests and the breakables (ES5l).
+  chestHolder.current = services.optional("chests") ?? null;
+  breakHolder.current = services.optional("breaks") ?? null;
   dropperRef = services.optional("dropper") ?? null;
   const dungeons = services.optional("dungeons") ?? null;
   questsRef = services.optional("quests") ?? null;
@@ -1700,7 +1718,7 @@ async function main(): Promise<void> {
     sessionStore,
     worldCharacters: worldCharacters ?? undefined,
     atomicOps: atomicOps ?? undefined,
-    damageStages: () => breaks.damageStages(),
+    damageStages: () => breaksOf.damageStages(),
     // Chat rules from the chat module (slice 1: the gateway no longer imports
     // chat rules directly). Falls back to built-ins if the module is absent.
     chatRules: await loadChatRules(),

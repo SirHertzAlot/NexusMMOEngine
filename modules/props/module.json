@@ -1,0 +1,20 @@
+{
+  "name": "props",
+  "version": "0.1.0",
+  "description": "The world's chests, doors and breakable props (IX1, IX4, IX5): barrels, crates, urns, and the parts a building falls apart into.",
+  "dependsOn": [],
+  "server": {
+    "entry": "server.js",
+    "systems": [
+      {
+        "name": "chests",
+        "after": ["streamer"],
+        "before": ["collapse"]
+      },
+      {
+        "name": "breaks",
+        "before": ["collapse"]
+      }
+    ]
+  }
+}

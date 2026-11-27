@@ -11,11 +11,14 @@
  * game what a lesson is worth instead of working it out from
  * `residents/lessons.ts`.
  *
- * What is left is construction, and it is listed below rather than hidden:
- * three files still *build* an economy system, each for a reason that takes
- * its own change. This test fails if a fourth appears, and it fails if one of
- * the three starts reaching for something new — which is what stops the
- * boundary drifting back while those changes are made.
+ * What is left is construction, and it is listed below rather than hidden.
+ * It was three files when `ES5i` wrote this. `ES5j`, `ES5k` and `ES5l` took
+ * the dungeon run and both of `server.ts`'s constructions off it, and what
+ * is left is the `interact` barrel, which re-exports the chest and break
+ * systems for the module that builds them, and one import in `server.ts`:
+ * it loads the lessons file and wraps it for the gateway. This test fails if
+ * another appears, and it fails if one of the two stops — which is what
+ * stops the boundary drifting back.
  */
 
 import assert from "node:assert/strict";
@@ -58,20 +61,23 @@ const CLASSES = [
 ];
 
 /**
- * The three that still build one, and what each is waiting on.
+ * The two that still reach one, and what each is waiting on.
  *
  * Listed so that the boundary is a fact in a test rather than something a
- * reader has to work out, and so that the next three changes have somewhere
- * to delete a line from.
+ * reader has to work out. It started as three construction sites: `ES5j`
+ * took the dungeon run's off it, `ES5k` gathering, `ES5l` the chests and
+ * breakables. Nothing in the engine *builds* an economy system now; these
+ * two only reach for one.
  */
 const BUILDS: Readonly<Record<string, string>> = {
   // A barrel over `breaks.ts` and `chests.ts`: it goes when they do.
   "interact/index.ts": "the interact barrel re-exports them",
-  // `server.ts` still builds the chest and break systems inline. Gathering
-  // left for `modules/gathering` at `ES5k`; these two share the places
-  // store, the respawn pool, the loot table and the collapse system with
-  // the host, so they take a module of their own (`ES5l`).
-  "server.ts": "chests and breaks have no module to build them",
+  // `server.ts` builds no economy system any more, but it still *imports*
+  // one module: it loads the lessons file and wraps it in `lessonTerms` to
+  // hand the gateway a `LessonTerms`. `ES5i` opened that seam and left the
+  // loading on this side; moving it into the residents module is its own
+  // change (`ES5m`).
+  "server.ts": "it still loads the lessons file through residents/lessons.ts",
   // The engine's own wiring of the run's world slot (`ES5j`), kept off the
   // boot path exactly so it can move into the kit unchanged — the same place
   // `dungeons/default-combat.ts` stood before `ES5h` took it.
@@ -99,7 +105,7 @@ function code(rel: string): string {
     .replace(/\/\/[^\n]*/g, "");
 }
 
-test("only the three known files still name an economy system", () => {
+test("only the two known files still reach an economy module", () => {
   const offenders: string[] = [];
   for (const rel of sources()) {
     if (KIT.includes(rel)) continue;
@@ -143,6 +149,14 @@ test("the vocabulary carries what the engine needs instead", () => {
 
   assert.doesNotMatch(code("scene-spawn.ts"), /gathering\//, "scene-spawn.ts should read the spec from the vocabulary");
   assert.doesNotMatch(code("net/gateway.ts"), /residents\/lessons/, "the gateway should ask a game what a lesson is worth");
+  // And the entry point asks for the chests and breakables too (ES5l), so
+  // nothing in the engine's own wiring builds an economy system any more.
+  for (const cls of ["ChestSystem", "BreakSystem"]) {
+    assert.doesNotMatch(code("server.ts"), new RegExp(`\\b${cls}\\b`), `server.ts should ask for ${cls}'s service, not build it`);
+  }
+  assert.match(code("services.ts"), /chests: ChestService/, "the registry should carry the chests");
+  assert.match(code("services.ts"), /breaks: BreakService/, "the registry should carry the breakables");
+
   // And a dungeon run reaches its chests, breakables and veins through the
   // slot in `dungeons/world-slot.ts`, the way it reaches its fighting.
   assert.doesNotMatch(code("dungeons/instance.ts"), /from "\.\.\/(interact|gathering)\//, "a run should ask for its props, not build them");
