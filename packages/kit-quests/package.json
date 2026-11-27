@@ -1,0 +1,26 @@
+{
+  "description": "The quests this engine ships: authored and generated, the log a character carries, the giver they talk to, and the worldbuilding a quest reads. Swap it or fork it.",
+  "main": "dist/src/index.js",
+  "name": "@mmo-engine/kit-quests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../../scripts/dep-build.mjs @mmo-engine/engine-core && tsc -p tsconfig.json",
+    "test": "npm run build && node --expose-gc --test --test-force-exit \"dist/test/**/*.test.js\""
+  },
+  "types": "dist/src/index.d.ts",
+  "version": "0.1.0",
+  "dependencies": {
+    "@mmo-engine/engine-core": "0.1.0",
+    "@mmo-engine/protocol": "^0.1.0",
+    "@mmo-engine/rules": "0.1.0",
+    "@mmo-engine/wfc": "0.1.0",
+    "better-sqlite3": "^13.0.3",
+    "bitecs": "0.3.40",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0"
+  },
+  "sideEffects": false
+}

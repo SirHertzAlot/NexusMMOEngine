@@ -5,8 +5,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { checkQuestContent, type QuestContent } from "../../src/quests/content.js";
-import { authoredQuest } from "../../src/quests/quest-def.js";
+import { checkQuestContent, type QuestContent } from "../src/content.js";
+import { authoredQuest } from "../src/quest-def.js";
 
 const content = {
   npcs: {

@@ -221,6 +221,18 @@ everything respawning shares; the loot a table rolls; and `CollapseSystem`,
 because a broken part is what topples a building and toppling is the world's
 business. Each of those a system here takes as an argument rather than owning.
 
+The quests are the third. `@mmo-engine/kit-quests` holds one system and the
+pieces it is built from — the log's rules, the generator, the content schema
+and the store — and `modules/quests/server.js` builds it from the package.
+This one is not a port: a port is a system the gateway ticks and asks, and
+this one speaks to a player directly, so it registers as the `"quest"`
+extension and the host asks the registry for a `QuestService` of two calls,
+`place` and `onDeath`. What stayed on the engine's side is the journey rather
+than the rules: a character's log rides their world record between regions, so
+`QuestRecords` moves rows the host never reads inside, and the kit keeps the
+validator for them, because the only thing that can say which rows are valid
+is whatever wrote them.
+
 A dungeon run is its own host, so it cannot ask for a system by port: it was
 the one building them. It declares two slots instead, and a module fills
 them. `dungeons/combat-slot.ts` is its fighting and `dungeons/world-slot.ts`

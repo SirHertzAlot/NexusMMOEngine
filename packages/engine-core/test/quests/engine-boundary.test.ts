@@ -1,35 +1,34 @@
 /**
- * The engine does not have quests (roadmap `ES5o`).
+ * The engine does not have quests (roadmap `ES5o`–`ES5p`).
  *
- * The same boundary `ES5i`–`ES5m` drew around the economy, drawn around the
- * quests before their code moves. Nothing here moves a file: what it changes
- * is who asks whom.
+ * `ES5o` took the engine's three holds on them and left the code where it
+ * was: `services.ts` stopped importing the `QuestService` class and declared
+ * the two interfaces the host calls, the gateway's four inline
+ * `as unknown as { ... }` casts became one `QuestExtension`, and `server.ts`
+ * gave up holding the quest store to put a character's log on its world
+ * record. The real find was `place`: a scene saying where a quest starts was
+ * carried out by reaching through the service into its content, so a game
+ * whose quests are not keyed by giver could not place one at all.
  *
- * Three couplings were in the way, and each was the engine knowing something
- * only a game can know:
+ * `ES5p` moved the code. The seven files are `@mmo-engine/kit-quests` now, so
+ * what this file holds is a line rather than a list:
  *
- * 1. `services.ts` typed the registry's `quests` row by importing the
- *    `QuestService` *class*. It declares the interface itself now — what the
- *    host calls, which is `place` and `onDeath` on top of being a gateway
- *    extension.
- * 2. The gateway asked three questions of `extensions.get("quest")` through
- *    an `as unknown as { ... }` shape written out at four call sites. That
- *    shape is `QuestExtension` in `net/extension.ts`, once.
- * 3. `server.ts` held the quest store itself to put a character's log on its
- *    world record, and — the real leak — carried out a scene's "stand this
- *    quest's giver here" by reaching through the service into its `content`
- *    with a cast, looking up the giver and writing the NPC's coordinates. A
- *    game whose quests are not keyed by giver could not be placed at all.
- *    The service answers `place` now, and the log rides a `QuestRecords`
- *    facade a module publishes, rows `unknown` in both directions.
+ * 1. None of what moved is back in `src`.
+ * 2. Nothing in `src` names one of the kit's exports in code.
+ * 3. The engine still declares what it asks for, where neither side owns it.
  *
- * What this test holds is the result: outside `src/quests/`, the engine
- * neither imports that directory nor names anything in it. That is what makes
- * the move itself (`ES5p`) a rewrite of import paths and nothing else.
+ * The general clause — that `engine-core/src` imports no `@mmo-engine/kit-*`
+ * at all, by package name or any other route — is in
+ * `test/economy/engine-boundary.test.ts` and covers every kit, so it is not
+ * repeated here.
+ *
+ * A kit may import the engine. The engine may not import a kit, and may not
+ * know a kit's names — that is the whole difference between a game built on
+ * this engine and a game built into it.
  */
 
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -37,33 +36,32 @@ import { fileURLToPath } from "node:url";
 /** This test runs from packages/engine-core/dist/test/quests. */
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "src");
 
-/** Every `.ts` under `dir`. */
-function sources(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const abs = join(dir, name);
-    if (statSync(abs).isDirectory()) sources(abs, out);
-    else if (name.endsWith(".ts")) out.push(abs);
-  }
-  return out;
-}
-
-/** The engine's own sources, excluding the quests directory itself. */
-const outsideQuests = (): [string, string][] =>
-  sources(SRC)
-    .map((f) => [relative(SRC, f).split("\\").join("/"), readFileSync(f, "utf8")] as [string, string])
-    .filter(([rel]) => !rel.startsWith("quests/"));
+/**
+ * What moved into `@mmo-engine/kit-quests`, by the path it used to have.
+ *
+ * Kept as the old paths on purpose: the failure this guards against is
+ * someone re-adding one of these here rather than in the kit, and the message
+ * naming the path it used to live at is the useful one.
+ */
+const MOVED = [
+  "quests/content.ts",
+  "quests/generate.ts",
+  "quests/quest-def.ts",
+  "quests/quest-log.ts",
+  "quests/quest-service.ts",
+  "quests/quest-store.ts",
+  "quests/worldbuilding-generics.ts",
+];
 
 /**
- * The quests' own exports, which nothing in the engine should be able to
- * name.
+ * The kit's exports, which nothing in the engine should be able to name.
  *
- * `QuestService` is deliberately not in this list, though `quest-service.ts`
- * exports a class by that name: `services.ts` declares an *interface* of the
- * same name, which is the host's statement of what it calls rather than a
- * reference to the class. Same reason `lessonTerms` is excluded from the
- * economy's list — a name the host owns too is not a coupling. `QuestRecords`
- * and `QuestExtension` are the engine's own names and appear nowhere in
- * `quests/`.
+ * `QuestService` is deliberately not in this list, though the kit exports a
+ * class by that name: `services.ts` declares an *interface* of the same name,
+ * which is the host's statement of what it calls rather than a reference to
+ * the class. Same reason `lessonTerms` is excluded from the economy's list —
+ * a name the host owns too is not a coupling. `QuestRecords` and
+ * `QuestExtension` are the engine's own names and appear nowhere in the kit.
  */
 const NAMES = [
   "SqliteQuestStore",
@@ -81,47 +79,56 @@ const NAMES = [
   "authoredQuest",
   "DEFAULT_QUEST_DIR",
   "EMPTY_QUEST_CONTENT",
+  "advancePact",
+  "composeGiverProfile",
+  "performRite",
+  "treatSickPlace",
+  "STRUCTURE_SKINS",
+  "CHARACTER_MOTIVATIONS",
 ];
 
-test("nothing outside src/quests imports it", () => {
-  // Static and dynamic both: `server.ts` was reaching the store through an
-  // inline `import("./quests/quest-store.js").SqliteQuestStore` type, which a
-  // check on `from "..."` alone would have walked straight past.
-  const offenders: string[] = [];
-  for (const [rel, text] of outsideQuests()) {
-    for (const m of text.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
-      const spec = m[1] as string;
-      if (!spec.startsWith(".")) continue;
-      const abs = resolve(dirname(join(SRC, rel)), spec);
-      if (relative(SRC, abs).split("\\").join("/").startsWith("quests/")) offenders.push(`${rel} -> ${spec}`);
+/** Every `.ts` under `src`, relative and posix. */
+function sources(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) walk(abs);
+      else if (name.endsWith(".ts")) out.push(relative(SRC, abs).split("\\").join("/"));
     }
-  }
-  assert.deepEqual(offenders, [], "engine sources importing the quests");
+  };
+  walk(SRC);
+  return out.sort();
+}
+
+/** A file's text with comments stripped: prose may name what moved, and does. */
+function code(rel: string): string {
+  return readFileSync(join(SRC, rel), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "");
+}
+
+test("none of what moved into the kit is back in the engine", () => {
+  const back = MOVED.filter((rel) => existsSync(join(SRC, rel)));
+  assert.deepEqual(back, [], "these belong in packages/kit-quests/src, not in the engine");
+  assert.equal(existsSync(join(SRC, "quests")), false, "src/quests should be gone, not empty");
 });
 
-test("nothing outside src/quests names one of its exports", () => {
+test("nothing in the engine names one of the kit's exports", () => {
   const offenders: string[] = [];
-  for (const [rel, text] of outsideQuests()) {
-    // Comments are fine and there are several: the coupling is a specifier or
-    // an identifier in code, not prose about where the quests went.
-    const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    for (const name of NAMES) {
-      if (new RegExp(`\\b${name}\\b`).test(code)) offenders.push(`${rel}: ${name}`);
-    }
+  for (const rel of sources()) {
+    const text = code(rel);
+    const named = NAMES.filter((n) => new RegExp(`\\b${n}\\b`).test(text));
+    if (named.length > 0) offenders.push(`${rel} (names ${named.join(", ")})`);
   }
-  assert.deepEqual(offenders, [], "engine sources naming a quests export");
+  assert.deepEqual(offenders, [], "a name here is a game's quests the engine cannot do without");
 });
 
 test("the engine declares what it asks for instead", () => {
-  const read = (rel: string): string => readFileSync(join(SRC, rel), "utf8");
-
-  // What the host calls, and what the world record carries, in services.ts
-  // beside the other eight the registry declares.
-  const services = read("services.ts");
-  for (const decl of [
-    "export interface QuestService extends GatewayExtension {",
-    "export interface QuestRecords {",
-  ]) {
+  // What the host calls, and what rides a character's world record, in
+  // services.ts beside the other eight the registry declares.
+  const services = code("services.ts");
+  for (const decl of ["export interface QuestService extends GatewayExtension {", "export interface QuestRecords {"]) {
     assert.ok(services.includes(decl), `services.ts should declare ${decl}`);
   }
   // Anchored at the end of the line, not a substring: a signature widened to
@@ -140,14 +147,14 @@ test("the engine declares what it asks for instead", () => {
   }
 
   // What the gateway asks of the "quest" extension, in one place.
-  const extension = read("net/extension.ts");
+  const extension = code("net/extension.ts");
   assert.match(extension, /export interface QuestExtension extends GatewayExtension/);
   for (const member of ["pinnedResidentsOf?", "npcOfResident?", "talkAt?"]) {
     assert.ok(extension.includes(member), `QuestExtension should offer ${member}`);
   }
 
   // And the gateway uses that name rather than writing the shape out again.
-  const gateway = read("net/gateway.ts");
+  const gateway = code("net/gateway.ts");
   assert.equal(
     [...gateway.matchAll(/pinnedResidentsOf/g)].length,
     2,
@@ -156,4 +163,11 @@ test("the engine declares what it asks for instead", () => {
   assert.doesNotMatch(gateway, /as unknown as \{[^}]*pinnedResidentsOf/);
   assert.doesNotMatch(gateway, /as unknown as \{[^}]*npcOfResident/);
   assert.equal([...gateway.matchAll(/as QuestExtension \| undefined/g)].length, 3);
+
+  // The four names the public entry gained for the kit to be writable from
+  // outside this repository, each exported rather than reachable only by a
+  // deep path into dist.
+  const index = code("index.ts");
+  assert.match(index, /export type \{ ExtensionPlayer, GatewayExtension, QuestExtension \} from "\.\/net\/extension\.js";/);
+  assert.match(index, /export \{ hash \} from "\.\/procgen\/ecology\.js";/);
 });

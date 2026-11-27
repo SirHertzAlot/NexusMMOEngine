@@ -11,13 +11,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { fixtureDir, missingDir, repoContentDir } from "../support/fixture-dir.js";
+import { fixtureDir, missingDir, repoContentDir } from "@mmo-engine/engine-core/dist/test/support/fixture-dir.js";
 import {
   EMPTY_QUEST_CONTENT,
   isQuestContentEmpty,
   loadQuestContent,
   QuestContentError,
-} from "../../src/quests/content.js";
+} from "../src/content.js";
 
 // The sample pack, found from this test file whether it runs from src/ or dist/.
 const SAMPLE_QUEST_DIR = repoContentDir(dirname(fileURLToPath(import.meta.url)), "quests");

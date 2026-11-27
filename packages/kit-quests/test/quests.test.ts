@@ -12,15 +12,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addComponent } from "bitecs";
 import type { DialogMessage, NpcsMessage, QuestLogMessage } from "@mmo-engine/protocol";
-import { SimWorld } from "../../src/world.js";
-import * as C from "../../src/components.js";
-import { checkQuestContent, loadQuestContent, parseQuestContent, QuestContentError, type QuestContent } from "../../src/quests/content.js";
-import { generateQuest, QuestGenerationError } from "../../src/quests/generate.js";
-import { authoredQuest } from "../../src/quests/quest-def.js";
-import { MAX_ACTIVE_QUESTS, MemoryQuestStore, QuestLog } from "../../src/quests/quest-log.js";
-import { QuestService } from "../../src/quests/quest-service.js";
-import { SqliteQuestStore } from "../../src/quests/quest-store.js";
-import type { ExtensionPlayer } from "../../src/net/extension.js";
+import { CharacterRef, type ExtensionPlayer, Health, SimWorld, Transform } from "@mmo-engine/engine-core";
+import { checkQuestContent, loadQuestContent, parseQuestContent, QuestContentError, type QuestContent } from "../src/content.js";
+import { generateQuest, QuestGenerationError } from "../src/generate.js";
+import { authoredQuest } from "../src/quest-def.js";
+import { MAX_ACTIVE_QUESTS, MemoryQuestStore, QuestLog } from "../src/quest-log.js";
+import { QuestService } from "../src/quest-service.js";
+import { SqliteQuestStore } from "../src/quest-store.js";
 
 const content = loadQuestContent();
 const goblins = [{ id: "goblin", name: "Goblin" }];
@@ -161,11 +159,11 @@ describe("quest service", () => {
     SimWorld.resetEntityCursorForTesting();
     const sim = new SimWorld();
     const avatar = sim.spawn();
-    for (const c of [C.Transform, C.Health, C.CharacterRef]) addComponent(sim.ecs, c, avatar);
-    C.CharacterRef.idHi[avatar] = 0;
-    C.CharacterRef.idLo[avatar] = 5;
+    for (const c of [Transform, Health, CharacterRef]) addComponent(sim.ecs, c, avatar);
+    CharacterRef.idHi[avatar] = 0;
+    CharacterRef.idLo[avatar] = 5;
     const goblin = sim.spawn();
-    addComponent(sim.ecs, C.Transform, goblin);
+    addComponent(sim.ecs, Transform, goblin);
     const sent: object[] = [];
     let inventoryRefreshes = 0;
     const player: ExtensionPlayer = {
@@ -188,8 +186,8 @@ describe("quest service", () => {
       now: () => 3 * 86_400_000,
     });
     const at = (x: number, z: number): void => {
-      C.Transform.px[avatar] = x;
-      C.Transform.pz[avatar] = z;
+      Transform.px[avatar] = x;
+      Transform.pz[avatar] = z;
     };
     let tick = 0;
     const tickOnce = (): void => {

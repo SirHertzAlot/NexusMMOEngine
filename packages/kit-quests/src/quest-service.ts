@@ -24,16 +24,20 @@
 
 import { hasComponent } from "bitecs";
 import type { DialogMessage, NpcsMessage, QuestLogMessage, QuestView } from "@mmo-engine/protocol";
-import * as C from "../components.js";
-import type { LifeEvent } from "../vocabulary.js";
-import type { SimSystem } from "../systems.js";
-import type { SimWorld } from "../world.js";
-import { hash } from "../procgen/ecology.js";
+import {
+  CharacterRef,
+  type ExtensionPlayer,
+  type GatewayExtension,
+  hash,
+  type LifeEvent,
+  type SimSystem,
+  type SimWorld,
+  Transform,
+} from "@mmo-engine/engine-core";
 import type { DialogAction, DialogCondition, DialogNode, NpcDef, QuestContent } from "./content.js";
 import { generateQuest, QuestGenerationError } from "./generate.js";
 import { authoredQuest, objectiveTarget, type QuestDef } from "./quest-def.js";
 import { QuestLog, type QuestStatus, type QuestStore } from "./quest-log.js";
-import type { ExtensionPlayer, GatewayExtension } from "../net/extension.js";
 
 export interface QuestServiceOptions {
   content: QuestContent;
@@ -116,7 +120,7 @@ export class QuestService implements SimSystem, GatewayExtension {
     for (const o of this.online.values()) {
       const e = o.player.entity();
       if (e < 0) continue;
-      const changed = o.log.apply({ type: "reach", x: C.Transform.px[e], z: C.Transform.pz[e] });
+      const changed = o.log.apply({ type: "reach", x: Transform.px[e], z: Transform.pz[e] });
       if (this.opts.countInBag) {
         const id = o.log.characterId;
         const count = this.opts.countInBag;
@@ -130,10 +134,10 @@ export class QuestService implements SimSystem, GatewayExtension {
 
   /** DeathSystem's death hook: the killer's quests count the victim's kind. */
   onDeath(sim: SimWorld, ev: LifeEvent, kindOf: (e: number) => string | undefined): void {
-    if (ev.state !== "dead" || ev.killer === undefined || !hasComponent(sim.ecs, C.CharacterRef, ev.killer)) return;
+    if (ev.state !== "dead" || ev.killer === undefined || !hasComponent(sim.ecs, CharacterRef, ev.killer)) return;
     const kind = kindOf(ev.target);
     if (kind === undefined) return;
-    const o = this.online.get(C.CharacterRef.idHi[ev.killer] * 4294967296 + C.CharacterRef.idLo[ev.killer]);
+    const o = this.online.get(CharacterRef.idHi[ev.killer] * 4294967296 + CharacterRef.idLo[ev.killer]);
     if (o && o.log.apply({ type: "kill", kind }).length > 0) this.changed(o);
   }
 
@@ -406,7 +410,7 @@ export class QuestService implements SimSystem, GatewayExtension {
 
   private inRange(e: number, npc: NpcDef | undefined): boolean {
     if (!npc) return false;
-    return (C.Transform.px[e] - npc.x) ** 2 + (C.Transform.pz[e] - npc.z) ** 2 <= npc.talkRange ** 2;
+    return (Transform.px[e] - npc.x) ** 2 + (Transform.pz[e] - npc.z) ** 2 <= npc.talkRange ** 2;
   }
 }
 

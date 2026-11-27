@@ -12,9 +12,7 @@
  */
 import fs from "node:fs";
 import { join } from "node:path";
-import { QuestService } from "../../packages/engine-core/dist/src/quests/quest-service.js";
-import { loadQuestContent } from "../../packages/engine-core/dist/src/quests/content.js";
-import { questRecordsOf, SqliteQuestStore } from "../../packages/engine-core/dist/src/quests/quest-store.js";
+import { loadQuestContent, QuestService, questRecordsOf, SqliteQuestStore } from "@mmo-engine/kit-quests";
 
 export function createSystems(ctx) {
   const config = ctx.config?.quests ?? {};

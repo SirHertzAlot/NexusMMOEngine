@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryQuestStore, QuestLog } from "../../src/quests/quest-log.js";
+import { MemoryQuestStore, QuestLog } from "../src/quest-log.js";
 import {
   PactSchema,
   RiteSchema,
@@ -11,8 +11,8 @@ import {
   treatSickPlace,
   priceDueOptions,
   composeGiverProfile,
-} from "../../src/quests/worldbuilding-generics.js";
-import { StepsFileSchema } from "../../src/quests/content.js";
+} from "../src/worldbuilding-generics.js";
+import { StepsFileSchema } from "../src/content.js";
 import { CostLedgerSchema } from "@mmo-engine/rules";
 
 describe("KR House Quest Generics (Pacts, Devotion Circuit, Sick Places, Price Due, Giver Engine)", () => {
