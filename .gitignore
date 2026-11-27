@@ -93,6 +93,7 @@ packages/graphify-out/
 packages/engine-core/*.db-shm
 packages/engine-core/*.db-wal
 packages/engine-core/characters.db
+packages/engine-core/economy.db
 packages/engine-core/gathering.db
 packages/engine-core/guilds.db
 packages/engine-core/instances.db
