@@ -24,9 +24,8 @@ import { SqliteInstanceResultStore } from "../../packages/engine-core/dist/src/d
 import { defaultDungeonCombat } from "@mmo-engine/kit-combat";
 // The chests, breakables and veins a run gets. Same shape as the fighting
 // above: `dungeons/instance.ts` knows only the slot (dungeons/world-slot.js),
-// and this is the engine's own wiring of it. It moves into
-// @mmo-engine/kit-economy with the three systems it builds.
-import { defaultDungeonWorld } from "../../packages/engine-core/dist/src/dungeons/default-world.js";
+// and this is that kit's own wiring of it.
+import { defaultDungeonWorld } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const config = ctx.config?.dungeons ?? {};

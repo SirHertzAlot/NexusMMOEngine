@@ -84,6 +84,7 @@
     "packages/modules",
     "packages/engine-core",
     "packages/kit-combat",
+    "packages/kit-economy",
     "packages/bench",
     "packages/addons/template",
     "packages/addons/integrate",

@@ -1,38 +1,42 @@
 /**
- * What the engine still names of the economy (roadmap ES5i).
+ * The engine does not have an economy (roadmap `ES5i`–`ES5n`).
  *
- * `ES4d` made the gateway ask for the eight economy and world systems by port,
- * but the rest of the engine still named their classes to type what it was
- * handed, and that is the same thing in a different place: a type import is a
- * module `@mmo-engine/kit-economy` would have to provide. The registry asks
- * for `WalletPort`, `VendorPort` and `ResidentPort` now; loot drops and the
- * world sync state their own one- and two-method demands; `scene-spawn.ts`
- * reads `ResourceNodeSpec` from the shared vocabulary; and the gateway asks a
- * game what a lesson is worth instead of working it out from
- * `residents/lessons.ts`.
+ * This file has been the running record of one boundary being drawn, and the
+ * shape of it changed with `ES5n`. It began as a list of the three places that
+ * still *constructed* an economy system, and shrank: `ES5j` took the dungeon
+ * run's, `ES5k` gathering, `ES5l` the chests and breakables, `ES5m` the last
+ * import. Each of those left the code where it was and moved only the asking.
  *
- * What is left is listed below rather than hidden. It was three files when
- * `ES5i` wrote this; `ES5j`, `ES5k` and `ES5l` took the dungeon run and both
- * of `server.ts`'s constructions off it, and `ES5m` took its last import.
- * What remains is two files that are already the kit's in all but location:
- * the `interact` barrel, which re-exports the chest and break systems for the
- * module that builds them, and `dungeons/default-world.ts`, the run's own
- * wiring kept off the boot path so it can move unchanged. **Nothing else in
- * the engine names or imports an economy module.** This test fails if
- * another appears, and it fails if one of the two stops — which is what
- * stops the boundary drifting back.
+ * `ES5n` moved the code. The eleven modules and the run's own wiring are
+ * `@mmo-engine/kit-economy` now, so there is no longer a list of files to
+ * watch — there is a line, and this test is what holds it:
+ *
+ * 1. None of what moved is back in `src`.
+ * 2. Nothing in `src` imports a kit, by package name or by any other route.
+ * 3. Nothing in `src` names one of their classes in code.
+ * 4. The terms both sides speak are still declared where neither owns them.
+ *
+ * A kit may import the engine. The engine may not import a kit, and may not
+ * know a kit's names — that is the whole difference between a game built on
+ * this engine and a game built into it.
  */
 
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "src");
 
-/** The modules that become `@mmo-engine/kit-economy`. */
-const KIT = [
+/**
+ * What moved into `@mmo-engine/kit-economy`, by the path it used to have.
+ *
+ * Kept as the old paths on purpose: the failure this guards against is
+ * someone re-adding one of these here rather than in the kit, and the message
+ * that names the path it used to live at is the useful one.
+ */
+const MOVED = [
   "economy/auction.ts",
   "economy/trade.ts",
   "economy/vendor.ts",
@@ -46,10 +50,19 @@ const KIT = [
   "residents/resident-system.ts",
   "residents/lessons.ts",
   "residents/index.ts",
+  "dungeons/default-world.ts",
 ];
 
-/** Their classes, which nothing in the engine should have to name. */
-const CLASSES = [
+/**
+ * Their exports, which nothing in the engine should be able to name.
+ *
+ * `lessonTerms` is deliberately not in this list, though the kit exports it:
+ * `server.ts` carries `stores.lessonTerms` — the host's own key for what a
+ * module handed back, which names the thing rather than reaching for it. A
+ * key cannot import anything, and the import itself is what the test above
+ * catches.
+ */
+const NAMES = [
   "AuctionSystem",
   "BreakSystem",
   "ChestSystem",
@@ -60,26 +73,12 @@ const CLASSES = [
   "TradeSystem",
   "VendorSystem",
   "WalletSystem",
+  "breakDefsOf",
+  "defaultDungeonWorld",
+  "loadLessons",
+  "materialCountsOf",
+  "nodeStocksOf",
 ];
-
-/**
- * The two that still reach one, and what each is waiting on.
- *
- * Listed so that the boundary is a fact in a test rather than something a
- * reader has to work out. It started as three construction sites: `ES5j`
- * took the dungeon run's off it, `ES5k` gathering, `ES5l` the chests and
- * breakables, and `ES5m` the one import `server.ts` had left. Nothing in the
- * engine builds or imports an economy module now; both of these are the
- * kit's own files waiting for the kit.
- */
-const BUILDS: Readonly<Record<string, string>> = {
-  // A barrel over `breaks.ts` and `chests.ts`: it goes when they do.
-  "interact/index.ts": "the interact barrel re-exports them",
-  // The engine's own wiring of the run's world slot (`ES5j`), kept off the
-  // boot path exactly so it can move into the kit unchanged — the same place
-  // `dungeons/default-combat.ts` stood before `ES5h` took it.
-  "dungeons/default-world.ts": "it is the kit's own file, waiting for the kit",
-};
 
 /** Every `.ts` under `src`, relative and posix. */
 function sources(): string[] {
@@ -95,77 +94,69 @@ function sources(): string[] {
   return out.sort();
 }
 
-/** A file's text with comments stripped: prose may name what moved. */
+/** A file's text with comments stripped: prose may name what moved, and does. */
 function code(rel: string): string {
   return readFileSync(join(SRC, rel), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/[^\n]*/g, "");
 }
 
-test("only the two known files still reach an economy module", () => {
+test("none of what moved into the kit is back in the engine", () => {
+  const back = MOVED.filter((rel) => existsSync(join(SRC, rel)));
+  assert.deepEqual(back, [], "these belong in packages/kit-economy/src, not in the engine");
+});
+
+test("nothing in the engine imports a kit", () => {
+  // Any kit, not just this one: the engine is what a kit is built on, so an
+  // import in this direction is a cycle as well as a leak.
   const offenders: string[] = [];
   for (const rel of sources()) {
-    if (KIT.includes(rel)) continue;
-    const text = code(rel);
-    const named = CLASSES.filter((c) => new RegExp(`\\b${c}\\b`).test(text));
-    const imported = [...text.matchAll(/from "(\.[^"]*)"/g)]
-      .map((m) => relative(SRC, resolve(SRC, dirname(rel), m[1] as string)).split("\\").join("/"))
-      .map((p) => p.replace(/\.js$/, ".ts"))
-      .filter((p) => KIT.includes(p));
-    if (named.length === 0 && imported.length === 0) continue;
-    if (BUILDS[rel] !== undefined) continue;
-    offenders.push(`${rel} (names ${named.join(", ") || "-"}; imports ${imported.join(", ") || "-"})`);
+    const specs = [...code(rel).matchAll(/from "([^"]+)"/g)].map((m) => m[1] as string);
+    const kits = specs.filter((s) => s.startsWith("@mmo-engine/kit-") || /(^|\/)kit-[a-z]+\//.test(s));
+    if (kits.length > 0) offenders.push(`${rel} imports ${kits.join(", ")}`);
   }
-  assert.deepEqual(offenders, [], "engine files naming an economy system that are not a known construction site");
+  assert.deepEqual(offenders, [], "the engine may not import a kit");
 });
 
-test("each known construction site is still there, so the list cannot rot", () => {
-  // The other half: a file that stops building one should be taken off this
-  // list in the same change, or the list quietly becomes a licence.
-  for (const [rel, why] of Object.entries(BUILDS)) {
+test("nothing in the engine names one of the kit's classes", () => {
+  const offenders: string[] = [];
+  for (const rel of sources()) {
     const text = code(rel);
-    const touches =
-      CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(text)) ||
-      [...text.matchAll(/from "(\.[^"]*)"/g)].some((m) =>
-        KIT.includes(relative(SRC, resolve(SRC, dirname(rel), m[1] as string)).split("\\").join("/").replace(/\.js$/, ".ts")),
-      );
-    assert.ok(touches, `${rel} no longer builds an economy system (${why}); take it off the list`);
+    const named = NAMES.filter((n) => new RegExp(`\\b${n}\\b`).test(text));
+    if (named.length > 0) offenders.push(`${rel} (names ${named.join(", ")})`);
   }
+  assert.deepEqual(offenders, [], "a name here is a module the engine cannot do without");
 });
 
-test("the vocabulary carries what the engine needs instead", () => {
-  // `scene-spawn.ts` wants the shape of a thing worth gathering; the gateway
-  // wants what a lesson is worth. Both are shared terms now, and
-  // `vocabulary.ts` still imports nothing of the engine's.
+test("the vocabulary carries what both sides need instead", () => {
+  // The terms the gateway and a kit speak are declared where neither owns
+  // them, and `vocabulary.ts` imports nothing of the engine's so that a kit
+  // can depend on it without depending on the engine's internals.
   const vocab = readFileSync(join(SRC, "vocabulary.ts"), "utf8");
-  for (const name of ["ResourceNodeSpec", "LessonTerms", "LessonOffer"]) {
-    assert.match(vocab, new RegExp(`export interface ${name} \\{`), `${name} should be shared vocabulary`);
+  for (const name of ["ResourceNodeSpec", "LessonTerms", "LessonOffer", "ChestSpec", "ChestCheck", "ChestResult"]) {
+    // Some are interfaces and some are unions of result shapes; either way
+    // the point is that the declaration is here.
+    assert.match(vocab, new RegExp(`export (?:interface|type) ${name}\\b`), `${name} should be shared vocabulary`);
   }
   const specs = [...vocab.matchAll(/from "([^"]+)"/g)].map((m) => m[1] as string);
   assert.deepEqual([...new Set(specs)], ["@mmo-engine/rules"], "vocabulary.ts may import the rules and nothing else");
 
-  assert.doesNotMatch(code("scene-spawn.ts"), /gathering\//, "scene-spawn.ts should read the spec from the vocabulary");
-  assert.doesNotMatch(code("net/gateway.ts"), /residents\/lessons/, "the gateway should ask a game what a lesson is worth");
-  // And the entry point no longer loads the lessons file for it (ES5m): the
-  // residents module reads it and publishes the terms, so the engine names
-  // neither the loader nor the curve.
-  assert.doesNotMatch(code("server.ts"), /from "\.\/residents\//, "server.ts should import nothing from the residents module");
-  for (const fn of ["loadLessons", "lessonPoints", "lessonCost"]) {
-    assert.doesNotMatch(code("server.ts"), new RegExp(`\\b${fn}\\b`), `server.ts should not name ${fn}`);
+  // And the three ways a host reaches what a kit built, each still declared
+  // on this side: the gateway's ports, the registry's services, and the
+  // dungeon run's two slots.
+  for (const port of ["AuctionPort", "BreakPort", "ChestPort", "GatheringPort", "ResidentPort", "TradePort", "VendorPort", "WalletPort"]) {
+    assert.match(code("net/ports.ts"), new RegExp(`\\b${port}\\b`), `the gateway should still ask for ${port}`);
   }
-  // And the entry point asks for the chests and breakables too (ES5l), so
-  // nothing in the engine's own wiring builds an economy system any more.
-  for (const cls of ["ChestSystem", "BreakSystem"]) {
-    assert.doesNotMatch(code("server.ts"), new RegExp(`\\b${cls}\\b`), `server.ts should ask for ${cls}'s service, not build it`);
+  for (const svc of ["gathering: GatheringService", "chests: ChestService", "breaks: BreakService"]) {
+    assert.match(code("services.ts"), new RegExp(svc), `the registry should still carry "${svc}"`);
   }
-  assert.match(code("services.ts"), /chests: ChestService/, "the registry should carry the chests");
-  assert.match(code("services.ts"), /breaks: BreakService/, "the registry should carry the breakables");
+  assert.match(code("dungeons/world-slot.ts"), /export type DungeonWorldFactory/, "the run should still have a world slot");
+  assert.match(code("dungeons/instance.ts"), /from "\.\/world-slot\.js"/, "a run should reach its props through the slot");
 
-  // And a dungeon run reaches its chests, breakables and veins through the
-  // slot in `dungeons/world-slot.ts`, the way it reaches its fighting.
-  assert.doesNotMatch(code("dungeons/instance.ts"), /from "\.\.\/(interact|gathering)\//, "a run should ask for its props, not build them");
-  assert.match(code("dungeons/instance.ts"), /from "\.\/world-slot\.js"/, "the run should know the slot");
-  // And the entry point asks for gathering rather than building it (ES5k).
-  assert.doesNotMatch(code("server.ts"), /from "\.\/gathering\//, "server.ts should ask for the gathering service");
-  assert.match(code("services.ts"), /gathering: GatheringService/, "the registry should carry it");
+  // The interact barrel is what is left of that directory, and what is left
+  // is the host's own: the places store, two content loaders, and collapse.
+  const barrel = code("interact/index.ts");
+  for (const own of ["SqlitePlacesStore", "loadVendors", "loadStructureBreakables", "CollapseSystem"]) {
+    assert.match(barrel, new RegExp(`\\b${own}\\b`), `${own} is the host's and should stay in the barrel`);
+  }
 });

@@ -209,13 +209,27 @@ each of the nine builds without the rest, so dropping one costs you that
 feature and nothing else. Its `README` says what each system does and what the
 three ways to change it cost.
 
+The economy is the second such package. `@mmo-engine/kit-economy` holds eight
+systems — gathering, chests, breakables, wallets, trade, vendors, auctions and
+settlement residents — plus what a master teaches and what persists, and
+nothing in `engine-core` imports it either. Five modules build from it:
+`modules/gathering/`, `modules/props/`, `modules/economy/`,
+`modules/residents/` and `modules/dungeons/` for the run's world slot. What
+stayed on the engine's side is worth knowing before you fork it: `places.db`,
+because a break and an opened chest ride the range snapshot; the respawn pool
+everything respawning shares; the loot a table rolls; and `CollapseSystem`,
+because a broken part is what topples a building and toppling is the world's
+business. Each of those a system here takes as an argument rather than owning.
+
 A dungeon run is its own host, so it cannot ask for a system by port: it was
 the one building them. It declares two slots instead, and a module fills
 them. `dungeons/combat-slot.ts` is its fighting and `dungeons/world-slot.ts`
 is its chests, breakables and veins; each takes everything the run can say
 about itself and gives back the systems to tick plus the few things the run
-has to ask afterwards. `modules/dungeons/server.js` passes the engine's own
-two factories in, and a game passes its own in their place. Pass neither and
+has to ask afterwards. `modules/dungeons/server.js` passes the two the engine
+ships with in — `defaultDungeonCombat` from `kit-combat` and
+`defaultDungeonWorld` from `kit-economy` — and a game passes its own in their
+place. Pass neither and
 a run still boots and ticks: it just has no fighting and no props, which is
 the rule the ports follow.
 
