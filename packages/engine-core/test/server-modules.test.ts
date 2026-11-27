@@ -833,3 +833,58 @@ describe("server modules: edge routes (EA12)", () => {
     assert.deepEqual(r.edgeRoutes, {});
   });
 });
+
+describe("server modules: the quests module keeps the log (ES5o)", () => {
+  // A character's quest log rides its world record between regions (PL3b).
+  // `server.ts` did that by holding the module's `SqliteQuestStore` off
+  // `ctx.stores` and calling `questRecordsOf` on the way back in, which is
+  // the host validating a game's rows with a game's validator — the same
+  // knot `ES5k` untied for the gathering pouch. The module publishes the two
+  // calls now and validates on its own side.
+  const questsCtx = (stores: Record<string, unknown>) => ({
+    ...ctx,
+    stores,
+    config: { quests: { dataDir: mkdtempSync(join(tmpdir(), "mmo-quests-")) } },
+  });
+  const record = (id: string) => ({ def: { id }, state: "active", step: 1, progress: 2, acceptedAt: 1000 });
+
+  it("publishes the two calls the world record needs, and nothing else", async () => {
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core", "quests"]),
+      provided: { core: coreProvided() },
+      ctx: questsCtx(stores),
+    });
+    const records = stores["questRecords"] as {
+      loadQuests(id: number): readonly unknown[];
+      replaceQuests(id: number, rows: unknown): void;
+    };
+    assert.deepEqual(Object.keys(records).sort(), ["loadQuests", "replaceQuests"]);
+    // The host hands back whatever the record held; the module keeps the
+    // rows that are quests and drops the rest, rather than throwing over a
+    // recalled log it does not recognise.
+    records.replaceQuests(7, [record("wolves"), { nonsense: true }, null, record("rats")]);
+    assert.deepEqual(
+      records.loadQuests(7).map((q) => (q as { def: { id: string } }).def.id).sort(),
+      ["rats", "wolves"],
+    );
+    // Not an array at all is the same case: nothing recognised, nothing kept.
+    records.replaceQuests(7, "not a log");
+    assert.deepEqual(records.loadQuests(7), []);
+    await r.disposeModules();
+  });
+
+  it("absent module: no log rides a character's record", async () => {
+    const stores: Record<string, unknown> = {};
+    const r = await assembleServerSystems({
+      modulesDir: MODULES,
+      setFile: setFile(["core"]),
+      provided: { core: coreProvided() },
+      ctx: questsCtx(stores),
+    });
+    assert.equal(stores["questRecords"], undefined);
+    assert.deepEqual(r.systems.map((s) => s.name), CORE_ORDER);
+    await r.disposeModules();
+  });
+});
