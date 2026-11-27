@@ -3294,28 +3294,28 @@
       "confidence": "declared",
       "from": "system:chests",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/chests.ts:85",
+      "source": "packages/engine-core/src/interact/chests.ts:73",
       "to": "component:BodyConfig"
     },
     {
       "confidence": "declared",
       "from": "system:chests",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/chests.ts:85",
+      "source": "packages/engine-core/src/interact/chests.ts:73",
       "to": "field:Transform.px"
     },
     {
       "confidence": "declared",
       "from": "system:chests",
       "kind": "reads",
-      "source": "packages/engine-core/src/interact/chests.ts:85",
+      "source": "packages/engine-core/src/interact/chests.ts:73",
       "to": "field:Transform.pz"
     },
     {
       "confidence": "declared",
       "from": "system:chests",
       "kind": "writes",
-      "source": "packages/engine-core/src/interact/chests.ts:85",
+      "source": "packages/engine-core/src/interact/chests.ts:73",
       "to": "component:BodyConfig"
     },
     {
@@ -7555,7 +7555,7 @@
     }
   ],
   "meta": {
-    "builtFromCommit": "0efe80f35b3287fb94be33792eac9d7c69df8e30",
+    "builtFromCommit": "e1cea3e2dee82ba9bbba8c48f757dd48a1e3e5fb",
     "counts": {
       "byEdgeKind": {
         "contributedBy": 38,
@@ -7636,7 +7636,7 @@
         "status": "extracted"
       }
     ],
-    "graphHash": "5131d3577f3ab83a33e405d9cf0c5096706509afa6462c69e3f93beec7ce8c6a",
+    "graphHash": "8781d77a97ab407b347315bd3a2bf2bf18d2a4a4045769a41c01487de7da0bcd",
     "schemaVersion": 1,
     "sourceHashes": {
       "apps/editor/src/authoring/relevance.ts": "add105a6e86caffa211c1f50438c3af930d5707e043e5c5916e1abaab1bf47b1",
@@ -7670,7 +7670,7 @@
       "modules/database/module.json": "8e42b9b27f3fda10cd25f27464200d533a57c66a3afdf878385fdbbbe0bf4ba2",
       "modules/debug/module.json": "9b08a4c265ffdae0d26f858d1082df1cf54757d940dcefcfeed6870be8f8a919",
       "modules/dungeons/module.json": "275fc8c42758e2062978d1145a804dc99da4bd7890f7bf64d5e64f8d2564fd08",
-      "modules/dungeons/server.js": "90a2bd9c66905986467f90a2467b67ebab465a53226bb07b7968f6bd9b689260",
+      "modules/dungeons/server.js": "81eeaf0cd0ea031bdb78cbcaa34a0d3513ec30cf1e2b3dc013d42f90dc71e4a2",
       "modules/economy/module.json": "11f94ae013aa613bc7268318f4c6c0cf88ecdbf27345e6a98ede2d455f3c4d04",
       "modules/economy/server.js": "91f5adee90e9f79e8c5f24146d4cba0aee3419563032b1ceb6e61d4714750871",
       "modules/ecs/module.json": "727e0ee9b9658d07a12d24a801c076b50c816a56fa54896c9b004cbaa3aa17f0",
@@ -7744,14 +7744,16 @@
       "packages/engine-core/src/delta-apply.ts": "3969aa091e471c3fe1afe8fb788978a37b3a4625e977e70f56d0de0ac54041c1",
       "packages/engine-core/src/dungeons/combat-slot.ts": "beefd106879c91ab6c2e06e4873f0fd411e7ad2ad934dd052c90340f0e29b9c9",
       "packages/engine-core/src/dungeons/content.ts": "de4bdbb90e358d8c64c5f77c0a99385694d91f254456230e4b28a9ad0e87be57",
-      "packages/engine-core/src/dungeons/instance.ts": "1cbeb75cfd652ef1dc427e18e16bc4963d1655ed4d8d13919fe1c77e492d34f2",
+      "packages/engine-core/src/dungeons/default-world.ts": "3a66d44049a0e30246a4ec191fe3228edc3f80643886666b9f78fef2d3d52878",
+      "packages/engine-core/src/dungeons/instance.ts": "829e8b1f0c25141dc2e8aa1796598fa7e9a5fda9318a44f36f94b170817a1f45",
       "packages/engine-core/src/dungeons/interiors.ts": "ecae2fa0935019c1a7dabb3b1f0299dd30ddafc3470331f223ab0f7ac7288185",
-      "packages/engine-core/src/dungeons/manager.ts": "852031185d309cfa963485c3d8947a692b1dc0d2a3da708e343e5f7c4ab664d1",
+      "packages/engine-core/src/dungeons/manager.ts": "1d8b3ce25dd9386d805e997dbe14cf5b17c5c3d4a9e57a455f9b2efc4ac80178",
       "packages/engine-core/src/dungeons/placement.ts": "932b79d2e9c81b7f7114adb6aa04583664a8e7012c0a38bbadf8f2683cddcf00",
       "packages/engine-core/src/dungeons/pool.ts": "e8e8be70b584cd216d107a760f4c85074ab38720fe7c11d0e83f902402190980",
       "packages/engine-core/src/dungeons/prop-mesh.ts": "7d5f4e8bc3a70b2f83b85f8d73b42d0b45178024524dc21abe701b75e89da278",
       "packages/engine-core/src/dungeons/results.ts": "57f111ccd6a4c7a588f1229de19167f3e9a4304e534d344339c75b18e7278453",
       "packages/engine-core/src/dungeons/walls.ts": "0b491a4298bcb6d1eaa2568402cf42f751b7594d7777d04abe27f6c008150f61",
+      "packages/engine-core/src/dungeons/world-slot.ts": "ade938a8d7d1a7fa36cb6f9fd79efeb55f2fb39ad9ba50ce8409e03260756368",
       "packages/engine-core/src/economy/auction.ts": "51dccf7c742bacad799dfeb0a00734703b88b340e9143d11dc511cb3e2261802",
       "packages/engine-core/src/economy/trade.ts": "540591e33458b22a8ade692fdbdfb8122bb6dc34c016f3e6830214ea29a38801",
       "packages/engine-core/src/economy/vendor.ts": "d75198935f5afb3b353db46f9e1d17a6cd48481d71f13f1ffd14a36651171b54",
@@ -7767,11 +7769,11 @@
       "packages/engine-core/src/guild-store.ts": "a3c5bda991c8ff110560c7433fcd536c77974c9b142a8f2115ea5947f3713629",
       "packages/engine-core/src/guild.ts": "ff22e7f2032025ffa3702310c86c637a54ef60c897ecd91b0dca139ebcb4236e",
       "packages/engine-core/src/hybrid-data-plane-bench.ts": "211c45e1750a4643ee00ea2c07a9b84996a5790a0cebba1a46cf576409a8bfa4",
-      "packages/engine-core/src/index.ts": "78df4c9c9f731b9df4e1c964a2ea8c5a56455d69f21a41e5ebdfc16b2b34555d",
+      "packages/engine-core/src/index.ts": "2e7f0c1f2b3f827eab96848d6346ac4a5389264bc8229c03c152c1ee56c4f52b",
       "packages/engine-core/src/interact/breaks.ts": "efc944442b87f34faa633a1a1aafab418168c737788d25d50e670cb0900c15fe",
-      "packages/engine-core/src/interact/chests.ts": "809486b1bf65d758a5e42a7fc3827852a7836a19d73b460c8cb5e5f6a95ba908",
+      "packages/engine-core/src/interact/chests.ts": "64bee0760ab792e07f71dc289f31777956c31bcbc74e37574c6352169676652b",
       "packages/engine-core/src/interact/collapse.ts": "5dc9de04fdf7f2630d122b2a1bf602c0fa39f4306ad365e14804a12c657bcd36",
-      "packages/engine-core/src/interact/index.ts": "aa523eaa6fcc169d5f5d77b6b67586e1e4fba483e9e99149a1585420fdcb5df4",
+      "packages/engine-core/src/interact/index.ts": "3b2ee92ae23f66bc42189036a40c83a6bc82f22eb89159a6ce8af2a8a8e2fa13",
       "packages/engine-core/src/interact/places-store.ts": "821758c3491eac0aa6046d2cde2b9e7461bec469b70a8e4db868a93730524640",
       "packages/engine-core/src/interact/structures.ts": "e36b7dee7086d1e3e2c9d17bc1184c6e148d26b1bb05743053916e400d3fbcb7",
       "packages/engine-core/src/interact/vendors.ts": "56214ca5bbab9b4939d6b7609a13bb166de8f8996c223b3cbd0f4944f6701718",
@@ -7935,7 +7937,7 @@
       "packages/engine-core/src/terrain/world-spec.ts": "476ec098282f28ead73ac0e21dbcc47d89c8433c32f72ee0a57e91adbc945235",
       "packages/engine-core/src/tick-loop.ts": "a1fc7d55d2cdf3ff1a146611f6a0a7669a4ae256efad881ef79a28f7cac5cec1",
       "packages/engine-core/src/tick-timings.ts": "100c945d9e7c1ac32e48e881e5d5430eaf5bd43250858c638ebb0f7c14dcf267",
-      "packages/engine-core/src/vocabulary.ts": "f2860719db1386c6becd5d698118b110c35409ae5230f437a69f7c1e2756fee8",
+      "packages/engine-core/src/vocabulary.ts": "85a3dd1c2b68398dc173bea8875cafef8bfd1d9134673f60d7a76d66ef212da6",
       "packages/engine-core/src/world-snapshot.ts": "13ddac1eaf6dd096fb836fbe0c49def38529bf8ff90dbea5a59e7ebe2324a3d2",
       "packages/engine-core/src/world.ts": "cef8742e397da21cb04c67f142325a2a27b96a722afab38263c8ba3e6db46484",
       "packages/engine-core/src/world/atomic-ops.ts": "4712121c446e54b1af8a260e4a54e846b9d736a0a114f238340b55347aaa6b47",
@@ -7997,13 +7999,13 @@
       {
         "expression": "BodyConfig[f][c.eid]",
         "reason": "computed property indexing on component BodyConfig",
-        "site": "packages/engine-core/src/interact/chests.ts:274",
+        "site": "packages/engine-core/src/interact/chests.ts:262",
         "system": "chests"
       },
       {
         "expression": "BodyConfig[f][c.eid]",
         "reason": "computed property indexing on component BodyConfig",
-        "site": "packages/engine-core/src/interact/chests.ts:279",
+        "site": "packages/engine-core/src/interact/chests.ts:267",
         "system": "chests"
       },
       {
@@ -11990,7 +11992,7 @@
       "name": "chests",
       "role": "simulation",
       "simName": "chests",
-      "source": "packages/engine-core/src/interact/chests.ts:81",
+      "source": "packages/engine-core/src/interact/chests.ts:69",
       "tickIndex": 3
     },
     {

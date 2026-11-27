@@ -471,3 +471,23 @@ export interface LessonOffer {
   readonly points: number;
   readonly cost: number;
 }
+
+/**
+ * What a chest or door is, as a host registers one (`ES5j`).
+ *
+ * A dungeon run places its chests and says what they hold; it does not want
+ * to know which system keeps them. Declared here with `ChestCheck` and
+ * `ChestResult`, which `ES5d` moved for the same reason.
+ */
+export interface ChestSpec {
+  /** "chest" (default) rolls `table` when opened; a "door" toggles open and shut. */
+  kind?: "chest" | "door";
+  /** A loot.json table the chest rolls when opened. */
+  table?: string;
+  /** Seconds until an opened chest is full again. */
+  refillSeconds?: number;
+  /** Seconds the use takes (a cast bar); 0 or absent: at once. */
+  castSeconds?: number;
+  /** An item base the user must carry (a key); `consume` uses one up when it opens. */
+  requires?: { base: string; consume: boolean };
+}

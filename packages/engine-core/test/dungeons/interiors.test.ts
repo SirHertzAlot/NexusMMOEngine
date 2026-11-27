@@ -18,6 +18,7 @@ import { MemoryCharacterStore } from "../../src/index.js";
 import { loadGameRules } from "../../src/rules/boot.js";
 import { loadDungeonContent } from "../../src/dungeons/content.js";
 import { DungeonInstance } from "../../src/dungeons/instance.js";
+import { defaultDungeonWorld } from "../../src/dungeons/default-world.js";
 import { CELL_M, readLayout, type InstanceLayout } from "../../src/dungeons/pool.js";
 import { interiorSpawns, type InteriorSpawn } from "../../src/dungeons/interiors.js";
 import { makeCredentialStore } from "../net/auth-harness.js";
@@ -49,6 +50,7 @@ function laidDungeon(): { file: unknown; interiors: RoomInterior[] } {
 /** A run of the layout, built but not started: its interior parts are spawned on construction. */
 async function instanceOf(layout: InstanceLayout): Promise<DungeonInstance> {
   return new DungeonInstance({
+    world: defaultDungeonWorld,
     id: "run-interiors", entrance: "barrow-gate", layout, rules: dungeonContent.rules, game,
     members: [], credentialStore: await makeCredentialStore(), characterStore: new MemoryCharacterStore(),
     lootPool: [7, 8, 9], onEnd: () => {}, now: () => 1_000_000, clock: () => Date.now(), transport: "ws",
