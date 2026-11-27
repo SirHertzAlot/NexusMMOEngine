@@ -48,8 +48,39 @@ Unknown keys are refused. The folder name must match `name`.
 | `edge` | `{ regions, endpoint, capabilities }`: a service that runs on edge nodes, such as voice or matchmaking ([Edge modules](#edge-modules)). |
 | `tools` | `{ entry, tools }`: host-side dev tools (a bake step, a converter) that never run on the tick ([Tools modules](#tools-modules)). |
 | `db` | `{ functions?, caches? }`: stored functions and materialized caches, as `.sql` files under `db/functions/` and `db/caches/`. |
+| `settings` | Optional. The settings this module reads from the game's `game.json` ([Settings a game can change](#settings-a-game-can-change)). |
 
 An `entry` is a relative path with no `..`. A server entry is a `.js` or `.mjs` file, an editor entry may be a `.tsx` file, and a native entry ends in `.node`.
+
+## Settings a game can change
+
+A module reads its own settings from the game's manifest:
+`game.json`'s `modules["<name>"]` reaches the module as
+`ctx.config["<name>"]`, and the module applies its own default for
+anything the game leaves out. Nothing in the engine fixes the keys —
+a module you write reads whatever it likes, with no engine change.
+
+Declaring them changes none of that. It is how a module tells a *tool*
+what it reads, so the editor's **Modules › Game** panel can draw a
+labelled field instead of asking a designer to type JSON at a module it
+cannot describe:
+
+```json
+{
+  "name": "sample-heartbeat", "version": "0.1.0",
+  "settings": [
+    { "key": "everyTicks", "type": "number", "default": 600, "int": true, "min": 1,
+      "label": "Heartbeat interval (ticks)", "help": "Ticks between log lines. 30 ticks is a second." }
+  ]
+}
+```
+
+`type` is `number`, `string`, `boolean` or `enum` (which lists its
+`options`); `default` is what the module does when the game sets
+nothing, and is shown as the field's placeholder rather than written
+into the file. A number may carry `min`, `max` and `int`. A key the
+manifest sets that no module declared still works and is still shown,
+because the engine does not own the list.
 
 ## Tick order
 

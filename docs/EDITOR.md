@@ -439,6 +439,35 @@ part *exists* is still the catalog's question: a game may offer the
 `helmet` slot here, and on a machine without the licensed pack the
 server will check the name's shape rather than the pack.
 
+## 2j. The game's manifest and its module settings (ROADMAP EB10)
+
+**Modules › Game** edits `game.json`: the game's name, and the settings
+each module reads from it (`modules.<name>.<key>`, which reaches the
+module as `ctx.config[name][key]`).
+
+Two things had to exist before a settings editor could. Modules had no
+way to say what they read, so the panel declares nothing on their
+behalf: a module lists its settings in its own `module.json` ([Settings
+a game can change](MODULES.md#settings-a-game-can-change)) and gets a
+labelled, typed field per declaration. A key this game sets that no
+module declared is shown anyway, as a free text box, because the engine
+fixes no key list and a game's own module reads whatever it likes.
+
+And the engine checkout has no `game.json` at all. Writing one turns a
+checkout into a game project and changes how every path resolves at
+boot, so the panel never writes one as a side effect of being opened:
+it says there is none, explains what a manifest does, and offers a
+button. The host refuses to write over a manifest that is already there
+— `POST` answers 409 and the panel edits the file instead. Every save
+goes through `GameManifestSchema` from `@mmo-engine/sdk`, the same
+strict schema the server boots with, so the editor cannot write a
+manifest the engine would refuse.
+
+An empty field means the module's own default, and a module whose
+settings all go back to their defaults drops out of the file rather
+than leaving `{}` behind. A run's `MMO_*` variable still wins over
+both.
+
 ## 3. Art Asset Pipeline
 
 Folder convention (repo root):

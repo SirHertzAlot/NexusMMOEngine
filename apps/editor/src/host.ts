@@ -138,6 +138,7 @@ import { handleScaleRoute } from "./scale-host.js";
 import { handleCodeRoute } from "./code-host.js";
 import { handleBlenderRoute } from "./blender-host.js";
 import { handleContentDocsRoute } from "./content-docs-host.js";
+import { handleGameRoute } from "./game-host.js";
 import { handleSettlementRoute } from "./settlement-host.js";
 import { SettlementBake } from "./settlement-bake.js";
 import { handleRigRoute } from "./rig-host.js";
@@ -1612,6 +1613,17 @@ export function editorHost(options: EditorHostOptions): Plugin {
           );
           if (docsReply) {
             sendJson(res, docsReply.status, docsReply.body);
+            return;
+          }
+          // The game manifest and its per-module settings (game.json, game-host.ts).
+          const gameReply = await handleGameRoute(
+            repoRoot,
+            req.method ?? "GET",
+            scenesUrl.pathname,
+            req.method === "GET" ? undefined : await readBody(req),
+          );
+          if (gameReply) {
+            sendJson(res, gameReply.status, gameReply.body);
             return;
           }
           // The town generator's rules and the town preview (content/settlements/rules.json, settlement-host.ts).
