@@ -487,13 +487,36 @@ Four changes make that possible:
     file are the same feature, nothing to teach, which is the answer
     the gateway has always given when the file is not there.
 
-   What is left is not construction and not import but location: the
-   `interact` barrel, which re-exports the two systems for the module
-   that builds them, and `dungeons/default-world.ts`, the run's own
-   wiring kept off the boot path. Both are the kit's files already and
-   both go when the files move, which is `kit-economy` — a file move and
-   an import rewrite rather than a redesign, which was the whole point of
-   doing these eleven first.
+13. **And then the files move, and it is dull.**
+    *Done (ES5n, 2026-11-27.)* `@mmo-engine/kit-economy`: eleven modules
+    and the run's own wiring, about 3,150 lines, out of
+    `engine-core/src`, with the 31 test files that construct them. It was
+    a rewrite of import paths and nothing else, and that is the result
+    the twelve items above were bought for — by the time the code moved,
+    nothing in the engine named one of these classes, built one, or
+    imported one, so there was nothing left to design.
+
+    What did not move is the part worth reading. `places.db`, because a
+    break and an opened chest ride the range snapshot and recall seeds
+    them back. The respawn pool everything respawning shares. The loot a
+    table rolls. `CollapseSystem`, because a broken part is what topples
+    a building and toppling is the world's business. Each of those a kit
+    system takes as an argument.
+
+    It also found one thing that had been in the wrong place since it was
+    written. `InteractActionSchema`, the wire shape the gateway validates
+    request `0x27` against, was declared in `interact/chests.ts` — but an
+    interact request reaches a chest, a quest giver or a dungeon
+    entrance, and only the first is the economy's. Had it moved with the
+    chests, a game that replaced the chest system would have replaced the
+    engine's request validation along with it. It stayed behind, in a new
+    `net/requests.ts` whose doc block says why that file exists. Worth
+    expecting one of these per kit: a file move is also the first time
+    anyone asks what each line in a file is actually for.
+
+   What is left of this stage is the other four kits. The boundary test
+   is no longer a list of files, because the list is empty; it holds the
+   line itself, and `ES5o` onward can reuse it as it stands.
 
 ### 3.4 Hooks, reachable
 
@@ -623,6 +646,7 @@ independently shippable and useful on its own. Stages 5–9 move code.
 | 5d | **Gathering is a module** ✅ | `modules/gathering/` builds the system and its store; the host asks for a `GatheringService` (nine) and a `GatheringRecords` (three, `unknown` both ways). Recall's node stocks wait in the host and the module seeds them | **Medium**: nine call sites across crafting, civic, repair, the reloader, scene spawn and the world record, each needing an absent path | The resolved tick order pinned at exactly the old six (`after: streamer`, `before: chests`); the records' three calls and their validation tested through a real assembly |
 | 5e | **Chests and breakables are a module** ✅ | `modules/props/` builds the `ChestSystem` and the `BreakSystem`, the last two the engine's own wiring built; the host asks for a `ChestService` (one call) and a `BreakService` (four), and keeps `places.db`, the respawn pool, loot, the pouch, who struck last, and `onBreak` because toppling a building is `core`'s | **Low**: two systems, five call sites, and the ordering trap already found and pinned in `5d` | The resolved tick order byte-identical to before either module existed, pinned over the repo's real set by `TICK_ORDER` (38 systems); the module naming what the host must pass at boot; core alone leaving nothing to open and nothing to break |
 | 5f | **The lessons move with the residents** ✅ | `modules/residents/` reads `lessons.json` and publishes the `LessonTerms` the gateway asks for; `server.ts` imports nothing from `residents/` and names neither the loader nor the curve | **Low**: one import and one config key — but the publish has to sit above the module's four early returns, since residents off must not stop a trainer teaching | The terms published with no scene and no manifests (shown failing with the publish moved below the early returns); absent module and absent file both leaving nothing to teach; this game's own `lessons.json` pricing a lesson exactly as it did |
+| 5g | **`kit-economy`** ✅ | The second kit: eleven modules and the run's world wiring out of `engine-core/src`, plus the 31 test files that construct them. Five modules take them from the package by name | **Low as it turned out**, which was the point of 5b–5f: the files moved unchanged and the compiler found every import. 208 type errors at the first pass, all from two causes — missing engine exports and a mixed barrel import — and none from the moved code itself | Kit 239 tests 0 fail; engine-core green with no economy in it; the boundary test rewritten for the new shape and each of its four clauses shown failing; the ECS graph unchanged in every count |
 | 6 | **Civic → game** | 5,566 LOC. The *mechanisms* (bridge wear, escrow contracts, item provenance, foundry specialization, vein surveying) are general: they become `kit-logistics`. The *names and the Redwater rules* become `games/nexus/content`. The `gateway`/`health`/`items`/`pools` touchpoints become SDK extension points, which is what they should have been | **High.** Deepest coupling in the repo. Mitigated: it is already a gateway extension (`modules/civic/module.json` declares `extensions: ["civic"]`), so the seam exists — the work is widening it | `civic.test.ts`, `civic-e2e.test.ts`, `civic-world-tracks.test.ts`, `fleet-telemetry.test.ts` all green; a live run showing a bridge restoring |
 | 7 | **Our game into `games/nexus/`** | `content/` → `games/nexus/content/`; our HUD panels → `games/nexus/client/`; dev panels out of the client into the editor | **Medium.** Mostly moves, but `content/settlements` is 4.5 MB of baked data and every bake script path changes | `npm run bake:all` produces byte-identical output; the 6-seed town/route/place counts from the geology guard test unchanged |
 | 8 | **`create-mmo-game` + de-IP the schemas** | The template picker (`bare`, `survival`, `sandbox`, `full`); the `wildlife-table.ts:110` `strictObject` becomes an open map; `server.ts:1352` ambushers come from rules; `apps/client` splits into `client-runtime` + game client | **Medium.** The `strictObject` change is a content-schema change: existing wildlife tables must keep validating | Both CI jobs from §3.6: the five-minute walkable world, **and** `bare` booting with no kit installed. Existing `content/wildlife` still validates |
@@ -661,6 +685,16 @@ once the kit pattern exists.
   burden that makes none of them trustworthy. The gate in stage 5 (the
   kit still builds with one system deleted) is what keeps them genuinely
   separable rather than one template in six folders.
+  Two kits in, that gate needed a second half. A kit's `src` importing
+  another kit is the obvious failure and is now asserted over every
+  `packages/kit-*/src` the repo has, found rather than named. The quieter
+  one is a *test* that needs two kits, because its real subject belongs to
+  neither — the engine's spawn pool, or the world record carrying both a
+  quest log and a gathering pouch — and only a host assembles several kits.
+  Those live in the later kit, which declares the other as a dev
+  dependency; `kit-combat` keeps none, because it is the kit the others are
+  copied from. Stage 7's `games/nexus/` is where they belong once it
+  exists, since it is the first thing in the repo that assembles kits.
 - **The licence is deferred, so the audience is still internal.** Until
   it lands, "another team builds a game on this" is a capability we are
   building, not one anyone may exercise. That is a deliberate choice, not
