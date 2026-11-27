@@ -57,8 +57,8 @@ import type { ResidentSystem } from "./residents/index.js";
  * These are not the gateway's ports. The gateway drains hits and events;
  * `server.ts` asks who struck last — for a fall's credit, for a broken
  * prop's loot — and asks for a warning cone to be cast or cancelled. Two
- * readers, two demands, both written out rather than naming `CombatSystem`
- * and `TelegraphSystem`: the registry was the last place in the engine's own
+ * readers, two demands, both written out rather than naming the systems that
+ * answer them: the registry was the last place in the engine's own
  * wiring that did. `body` is the gateway's `BodyPort`, because the host
  * resolves it here and passes that same object down.
  */

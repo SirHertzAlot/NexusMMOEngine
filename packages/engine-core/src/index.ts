@@ -46,6 +46,19 @@ export {
   NO_JUMP,
   PART_STATES,
   Wound,
+  // A game reaches these the same way the engine does (ES6a): a kit outside
+  // the engine cannot ask for a component the engine keeps to itself.
+  Animation,
+  AudioEmitter,
+  Breakable,
+  CharacterRef,
+  FarVisible,
+  FlowRef,
+  God,
+  Needs,
+  Noclip,
+  Stamina,
+  VfxEmitter,
 } from "./components.js";
 export * from "./items/index.js";
 
@@ -408,7 +421,50 @@ export { SqlitePartyStore } from "./party-store.js";
 export { memorySocialStore, SqliteSocialStore, type SocialStore } from "./social-store.js";
 export { SqliteFriendStore } from "./friend-store.js";
 
-export { DeathSystem, type DeathBody } from "./death.js";
+/**
+ * The fighting is not here. `CombatSystem`, `DeathSystem`, `BodySystem`,
+ * `MagicSystem`, `AbilitySystem`, `TelegraphSystem`, `StatusSystem`,
+ * `DuelSystem` and `StaminaSystem` are `@mmo-engine/kit-combat` now: a host
+ * asks for the `combat`, `life`, `abilities`, `telegraphs`, `statuses` and
+ * `duels` ports and takes whatever offers them, so the engine no longer names
+ * the systems that answer. What a game's fighting *says* — `HitEvent`,
+ * `LifeEvent`, `BlowResult` and the rest — is still here, in the vocabulary
+ * below, because the engine's own protocol and persistence speak it.
+ */
+
+/**
+ * The contract a kit is written against (ES6a).
+ *
+ * A game that supplies its own fighting — or its own economy, or one system
+ * of either — declares the port the host asks for, registers the services the
+ * rest of the engine reads, and loads the rules it tunes from. All three were
+ * reachable only from inside the engine while the systems lived here; they are
+ * public now because the systems do not.
+ */
+export { GATEWAY_PORTS } from "./net/ports.js";
+export type {
+  AbilityPort,
+  AuctionPort,
+  BodyPort,
+  BreakPort,
+  ChestPort,
+  CombatPort,
+  DuelPort,
+  GatewayPorts,
+  GatheringPort,
+  LifePort,
+  MagicPort,
+  ResidentPort,
+  StatusPort,
+  TelegraphPort,
+  TradePort,
+  VendorPort,
+  WalletPort,
+} from "./net/ports.js";
+export { openEngineServices, SERVICE_TABLE } from "./services.js";
+export type { CombatService, EngineServiceRegistry, EngineServices, TelegraphService } from "./services.js";
+export { DEFAULT_RULES_DIR, loadGameRules, openGameRules } from "./rules/boot.js";
+export type { GameRules, GameRulesSource } from "./rules/boot.js";
 export type {
   AbilityEvent,
   AbilityState,
@@ -449,10 +505,7 @@ export type {
   WalletChange,
   Weapon,
 } from "./vocabulary.js";
-export { MagicSystem, type ActiveIceRing } from "./magic.js";
-export { blowRng, BodySystem } from "./body.js";
 export { restoreBody } from "./components.js";
-export { aimFromLookPitch, PITCH_AIM_DEADZONE, PITCH_AIM_HIGH, PITCH_AIM_LOW, CombatSystem, GUARD_FACTOR, type CombatDamage, FIGHT_DIFFICULTY } from "./combat.js";
 export { BotSystem } from "./bots.js";
 export { AnimationSystem, ensureAnimation } from "./animation.js";
 export { loadStrings, t, pseudoLocalize, type Strings } from "./strings.js";

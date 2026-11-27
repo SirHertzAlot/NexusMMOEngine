@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { EcsGraphSchema, FILE_LINE_RE, archetypeId, assertDeterministicBytes, canonicalJson, explainWhy, harvest, kitSrcDirs, loadGraph, runCli, type EcsGraph, validateGraph, whatDiffers } from "../src/index.js";
+import { EcsGraphSchema, ENGINE_INTROSPECT_MODULES, FILE_LINE_RE, archetypeId, assertDeterministicBytes, canonicalJson, defaultIntrospectModules, explainWhy, harvest, kitIntrospectModules, kitSrcDirs, loadGraph, runCli, type EcsGraph, validateGraph, whatDiffers } from "../src/index.js";
 
 const THIS_DIR = dirname(fileURLToPath(import.meta.url));
 // Works from both src/test (if ever run via loader) and dist/test
@@ -527,6 +527,50 @@ test("the scan follows a kit's src, and a repo with no kits is unchanged (ES5g)"
 
     // A repo with no packages directory at all does not throw.
     assert.deepEqual(kitSrcDirs(mkdtempSync(join(tmpdir(), "graphify-bare-"))), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a kit's component modules are found, not listed by name (ES6a)", () => {
+  // `body.ts` and `magic.ts` declare SAB components and were named in
+  // graphify's introspection table while they were engine files. They are
+  // `kit-combat`'s now, and a game can add a kit of its own, so what the
+  // table holds is the engine's own components and a search for the rest.
+  const root = mkdtempSync(join(tmpdir(), "graphify-kit-components-"));
+  try {
+    mkdirSync(join(root, "packages", "kit-combat", "src", "deep"), { recursive: true });
+    mkdirSync(join(root, "packages", "kit-economy", "src"), { recursive: true });
+    assert.deepEqual(kitIntrospectModules(root), [], "no kit declares a component yet");
+
+    // One that declares components, one nested, one that does not, and a test
+    // file that mentions the call but is not a source of components.
+    writeFileSync(join(root, "packages/kit-combat/src/body.ts"), "export const Body = defineSABComponent({});\n", "utf8");
+    writeFileSync(join(root, "packages/kit-combat/src/deep/magic.ts"), "const Mana = defineSABComponent({});\n", "utf8");
+    writeFileSync(join(root, "packages/kit-combat/src/combat.ts"), "export class CombatSystem {}\n", "utf8");
+    writeFileSync(join(root, "packages/kit-combat/src/body.test.ts"), "defineSABComponent({});\n", "utf8");
+    writeFileSync(join(root, "packages/kit-economy/src/wallet.ts"), "defineSABComponent({});\n", "utf8");
+
+    assert.deepEqual(kitIntrospectModules(root), [
+      { modulePath: "packages/kit-combat/dist/src/body.js", relSource: "packages/kit-combat/src/body.ts" },
+      { modulePath: "packages/kit-combat/dist/src/deep/magic.js", relSource: "packages/kit-combat/src/deep/magic.ts" },
+      { modulePath: "packages/kit-economy/dist/src/wallet.js", relSource: "packages/kit-economy/src/wallet.ts" },
+    ]);
+
+    // The engine's own module stays first, whatever the kits are called.
+    const all = defaultIntrospectModules(root);
+    assert.deepEqual(all.slice(0, ENGINE_INTROSPECT_MODULES.length), [...ENGINE_INTROSPECT_MODULES]);
+    assert.equal(all.length, ENGINE_INTROSPECT_MODULES.length + 3);
+
+    // This repository: every component is the engine's own, in
+    // `components.ts`, since `ES5c` moved `Body`, `Injury` and `Mana` there.
+    // So the engine's `body.ts` and `magic.ts` entries were already stale when
+    // the kit took those files, and nothing of `kit-combat`'s needs
+    // introspecting — what this proves is that the search says so rather than
+    // the table having to be edited again next time.
+    const real = defaultIntrospectModules(REPO_ROOT).map((m) => m.relSource);
+    assert.deepEqual(real, ["packages/engine-core/src/components.ts"]);
+    assert.deepEqual(kitIntrospectModules(REPO_ROOT), [], "no kit declares a component of its own yet");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -14,15 +14,19 @@ import { hasComponent } from "bitecs";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CombatSystem } from "../../packages/engine-core/dist/src/combat.js";
-import { AbilitySystem } from "../../packages/engine-core/dist/src/abilities.js";
-import { StatusSystem } from "../../packages/engine-core/dist/src/status.js";
-import { TelegraphSystem } from "../../packages/engine-core/dist/src/telegraph.js";
-import { DuelSystem } from "../../packages/engine-core/dist/src/duel.js";
-import { BodySystem } from "../../packages/engine-core/dist/src/body.js";
-import { DeathSystem } from "../../packages/engine-core/dist/src/death.js";
-import { MagicSystem } from "../../packages/engine-core/dist/src/magic.js";
-import { StaminaSystem } from "../../packages/engine-core/dist/src/stats/stamina-system.js";
+// The nine systems are a kit now (ES6a), not part of the engine: a game that
+// writes its own fighting points this module at its own package instead.
+import {
+  AbilitySystem,
+  BodySystem,
+  CombatSystem,
+  DeathSystem,
+  DuelSystem,
+  MagicSystem,
+  StaminaSystem,
+  StatusSystem,
+  TelegraphSystem,
+} from "@mmo-engine/kit-combat";
 import { Health, God, CharacterRef, Transform } from "../../packages/engine-core/dist/src/components.js";
 import { defineQuery } from "bitecs";
 

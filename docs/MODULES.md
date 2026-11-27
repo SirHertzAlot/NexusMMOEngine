@@ -185,6 +185,16 @@ lacks; offer none of them and the gateway simply sends none of those messages,
 which is what a game with no duels wants. A game with its own gateway declares
 its own ports over `openPorts` from `@mmo-engine/sdk`.
 
+The engine's own fighting is a package like yours would be:
+`@mmo-engine/kit-combat` holds the nine systems — combat, abilities,
+telegraphs, status, duels, bodies, magic, stamina and death — and nothing in
+`engine-core` imports it. `modules/combat/server.js` builds them from that
+package, which is the same thing your module would do with your own. Take the
+kit as it is, fork it, or replace one system in it and keep the other eight:
+each of the nine builds without the rest, so dropping one costs you that
+feature and nothing else. Its `README` says what each system does and what the
+three ways to change it cost.
+
 **3. Try it.** Add `"sample-heartbeat"` to `content/modules.json` (or tick it in the editor's Modules workspace and press **Apply modules**). The boot line lists the system between `crowd` and `intent`, and the log shows the heartbeat.
 
 Game rules belong in data, not in a module's code: put tunables in `content/rules/` and read them through the rules package ([ARCHITECTURE.md](ARCHITECTURE.md#game-rules-are-data)).

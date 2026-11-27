@@ -98,7 +98,7 @@ function siteOf(relPath: string, sf: ts.SourceFile, node: ts.Node): string {
   return `${toPosixPath(relPath)}:${lineOf(sf, node)}`;
 }
 
-function walkFiles(dir: string, predicate: (filePath: string) => boolean): string[] {
+export function walkFiles(dir: string, predicate: (filePath: string) => boolean): string[] {
   if (!existsSync(dir)) return [];
   const results: string[] = [];
   const stack = [dir];

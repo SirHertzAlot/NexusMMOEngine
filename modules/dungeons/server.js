@@ -21,7 +21,7 @@ import { SqliteInstanceResultStore } from "../../packages/engine-core/dist/src/d
 // (dungeons/combat-slot.js); this is the engine's own wiring of it, and the
 // only thing a game replaces to fight differently underground. It moves
 // into @mmo-engine/kit-combat with the systems it builds.
-import { defaultDungeonCombat } from "../../packages/engine-core/dist/src/dungeons/default-combat.js";
+import { defaultDungeonCombat } from "@mmo-engine/kit-combat";
 
 export function createSystems(ctx) {
   const config = ctx.config?.dungeons ?? {};

@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { kitSrcDirs, walkFiles } from "./ast-extract.js";
+import { toPosixPath } from "./schema.js";
 
 export interface IntrospectModuleSpec {
   /** Compiled ES module path (absolute or relative to repoRoot). */
@@ -39,20 +41,47 @@ export interface IntrospectOptions {
   addComponentPath?: string;
 }
 
-export const DEFAULT_INTROSPECT_MODULES: readonly IntrospectModuleSpec[] = [
+/** The engine's own components, which every run has. */
+export const ENGINE_INTROSPECT_MODULES: readonly IntrospectModuleSpec[] = [
   {
     modulePath: "packages/engine-core/dist/src/components.js",
     relSource: "packages/engine-core/src/components.ts",
   },
-  {
-    modulePath: "packages/engine-core/dist/src/body.js",
-    relSource: "packages/engine-core/src/body.ts",
-  },
-  {
-    modulePath: "packages/engine-core/dist/src/magic.js",
-    relSource: "packages/engine-core/src/magic.ts",
-  },
 ];
+
+/**
+ * The component modules of the kits installed beside the engine (ES6a).
+ *
+ * `engine-core`'s `body.ts` and `magic.ts` were in this list by name until
+ * `ES6a` took them into `@mmo-engine/kit-combat`, where naming them would have
+ * meant naming a kit. As it turns out they had nothing left to declare — `Body`,
+ * `Injury` and `Mana` became engine components in `ES5c` — but a kit of a
+ * game's own can declare components, so the list is found rather than written
+ * down: every source file under a `packages/kit-NAME/src` that calls
+ * `defineSABComponent` has its compiled module introspected.
+ *
+ * A kit that has not been built yet fails the run by name rather than being
+ * skipped, because a graph missing a kit's components would still look valid.
+ */
+export function kitIntrospectModules(repoRoot: string): IntrospectModuleSpec[] {
+  const found: IntrospectModuleSpec[] = [];
+  for (const srcDir of kitSrcDirs(repoRoot)) {
+    for (const abs of walkFiles(srcDir, (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts"))) {
+      if (!readFileSync(abs, "utf8").includes("defineSABComponent(")) continue;
+      const relSource = toPosixPath(relative(repoRoot, abs));
+      found.push({
+        modulePath: relSource.replace(/^(packages\/[^/]+)\/src\//, "$1/dist/src/").replace(/\.ts$/, ".js"),
+        relSource,
+      });
+    }
+  }
+  return found.sort((a, b) => (a.relSource < b.relSource ? -1 : a.relSource > b.relSource ? 1 : 0));
+}
+
+/** The engine's components plus every installed kit's. */
+export function defaultIntrospectModules(repoRoot: string): IntrospectModuleSpec[] {
+  return [...ENGINE_INTROSPECT_MODULES, ...kitIntrospectModules(repoRoot)];
+}
 
 export const DEFAULT_ADD_COMPONENT_PATH = "packages/engine-core/dist/src/admin/add-component.js";
 
@@ -66,13 +95,12 @@ export function introspectComponents(options: IntrospectOptions): IntrospectionR
     throw new Error(`graphify introspect runner missing at ${runnerPath}; run tsc build first.`);
   }
 
-  const modules = options.modules ?? DEFAULT_INTROSPECT_MODULES;
+  const modules = options.modules ?? defaultIntrospectModules(options.repoRoot);
   for (const m of modules) {
     const abs = resolve(options.repoRoot, m.modulePath);
     if (!existsSync(abs)) {
-      throw new Error(
-        `Compiled component module missing at ${abs}; compile @mmo-engine/engine-core before running graphify.`,
-      );
+      const pkg = /^packages\/([^/]+)\//.exec(m.modulePath)?.[1] ?? "the package";
+      throw new Error(`Compiled component module missing at ${abs}; compile @mmo-engine/${pkg} before running graphify.`);
     }
   }
 
