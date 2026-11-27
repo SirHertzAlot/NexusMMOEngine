@@ -192,6 +192,26 @@ export class QuestService implements SimSystem, GatewayExtension {
     return [...out];
   }
 
+  /**
+   * Stand the giver of `quest` at `x, z` (`ES5o`), for a scene that says
+   * where a quest starts.
+   *
+   * `server.ts` did this by reaching through this service into `content`
+   * with a cast, which put a game's content shape in the engine's entry
+   * point: which quests have givers, and that an NPC is a record with `x`
+   * and `z`, are this service's business. `null` means placed; a string is
+   * the reason it was not, which the scene loader reports as the node's
+   * skip reason.
+   */
+  place(quest: string, x: number, z: number): string | null {
+    const giver = this.opts.content.quests[quest]?.giver;
+    const npc = giver === undefined ? undefined : this.opts.content.npcs[giver];
+    if (!npc) return `no quest "${quest}" with a giver`;
+    npc.x = x;
+    npc.z = z;
+    return null;
+  }
+
   /** The giver a townsperson is (undefined: they are not one). */
   npcOfResident(resident: string): string | undefined {
     return Object.entries(this.opts.content.npcs).find(([, n]) => n.resident === resident)?.[0];

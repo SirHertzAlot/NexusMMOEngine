@@ -12,15 +12,21 @@
  */
 import { QuestService } from "../../packages/engine-core/dist/src/quests/quest-service.js";
 import { loadQuestContent } from "../../packages/engine-core/dist/src/quests/content.js";
-import { SqliteQuestStore } from "../../packages/engine-core/dist/src/quests/quest-store.js";
+import { questRecordsOf, SqliteQuestStore } from "../../packages/engine-core/dist/src/quests/quest-store.js";
 
 export function createSystems(ctx) {
   const config = ctx.config?.quests ?? {};
   const questContent = loadQuestContent(config.questDir);
 
-  // On ctx.stores too: fleet mode carries each character's log in its world record (PL3b).
   const store = new SqliteQuestStore(config.dataDir + "/quests.db");
-  ctx.stores.questStore = store;
+  // Fleet mode carries each character's log in its world record (PL3b). The
+  // host moves the rows and never reads inside them (ES5o), so validating a
+  // recalled log is this module's job: it is the only thing that knows what
+  // a valid one looks like, and it drops whatever it does not recognise.
+  ctx.stores.questRecords = {
+    loadQuests: (charId) => store.load(charId),
+    replaceQuests: (charId, rows) => store.replace(charId, questRecordsOf(rows)),
+  };
   const quests = new QuestService({
     content: questContent,
     store,
