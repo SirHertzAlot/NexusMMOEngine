@@ -3,6 +3,11 @@
  * Breakable tag; DeathSystem leaves it alone; at zero BreakSystem removes it, leaves
  * it standing broken without a collider, or swaps it for debris, rolling its loot for
  * the last attacker.
+ *
+ * Here rather than in `kit-combat` (`ES5n`): `BreakSystem` is this kit's now.
+ * `DeathSystem` is only the foil — the whole point of the first case is that
+ * the fighting leaves a prop alone — so it comes in through `kit-combat`'s
+ * public entry like any other consumer's would.
  */
 
 import { describe, it } from "node:test";
@@ -12,8 +17,9 @@ import { parseSpawnTableJSON } from "@mmo-engine/scatter";
 import { BROKEN_VARIANT } from "@mmo-engine/protocol";
 import { AssetRef, BodyConfig, Breakable, Health, SimWorld, spawnScatterEntity } from "@mmo-engine/engine-core";
 import { buildSpawn } from "@mmo-engine/engine-core/dist/src/admin/spawn.js";
-import { breakDefsOf, type BreakEvent, BreakSystem, SqlitePlacesStore } from "@mmo-engine/engine-core/dist/src/interact/index.js";
-import { DeathSystem } from "../../src/death.js";
+import { SqlitePlacesStore } from "@mmo-engine/engine-core/dist/src/interact/index.js";
+import { DeathSystem } from "@mmo-engine/kit-combat";
+import { breakDefsOf, type BreakEvent, BreakSystem } from "../../src/breaks.js";
 import Database from "better-sqlite3";
 import { fnv1a32 } from "@mmo-engine/scatter";
 

@@ -12,6 +12,11 @@
  * is covered where it always was (`gateway-m5`, `strike-duel-gateway`,
  * `gateway.test`), which is what makes this file a guard rather than a test of
  * the systems.
+ *
+ * `ES5n`: the eight economy and world ports are guarded the same way in
+ * `kit-economy`'s own `test/net/gateway-ports.test.ts`, because their systems
+ * are that kit's now and this kit imports no other kit. Each half names the
+ * other's keys, so a fifteenth port cannot fall through both.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -24,14 +29,7 @@ import { DuelSystem } from "../../src/duel.js";
 import { MagicSystem } from "../../src/magic.js";
 import { StatusSystem } from "../../src/status.js";
 import { TelegraphSystem } from "../../src/telegraph.js";
-import { type AbilityPort, type AuctionPort, type BodyPort, type BreakPort, type ChestPort, type CombatPort, type CombatService, type DuelPort, GATEWAY_PORTS, type GatewayPorts, type GatheringPort, type LifePort, loadGameRules, type MagicPort, type ResidentPort, type StatusPort, type TelegraphPort, type TelegraphService, type TradePort, type VendorPort, type WalletPort } from "@mmo-engine/engine-core";
-import { AuctionSystem } from "@mmo-engine/engine-core/dist/src/economy/auction.js";
-import { TradeSystem } from "@mmo-engine/engine-core/dist/src/economy/trade.js";
-import { VendorSystem } from "@mmo-engine/engine-core/dist/src/economy/vendor.js";
-import { WalletSystem } from "@mmo-engine/engine-core/dist/src/economy/wallet.js";
-import { GatheringSystem } from "@mmo-engine/engine-core/dist/src/gathering/index.js";
-import { BreakSystem, ChestSystem } from "@mmo-engine/engine-core/dist/src/interact/index.js";
-import { ResidentSystem } from "@mmo-engine/engine-core/dist/src/residents/index.js";
+import { type AbilityPort, type BodyPort, type CombatPort, type CombatService, type DuelPort, GATEWAY_PORTS, type GatewayPorts, type LifePort, loadGameRules, type MagicPort, type StatusPort, type TelegraphPort, type TelegraphService } from "@mmo-engine/engine-core";
 
 /** Compile-time: each system still answers the port the gateway asks it for. */
 type Conforms<T extends P, P> = true;
@@ -41,21 +39,7 @@ const _abilities: Conforms<AbilitySystem, AbilityPort> = true;
 const _telegraphs: Conforms<TelegraphSystem, TelegraphPort> = true;
 const _statuses: Conforms<StatusSystem, StatusPort> = true;
 const _duels: Conforms<DuelSystem, DuelPort> = true;
-// These eight were `Pick<>` of their system until `ES5d`, so conformance was
-// true by construction and needed no line here. Now they are written out, and
-// these lines are what makes a hand-written signature a claim the compiler
-// checks: drop a method, rename a parameter's type, demand something the
-// system does not have, and the build fails on the port, not on a tick.
-const _trade: Conforms<TradeSystem, TradePort> = true;
-const _wallet: Conforms<WalletSystem, WalletPort> = true;
-const _auction: Conforms<AuctionSystem, AuctionPort> = true;
-const _vendors: Conforms<VendorSystem, VendorPort> = true;
-const _gathering: Conforms<GatheringSystem, GatheringPort> = true;
-const _chests: Conforms<ChestSystem, ChestPort> = true;
-const _breaks: Conforms<BreakSystem, BreakPort> = true;
-const _residents: Conforms<ResidentSystem, ResidentPort> = true;
 void [_combat, _life, _abilities, _telegraphs, _statuses, _duels];
-void [_trade, _wallet, _auction, _vendors, _gathering, _chests, _breaks, _residents];
 // `ES5f`: the three the engine's own wiring still named. `body` is handed to
 // the gateway as an option rather than resolved from the systems list, and
 // the host's two demands are narrower than the gateway's, so each is written
@@ -85,23 +69,31 @@ const _keys: readonly (keyof GatewayPorts)[] = [
 ];
 void _keys;
 
-/** The system that answers each port today, by prototype so nothing is built. */
-const ANSWERED_BY: Readonly<Record<keyof GatewayPorts, object>> = {
+/** The system in this kit that answers each port, by prototype so nothing is built. */
+const ANSWERED_BY: Readonly<Partial<Record<keyof GatewayPorts, object>>> = {
   combat: CombatSystem.prototype,
   life: DeathSystem.prototype,
   abilities: AbilitySystem.prototype,
   telegraphs: TelegraphSystem.prototype,
   statuses: StatusSystem.prototype,
   duels: DuelSystem.prototype,
-  trade: TradeSystem.prototype,
-  wallet: WalletSystem.prototype,
-  auction: AuctionSystem.prototype,
-  vendors: VendorSystem.prototype,
-  gathering: GatheringSystem.prototype,
-  chests: ChestSystem.prototype,
-  breaks: BreakSystem.prototype,
-  residents: ResidentSystem.prototype,
 };
+
+/**
+ * The ports another kit answers. Naming them is what keeps the split honest:
+ * a new port that neither half claims fails the completeness check below
+ * rather than going unguarded because each kit assumed the other had it.
+ */
+const ELSEWHERE: readonly (keyof GatewayPorts)[] = [
+  "trade",
+  "wallet",
+  "auction",
+  "vendors",
+  "gathering",
+  "chests",
+  "breaks",
+  "residents",
+];
 
 /** `method`, `getter`, `field` or `missing`, without running a getter. */
 function memberKind(proto: object, name: string): string {
@@ -120,7 +112,7 @@ test("every member the table names is one the answering system has", () => {
   // same bug: `openPorts` wants a function there.
   for (const decl of GATEWAY_PORTS) {
     const proto = ANSWERED_BY[decl.key as keyof GatewayPorts];
-    assert.ok(proto, `no system is mapped for the "${decl.key}" port`);
+    if (!proto) continue;
     for (const method of decl.methods) {
       assert.equal(
         memberKind(proto, method),
@@ -138,7 +130,17 @@ test("every member the table names is one the answering system has", () => {
       );
     }
   }
-  assert.deepEqual(Object.keys(ANSWERED_BY).sort(), GATEWAY_PORTS.map((d) => d.key).sort());
+  // Every port is answered by one half or the other, and no key is claimed
+  // by both: this kit's six plus the eight `kit-economy` guards are the table.
+  const mine = Object.keys(ANSWERED_BY) as (keyof GatewayPorts)[];
+  assert.deepEqual(
+    [...mine, ...ELSEWHERE].sort(),
+    GATEWAY_PORTS.map((d) => d.key).sort(),
+    "a port is guarded by neither kit, or by both",
+  );
+  for (const key of ELSEWHERE) {
+    assert.ok(!(key in ANSWERED_BY), `${key} is claimed here and in kit-economy`);
+  }
 });
 
 
@@ -183,18 +185,6 @@ test("the real systems answer the ports they offer", () => {
     [["combat"], ["life"], ["abilities"], ["telegraphs"], ["statuses"], ["duels"]],
   );
 });
-
-
-
-
-/**
- * The members an interface declares, read from the source.
- *
- * A member sits at one indent: `name(...)`, `name(` opening a signature that
- * runs over several lines, or `readonly name: T`. Continuation lines and the
- * closing brace of a nested object type are deeper or start with punctuation,
- * so neither is mistaken for one.
- */
 
 
 

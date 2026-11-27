@@ -56,6 +56,29 @@ than owning it:
 - **The loot table and the item ledger.** What a kill or a smashed crate drops
   is content the host rolls.
 
+## The one test dependency on another kit
+
+This package's `src/` imports no other kit, and the engine's boundary test
+pins that. Its `test/` has one exception, declared as a dev dependency on
+`@mmo-engine/kit-combat`:
+
+- `test/pools/respawn-systems.test.ts` wires five of this kit's systems and
+  `kit-combat`'s `DeathSystem` onto one shared `SpawnPoolSoA`.
+- `test/world-characters.test.ts` carries a quest log and a gathering pouch on
+  the same world record.
+- `test/interact/breaks.test.ts` needs the fighting present to show that it
+  leaves a prop alone.
+
+Each of those is really a test of something the *engine* owns — the spawn
+pool, the world record — exercised with two kits' systems as fixtures, and
+only a host assembles several kits. When the engine ships a game to assemble
+them (`games/nexus/`, `ES7`), that is where tests like these belong. Until
+then the later kit carries them, so `kit-combat` stays free of cross-kit
+edges: it is the one every other kit is copied from.
+
+Forking this kit on its own costs you those three files, and nothing in
+`src/`.
+
 ## Changing it
 
 In rising order of cost, which is the engine's usual framing — the cheapest

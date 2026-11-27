@@ -4,6 +4,15 @@
  * `BreakSystem`, `CivicService`) onto a single shared L2-resident `SpawnPoolSoA`,
  * including persistence roundtrip via `encodeBinary` / `decodeBinary` and
  * steady-state zero-allocation verification.
+ *
+ * Here rather than in `kit-combat` (`ES5n`): five of the six systems are this
+ * kit's and `DeathSystem` is `kit-combat`'s, so the test needs both. Its real
+ * subject is neither kit's — it is the engine's `SpawnPoolSoA`, shared by
+ * everything that respawns. Until a game assembles the kits and can hold a
+ * test like this (`ES7`, `games/nexus/`), the later kit carries it and
+ * declares `@mmo-engine/kit-combat` as a dev dependency. `kit-combat` stays
+ * free of cross-kit edges, because it is the one every other kit is copied
+ * from.
  */
 
 import { describe, it } from "node:test";
@@ -12,14 +21,17 @@ import Database from "better-sqlite3";
 import { addComponent, defineQuery, entityExists, hasComponent } from "bitecs";
 import { DEFAULT_CIVIC_RULES, type CivicRules } from "@mmo-engine/rules";
 import { fnv1a32, parseSpawnTableJSON } from "@mmo-engine/scatter";
-import { AssetRef, BodyConfig, Breakable, CharacterRef, CivicService, CreatureSystem, Health, INVALID_POOL_HANDLE, loadGameRules, PlayerIntent, PoolSlotFlags, RespawnKind, SimWorld, SlotState, SpawnPoolSoA, spawnScatterEntity, SqliteCivicStore, Transform, Velocity } from "@mmo-engine/engine-core";
+import { AssetRef, BodyConfig, Breakable, CharacterRef, CivicService, CreatureSystem, Health, INVALID_POOL_HANDLE, loadGameRules, PlayerIntent, PoolSlotFlags, RespawnKind, type ResourceNodeSpec, SimWorld, SlotState, SpawnPoolSoA, spawnScatterEntity, SqliteCivicStore, Transform, Velocity } from "@mmo-engine/engine-core";
 import { buildSpawn } from "@mmo-engine/engine-core/dist/src/admin/spawn.js";
-import { WalletSystem } from "@mmo-engine/engine-core/dist/src/economy/wallet.js";
-import { GatheringSystem, type ResourceNodeSpec, SqliteGatheringStore } from "@mmo-engine/engine-core/dist/src/gathering/index.js";
-import { breakDefsOf, BreakSystem, ChestSystem, SqlitePlacesStore } from "@mmo-engine/engine-core/dist/src/interact/index.js";
+import { SqlitePlacesStore } from "@mmo-engine/engine-core/dist/src/interact/index.js";
 import type { ExtensionPlayer } from "@mmo-engine/engine-core/dist/src/net/extension.js";
 import { compileSpawnPool } from "@mmo-engine/engine-core/dist/src/pools/spawn-pool-solver.js";
-import { DeathRespawnPool, DeathSystem } from "../../src/death.js";
+import { DeathRespawnPool, DeathSystem } from "@mmo-engine/kit-combat";
+import { breakDefsOf, BreakSystem } from "../../src/breaks.js";
+import { ChestSystem } from "../../src/chests.js";
+import { GatheringSystem } from "../../src/gathering.js";
+import { SqliteGatheringStore } from "../../src/gathering-store.js";
+import { WalletSystem } from "../../src/wallet.js";
 
 const GAME = loadGameRules();
 
