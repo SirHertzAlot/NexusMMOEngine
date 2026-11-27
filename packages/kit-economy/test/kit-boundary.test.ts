@@ -1,5 +1,12 @@
 /**
- * No kit's `src/` imports another kit (`ES5`).
+ * This kit's boundaries: with the engine, and with the other kits.
+ *
+ * `kit-combat` has the same file for its side of the engine line
+ * (`test/kit-boundary.test.ts`, `ES6a`). The cross-kit rule below is the
+ * repo's rather than either kit's, and it is here because this kit holds the
+ * only test dependency on another kit — so the rule and its one exception are
+ * written down together. The exception is in `test/`; the rule is about
+ * `src/`.
  *
  * This is what keeps the kits separable rather than one template in six
  * folders: a game may take `kit-economy` and replace `kit-combat` with its
@@ -7,11 +14,8 @@
  * engine's side of the same rule — that `engine-core/src` imports no kit at
  * all — is pinned in `engine-core/test/economy/engine-boundary.test.ts`.
  *
- * The rule is the repo's, not this kit's, so the scan finds every
- * `packages/kit-*` rather than naming them. It lives here because this kit
- * holds the only *test* dependency on another kit (see the README), so the
- * rule and its one exception are written down together: the exception is in
- * `test/`, and the assertion below is about `src/`.
+ * The scan finds every `packages/kit-*` rather than naming them, so a kit
+ * added later is held to the rule without anyone remembering to add it.
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -78,18 +82,22 @@ describe("kit boundary (ES5)", () => {
     }
   });
 
-  it("a kit may reach the engine, which is the contract both sides share", () => {
-    // Not a loophole being closed, a shape being pinned: the engine is how
-    // the kits meet, so every kit depends on it and that is the only package
-    // dependency the rule above cares about.
-    const economy = sources(join(PACKAGES, "kit-economy", "src"))
-      .flatMap((f) => specifiers(readFileSync(f, "utf8")))
-      .filter((s) => s.startsWith("@mmo-engine/"));
-    assert.ok(economy.includes("@mmo-engine/engine-core"), "this kit should reach the engine");
-    assert.deepEqual(
-      economy.filter((s) => s.startsWith("@mmo-engine/kit-")),
-      [],
-      "and no kit",
-    );
+  it("this kit's sources reach the engine only through its public entry", () => {
+    // A kit written outside this repository would have the bare specifier and
+    // nothing more, so these sources have the same. The tests are allowed
+    // further — several boot a whole region gateway — and a deep path there
+    // says "integration test" where widening the engine's public API to tidy
+    // the import would have said something false.
+    const files = sources(join(PACKAGES, "kit-economy", "src"));
+    assert.ok(files.length >= 12, `expected this kit's sources, found ${files.length}`);
+    const specs = files.flatMap((f) => specifiers(readFileSync(f, "utf8")));
+    assert.ok(specs.includes("@mmo-engine/engine-core"), "this kit should reach the engine");
+    for (const spec of specs) {
+      assert.doesNotMatch(
+        spec,
+        /^@mmo-engine\/engine-core\//,
+        `a source imports an engine internal (${spec}); a kit outside this repo could not`,
+      );
+    }
   });
 });

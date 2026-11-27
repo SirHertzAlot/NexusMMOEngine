@@ -685,6 +685,16 @@ once the kit pattern exists.
   burden that makes none of them trustworthy. The gate in stage 5 (the
   kit still builds with one system deleted) is what keeps them genuinely
   separable rather than one template in six folders.
+  Two kits in, that gate needed a second half. A kit's `src` importing
+  another kit is the obvious failure and is now asserted over every
+  `packages/kit-*/src` the repo has, found rather than named. The quieter
+  one is a *test* that needs two kits, because its real subject belongs to
+  neither — the engine's spawn pool, or the world record carrying both a
+  quest log and a gathering pouch — and only a host assembles several kits.
+  Those live in the later kit, which declares the other as a dev
+  dependency; `kit-combat` keeps none, because it is the kit the others are
+  copied from. Stage 7's `games/nexus/` is where they belong once it
+  exists, since it is the first thing in the repo that assembles kits.
 - **The licence is deferred, so the audience is still internal.** Until
   it lands, "another team builds a game on this" is a capability we are
   building, not one anyone may exercise. That is a deliberate choice, not
