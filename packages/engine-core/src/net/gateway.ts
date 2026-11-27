@@ -141,7 +141,7 @@ import { buildSpawn, DespawnArgsSchema, listAssets, SpawnArgsSchema } from "../a
 import { resolveEntityTarget, resolveSpawnPoint, spawnBasicEntity } from "../admin/author.js";
 import { loadScatterContent, spawnScatterEntity } from "../procgen/scatter-spawn.js";
 import { parseEntityArg, type ItemService } from "../items/index.js";
-import { InteractActionSchema } from "../interact/index.js";
+import { InteractActionSchema } from "./requests.js";
 import { describeMatches, DropArgsSchema, ItemActionSchema, ItemPickArgsSchema, ItemsCommandArgsSchema, LootArgsSchema, pickDef } from "../admin/items.js";
 import { AddComponentArgsSchema, applyAddComponent } from "../admin/add-component.js";
 import { RemoveComponentArgsSchema, applyRemoveComponent } from "../admin/remove-component.js";

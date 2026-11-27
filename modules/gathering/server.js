@@ -21,7 +21,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "../../packages/engine-core/dist/src/gathering/index.js";
+import { GatheringSystem, materialCountsOf, nodeStocksOf, SqliteGatheringStore } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const cfg = ctx.config?.gathering ?? {};

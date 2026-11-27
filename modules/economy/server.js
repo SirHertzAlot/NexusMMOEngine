@@ -9,11 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { WalletSystem } from "../../packages/engine-core/dist/src/economy/wallet.js";
-import { SqliteWalletStore } from "../../packages/engine-core/dist/src/economy/wallet-store.js";
-import { TradeSystem } from "../../packages/engine-core/dist/src/economy/trade.js";
-import { VendorSystem } from "../../packages/engine-core/dist/src/economy/vendor.js";
-import { AuctionSystem } from "../../packages/engine-core/dist/src/economy/auction.js";
+import { AuctionSystem, SqliteWalletStore, TradeSystem, VendorSystem, WalletSystem } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const cfg = ctx.config?.economy ?? {};

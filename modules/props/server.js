@@ -27,7 +27,7 @@
  * edges name a `core` system on purpose: an edge to another optional
  * module's system would make this module refuse to boot without it.
  */
-import { BreakSystem, breakDefsOf, ChestSystem } from "../../packages/engine-core/dist/src/interact/index.js";
+import { BreakSystem, breakDefsOf, ChestSystem } from "@mmo-engine/kit-economy";
 
 export function createSystems(ctx) {
   const cfg = ctx.config?.props ?? {};
