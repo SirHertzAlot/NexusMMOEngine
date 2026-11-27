@@ -90,7 +90,7 @@ packages/graphify-out/
 
 # Databases a server or a test leaves at the repo root when it is started
 # from here rather than from packages/engine-core. Root-anchored, so the
-# tracked packages/engine-core/economy.db bench fixture is unaffected.
+# per-file rules under packages/engine-core below stand on their own.
 /*.db
 /*.db-shm
 /*.db-wal
@@ -100,6 +100,7 @@ packages/graphify-out/
 packages/engine-core/*.db-shm
 packages/engine-core/*.db-wal
 packages/engine-core/characters.db
+packages/engine-core/economy.db
 packages/engine-core/gathering.db
 packages/engine-core/guilds.db
 packages/engine-core/instances.db
